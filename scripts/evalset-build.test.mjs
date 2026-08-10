@@ -108,12 +108,12 @@ test("a Swedish question left untagged is caught, so the sv count cannot silentl
 
 test("an English question citing a foreign name is NOT mistaken for Swedish", () => {
   // Diacritics alone cannot decide this: plenty of researchers in these fields
-  // are called Frässle, Müller, Schrödinger or Dalén. This exact case fired as
+  // are called Frässle, Müller, Schrödinger or Ekström. This exact case fired as
   // a false positive on a real item before the check moved to function words.
   const foreignNames = [
     "Frässle and colleagues used optokinetic nystagmus to track binocular rivalry. What changed?",
     "What did Müller and Schrödinger conclude about the measurement problem in this setting?",
-    "Which of Dalén's collaborators sequenced the specimen, and in what year did they publish?",
+    "Which of Ekström's collaborators sequenced the specimen, and in what year did they publish?",
   ];
   for (const question of foreignNames) {
     assert.deepEqual(validateItems([ok({ question })]), [], `false positive on: ${question}`);

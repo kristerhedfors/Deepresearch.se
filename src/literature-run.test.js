@@ -686,7 +686,7 @@ test("the arXiv window's upper bound matches the recorded fill", () => {
   assert.ok(Number(to) > Number(from), "the window's upper bound must be after its start");
   // Not a magic number: it is the figure `node scripts/arxiv-window.mjs`
   // measured off the live index, and the pair moves together or not at all.
-  assert.equal(vectors_at_fill, 823097, "update BOTH the window and the fill after an ingest");
+  assert.equal(vectors_at_fill, 823722, "update BOTH the window and the fill after an ingest");
   // 2607, NOT the 2608 delta marker in docs/ARXIV-RAG.md §1 — and the gap is
   // the point rather than an oversight. The marker records how far the last
   // sweep REACHED; this window records how far the index is actually DENSE.
@@ -877,7 +877,7 @@ function epmcRecord(pmid, title, extra = {}) {
     pmid,
     doi: extra.doi ?? `10.1000/${pmid}`,
     title,
-    authorList: { author: (extra.authors ?? ["Dehasque M", "Dalén L"]).map((fullName) => ({ fullName })) },
+    authorList: { author: (extra.authors ?? ["Dehasque M", "Ekström E"]).map((fullName) => ({ fullName })) },
     firstPublicationDate: extra.date ?? "2025-09-24",
     journalInfo: { journal: { title: extra.journal ?? "Nature" } },
     abstractText: extra.abstract ?? `About ${title}.`,
@@ -886,7 +886,7 @@ function epmcRecord(pmid, title, extra = {}) {
 }
 
 /** An arXiv Atom feed with one entry. */
-function arxivFeed(id, title, authors = ["Love Dalén"]) {
+function arxivFeed(id, title, authors = ["Elsa Ekström"]) {
   return `<feed xmlns="http://www.w3.org/2005/Atom"><entry>
     <id>https://arxiv.org/abs/${id}v1</id>
     <title>${title}</title>
@@ -904,12 +904,12 @@ test("an explicit `authors` argument runs the live author lookup and returns lin
   });
   const env = { BERGET_API_TOKEN: "t", ARXIV_INDEX: fakeIndex(), PUBMED_INDEX: fakeIndex() };
   try {
-    const result = await runLiteratureSearch(env, log, { authors: ["Love Dalén"] });
+    const result = await runLiteratureSearch(env, log, { authors: ["Elsa Ekström"] });
     const payload = payloadOf(result);
     assert.equal(result.isError, false);
 
     const group = payload.authors[0];
-    assert.equal(group.name, "Love Dalén");
+    assert.equal(group.name, "Elsa Ekström");
     assert.equal(group.count, 2, "both corpora contributed");
     // The links are the deliverable — the reported failure was their absence.
     assert.deepEqual(
@@ -919,7 +919,7 @@ test("an explicit `authors` argument runs the live author lookup and returns lin
     // And the FULL author list, which the stored metadata truncates away.
     assert.deepEqual(
       group.results.find((r) => r.corpus === "pubmed").authors,
-      ["Dehasque M", "Dalén L"],
+      ["Dehasque M", "Ekström E"],
     );
     assert.equal(payload.stats.author_records, 2);
   } finally {
@@ -933,7 +933,7 @@ test("`authors` alone is a complete request — no query needed", async () => {
   const berget = stubBerget({ epmc: [epmcRecord("1", "A paper")] });
   const env = { BERGET_API_TOKEN: "t", PUBMED_INDEX: fakeIndex() };
   try {
-    const result = await runLiteratureSearch(env, log, { authors: ["Love Dalén"], corpus: "pubmed" });
+    const result = await runLiteratureSearch(env, log, { authors: ["Elsa Ekström"], corpus: "pubmed" });
     assert.equal(result.isError, false);
     assert.equal(payloadOf(result).authors[0].count, 1);
     // No angles means no embedding call at all.
@@ -947,9 +947,9 @@ test("an authorship QUESTION is detected when no `authors` argument is passed", 
   const berget = stubBerget({ epmc: [epmcRecord("1", "A paper")] });
   const env = { BERGET_API_TOKEN: "t", PUBMED_INDEX: fakeIndex({ rows: [pubmedRow("9", "Something else")] }) };
   try {
-    const result = await runLiteratureSearch(env, log, { query: "papers by Love Dalén", corpus: "pubmed" });
+    const result = await runLiteratureSearch(env, log, { query: "papers by Elsa Ekström", corpus: "pubmed" });
     const payload = payloadOf(result);
-    assert.equal(payload.stats.authors_looked_up[0], "Love Dalén");
+    assert.equal(payload.stats.authors_looked_up[0], "Elsa Ekström");
     assert.ok(
       payload.notes.some((n) => n.includes("read out of the query text")),
       "and the response says the name was inferred rather than given",
@@ -975,12 +975,12 @@ test("query terms are ANDed onto the author query — the disambiguation lever",
   const berget = stubBerget({ epmc: [], arxiv: "" });
   const env = { BERGET_API_TOKEN: "t", ARXIV_INDEX: fakeIndex(), PUBMED_INDEX: fakeIndex() };
   try {
-    await runLiteratureSearch(env, log, { authors: ["Love Dalén"], queries: ["mammoth genomics"] });
+    await runLiteratureSearch(env, log, { authors: ["Elsa Ekström"], queries: ["mammoth genomics"] });
     const q = berget.calls.epmcQueries[0];
-    assert.ok(q.includes('AUTH:"Love Dalén"'), q);
-    assert.ok(q.includes('AUTH:"Dalén L"'), "and the indexed Surname-Initial form");
+    assert.ok(q.includes('AUTH:"Elsa Ekström"'), q);
+    assert.ok(q.includes('AUTH:"Ekström E"'), "and the indexed Surname-Initial form");
     assert.ok(q.includes("mammoth"), "narrowed by the topic");
-    assert.ok(berget.calls.arxivQueries[0].includes('au:"Love Dalén"'));
+    assert.ok(berget.calls.arxivQueries[0].includes('au:"Elsa Ekström"'));
   } finally {
     berget.restore();
   }
@@ -990,7 +990,7 @@ test("both sort orders are fetched, so 'body of work' means most-cited not just 
   const berget = stubBerget({ epmc: [epmcRecord("1", "A paper")] });
   const env = { BERGET_API_TOKEN: "t", PUBMED_INDEX: fakeIndex() };
   try {
-    await runLiteratureSearch(env, log, { authors: ["Love Dalén"], corpus: "pubmed" });
+    await runLiteratureSearch(env, log, { authors: ["Elsa Ekström"], corpus: "pubmed" });
     assert.equal(berget.calls.epmc, 2, "one CITED pass and one date pass");
   } finally {
     berget.restore();
@@ -1003,7 +1003,7 @@ test("a dead author API degrades the call instead of failing it", async () => {
   try {
     const result = await runLiteratureSearch(env, log, {
       queries: ["mammoth genomics"],
-      authors: ["Love Dalén"],
+      authors: ["Elsa Ekström"],
       corpus: "arxiv",
     });
     assert.equal(result.isError, false, "the dense half still answered");
@@ -1021,7 +1021,7 @@ test("a dead embedder still returns the author records, and says the rest is mis
   try {
     const result = await runLiteratureSearch(env, log, {
       queries: ["mammoth genomics"],
-      authors: ["Love Dalén"],
+      authors: ["Elsa Ekström"],
       corpus: "pubmed",
     });
     assert.equal(result.isError, false);
@@ -1050,7 +1050,7 @@ test("the author leg carries the caveats a caller needs to read it correctly", a
   const berget = stubBerget({ epmc: [epmcRecord("1", "A paper")] });
   const env = { BERGET_API_TOKEN: "t", PUBMED_INDEX: fakeIndex() };
   try {
-    const payload = payloadOf(await runLiteratureSearch(env, log, { authors: ["Love Dalén"], corpus: "pubmed" }));
+    const payload = payloadOf(await runLiteratureSearch(env, log, { authors: ["Elsa Ekström"], corpus: "pubmed" }));
     const notes = payload.notes.join(" ");
     assert.ok(notes.includes("LIVE"), "says these records did not come from the hosted index");
     assert.ok(notes.includes("truncated"), "and why the index could not have answered");
@@ -1081,7 +1081,7 @@ test("`search` surfaces author records too, so a person query returns links", as
   const berget = stubBerget({ epmc: [epmcRecord("40994021", "Mammoth hybridization")] });
   const env = { BERGET_API_TOKEN: "t", PUBMED_INDEX: fakeIndex({ rows: [] }) };
   try {
-    const payload = payloadOf(await runOpenAiSearch(env, log, { query: "papers by Love Dalén" }));
+    const payload = payloadOf(await runOpenAiSearch(env, log, { query: "papers by Elsa Ekström" }));
     assert.equal(payload.results.length, 1);
     assert.equal(payload.results[0].url, "https://pubmed.ncbi.nlm.nih.gov/40994021/");
     // The id round-trips through `fetch`, which is the contract that makes a

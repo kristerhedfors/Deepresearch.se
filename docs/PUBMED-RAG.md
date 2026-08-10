@@ -705,6 +705,43 @@ That entry records a real cost: a corpus this topical DEMOTES its own needles,
 > in §7. The marker still reads `pubmed26n1562`; the load-order sweep has not
 > advanced, and a delta run should still start there.
 
+### 7.11 The longevity literature, and the scope tier it forced (2026-08-09)
+
+The largest named-list fill yet: **56,688 vectors**, index 1,731,517 →
+**1,787,309**. Full account in `docs/LONGEVITY-PUBMED-INGEST.md`; what belongs
+here is the finding that shaped it.
+
+**The query IS the corpus definition, and it had to be settled against counts
+rather than adjectives.** The obvious first draft — hallmark mechanism
+vocabulary ANDed with a loose ageing anchor — enumerated **248,590**
+abstract-bearing records. For orientation, PubMed holds **137,130** with an
+ageing word in the *title* alone. Eight scope tiers were measured end to end:
+
+| tier | records |
+|---|---|
+| A geroscience core only | 34,193 |
+| A2 + senescence / immune-ageing | 46,698 |
+| **shipped** — A2 + genetics + organisms + interventions + demography + trials | **67,291** |
+| D full core, all but mechanisms | 82,582 |
+| E everything | 101,699 |
+
+Tier A hits the ~31k benchmark of the ancient-DNA fill almost exactly and is
+the WRONG corpus: it silently drops model organisms, interventions and
+demography. A number that matches a target is not evidence the scope is right.
+Tiers D and E were measured and deliberately not run. Five excluded blocks stay
+in the query file verbatim so re-adding one is a one-line edit; the largest is
+the hallmark mechanism literature at **+41,726**.
+
+**Two real coverage gaps that only a second index could find.** Cross-validating
+against Europe PMC and eight author bibliographies exposed both: PubMed's `[ti]`
+does not stem, so `lifespan[ti]` misses "Lifespans"; and anchoring on ageing
+vocabulary reached only **28.3%** of the naked mole-rat literature, because its
+cancer and hypoxia papers never say "ageing" at all. A standalone
+long-lived-species clause took that to **98.5%**. Both are the §2 lesson in a
+new costume — one channel cannot detect its own gaps.
+
+> A named-list job: it did **not** move the delta marker. Still `pubmed26n1562`.
+
 ### 7.7 A Swedish measurement trap that nearly became a false bug report
 
 The first Swedish probe looked alarming — two of five paired queries returned

@@ -113,12 +113,12 @@ export const CORPUS_FACTS = {
     // which is why measuring beats maintaining.
     window:
       "Submission months 2310–2607 (October 2023 to July 2026) are swept in bulk — 780,790 papers " +
-      "across every subject arXiv carries. A further 42,307 papers (5.1%) sit OUTSIDE that band, " +
+      "across every subject arXiv carries. A further 42,932 papers (5.2%) sit OUTSIDE that band, " +
       "reaching back to 1991. Those arrived through topic-targeted fills, so pre-2310 coverage is " +
-      "dense for some subjects (AI security, AI consciousness, ancient DNA) and near-absent for " +
+      "dense for some subjects (AI security, AI consciousness, longevity and ageing biology) and near-absent for " +
       "others. A pre-2310 miss is therefore NOT proof the paper is out of window — retry with " +
       "different terms before concluding it is absent.",
-    vectors_at_fill: 823097,
+    vectors_at_fill: 823722,
     id_format: "arXiv id, e.g. 2401.12345 (accepted with or without an `arxiv:` prefix)",
     fields: ["title", "abstract", "authors", "primary_category", "submitted", "revised"],
     live_fallback: "the arXiv API (keyword AND over abstracts), used by the research pipeline",
@@ -129,13 +129,23 @@ export const CORPUS_FACTS = {
     binding: "PUBMED_INDEX",
     doc: "docs/PUBMED-RAG.md",
     covers: "Biomedical and life-science literature — MEDLINE journals, plus bioRxiv/medRxiv records.",
+    // MEASURE this, do not edit it by hand: `node scripts/build-corpora.mjs`
+    // regenerates the same figures for the public /corpora/ page. The arXiv
+    // entry above carries the full account of why — the short version is that
+    // named-list fills reach wherever their list reaches, so a window sentence
+    // guarded only at its bound drifts underneath it.
     window:
-      "A PMID / load-order slice: the daily update files above the 2026 baseline, NOT " +
-      "'the last six months of PubMed'. It contains 2026 publications heavily, earlier " +
-      "years thinly (a 1990s paper revised in 2026 is in; an untouched 2015 paper is not), " +
-      "and is roughly 5.6% of abstract-bearing PubMed. Treat a miss as likely-out-of-window.",
-    // As above: refreshed by the 2026-08-05 delta (docs/PUBMED-RAG.md §7.2).
-    vectors_at_fill: 1664586,
+      "A PMID / load-order slice PLUS topic-targeted fills, and the two behave differently. " +
+      "The slice is the daily update files above the 2026 baseline — NOT 'the last six months " +
+      "of PubMed': it holds 2026 publications heavily and earlier years thinly (a 1990s paper " +
+      "revised in 2026 is in; an untouched 2015 paper is not), roughly 5.6% of abstract-bearing " +
+      "PubMed. On top of that, whole literatures were ingested by name and reach back to the " +
+      "1950s — ancient DNA, longevity and ageing biology, AI consciousness, medical-device and " +
+      "clinical-ML security. In those subjects an old paper is likely present; outside them a " +
+      "pre-2026 miss is likely out of window. Which case you are in depends on the subject, so " +
+      "check membership by id before concluding a paper is absent.",
+    // Measured after the longevity fill (docs/LONGEVITY-PUBMED-INGEST.md).
+    vectors_at_fill: 1788205,
     id_format: "PMID, e.g. 41610285 (accepted with or without a `pmid:` prefix)",
     fields: ["title", "abstract", "authors", "journal", "date"],
     live_fallback: "Europe PMC (keyword AND, current to the hour), used by the research pipeline",
@@ -217,7 +227,7 @@ export const LITERATURE_TOOLS = [
           description:
             "Researcher names whose papers to list — the way to answer 'what has X published', " +
             "'X's body of work', or a bibliography request. Write the name as it is published " +
-            "('Love Dalén', 'M. Dehasque'); both the full form and the indexed 'Surname I' form " +
+            "('Elsa Ekström', 'M. Dehasque'); both the full form and the indexed 'Surname I' form " +
             "are tried. This leg queries the LIVE Europe PMC and arXiv author fields rather than " +
             "the hosted indexes, so it covers the full archive rather than the corpus windows — " +
             "and it is valid on its own, with no `queries` at all. Names are NOT disambiguated: " +

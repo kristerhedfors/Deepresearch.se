@@ -1016,7 +1016,7 @@ export async function runOpenAiSearch(env, log, args, spend) {
 
   // The dense records first, then the author leg's — which runLiteratureSearch
   // adds by itself when the query asked for a person's work. Before it did,
-  // THIS was the whole failure: "Love Dalén's life works" retrieved ancient-DNA
+  // THIS was the whole failure: "Elsa Ekström's life works" retrieved ancient-DNA
   // papers by other people, every one of them below the floor, and the tool
   // answered `{"results":[]}` with nothing to say why. A client model reads
   // that as "the corpus is empty" and stops, which is what the user reported as

@@ -74,6 +74,23 @@ PubMed-indexed papers, of which the corpus held **18**, because 89% of the work
 predates the baseline and had not been revised since. Filling that from the
 archive would mean downloading tens of gigabytes for a few hundred kilobytes.
 
+**For a whole FIELD rather than a bibliography, the query is the corpus
+definition — settle it against counts.** The longevity fill (§7.11 of the doc,
+56,688 vectors) drafted the obvious query and enumerated 248,590 records against
+a target near 31,000, then measured eight scope tiers before choosing one. The
+tier that hit the target almost exactly was the wrong corpus: it silently
+dropped model organisms, interventions and demography. **A number that matches
+your target is not evidence the scope is right**, and had nobody measured the
+alternatives it would have shipped looking like a success. Keep the excluded
+blocks in the query file verbatim so widening later is a one-line edit.
+
+Cross-validate the enumeration against a DIFFERENT index — Europe PMC, or a
+handful of author bibliographies. That is what caught two real holes here:
+PubMed's `[ti]` does not stem, so `lifespan[ti]` misses "Lifespans"; and
+anchoring on the topic's own vocabulary reached only 28.3% of the naked
+mole-rat literature, whose cancer and hypoxia papers never say "ageing". A
+standalone clause for the long-lived species took it to 98.5%.
+
 > **A `--pmids` run is NOT a delta and must never move the delta marker in
 > `docs/PUBMED-RAG.md` §7.** It adds citations from anywhere in PubMed's
 > history, so it says nothing about how far up the archive the load-order sweep

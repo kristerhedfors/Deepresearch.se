@@ -26,16 +26,16 @@ import { MAX_AUTHORS } from "./literature-tools.js";
 
 describe("authorIntent — English forms", () => {
   const cases = [
-    ["papers by Love Dalén", "Love Dalén"],
-    ["Papers published by Love Dalén", "Love Dalén"],
+    ["papers by Elsa Ekström", "Elsa Ekström"],
+    ["Papers published by Elsa Ekström", "Elsa Ekström"],
     ["publications by Marianne Dehasque", "Marianne Dehasque"],
     ["research from Tom van der Valk", "Tom van der Valk"],
     ["show me the works of Svante Pääbo", "Svante Pääbo"],
-    ["what has Love Dalén published", "Love Dalén"],
+    ["what has Elsa Ekström published", "Elsa Ekström"],
     ["what did Beth Shapiro write", "Beth Shapiro"],
-    ["everything Love Dalén has published", "Love Dalén"],
-    ["Love Dalén's papers", "Love Dalén"],
-    ["Love Dalén's life work", "Love Dalén"],
+    ["everything Elsa Ekström has published", "Elsa Ekström"],
+    ["Elsa Ekström's papers", "Elsa Ekström"],
+    ["Elsa Ekström's life work", "Elsa Ekström"],
     ["Beth Shapiro's body of work", "Beth Shapiro"],
     ["Pääbo's bibliography", "Pääbo"],
   ];
@@ -48,27 +48,27 @@ describe("authorIntent — English forms", () => {
 
 describe("authorIntent — Swedish forms (invariant 6)", () => {
   const cases = [
-    ["artiklar av Love Dalén", "Love Dalén"],
-    ["artiklarna av Love Dalén", "Love Dalén"],
+    ["artiklar av Elsa Ekström", "Elsa Ekström"],
+    ["artiklarna av Elsa Ekström", "Elsa Ekström"],
     ["publikationer av Marianne Dehasque", "Marianne Dehasque"],
-    ["publikationerna av Love Dalén", "Love Dalén"],
+    ["publikationerna av Elsa Ekström", "Elsa Ekström"],
     ["verk av Svante Pääbo", "Svante Pääbo"],
-    ["arbeten av Love Dalén", "Love Dalén"],
-    ["forskning av Love Dalén", "Love Dalén"],
-    ["forskningen av Love Dalén", "Love Dalén"],
+    ["arbeten av Elsa Ekström", "Elsa Ekström"],
+    ["forskning av Elsa Ekström", "Elsa Ekström"],
+    ["forskningen av Elsa Ekström", "Elsa Ekström"],
     ["studier av Beth Shapiro", "Beth Shapiro"],
     ["studierna av Beth Shapiro", "Beth Shapiro"],
-    ["avhandlingar av Love Dalén", "Love Dalén"],
-    ["författarskap av Love Dalén", "Love Dalén"],
-    ["artiklar från Love Dalén", "Love Dalén"],
-    ["vad har Love Dalén publicerat", "Love Dalén"],
-    ["vad har Love Dalén skrivit", "Love Dalén"],
-    ["vad har Love Dalén forskat om", "Love Dalén"],
-    ["allt som Love Dalén har publicerat", "Love Dalén"],
-    ["allt Love Dalén skrivit", "Love Dalén"],
-    ["Daléns artiklar", "Dalén"],
-    ["Daléns livsverk", "Dalén"],
-    ["Love Daléns publikationer", "Love Dalén"],
+    ["avhandlingar av Elsa Ekström", "Elsa Ekström"],
+    ["författarskap av Elsa Ekström", "Elsa Ekström"],
+    ["artiklar från Elsa Ekström", "Elsa Ekström"],
+    ["vad har Elsa Ekström publicerat", "Elsa Ekström"],
+    ["vad har Elsa Ekström skrivit", "Elsa Ekström"],
+    ["vad har Elsa Ekström forskat om", "Elsa Ekström"],
+    ["allt som Elsa Ekström har publicerat", "Elsa Ekström"],
+    ["allt Elsa Ekström skrivit", "Elsa Ekström"],
+    ["Ekströms artiklar", "Ekström"],
+    ["Ekströms livsverk", "Ekström"],
+    ["Elsa Ekströms publikationer", "Elsa Ekström"],
     ["Nilsson:s arbeten", "Nilsson"],
   ];
   for (const [text, name] of cases) {
@@ -102,16 +102,16 @@ describe("authorIntent — the reported failure, verbatim", () => {
   // capitals, with and without a conversational lead-in. Every one of these
   // reached NO author search before this module existed.
   for (const text of [
-    "love daléns life works",
-    "Love Daléns life works",
-    "love dalén life works",
-    "tell me about love daléns life works",
-    "Tell me about Love Daléns life works",
-    "Love Dalén's life work",
-    "Love Daléns livsverk",
+    "elsa ekströms life works",
+    "Elsa Ekströms life works",
+    "elsa ekström life works",
+    "tell me about elsa ekströms life works",
+    "Tell me about Elsa Ekströms life works",
+    "Elsa Ekström's life work",
+    "Elsa Ekströms livsverk",
   ]) {
-    test(`"${text}" resolves to Dalén`, () => {
-      assert.match(authorIntent(text)?.name || "", /dal[ée]n$/i);
+    test(`"${text}" resolves to Ekström`, () => {
+      assert.match(authorIntent(text)?.name || "", /ekstr[öo]m$/i);
     });
   }
 });
@@ -133,23 +133,23 @@ describe("authorIntent — the ambiguous bare-s genitive", () => {
   });
 
   test("a Swedish work noun after a bare s is unambiguous too", () => {
-    assert.equal(authorIntent("Daléns artiklar")?.name, "Dalén");
+    assert.equal(authorIntent("Ekströms artiklar")?.name, "Ekström");
     assert.equal(authorIntent("Tom van der Valks publikationer")?.name, "Tom van der Valk");
   });
 });
 
 describe("trimNameEdges", () => {
   test("drops auxiliaries and articles from both ends", () => {
-    assert.equal(trimNameEdges("Love Dalén has"), "Love Dalén");
+    assert.equal(trimNameEdges("Elsa Ekström has"), "Elsa Ekström");
     assert.equal(trimNameEdges("the authors of that"), "authors");
   });
 
   test("drops a conversational lead-in", () => {
-    assert.equal(trimNameEdges("me about love dalén"), "love dalén");
+    assert.equal(trimNameEdges("me about elsa ekström"), "elsa ekström");
   });
 
   test("with capitals present, an uncapitalised lead-in goes even if unlisted", () => {
-    assert.equal(trimNameEdges("whatever Love Dalén", true), "Love Dalén");
+    assert.equal(trimNameEdges("whatever Elsa Ekström", true), "Elsa Ekström");
   });
 
   test("a lowercase name PARTICLE is kept — it is part of the name", () => {
@@ -159,8 +159,8 @@ describe("trimNameEdges", () => {
 
 describe("looksLikeName", () => {
   test("accepts one to four capitalised parts", () => {
-    assert.equal(looksLikeName("Dalén"), true);
-    assert.equal(looksLikeName("Love Dalén"), true);
+    assert.equal(looksLikeName("Ekström"), true);
+    assert.equal(looksLikeName("Elsa Ekström"), true);
     assert.equal(looksLikeName("Tom van der Valk"), true);
   });
   test("rejects topic words and stopwords", () => {
@@ -178,25 +178,25 @@ describe("looksLikeName", () => {
 
 describe("resolveAuthors", () => {
   test("explicit names win and are de-duplicated case-insensitively", () => {
-    const { names, detected } = resolveAuthors(["Love Dalén", "love dalén"], []);
-    assert.deepEqual(names, ["Love Dalén"]);
+    const { names, detected } = resolveAuthors(["Elsa Ekström", "elsa ekström"], []);
+    assert.deepEqual(names, ["Elsa Ekström"]);
     assert.equal(detected, false);
   });
 
   test("a bare string is accepted as one name", () => {
-    assert.deepEqual(resolveAuthors("Love Dalén", []).names, ["Love Dalén"]);
+    assert.deepEqual(resolveAuthors("Elsa Ekström", []).names, ["Elsa Ekström"]);
   });
 
   test("falls back to the query text and says it did", () => {
-    const { names, detected } = resolveAuthors(undefined, ["papers by Love Dalén"]);
-    assert.deepEqual(names, ["Love Dalén"]);
+    const { names, detected } = resolveAuthors(undefined, ["papers by Elsa Ekström"]);
+    assert.deepEqual(names, ["Elsa Ekström"]);
     assert.equal(detected, true);
   });
 
   test("an explicit list is NOT augmented from the prose", () => {
     // A caller that named someone has been precise; mining its questions for a
     // second name would search for a person it did not ask about.
-    const { names } = resolveAuthors(["Beth Shapiro"], ["papers by Love Dalén"]);
+    const { names } = resolveAuthors(["Beth Shapiro"], ["papers by Elsa Ekström"]);
     assert.deepEqual(names, ["Beth Shapiro"]);
   });
 
@@ -213,7 +213,7 @@ describe("resolveAuthors", () => {
 
 describe("topicTerms", () => {
   test("keeps subject words and drops the authorship phrasing", () => {
-    const terms = topicTerms(["papers by Love Dalén on mammoth genomics"]);
+    const terms = topicTerms(["papers by Elsa Ekström on mammoth genomics"]);
     assert.ok(terms.includes("mammoth"));
     assert.ok(terms.includes("genomics"));
     assert.ok(!terms.some((t) => /^(papers?|by)$/i.test(t)));
@@ -224,12 +224,12 @@ describe("topicTerms", () => {
     assert.equal(new Set(terms.map((t) => t.toLowerCase())).size, 4);
   });
   test("the author's own name is not a topic term", () => {
-    // "Love Daléns livsverk" yielded narrowed_by ["Love", "Daléns"] live —
+    // "Elsa Ekströms livsverk" yielded narrowed_by ["Elsa", "Ekströms"] live —
     // ANDed onto a query already restricted to that author. Benign on Europe
-    // PMC, but `all:"Daléns"` is a real constraint on arXiv and can empty an
+    // PMC, but `all:"Ekströms"` is a real constraint on arXiv and can empty an
     // otherwise good author query.
-    assert.deepEqual(topicTerms(["Love Daléns livsverk"], 6, ["Love Dalén"]), []);
-    assert.deepEqual(topicTerms(["papers by Love Dalén"], 6, ["Love Dalén"]), []);
+    assert.deepEqual(topicTerms(["Elsa Ekströms livsverk"], 6, ["Elsa Ekström"]), []);
+    assert.deepEqual(topicTerms(["papers by Elsa Ekström"], 6, ["Elsa Ekström"]), []);
   });
 
   test("a genitive in the query still matches the excluded base name", () => {
@@ -238,10 +238,10 @@ describe("topicTerms", () => {
   });
 
   test("real subject terms survive the exclusion", () => {
-    const terms = topicTerms(["Love Daléns work on mammoth genomics"], 6, ["Love Dalén"]);
+    const terms = topicTerms(["Elsa Ekströms work on mammoth genomics"], 6, ["Elsa Ekström"]);
     assert.ok(terms.includes("mammoth"));
     assert.ok(terms.includes("genomics"));
-    assert.ok(!terms.some((t) => /dal[ée]n/i.test(t)));
+    assert.ok(!terms.some((t) => /ekstr[öo]m/i.test(t)));
   });
 
   test("no queries is no terms", () => {
@@ -257,49 +257,49 @@ describe("topicTerms", () => {
   // report was written in.
   test("Swedish authorship phrasing is dropped at the same breadth as English", () => {
     const drops = (q) => topicTerms([q]).map((t) => t.toLowerCase());
-    assert.deepEqual(drops("artiklar av Love Dalén om mammutgenomik"), ["love", "dalén", "mammutgenomik"]);
-    assert.deepEqual(drops("publikationer från Love Dalén"), ["love", "dalén"]);
-    assert.deepEqual(drops("allt Love Dalén har publicerat om mammutar"), ["love", "dalén", "mammutar"]);
+    assert.deepEqual(drops("artiklar av Elsa Ekström om mammutgenomik"), ["elsa", "ekström", "mammutgenomik"]);
+    assert.deepEqual(drops("publikationer från Elsa Ekström"), ["elsa", "ekström"]);
+    assert.deepEqual(drops("allt Elsa Ekström har publicerat om mammutar"), ["elsa", "ekström", "mammutar"]);
     for (const word of ["artiklar", "artiklarna", "publikationer", "forskning", "forskningen", "studier", "avhandlingar", "livsverket", "författarskap"]) {
       assert.ok(
-        !drops(`${word} av Love Dalén om mammutar`).includes(word),
+        !drops(`${word} av Elsa Ekström om mammutar`).includes(word),
         `"${word}" survived as a topic term and would be ANDed onto the author query`,
       );
     }
     // The English half must not have regressed while the Swedish half was added.
-    assert.deepEqual(drops("papers by Love Dalén about mammoth genomics"), ["love", "dalén", "mammoth", "genomics"]);
+    assert.deepEqual(drops("papers by Elsa Ekström about mammoth genomics"), ["elsa", "ekström", "mammoth", "genomics"]);
   });
 
   // The å/ä/ö boundary trap that src/swedish-boundary.test.js guards repo-wide:
   // a `\b`-built list silently fails to match anything touching those letters,
   // with the English half still working, so the gate looks fine in review.
   test("the Swedish forms with å/ä/ö actually match", () => {
-    assert.ok(!topicTerms(["från Love Dalén"]).some((t) => /^från$/i.test(t)));
-    assert.ok(!topicTerms(["författarskap av Love Dalén"]).some((t) => /^författarskap$/i.test(t)));
+    assert.ok(!topicTerms(["från Elsa Ekström"]).some((t) => /^från$/i.test(t)));
+    assert.ok(!topicTerms(["författarskap av Elsa Ekström"]).some((t) => /^författarskap$/i.test(t)));
   });
 });
 
 describe("europepmcAuthorQuery", () => {
   test("asks for the full form AND the indexed 'Surname I' form", () => {
-    const q = europepmcAuthorQuery("Love Dalén");
-    assert.ok(q.includes('AUTH:"Love Dalén"'));
-    assert.ok(q.includes('AUTH:"Dalén L"'));
+    const q = europepmcAuthorQuery("Elsa Ekström");
+    assert.ok(q.includes('AUTH:"Elsa Ekström"'));
+    assert.ok(q.includes('AUTH:"Ekström E"'));
     assert.ok(q.startsWith("("));
   });
 
   test("a single-word name has only the one form", () => {
-    assert.equal(europepmcAuthorQuery("Dalén"), 'AUTH:"Dalén"');
+    assert.equal(europepmcAuthorQuery("Ekström"), 'AUTH:"Ekström"');
   });
 
   test("topic terms are ANDed as an OR group — the disambiguating lever", () => {
-    const q = europepmcAuthorQuery("Love Dalén", ["mammoth", "ancient DNA"]);
+    const q = europepmcAuthorQuery("Elsa Ekström", ["mammoth", "ancient DNA"]);
     assert.ok(q.includes(" AND ("));
     assert.ok(q.includes('"mammoth"'));
     assert.ok(q.includes('"ancient DNA"'));
   });
 
   test("query syntax in a name cannot escape the field", () => {
-    const q = europepmcAuthorQuery('Dalén" OR AUTH:"Someone Else');
+    const q = europepmcAuthorQuery('Ekström" OR AUTH:"Someone Else');
     assert.equal(q.split('"').length % 2, 1, "quotes stay balanced");
     assert.ok(!q.includes('OR AUTH:"Someone'), "the injected operator was stripped");
   });
@@ -312,11 +312,11 @@ describe("europepmcAuthorQuery", () => {
 
 describe("arxivAuthorQuery", () => {
   test("uses the au: field with explicit operators", () => {
-    assert.equal(arxivAuthorQuery("Love Dalén"), 'au:"Love Dalén"');
+    assert.equal(arxivAuthorQuery("Elsa Ekström"), 'au:"Elsa Ekström"');
   });
   test("topic terms are explicit all: alternatives, ANDed", () => {
-    const q = arxivAuthorQuery("Love Dalén", ["mammoth", "genomics"]);
-    assert.equal(q, 'au:"Love Dalén" AND (all:"mammoth" OR all:"genomics")');
+    const q = arxivAuthorQuery("Elsa Ekström", ["mammoth", "genomics"]);
+    assert.equal(q, 'au:"Elsa Ekström" AND (all:"mammoth" OR all:"genomics")');
   });
   test("an empty name is an empty query", () => {
     assert.equal(arxivAuthorQuery("  "), "");
@@ -329,7 +329,7 @@ describe("europepmcAuthorRecord", () => {
     doi: "10.1098/rsbl.2025.0123",
     title: "Long-term mammoth hybridization in British Columbia.",
     authorList: {
-      author: [{ fullName: "Dehasque M" }, { fullName: "van der Valk T" }, { fullName: "Dalén L" }],
+      author: [{ fullName: "Dehasque M" }, { fullName: "van der Valk T" }, { fullName: "Ekström E" }],
     },
     firstPublicationDate: "2025-09-24",
     journalInfo: { journal: { title: "Biology Letters" } },
@@ -339,7 +339,7 @@ describe("europepmcAuthorRecord", () => {
 
   test("keeps the FULL author list — the whole reason this leg exists", () => {
     const rec = europepmcAuthorRecord(raw);
-    assert.deepEqual(rec.authors, ["Dehasque M", "van der Valk T", "Dalén L"]);
+    assert.deepEqual(rec.authors, ["Dehasque M", "van der Valk T", "Ekström E"]);
   });
 
   test("prefers the PubMed URL so the id round-trips through literature_fetch", () => {
@@ -363,8 +363,8 @@ describe("europepmcAuthorRecord", () => {
   });
 
   test("reads authorString when there is no structured author list", () => {
-    const rec = europepmcAuthorRecord({ ...raw, authorList: null, authorString: "Dehasque M, Dalén L." });
-    assert.deepEqual(rec.authors, ["Dehasque M", "Dalén L"]);
+    const rec = europepmcAuthorRecord({ ...raw, authorList: null, authorString: "Dehasque M, Ekström E." });
+    assert.deepEqual(rec.authors, ["Dehasque M", "Ekström E"]);
   });
 
   test("carries the citation count and the trailing-period-free title", () => {
@@ -442,15 +442,15 @@ describe("interleaveAuthorRecords", () => {
 describe("Swedish language parity (invariant 6)", () => {
   /** Each row is the same request in both languages. */
   const PAIRS = [
-    ["papers by Love Dalén", "artiklar av Love Dalén"],
-    ["publications by Love Dalén", "publikationer av Love Dalén"],
-    ["works by Love Dalén", "verk av Love Dalén"],
-    ["research by Love Dalén", "forskning av Love Dalén"],
-    ["studies by Love Dalén", "studier av Love Dalén"],
-    ["what has Love Dalén published", "vad har Love Dalén publicerat"],
-    ["everything Love Dalén has written", "allt Love Dalén skrivit"],
-    ["Love Dalén's papers", "Love Daléns artiklar"],
-    ["Love Dalén's life work", "Love Daléns livsverk"],
+    ["papers by Elsa Ekström", "artiklar av Elsa Ekström"],
+    ["publications by Elsa Ekström", "publikationer av Elsa Ekström"],
+    ["works by Elsa Ekström", "verk av Elsa Ekström"],
+    ["research by Elsa Ekström", "forskning av Elsa Ekström"],
+    ["studies by Elsa Ekström", "studier av Elsa Ekström"],
+    ["what has Elsa Ekström published", "vad har Elsa Ekström publicerat"],
+    ["everything Elsa Ekström has written", "allt Elsa Ekström skrivit"],
+    ["Elsa Ekström's papers", "Elsa Ekströms artiklar"],
+    ["Elsa Ekström's life work", "Elsa Ekströms livsverk"],
   ];
 
   for (const [en, sv] of PAIRS) {
@@ -464,8 +464,8 @@ describe("Swedish language parity (invariant 6)", () => {
   }
 
   test("definite and plural Swedish forms match too", () => {
-    for (const text of ["artiklarna av Love Dalén", "publikationerna av Love Dalén", "studierna av Love Dalén"]) {
-      assert.equal(authorIntent(text)?.name, "Love Dalén", text);
+    for (const text of ["artiklarna av Elsa Ekström", "publikationerna av Elsa Ekström", "studierna av Elsa Ekström"]) {
+      assert.equal(authorIntent(text)?.name, "Elsa Ekström", text);
     }
   });
 

@@ -1,0 +1,2450 @@
+{
+ "set": "longevity",
+ "kind": "domain-expert",
+ "origin": "Hand-authored against abstracts fetched from NCBI E-utilities and the arXiv API; every cited id resolved against its corpus before this file was written.",
+ "license": "Questions and gold answers are original; the underlying facts are from the cited abstracts.",
+ "note": "LONGEVITY AND AGEING BIOLOGY, across the whole arc the field actually spans: the hallmarks of ageing and the mechanisms under them (nutrient sensing, autophagy, proteostasis, DNA repair, mitochondrial function, epigenetic drift), cellular senescence and the SASP, comparative and model-organism biology (C. elegans, Drosophila, killifish, naked mole-rat, dog ageing), the evolutionary theory that explains why ageing exists at all, geroscience interventions from caloric restriction to rapamycin and senolytics, partial reprogramming and parabiosis, ageing clocks and biomarkers, human longevity genetics and epidemiology, and the demography and clinical translation where most of it either lands or fails. Citations are overwhelmingly PubMed — ageing biology is a life-science field — with a minority on arXiv for the quantitative slice: mortality modelling, evolutionary theory, systems-biology models and clock machine learning. Swedish items are tagged `sv`, vernacular register. This domain has an unusually high `trap` share by design, because it is unusually rich in results the popular account still repeats after the primary literature moved on — the free-radical and antioxidant story, resveratrol and the sirtuin activators, telomerase as a fountain of youth, blue-zone birth records, methylation clocks read as causal rather than correlational, and single-strain mouse lifespan results generalised to mammals. Every trap states a correction the literature itself makes, not scepticism of our own.",
+ "items": [
+  {
+   "id": "long-a001",
+   "question": "The 2013 Cell review that established the modern framework for ageing biology enumerated a fixed number of hallmarks. How many were there, and what are they?",
+   "answer": "Nine. López-Otín, Blasco, Partridge, Serrano and Kroemer proposed genomic instability, telomere attrition, epigenetic alterations, loss of proteostasis, deregulated nutrient sensing, mitochondrial dysfunction, cellular senescence, stem cell exhaustion, and altered intercellular communication. The review calls them tentative hallmarks and common denominators of ageing across organisms, with emphasis on mammalian ageing, and names dissecting their interconnectedness and relative contributions as the major open challenge.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/23746838/"
+   ],
+   "tags": [
+    "hallmarks",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-a002",
+   "question": "Hallmarken för åldrande utökades 2023. Hur många är de nu, och vilka tre är nya jämfört med listan från 2013?",
+   "answer": "De är tolv. De tre som tillkom är avstängd makroautofagi, kronisk inflammation och dysbios. De nio ursprungliga finns kvar: genomisk instabilitet, telomerförkortning, epigenetiska förändringar, förlorad proteostas, rubbad näringsavkänning, mitokondriell dysfunktion, cellulär senescens, uttömda stamceller och förändrad kommunikation mellan celler. Författarna kopplar också ihop dem med de nyligen föreslagna hallmarken för hälsa.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/36599349/"
+   ],
+   "tags": [
+    "hallmarks",
+    "single-fact",
+    "sv"
+   ]
+  },
+  {
+   "id": "long-a003",
+   "question": "In the 2023 expansion of the hallmarks of aging, what three premises must a candidate hallmark satisfy before it counts as one?",
+   "answer": "A hallmark must (1) manifest with age, (2) accelerate ageing when experimentally accentuated, and (3) offer the opportunity to decelerate, stop or reverse ageing when therapeutically targeted. These three criteria are what the authors use to justify promoting disabled macroautophagy, chronic inflammation and dysbiosis to full hallmark status.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/36599349/"
+   ],
+   "tags": [
+    "hallmarks",
+    "multihop"
+   ]
+  },
+  {
+   "id": "long-a004",
+   "question": "The 1990 Nature paper by Harley, Futcher and Greider is usually cited as proof that telomere shortening causes cellular ageing. What did it actually claim?",
+   "answer": "It claimed a correlation, not a cause. The paper showed that the amount and length of telomeric DNA in human fibroblasts decreases as a function of serial passage during ageing in vitro and possibly in vivo. Its closing sentence is explicit: it is not known whether this loss of DNA has a causal role in senescence. The causal step came eight years later, when introducing telomerase into telomerase-negative normal human cells prevented senescence.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/2342578/"
+   ],
+   "tags": [
+    "hallmarks",
+    "telomeres",
+    "single-fact",
+    "trap"
+   ]
+  },
+  {
+   "id": "long-a005",
+   "question": "In the 1998 Science paper that introduced telomerase into normal human cells, which two cell types were used and what happened to them?",
+   "answer": "Retinal pigment epithelial cells and foreskin fibroblasts, both telomerase-negative, were transfected with vectors encoding the human telomerase catalytic subunit. Telomerase-expressing clones had elongated telomeres, divided vigorously, showed reduced staining for beta-galactosidase, and had exceeded their normal lifespan by at least 20 population doublings with a normal karyotype, while telomerase-negative control clones shortened their telomeres and senesced. The authors present this as establishing a causal relationship between telomere shortening and in vitro cellular senescence.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/9454332/"
+   ],
+   "tags": [
+    "hallmarks",
+    "telomeres",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-a006",
+   "question": "If adding telomerase makes human cells divide past their limit, why did knocking telomerase out of mice not produce a straightforwardly aged animal?",
+   "answer": "Because telomere maintenance is not the same thing as the ageing programme. Bodnar and colleagues showed in 1998 that telomerase expression in normal human cells extends replicative lifespan in culture. But when Rudolph and colleagues followed an ageing cohort of telomerase-null (mTR-/-) mice in 1999, loss of telomere function did not elicit a full spectrum of the classical pathophysiological symptoms of ageing. What they did see was shortened lifespan, genetic instability, a reduced capacity to respond to stresses such as wound healing and haematopoietic ablation, and an increased incidence of spontaneous malignancies. The correct reading is that telomere length affects fitness, reserve and stress response, not that telomerase is a fountain of youth.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/9454332/",
+    "https://pubmed.ncbi.nlm.nih.gov/10089885/"
+   ],
+   "tags": [
+    "hallmarks",
+    "telomeres",
+    "multihop",
+    "trap"
+   ]
+  },
+  {
+   "id": "long-a007",
+   "question": "Two mouse experiments tested whether raising telomerase can delay ageing without causing cancer. What did each do, and what lifespan effect did each report?",
+   "answer": "Tomás-Loba and colleagues (2008) expressed TERT constitutively in mice that had been made cancer resistant by enhanced expression of p53, p16 and p19ARF; TERT improved the fitness of epithelial barriers, notably skin and intestine, produced a systemic delay in ageing and extended median lifespan. Bernardes de Jesus and colleagues (2012) instead delivered mouse TERT by a wide-tropism AAV vector to normal mice already 1 or 2 years old; median lifespan rose by 24 percent and 13 percent respectively, with benefits for insulin sensitivity, osteoporosis and neuromuscular coordination, and no more cancer than control littermates. A catalytically inactive TERT gave none of these effects.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/19013273/",
+    "https://pubmed.ncbi.nlm.nih.gov/22585399/"
+   ],
+   "tags": [
+    "hallmarks",
+    "telomeres",
+    "multihop"
+   ]
+  },
+  {
+   "id": "long-a008",
+   "question": "Om korta telomerer driver åldrandet borde långlivade djur ha de längsta telomererna. Vad visade jämförelsen av telomerer i celler från över 60 däggdjursarter?",
+   "answer": "Precis tvärtom. Telomerlängden korrelerade omvänt med livslängd, medan telomerasuttryck samvarierade med kroppsstorlek. Analysen pekade på att det förfäderliga däggdjurstillståndet var korta telomerer, under 20 kilobaser som hos oss, plus nedtystat telomeras, och att replikativt åldrande uppstod därefter. Flera små kortlivade arter har oberoende av varandra gått åt andra hållet och skaffat sig långa telomerer och aktivt telomeras, vilket är just vad laboratoriemöss har. Slutsatsen är att människolika, korta telomerer snarast är det som gjorde det möjligt för lång livslängd att utvecklas.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/21518243/"
+   ],
+   "tags": [
+    "hallmarks",
+    "telomeres",
+    "comparative",
+    "multihop",
+    "trap",
+    "sv"
+   ]
+  },
+  {
+   "id": "long-a009",
+   "question": "What did whole-genome bisulfite sequencing of a newborn and a centenarian genome show about how DNA methylation changes with age?",
+   "answer": "The centenarian DNA had a lower overall DNA methylation content and a reduced correlation in the methylation status of neighbouring CpGs across the genome, compared with the more homogeneously methylated newborn DNA. The hypomethylation covered all genomic compartments including promoters, exons, introns and intergenic regions; among regulatory regions the most hypomethylated sequences were CpG-poor promoters and tissue-specific genes, while CpG island promoters showed more methylation. A larger cohort assayed on a 450,000-site array reproduced the hypomethylation, and middle-aged individuals fell between the two extremes.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/22689993/"
+   ],
+   "tags": [
+    "hallmarks",
+    "epigenetics",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-a010",
+   "question": "How did the 2016 partial-reprogramming experiment avoid turning cells into stem cells while still reversing ageing markers, and in what animals did it extend lifespan?",
+   "answer": "By expressing the four Yamanaka factors Oct4, Sox2, Klf4 and c-Myc in short cyclic bursts rather than continuously. This short-term cyclic OSKM expression ameliorated cellular and physiological hallmarks of ageing and prolonged lifespan in a mouse model of premature ageing, and in older wild-type mice it improved recovery from metabolic disease and muscle injury. The authors read the result as evidence that epigenetic dysregulation is a driver of mammalian ageing, since the benefit came from epigenetic remodelling during reprogramming.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/27984723/"
+   ],
+   "tags": [
+    "hallmarks",
+    "epigenetics",
+    "multihop"
+   ]
+  },
+  {
+   "id": "long-a011",
+   "question": "In the 2020 Nature paper that restored vision in old mice by reprogramming, which reprogramming factors were used, and which enzymes were required for the effect?",
+   "answer": "Only three of the four Yamanaka factors were used: Oct4 (Pou5f1), Sox2 and Klf4, together abbreviated OSK, and c-Myc was left out. Ectopic OSK expression in mouse retinal ganglion cells restored youthful DNA methylation patterns and transcriptomes, promoted axon regeneration after injury, and reversed vision loss both in a glaucoma model and in aged mice. The benefit for axon regeneration and vision required the DNA demethylases TET1 and TET2, which is the paper's argument that a recoverable record of youthful epigenetic information is stored in DNA methylation.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/33268865/"
+   ],
+   "tags": [
+    "hallmarks",
+    "epigenetics",
+    "multihop"
+   ]
+  },
+  {
+   "id": "long-a012",
+   "question": "When during the C. elegans lifespan does proteostasis fail, and what happens to the stress responses at that point?",
+   "answer": "It fails abruptly and early. Using temperature-sensitive folding sensors expressed in different tissues, Ben-Zvi, Miller and Morimoto found age-dependent misfolding and loss of function of diverse metastable proteins in all somatic tissues at the permissive temperature, occurring rapidly at an early stage of adulthood rather than accumulating gradually. It coincided with a severely reduced ability to activate the heat shock response and the unfolded protein response. Enhancing HSF-1 or DAF-16 suppressed the misfolding and restored a functional proteome.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/19706382/"
+   ],
+   "tags": [
+    "hallmarks",
+    "proteostasis",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-a013",
+   "question": "Aggregerade proteiner brukar kopplas till sjukdomar som Alzheimer. Vad hände när man tittade efter aggregat i friska, åldrande rundmaskar?",
+   "answer": "Man hittade dem ändå. En proteomikgenomgång av Caenorhabditis elegans identifierade flera hundra proteiner som blir mer olösliga med åldern helt utan sjukdom inblandad. De var kraftigt anrikade på betaflak, samma drag som driver aggregering av sjukdomsproteiner, och de var starkt överrepresenterade bland proteiner som återfinns i aggregat vid mänsklig neurodegeneration. Olika proteiner aggregerade i olika vävnader och cellfack. Aggregeringen fördröjdes eller stoppades av nedsatt insulin- och IGF-1-signalering, alltså samma manipulation som förlänger livet, och överuttryck av ett av de aggregerande proteinerna förvärrade polyglutaminsjukdom. Slutsatsen är att utbredd proteinolöslighet hör till normalt åldrande.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/20711477/"
+   ],
+   "tags": [
+    "hallmarks",
+    "proteostasis",
+    "single-fact",
+    "sv"
+   ]
+  },
+  {
+   "id": "long-a014",
+   "question": "The mtDNA mutator mouse is often presented as proof of the mitochondrial free-radical theory of ageing. What did the follow-up measurements of reactive oxygen species in that mouse actually find?",
+   "answer": "They found no increase. The 2004 knock-in mice expressing a proof-reading-deficient PolgA accumulated a threefold to fivefold increase in mtDNA point mutations plus more deleted mtDNA, and showed reduced lifespan with premature weight loss, alopecia, kyphosis, osteoporosis, anaemia, reduced fertility and heart enlargement. But when the same group measured ROS in 2005, production was normal, embryonic fibroblasts showed no increased sensitivity to oxidative stress-induced death, and antioxidant enzyme expression, protein carbonylation and aconitase activity indicated no or only minor oxidative stress despite severe respiratory chain dysfunction. Mutations also accumulated approximately linearly rather than in a vicious cycle. The authors concluded that respiratory chain dysfunction itself, not amplified oxidative stress, drives the premature ageing.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/15164064/",
+    "https://pubmed.ncbi.nlm.nih.gov/16332961/"
+   ],
+   "tags": [
+    "hallmarks",
+    "mitochondria",
+    "multihop",
+    "trap"
+   ]
+  },
+  {
+   "id": "long-a015",
+   "question": "Two studies of proof-reading-deficient POLG mice proposed different proximate causes for the premature ageing. What did each propose?",
+   "answer": "Kujoth and colleagues (2005) reported that mtDNA mutation accumulation was not associated with increased markers of oxidative stress or a proliferation defect, but was correlated with induction of apoptotic markers, especially in tissues with rapid cellular turnover, and that apoptotic markers also rise during normal ageing; they proposed apoptosis as the central mechanism. Vermulst and colleagues (2008) instead identified mtDNA deletions rather than point mutations as the driving force, offered evidence for a homology-directed repair mechanism in mitochondria linked to deletion formation, and showed that the rate at which mutations reach phenotypic expression differs markedly between tissues.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/16020738/",
+    "https://pubmed.ncbi.nlm.nih.gov/18311139/"
+   ],
+   "tags": [
+    "hallmarks",
+    "mitochondria",
+    "multihop"
+   ]
+  },
+  {
+   "id": "long-a016",
+   "question": "What did the 2005 heterochronic parabiosis experiment do to aged muscle and liver progenitor cells, and through which signalling pathway in muscle?",
+   "answer": "Surgically joining the circulatory systems of young and old mice exposed the old animal to young serum. This restored activation of Notch signalling in aged satellite cells along with their proliferation and regenerative capacity; exposing old satellite cells to young serum in vitro raised expression of the Notch ligand Delta, increased Notch activation and enhanced proliferation. In liver, heterochronic parabiosis increased aged hepatocyte proliferation and restored the cEBP-alpha complex, which involves the chromatin remodelling factor brahma, to young levels. The conclusion is that age-related decline in progenitor cell activity is modulated by systemic factors.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/15716955/"
+   ],
+   "tags": [
+    "hallmarks",
+    "stem-cells",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-a017",
+   "question": "What distinguishes geriatric muscle satellite cells from merely old ones, and which gene is responsible?",
+   "answer": "Geriatric satellite cells lose reversible quiescence. In geriatric mice, resting satellite cells cannot maintain the normal quiescent state under homeostatic conditions and switch instead to an irreversible pre-senescent state caused by derepression of p16INK4a (Cdkn2a). On injury they fail to activate and expand, and undergo accelerated geroconversion to full senescence even in a youthful environment, so the defect is intrinsic rather than environmental. Silencing p16INK4a in geriatric satellite cells restores quiescence and muscle regenerative function, and p16INK4a is likewise dysregulated in human geriatric satellite cells.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/24522534/"
+   ],
+   "tags": [
+    "hallmarks",
+    "stem-cells",
+    "senescence",
+    "multihop"
+   ]
+  },
+  {
+   "id": "long-a018",
+   "question": "Why do old haematopoietic stem cells fail on transplantation, according to the 2014 Nature study, and what makes the DNA damage signal in quiescent old HSCs misleading?",
+   "answer": "Cycling old HSCs carry heightened replication stress, with cell cycle defects and chromosome gaps or breaks, caused by decreased expression of mini-chromosome maintenance (MCM) helicase components and altered replication fork dynamics. Old HSCs survive replication unless faced with a strong challenge such as transplantation. The misleading part is the persistent nucleolar gamma-H2AX seen after old HSCs re-establish quiescence: it persists not because DNA damage is ongoing but because H2AX is not dephosphorylated, owing to mislocalized PP4c phosphatase. That persistent mark also acts as a histone modification that silences rDNA genes and lowers ribosome biogenesis.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/25079315/"
+   ],
+   "tags": [
+    "hallmarks",
+    "stem-cells",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-a019",
+   "question": "Vad menas egentligen med inflamm-aging, och varför beskrivs den som ett exempel på antagonistisk pleiotropi?",
+   "answer": "Begreppet myntades av Franceschi och medarbetare år 2000 och betecknar att kroppen med åldern både tappar förmågan att hantera olika stressorer och samtidigt får ett gradvis mer proinflammatoriskt tillstånd. Det drivs av kontinuerlig antigenbelastning och stress, och makrofagen sätts i centrum för både inflammation, immunitet och stressvar. Kopplingen till antagonistisk pleiotropi är att inflammationen är nyttig tidigt i livet, när den oskadliggör farliga agens, men blir skadlig sent i livet, i en period som evolutionen i stort sett inte har sett. De föreslår också en tvåstegsmodell: den inflammatoriska bakgrunden är första träffen, och avsaknad av robusta genvarianter eller närvaro av sköra varianter är den andra som krävs för att en organspecifik åldersrelaterad sjukdom ska bryta ut.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/10911963/"
+   ],
+   "tags": [
+    "hallmarks",
+    "inflammation",
+    "single-fact",
+    "sv"
+   ]
+  },
+  {
+   "id": "long-a020",
+   "question": "What evidence links gut dysbiosis causally to ageing rather than merely correlating the two?",
+   "answer": "The 2019 Nature Medicine study of two progeroid mouse models found intestinal dysbiosis in both, with more Proteobacteria and Cyanobacteria and less Verrucomicrobia; human progeria patients showed dysbiosis too, while centenarians showed the opposite pattern, more Verrucomicrobia and fewer Proteobacteria. The causal step was faecal microbiota transplantation from wild-type mice, which enhanced healthspan and lifespan in both progeroid models, and transplantation of the verrucomicrobium Akkermansia muciniphila alone was sufficient for benefit. Metabolomics of ileal content pointed to restoration of secondary bile acids as a possible mechanism.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/31332389/"
+   ],
+   "tags": [
+    "hallmarks",
+    "dysbiosis",
+    "multihop"
+   ]
+  },
+  {
+   "id": "long-a021",
+   "question": "The 1995 PNAS paper that gave the field its senescence marker described what assay, and what was the in vivo observation?",
+   "answer": "Dimri and colleagues showed that several human cell types express a beta-galactosidase that is histochemically detectable at pH 6 upon senescence in culture. The marker was expressed by senescent but not presenescent fibroblasts and keratinocytes, was absent from quiescent fibroblasts and terminally differentiated keratinocytes, and was absent from immortal cells but induced by genetic manipulations that reversed immortality. In skin samples from human donors of different ages there was an age-dependent increase in the marker in dermal fibroblasts and epidermal keratinocytes, which the authors present as in situ evidence that senescent cells may exist and accumulate with age in vivo.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/7568133/"
+   ],
+   "tags": [
+    "senescence",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-a022",
+   "question": "Senescence-associated beta-galactosidase is treated as the definitive stain for a senescent cell. What is it biochemically, and what else stains positive?",
+   "answer": "It is not a distinct senescence enzyme. Kurz and colleagues showed in human endothelial cells that lysosomal alkalinisation with chloroquine or bafilomycin A1, or equilibrating the cell interior to pH 6 with nigericin, inhibited 92 to 99 percent of total intracellular beta-galactosidase activity, while senescent cells had three- to sixfold higher activity than young ones in parallel with more beta-galactosidase protein and greater lysosomal content. So the signal is residual ordinary lysosomal beta-galactosidase activity at a suboptimal pH, made detectable by the enlarged lysosomal compartment. Severino and colleagues added that staining tracked in vitro replicative age rather than donor age, that they saw no difference in skin cells in situ as a function of donor age, and that staining was also elevated in confluent non-transformed cultures, in immortal cultures at high density, and in young cells challenged with hydrogen peroxide.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/11017877/",
+    "https://pubmed.ncbi.nlm.nih.gov/10854064/"
+   ],
+   "tags": [
+    "senescence",
+    "markers",
+    "multihop",
+    "trap"
+   ]
+  },
+  {
+   "id": "long-a023",
+   "question": "How did the 1997 Cell paper on oncogenic ras change what cellular senescence was understood to be?",
+   "answer": "It showed that senescence is a stress response, not just the end of a division counter. Expressing oncogenic ras in primary human or rodent cells produced a permanent G1 arrest accompanied by accumulation of p53 and p16, phenotypically indistinguishable from cellular senescence. Inactivating either p53 or p16 prevented the arrest in rodent cells and E1A did the same in human cells. Serrano and colleagues concluded that the onset of senescence does not simply reflect accumulated cell divisions but can be prematurely activated by an oncogenic stimulus, and that negating it may matter in multistep tumorigenesis.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/9054499/"
+   ],
+   "tags": [
+    "senescence",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-a024",
+   "question": "Vad kom SASP-atlasen från 2020 fram till om hur enhetligt det senescenta sekretomet är, och vilka kandidatmarkörer gick att följa i mänskligt plasma?",
+   "answer": "Den visade att SASP är långt mer komplext än de par dussin utsöndrade proteiner som brukar mätas, och att en liten uppsättning faktorer inte kan förklara de vitt skilda effekter man ser in vivo. Atlasen täcker både lösliga proteiner och exosomlast från flera olika senescensinducerare och celltyper. Varje profil består av hundratals till stor del olika proteiner, men det finns också en delmängd som är förhöjd i alla SASP-profiler. Tre kandidatmarkörer överlappade med åldersmarkörer i mänskligt plasma och korrelerade signifikant med ålder i Baltimore Longitudinal Study of Aging: GDF15, stanniokalcin 1 och serinproteashämmare av SERPIN-typ.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/31945054/"
+   ],
+   "tags": [
+    "senescence",
+    "sasp",
+    "single-fact",
+    "sv"
+   ]
+  },
+  {
+   "id": "long-a025",
+   "question": "Is there a single transcriptional or molecular signature that identifies a senescent cell?",
+   "answer": "No. Hernandez-Segura and colleagues analysed many whole-transcriptome datasets and found signatures specific to particular senescence-inducing stresses and to particular senescent cell types, with only some genes commonly differentially regulated, and they showed that the senescent phenotype is dynamic, changing at varying intervals after induction. The markers in routine use, constitutive DNA damage response signalling, SA-beta-gal activity, raised p16INK4A and p21CIP1, the SASP and reduced Lamin B1, are described as variable and non-exclusive. The International Cell Senescence Association consensus takes the same position and, rather than naming one marker, proposes an algorithm combining several to assess and quantify senescence, plus the SeneQuest resource for senescence-linked genes.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/28844647/",
+    "https://pubmed.ncbi.nlm.nih.gov/31675495/"
+   ],
+   "tags": [
+    "senescence",
+    "markers",
+    "multihop",
+    "trap"
+   ]
+  },
+  {
+   "id": "long-a026",
+   "question": "What is MiDAS, how does its secretory phenotype differ from the classic SASP, and what metabolic change causes it?",
+   "answer": "MiDAS is mitochondrial dysfunction-associated senescence. Compromising mitochondrial function in proliferating human cells induces a senescence growth arrest with a modified SASP that lacks the IL-1-dependent inflammatory arm. Cells in MiDAS had lower NAD+/NADH ratios, and that shift caused both the growth arrest and the loss of the IL-1-associated SASP through AMPK-mediated p53 activation. Progeroid mice that rapidly accrue mtDNA mutations accumulated MiDAS senescent cells in vivo, and the MiDAS secretome suppressed adipogenesis and stimulated keratinocyte differentiation in culture.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/26686024/"
+   ],
+   "tags": [
+    "senescence",
+    "sasp",
+    "mitochondria",
+    "multihop"
+   ]
+  },
+  {
+   "id": "long-a027",
+   "question": "In the 2011 INK-ATTAC experiment, what genetic background was used, what did the transgene do, and did late-life clearance still help?",
+   "answer": "The mice were on the BubR1 progeroid background. INK-ATTAC is a transgene that allows inducible apoptotic elimination of p16Ink4a-positive senescent cells upon drug administration. In tissues where p16Ink4a contributes to age-related pathology, namely adipose tissue, skeletal muscle and eye, life-long removal of p16Ink4a-expressing cells delayed the onset of those phenotypes, and clearance started late in life still attenuated the progression of disorders that were already established. This is the experiment that established senescent cells as causally implicated in age-related phenotypes rather than merely correlated with them.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/22048312/"
+   ],
+   "tags": [
+    "senescence",
+    "multihop"
+   ]
+  },
+  {
+   "id": "long-a028",
+   "question": "The 2016 follow-up moved senescent-cell clearance from a progeroid model into normal mice. What was the dosing schedule and what was measured?",
+   "answer": "Wild-type INK-ATTAC mice were injected with AP20187 twice a week starting at one year of age. Compared with vehicle, treatment extended median lifespan in both male and female mice of two distinct genetic backgrounds. Clearing p16Ink4a-positive cells also delayed tumorigenesis and attenuated age-related deterioration of kidney, heart and fat, preserving glomerular function, cardio-protective KATP channels and adipocytes respectively, with no apparent side effects. The claim is therefore that naturally occurring p16Ink4a-positive cells accumulating during adulthood negatively influence lifespan.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/26840489/"
+   ],
+   "tags": [
+    "senescence",
+    "multihop"
+   ]
+  },
+  {
+   "id": "long-a029",
+   "question": "Where does senescence occur in the mammalian embryo, and how does the pathway differ from damage-induced senescence?",
+   "answer": "It occurs at multiple locations, with the mesonephros and the endolymphatic sac of the inner ear analysed in detail, and the same structures show evidence of it in human embryos. Mechanistically it is strictly dependent on p21 but independent of DNA damage, p53 and other cell-cycle inhibitors, and it is regulated by the TGF-beta/SMAD and PI3K/FOXO pathways. Developmentally programmed senescence is followed by macrophage infiltration, clearance of the senescent cells and tissue remodelling; absence of p21 is only partially compensated by apoptosis and still leaves detectable developmental abnormalities. The authors propose that tissue remodelling is the original function and the evolutionary origin of damage-induced senescence.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/24238962/"
+   ],
+   "tags": [
+    "senescence",
+    "development",
+    "multihop"
+   ]
+  },
+  {
+   "id": "long-a030",
+   "question": "What made Ink4a/Arf expression attractive as a molecular biomarker of ageing in rodents, and what intervention lowered it?",
+   "answer": "Expression of p16INK4a and Arf increases markedly with age in almost all rodent tissues, while related cell cycle inhibitors change little or not at all. The increase is restricted to well-defined compartments within each organ and occurs in both epithelial and stromal cells of diverse lineages. Caloric restriction attenuated the age-associated increase in kidney, ovary and heart, and the decrease correlated with reduced expression of an in vivo senescence marker and with less pathology in those organs. The rise could be attributed partly to Ets-1, a known p16INK4a transcriptional activator, and partly to unidentified Ink4a/Arf coregulators.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/15520862/"
+   ],
+   "tags": [
+    "senescence",
+    "markers",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-a031",
+   "question": "Which innate immune sensor connects the chromatin abnormalities of a senescent cell to its inflammatory secretome?",
+   "answer": "Cyclic GMP-AMP synthase, cGAS. Glück and colleagues found that cGAS recognizes cytosolic chromatin fragments in senescent cells, and that cGAS activation triggers production of SASP factors through STING, thereby promoting paracrine senescence. Diverse senescence stimuli engaged the cGAS-STING pathway in vitro, and cGAS-dependent regulation of senescence was shown in vivo following irradiation and after oncogene activation.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/28759028/"
+   ],
+   "tags": [
+    "senescence",
+    "sasp",
+    "multihop"
+   ]
+  },
+  {
+   "id": "long-a032",
+   "question": "What did the International Cell Senescence Association consensus paper of 2019 actually deliver, beyond a definition?",
+   "answer": "Three things. It defined and discussed the key cellular and molecular features of senescence and gave recommendations for using them as biomarkers; it released SeneQuest, a resource tool for identifying genes linked with senescence; and it proposed an algorithm for accurately assessing and quantifying senescence both in cultured cells and in vivo. Its motivation is that senotherapy, therapeutically targeting senescence, makes accurate detection of senescent cells, especially in vivo, essential.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/31675495/"
+   ],
+   "tags": [
+    "senescence",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-a033",
+   "question": "Sharpless and Sherr argued in 2015 that the word senescence itself has become a problem. What was their argument and what did they propose?",
+   "answer": "They noted that the term originally described cultured cells that had exceeded their replicative limit, but has been broadened to cover durable proliferative arrest induced by disparate stresses. As a result the proposed relationships between cellular senescence, tumour suppression, loss of tissue regenerative capacity and ageing suffer from the lack of a uniform definition and of consistently applied criteria. They highlighted the caveats in interpreting suboptimal senescence-associated biomarkers, whether used alone or in combination, and advocated replacing the broad umbrella term with more specific descriptors for the diverse physiological responses to cellular stress.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/26105537/"
+   ],
+   "tags": [
+    "senescence",
+    "markers",
+    "synthesis"
+   ]
+  },
+  {
+   "id": "long-a034",
+   "question": "Varför är det så svårt att säga om en enskild cell faktiskt är senescent? Sammanfatta vad litteraturen har landat i.",
+   "answer": "Tre skäl som pekar åt samma håll. För det första är fenotypen heterogen: hela transkriptomanalyser ger signaturer som är specifika för vilken stress som utlöste senescensen och för vilken celltyp det gäller, och bara en del gener är gemensamma. För det andra är fenotypen dynamisk och förändras med tiden efter induktion, så en och samma cell ser olika ut vid olika mättillfällen. För det tredje har begreppet självt tänjts ut, från cellodlingens replikativa gräns till alla varaktiga proliferationsstopp orsakade av vitt skilda stressorer, vilket gör att markörerna används utan enhetlig definition eller konsekventa kriterier. Konsensusgruppen svarar med en algoritm som kombinerar flera markörer i stället för en enda, och andra föreslår att man byter ut paraplybegreppet mot mer preciserade beskrivningar.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/28844647/",
+    "https://pubmed.ncbi.nlm.nih.gov/31675495/",
+    "https://pubmed.ncbi.nlm.nih.gov/26105537/"
+   ],
+   "tags": [
+    "senescence",
+    "markers",
+    "synthesis",
+    "sv"
+   ]
+  },
+  {
+   "id": "long-a035",
+   "question": "How quickly does the senescence-associated secretory phenotype appear after a cell is damaged, and in which cell types was it found?",
+   "answer": "It develops slowly, over several days, and only after DNA damage of sufficient magnitude to induce senescence. Coppé and colleagues found remarkably similar SASPs in normal fibroblasts, normal epithelial cells and epithelial tumour cells after genotoxic stress in culture, and in epithelial tumour cells in vivo after prostate cancer patients were treated with DNA-damaging chemotherapy. In cultured premalignant epithelial cells the SASP induced epithelial-mesenchymal transition and invasiveness by a paracrine mechanism depending largely on IL-6 and IL-8, and both oncogenic RAS expression and loss of p53 markedly amplified and accelerated it.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/19053174/"
+   ],
+   "tags": [
+    "senescence",
+    "sasp",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-a036",
+   "question": "Did DNA-repair deficiency deplete the haematopoietic stem cell pool with age, and what did it affect instead?",
+   "answer": "No, the reserves were not depleted. Rossi and colleagues examined haematopoietic stem cell reserves and function in mice deficient in several genomic maintenance pathways, covering nucleotide excision repair, telomere maintenance and non-homologous end-joining. Reserves held up with age, but stem cell functional capacity was severely affected under stress, with loss of reconstitution and proliferative potential, diminished self-renewal, increased apoptosis and eventual functional exhaustion. They also showed that endogenous DNA damage accumulates with age in wild-type stem cells, making damage accrual a plausible physiological mechanism of stem cell ageing.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/17554309/"
+   ],
+   "tags": [
+    "hallmarks",
+    "stem-cells",
+    "multihop"
+   ]
+  },
+  {
+   "id": "long-a037",
+   "question": "In the 1993 Nature paper that opened the genetics of ageing, which gene was mutated, how large was the effect, and which second gene was required?",
+   "answer": "Mutations in daf-2 made fertile, active adult Caenorhabditis elegans hermaphrodites live more than twice as long as wild type, the largest lifespan extension reported in any organism at the time. The extension required the activity of a second gene, daf-16. Both genes also regulate formation of the long-lived dauer larva, and Kenyon and colleagues argued that dauer longevity may not be a simple consequence of arrested growth but a regulated lifespan-extension mechanism that can be uncoupled from other aspects of dauer formation.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/8247153/"
+   ],
+   "tags": [
+    "models",
+    "c-elegans",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-a038",
+   "question": "What kind of protein does daf-2 encode, and what analogy did the 1997 cloning paper draw to mammals?",
+   "answer": "daf-2 encodes a member of the insulin receptor family. It is the key gene in the neurosecretory signalling pathway that decides whether the animal enters the reproductive life cycle or arrests at the long-lived dauer diapause. Decreases in DAF-2 signalling induce metabolic and developmental changes analogous to mammalian metabolic control by the insulin receptor, and also increase lifespan. Kimura and colleagues drew the analogy to mammalian longevity enhancement by caloric restriction, suggesting a general link between metabolism, diapause and longevity.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/9252323/"
+   ],
+   "tags": [
+    "models",
+    "c-elegans",
+    "insulin-igf",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-a039",
+   "question": "Two 1997 papers identified daf-16. What family of protein is it, and what does the epistasis with daf-2 and age-1 tell you about the logic of the pathway?",
+   "answer": "DAF-16 is a Fork head, or HNF-3/forkhead, family transcription factor; the daf-16 gene is widely expressed and encodes three such factors. Null mutations in daf-16 suppress the effects of mutations in daf-2 or age-1, so losing daf-16 removes the need for the insulin receptor-like signalling pathway altogether. That means the principal role of DAF-2/AGE-1 signalling is to antagonize DAF-16 rather than to signal longevity positively. Lin and colleagues separately showed that daf-16 activity is required for the doubling of lifespan seen in daf-2 mutants, which are active, fully fertile and have normal metabolic rates, and named FKHR and AFX as probable human orthologues.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/9353126/",
+    "https://pubmed.ncbi.nlm.nih.gov/9360933/"
+   ],
+   "tags": [
+    "models",
+    "c-elegans",
+    "insulin-igf",
+    "multihop"
+   ]
+  },
+  {
+   "id": "long-a040",
+   "question": "age-1 var den första väldefinierade genen där en mutation förlängde livet. Hur mycket längre levde maskarna, och vad kostade det dem?",
+   "answer": "Allelen age-1(hx546) gav vid 20 grader i genomsnitt 40 procent längre medellivslängd och 60 procent längre maximal livslängd. Vid 25 grader var effekten större: 65 procent längre medellivslängd, 25,3 dagar mot 15,0, och 110 procent längre maximal livslängd, 46,2 dagar mot 22,0 för vildtypshermafroditer. Även hanar levde längre. Priset var fertiliteten, som sjönk med 75 procent hos hermafroditer vid 20 grader. Den reproduktiva perioden blev däremot inte kortare, utan hela livsförlängningen låg i den postreproduktiva delen av livet. Friedman och Johnson noterade själva att förlängningen troligen inte beror på att man slagit ut en programmerad åldrandefunktion.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/8608934/"
+   ],
+   "tags": [
+    "models",
+    "c-elegans",
+    "single-fact",
+    "sv"
+   ]
+  },
+  {
+   "id": "long-a041",
+   "question": "What happened to C. elegans lifespan when the germline precursor cells were destroyed with a laser, and which genes were required for the effect?",
+   "answer": "Killing the cells that give rise to the germ line extended lifespan. The effect required DAF-16 and also a putative nuclear hormone receptor, DAF-12. Hsin and Kenyon argued that germline signals act by modulating the insulin/IGF-1 pathway already known to regulate ageing in the worm, and that signals from the somatic gonad also influence ageing in a way that requires DAF-2 activity. The interpretation is that the insulin/IGF-1 system integrates multiple signals, including reproductive state, to set the rate of ageing.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/10360574/"
+   ],
+   "tags": [
+    "models",
+    "c-elegans",
+    "multihop"
+   ]
+  },
+  {
+   "id": "long-a042",
+   "question": "How much did mutating chico extend Drosophila lifespan, and which two obvious confounders did the authors rule out?",
+   "answer": "Mutation of chico, which encodes an insulin receptor substrate, extended median lifespan by up to 48 percent in homozygotes and 36 percent in heterozygotes. The extension was not a result of impaired oogenesis in chico females, and it was not consistently correlated with increased stress resistance. The dwarf phenotype of chico homozygotes was also shown to be unnecessary for the lifespan extension. Clancy and colleagues took this as evidence that the role of insulin/IGF signalling in animal ageing is evolutionarily conserved.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/11292874/"
+   ],
+   "tags": [
+    "models",
+    "drosophila",
+    "insulin-igf",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-a043",
+   "question": "In the companion 2001 paper on the Drosophila insulin-like receptor, how big was the effect, and what single treatment reversed it?",
+   "answer": "A heteroallelic hypomorphic InR genotype produced dwarf females with up to 85 percent extension of adult longevity and dwarf males with reduced late age-specific mortality. Treating the long-lived InR dwarfs with a juvenile hormone analogue restored life expectancy towards wild-type controls. Tatar and colleagues concluded that juvenile hormone deficiency resulting from InR pathway mutation is sufficient to extend lifespan, so in flies insulin-like ligands act non-autonomously through retardation of growth or activation of specific endocrine tissue.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/11292875/"
+   ],
+   "tags": [
+    "models",
+    "drosophila",
+    "insulin-igf",
+    "multihop"
+   ]
+  },
+  {
+   "id": "long-a044",
+   "question": "Which genetic manipulations of the TOR pathway extended Drosophila lifespan in 2004, and in which tissue was the manipulation sufficient?",
+   "answer": "Overexpression of dTsc1, overexpression of dTsc2, and dominant-negative forms of dTOR or of dS6K all extended lifespan; TSC1 and TSC2 act together to inhibit TOR, which couples amino acid availability to S6 kinase, translation initiation and growth. Modulating expression in the fat was sufficient to produce the lifespan extension. The extensions depended on nutritional condition, which Kapahi and colleagues read as a link between the TOR pathway and dietary restriction.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/15186745/"
+   ],
+   "tags": [
+    "models",
+    "drosophila",
+    "mtor",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-a045",
+   "question": "Do the classic long-lived C. elegans mutants spend their extra time healthy?",
+   "answer": "No. Bansal and colleagues ran multiple cellular and organismal assays longitudinally on wild type and on four long-lived mutants covering insulin/IGF-1 signalling, dietary restriction, protein translation and mitochondrial signalling. Measured in absolute days, some long-lived mutants did perform better than wild type. But all four increased the proportion of life spent in a frail state. The paper's conclusion is that lifespan can no longer be the sole parameter of interest and that healthspan must be evaluated separately in antiageing studies, which is exactly the assumption the field had been making implicitly.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/25561524/"
+   ],
+   "tags": [
+    "models",
+    "c-elegans",
+    "healthspan",
+    "multihop",
+    "trap"
+   ]
+  },
+  {
+   "id": "long-a046",
+   "question": "Det brukar sägas att nakenråttan aldrig får cancer. Stämmer det?",
+   "answer": "Nej, inte bokstavligt. Påståendet vilade på att cancer aldrig formellt beskrivits hos arten, vilket är något annat än att den inte förekommer. År 2016 rapporterade Delaney och medarbetare de två första fallen hos djurparkshållna nakenråttor. Det första var en subkutan knöl i armhålan hos en 22-årig hane med histologiska, immunhistokemiska och ultrastrukturella drag av ett adenokarcinom, möjligen av bröst- eller spottkörtelursprung. Det andra var en tät, dåligt avgränsad tumör i magsäcken hos en cirka 20-årig hane, med positiv infärgning för synaptofysin och kromogranin, alltså ett neuroendokrint karcinom. Författarna understryker att fallen inte upphäver den sedan länge observerade cancerresistensen, men att de väcker frågor om hur långt den resistensen sträcker sig och hur försök i modellen ska tolkas.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/26846576/"
+   ],
+   "tags": [
+    "models",
+    "naked-mole-rat",
+    "multihop",
+    "trap",
+    "sv"
+   ]
+  },
+  {
+   "id": "long-a047",
+   "question": "What exactly is the claim in the 2018 eLife analysis of naked mole-rat mortality, and how much data was it based on?",
+   "answer": "The claim is that the age-specific hazard of mortality does not increase with age, in defiance of Gompertz's law, which makes the naked mole-rat unlike all other mammals studied to date. Ruby, Smith and Buffenstein compiled and analysed a historical lifespan compendium with more than 3000 data points; Kaplan-Meier analysis showed a substantial portion of the population surviving at 30 years of age, and the flat hazard held regardless of sex or breeding status even at ages 25-fold past the time to reproductive maturity. Note the claim is about the shape of the mortality curve, not about immortality.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/29364116/"
+   ],
+   "tags": [
+    "models",
+    "naked-mole-rat",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-a048",
+   "question": "What molecule was identified in 2013 as the mechanism of naked mole-rat cancer resistance, and how was its role proven?",
+   "answer": "High-molecular-mass hyaluronan. Naked mole-rat fibroblasts secrete hyaluronan over five times larger than human or mouse hyaluronan, and it accumulates in tissues because of decreased activity of hyaluronan-degrading enzymes together with a unique sequence of hyaluronan synthase 2 (HAS2); the cells are also more sensitive to hyaluronan signalling, having higher affinity for it. Proof came from removal: perturbations sufficient to transform mouse fibroblasts failed to transform naked mole-rat cells, but knocking down HAS2 or overexpressing the degrading enzyme HYAL2 made the cells susceptible to malignant transformation and they readily formed tumours in mice. The authors speculate the trait first evolved for skin elasticity in tunnels and was then co-opted.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/23783513/"
+   ],
+   "tags": [
+    "models",
+    "naked-mole-rat",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-a049",
+   "question": "Nakenråttan lever över 30 år trots att den är musstor. Vad sa genomsekvenseringen från 2011 om oxidativ stress hos den?",
+   "answer": "Att den utmanar den enkla kopplingen mellan åldrande, cancer och redoxbalans. Nakenråttan har betydande oxidativ stress, men dess proteom visar ändå ingen åldersrelaterad känslighet för oxidativ skada och ingen ökad ubikvitinering. Utöver det beskriver artikeln försumbar senescens, ingen åldersrelaterad ökning av dödlighet och hög fruktsamhet ända fram till döden, samt resistens mot både spontan och experimentellt framkallad tumörbildning. Genomet visade unika drag och molekylära anpassningar som stämmer med cancerresistens, poikilotermi, hårlöshet, okänslighet för låg syrehalt samt förändrad syn, dygnsrytm och smaksinne. Arten lever i stora kolonier med en enda fortplantande hona, i fullständigt mörker, vid låg syrehalt och hög koldioxidhalt.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/21993625/"
+   ],
+   "tags": [
+    "models",
+    "naked-mole-rat",
+    "single-fact",
+    "sv"
+   ]
+  },
+  {
+   "id": "long-a050",
+   "question": "What is unusual about naked mole-rat ribosomal RNA, and what functional consequence was measured?",
+   "answer": "Its 28S ribosomal RNA is processed into two smaller fragments of unequal size. The two breakpoints lie in 28S divergent region 6 and excise a fragment of 263 nucleotides that is unique to the naked mole-rat and has no homology elsewhere in the genome. Functionally, naked mole-rat fibroblasts showed significantly increased translational fidelity compared with mouse fibroblasts, at comparable translation rates. The authors could not test the causal link directly but speculate that the hidden break alters folding or dynamics of the large ribosomal subunit; the significance for ageing is that the cells produce fewer aberrant proteins, supporting a more stable proteome as a contributor to longevity.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/24082110/"
+   ],
+   "tags": [
+    "models",
+    "naked-mole-rat",
+    "proteostasis",
+    "multihop"
+   ]
+  },
+  {
+   "id": "long-a051",
+   "question": "What was sequenced in the 2015 bowhead whale study, and what categories of gene changes were reported?",
+   "answer": "The bowhead whale (Balaena mysticetus), estimated to live over 200 years and possibly the longest-living mammal, had its genome sequenced together with two transcriptomes from different populations. The comparative analysis identified genes under positive selection and bowhead-specific mutations in genes linked to cancer and ageing, plus gene gain and loss involving genes associated with DNA repair, cell-cycle regulation, cancer and ageing. Changes were also found in genes related to thermoregulation, sensory perception, dietary adaptations and immune response. The data were released publicly to support further work on the species.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/25565328/"
+   ],
+   "tags": [
+    "models",
+    "comparative",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-a052",
+   "question": "What made the African turquoise killifish usable as a genetic model of ageing in 2015, and what was the proof-of-principle result?",
+   "answer": "Harel and colleagues built an integrative genomic and genome-editing toolkit around a de novo assembled genome plus CRISPR/Cas9, mutated many genes spanning the hallmarks of ageing, and produced stable lines for a subset within two to three months, which is what a naturally short-lived vertebrate buys you over classical models. The proof of principle was that fish deficient for the protein subunit of telomerase showed the fastest onset of telomere-related pathologies among vertebrates. They also demonstrated the feasibility of creating specific genetic variants, aimed at testing candidates arising from human genome-wide studies.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/25684364/"
+   ],
+   "tags": [
+    "models",
+    "killifish",
+    "multihop"
+   ]
+  },
+  {
+   "id": "long-a053",
+   "question": "The killifish reference genome published later in 2015 reported a surprising genomic location for lifespan-associated genes. What was it, and what did the authors infer?",
+   "answer": "Candidate genes associated with lifespan differences between turquoise killifish strains, identified by comparative genomics and linkage analysis, were clustered on the sex chromosome. Valenzano and colleagues suggested from this that short lifespan might have co-evolved with sex determination. The genome also showed several ageing genes under positive selection in this short-lived fish as well as in long-lived species, raising the possibility that the same gene can underlie the evolution of both compressed and extended lifespans.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/26638078/"
+   ],
+   "tags": [
+    "models",
+    "killifish",
+    "multihop"
+   ]
+  },
+  {
+   "id": "long-a054",
+   "question": "Går det att förlänga livet på en ryggradsdjursmodell genom att byta ut tarmfloran? Vad visade försöket på turkos killifisk?",
+   "answer": "Ja, i det försöket gjorde det det. Smith och medarbetare koloniserade om tarmen hos medelålders killifisk med bakterier från unga givare, vilket förlängde livslängden och fördröjde den beteendemässiga försämringen. Ingreppet förhindrade också den minskning av mikrobiell mångfald som annars följer med värddjurets åldrande och bevarade en ungdomslik bakteriesammansättning, med överrepresentation av släktena Exiguobacterium, Planococcus, Propionigenium och Psychrobacter. Poängen med studien är att tarmfloran hos unga individer kan orsaka långvariga systemiska effekter som förlänger livet, alltså ett orsakssamband och inte bara ett samband.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/28826469/"
+   ],
+   "tags": [
+    "models",
+    "killifish",
+    "dysbiosis",
+    "multihop",
+    "sv"
+   ]
+  },
+  {
+   "id": "long-a055",
+   "question": "Which bat holds the longevity record among bats, how extreme is its body-mass-to-lifespan ratio, and which endocrine axis did its genome implicate?",
+   "answer": "Brandt's bat, Myotis brandtii, with a lifespan exceeding 40 years and an adult body weight of only 4 to 8 grams, making it the most extreme mammal in terms of disparity between body mass and longevity. Genome and transcriptome analysis found unique sequence changes in growth hormone and insulin-like growth factor 1 receptors. Seim and colleagues suggested that an altered growth hormone/IGF-1 axis, possibly shared with other long-lived bats, together with hibernation and a low reproductive rate, contributes to the exceptional lifespan.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/23962925/"
+   ],
+   "tags": [
+    "models",
+    "comparative",
+    "insulin-igf",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-a056",
+   "question": "How many copies of TP53 do African elephants carry, and what did the 2015 necropsy survey find about cancer mortality and body size across mammals?",
+   "answer": "At least 20 copies, that is 40 alleles, including 19 retrogenes (38 alleles) with evidence of transcriptional activity, against a single copy and two alleles in humans. The necropsy survey across 36 mammalian species found that cancer mortality did not increase with body size or maximum lifespan; elephants had an estimated cancer mortality of 4.81 percent versus 11 to 25 percent in humans. Functionally, elephant lymphocytes underwent p53-mediated apoptosis at higher rates than human lymphocytes in proportion to TP53 status after ionizing radiation and after doxorubicin, with Li-Fraumeni patient cells lowest and elephant cells highest.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/26447779/"
+   ],
+   "tags": [
+    "models",
+    "comparative",
+    "cancer",
+    "multihop"
+   ]
+  },
+  {
+   "id": "long-a057",
+   "question": "What did the 2014 comparison of demographic trajectories across the tree of life show about whether mortality must rise with age?",
+   "answer": "That it need not. Jones and colleagues contrasted standardized age patterns of mortality and fertility for 11 mammals, 12 other vertebrates, 10 invertebrates, 12 vascular plants and a green alga. Against the prediction that evolution inevitably leads to increasing mortality and declining fertility after maturity, they found great variation: increasing, constant, decreasing, humped and bowed trajectories, for both long- and short-lived species. The authors present this diversity as a challenge to theoreticians to develop broader perspectives on the evolution of ageing and to empiricists to collect demography for more species.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/24317695/"
+   ],
+   "tags": [
+    "models",
+    "comparative",
+    "evolution",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-a058",
+   "question": "What is the evidence that Hydra does not senesce, and which features of the animal are proposed to make that possible?",
+   "answer": "Schaible and colleagues report more than 3.9 million days of observation of individual Hydra: 2256 animals from two closely related species, in two laboratories, in 12 cohorts, with cohort age ranging from 0 to more than 41 years. Mortality rates were extremely low and constant, and fertility did not systematically decline with advancing age. The features proposed to make non-senescence feasible are a high proportion of stem cells, constant and rapid cell turnover, few cell types, a simple body plan, and the fact that the germ line is not segregated from the soma. The authors argue this falsifies the universality of theories holding that all species deteriorate after maturity.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/26644561/"
+   ],
+   "tags": [
+    "models",
+    "comparative",
+    "evolution",
+    "multihop"
+   ]
+  },
+  {
+   "id": "long-a059",
+   "question": "What was Kirkwood's 1977 Nature argument about why ageing evolved, and what earlier hypothesis did he say it supported?",
+   "answer": "He argued that mortality may be due to an energy-saving strategy of reduced error regulation in somatic cells, that is, the organism economizes on accuracy and maintenance in the soma. He presented this as support for Orgel's error catastrophe hypothesis, and as a new basis for studying normal and abnormal ageing syndromes and apparently immortal transformed cell lines. This is the paper conventionally cited as the origin of the disposable soma theory.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/593350/"
+   ],
+   "tags": [
+    "evolution",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-a060",
+   "question": "The two classical evolutionary theories of ageing are antagonistic pleiotropy and mutation accumulation. Which did the 2002 PNAS Drosophila experiment support, and by what signature?",
+   "answer": "Mutation accumulation. Hughes and colleagues used recent population-genetic models that yield contrasting predictions, which earlier attempts had lacked. In Drosophila, genetic variation and inbreeding effects increased dramatically with age, which is the signature predicted by the mutation theory and arises because genes with deleterious effects of late onset are unopposed by natural selection. The authors describe this as the strongest support yet for the mutation theory; note it is evidence for one mechanism operating, not a demonstration that antagonistic pleiotropy never does.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/12386342/"
+   ],
+   "tags": [
+    "evolution",
+    "multihop"
+   ]
+  },
+  {
+   "id": "long-a061",
+   "question": "Evolutionsteorin säger att hög yttre dödlighet ska ge snabbare åldrande. Vad hände när man testade det direkt på bananflugor?",
+   "answer": "Det stämde i det experimentet. Stearns och medarbetare lät flugor utvecklas under olika hög yttre dödlighet och fick precis det teorin förutsäger: högre yttre dödlighet ledde till högre inneboende dödlighet, kortare livslängd samt lägre ålder och storlek vid kläckning, och fekunditetstoppen flyttades tidigare i livet. Det som gör försöket starkt är selektionsregimen, som höll selektionen på fertilitet igång genom hela livet och samtidigt höll populationstätheten konstant, så resultatet inte kan förklaras av att selektionen bara försvann sent.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/10716732/"
+   ],
+   "tags": [
+    "evolution",
+    "drosophila",
+    "single-fact",
+    "sv"
+   ]
+  },
+  {
+   "id": "long-a062",
+   "question": "Guppies from high-predation streams should, by classical theory, senesce earlier than guppies from low-predation streams. What did the 2004 Nature test find?",
+   "answer": "A mosaic, not the predicted pattern. The same high-mortality populations that had already been shown to evolve earlier maturity and greater reproductive investment, exactly as theory predicts, did not show an earlier onset of senescence with respect to either mortality or reproduction. They did show earlier senescence in swimming performance, a measure of neuromuscular function. Reznick and colleagues concluded that this challenges the generality of the association between decreased extrinsic mortality and delayed senescence, and invites more derived theories of the evolution of senescence.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/15510147/"
+   ],
+   "tags": [
+    "evolution",
+    "multihop",
+    "trap"
+   ]
+  },
+  {
+   "id": "long-a063",
+   "question": "Is ageing programmed by genes whose function is to kill the organism?",
+   "answer": "No. Kirkwood and Melov state that compelling arguments eliminate the idea that death is generally programmed by genes for ageing, and criticise the widespread tendency to interpret data in terms of loosely defined age regulation, which usually makes neither evolutionary nor mechanistic sense. They do allow one carefully bounded exception: in exceptional circumstances selection could in theory favour limiting survival, so ageing might occasionally be adaptive, but they make clear that the barriers to validating an actual instance of adaptive ageing are high. The correction to the naive claim is therefore not that adaptive ageing is impossible in principle, but that no established case supports the general programme view.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/21959160/"
+   ],
+   "tags": [
+    "evolution",
+    "synthesis",
+    "trap"
+   ]
+  },
+  {
+   "id": "long-a064",
+   "question": "What does the quasi-programmed or hyperfunction view say ageing is, and which molecular target does it single out?",
+   "answer": "It rules out programmed ageing but keeps a quasi-programme: a continuation of the developmental programme that is never switched off, stays constantly on, and becomes hyperfunctional and damaging, causing the diseases of ageing. The target singled out is TOR, the target of rapamycin nutrient- and mitogen-sensing pathway, which is activated in cell senescence and promotes cell growth even when the cell cycle is blocked. Blagosklonny points to the convergence of caloric restriction, rapamycin and longevity mutations on TOR from yeast to mammals, and to hypertrophy, hyperfunction and hyperplasia in human age-related disease.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/17012837/"
+   ],
+   "tags": [
+    "evolution",
+    "mtor",
+    "multihop"
+   ]
+  },
+  {
+   "id": "long-a065",
+   "question": "Gems and Partridge argued in 2013 that the field was entering a new phase. What long-standing assumption were they questioning, and what alternative did they highlight?",
+   "answer": "The assumption that ageing is caused by wear and tear, particularly molecular damage, with reactive oxygen species generated as by-products of metabolism as a major contributor. They point out that many recent tests of the oxidative damage theory have come up negative, which opens a phase in which fundamental assumptions are being re-examined. The alternative they highlight is the hyperfunction theory, which holds that processes contributing to growth and reproduction run on into later life and produce hypertrophic and hyperplastic pathologies. They set this against the well-established picture of a nutrient-sensitive signalling network, including insulin/IGF-1 and TOR, that controls ageing rate but whose downstream biological targets remain unclear.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/23190075/"
+   ],
+   "tags": [
+    "evolution",
+    "synthesis"
+   ]
+  },
+  {
+   "id": "long-a066",
+   "question": "Which classical claims about the evolution of ageing have been revised over the last 35 years, according to the 2018 review by Flatt and Partridge?",
+   "answer": "They list several. Selection does not always necessarily decline with age; higher extrinsic, environmentally caused mortality does not always accelerate ageing; conserved pathways control ageing rate; senescence patterns are more diverse than previously thought; ageing is not universal; trade-offs involving lifespan can be broken; ageing might be druggable; and human life expectancy continues to rise while compressing late-life morbidity remains a pressing challenge. The core theory they treat as intact is that ageing evolves because the force of selection declines with age, through mutation accumulation or a fitness benefit early in life.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/30124168/"
+   ],
+   "tags": [
+    "evolution",
+    "synthesis"
+   ]
+  },
+  {
+   "id": "long-a067",
+   "question": "What is the grandmother hypothesis as formulated in the 1998 PNAS paper, and which other human life-history traits does it claim to explain?",
+   "answer": "That the long postmenopausal lifespan distinguishing humans from other primates evolved with mother-child food sharing, a practice through which ageing females could enhance their daughters' fertility and so increase selection against senescence. Combined with Charnov's dimensionless assembly rules for mammalian life histories, Hawkes and colleagues argue the same hypothesis also accounts for our late maturity, small size at weaning and high fertility, and carries implications for past human habitat choice and social organization and for claims about extended learning and paternal provisioning.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/9448332/"
+   ],
+   "tags": [
+    "evolution",
+    "grandmother",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-a068",
+   "question": "Vad visade de finska och kanadensiska kyrkoböckerna om nyttan av att leva länge efter menopaus, och vad hände med kvinnornas egen dödlighet när barnbarnen slutade komma?",
+   "answer": "Med kompletta flergenerationsdata visade Lahdenperä och medarbetare att kvinnor med lång postreproduktiv livslängd fick fler barnbarn, alltså högre fitness, i förmoderna populationer i både Finland och Kanada. Vinsten uppstod genom att de postreproduktiva mödrarna höjde sina egna barns livstidsreproduktion: barnen kunde börja skaffa barn tidigare, fick barn tätare och lyckades bättre med dem. Vinsten avtog i takt med att avkommans reproduktion minskade, och just som teorin förutsäger accelererade kvinnornas egen dödlighet när deras barn slutade fortplanta sig. Det är alltså en direkt test av att selektionen för uppskjutet åldrande klingar av när den inte längre kan verka genom avkomman.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/15014499/"
+   ],
+   "tags": [
+    "evolution",
+    "grandmother",
+    "multihop",
+    "sv"
+   ]
+  },
+  {
+   "id": "long-a069",
+   "question": "Is it true that wild animals rarely live long enough to show senescence, so ageing is essentially an artefact of captivity?",
+   "answer": "No, and the review by Nussey and colleagues calls this an oft-quoted fallacy, tracing its roots to the otherwise seminal works of Medawar and Comfort. Under antagonistic pleiotropy or disposable soma explanations there is no reason senescence cannot evolve to be manifest within the life expectancies of wild organisms. Long-term field studies provide what they call irrefutable evidence: they found evidence of senescence in 175 different animal species across 340 separate studies, mostly birds and mammals but also other vertebrates and insects. High-quality longitudinal field data let one test evolutionary explanations for differences between the sexes, among traits and among individuals, and indicate that genes, prior environment and investment in growth and reproduction influence wild ageing rates.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/22884974/"
+   ],
+   "tags": [
+    "evolution",
+    "comparative",
+    "synthesis",
+    "trap"
+   ]
+  },
+  {
+   "id": "long-a070",
+   "question": "State Peto's paradox and explain why it matters for cancer prevention research.",
+   "answer": "If every cell carries some chance of becoming cancerous, then large, long-lived organisms with far more cells and more cell divisions should have a much higher cancer risk than small, short-lived ones. The paradox is the observed lack of correlation between body size and cancer risk: animals with a thousand times more cells than humans do not show a correspondingly increased cancer risk. Caulin and Maley argue this implies natural mechanisms that suppress cancer roughly a thousand times more effectively than in human cells, and that since cancer has proven hard to cure, the payoff of understanding how evolution suppressed it is improved cancer prevention in humans.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/21296451/"
+   ],
+   "tags": [
+    "evolution",
+    "comparative",
+    "cancer",
+    "synthesis"
+   ]
+  },
+  {
+   "id": "long-a071",
+   "question": "Why, on the comparative telomere analysis, would repressed telomerase have evolved in the mammalian ancestor at all, and what trade-off is proposed for the species that reversed it?",
+   "answer": "The proposal is that telomerase repression was a response to a higher mutation load brought on by the evolution of homeothermy; with telomerase repressed, replicative ageing then evolved as a tumour-suppressive barrier. Multiple times independently, smaller and shorter-lived species reverted to long telomeres and telomerase expression. The trade-off offered for that reversal involves the energetic and cellular costs of the specific oxidative protection mechanisms needed to protect telomeres under 20 kilobases in the absence of telomerase, so abandoning replicative ageing saves those costs. A practical implication drawn is that comparative studies of oxidative protection in ageing must include telomere length as a variable.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/21518243/"
+   ],
+   "tags": [
+    "evolution",
+    "telomeres",
+    "comparative",
+    "multihop"
+   ]
+  },
+  {
+   "id": "long-a072",
+   "question": "What origin story for damage-induced cellular senescence follows from finding senescence in normal embryos?",
+   "answer": "That its original function was tissue remodelling. Because programmed senescence in the embryo is p21-dependent but independent of DNA damage, p53 and other cell-cycle inhibitors, and is followed by macrophage infiltration, clearance and remodelling, Muñoz-Espín and colleagues propose that developmentally programmed senescence is the evolutionary origin of damage-induced senescence, which would later have co-opted the same machinery. The supporting observations are that senescence appears at multiple embryonic locations including the mesonephros and endolymphatic sac, that human embryos show it too, and that removing it by deleting p21 leaves detectable developmental abnormalities despite partial compensation by apoptosis.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/24238962/"
+   ],
+   "tags": [
+    "evolution",
+    "senescence",
+    "multihop"
+   ]
+  },
+  {
+   "id": "long-a073",
+   "question": "In 1994 Orr and Sohal reported that overexpressing superoxide dismutase and catalase extended Drosophila lifespan. What did Orr and Sohal themselves conclude about that class of experiment in 2003?",
+   "answer": "That the key experiments fall short of validating the oxidative stress hypothesis. The 1994 Science paper reported transgenic flies carrying three copies each of Cu/Zn superoxide dismutase and catalase living up to a third longer, with a longer mortality rate doubling time, less protein oxidative damage and delayed loss of physical performance, and it was presented as direct support for the free radical hypothesis. In 2003 the same authors argued that although the correlative evidence is considerable, significant lifespan extensions in Cu,Zn-SOD-overexpressing transgenics tend to appear when the control flies have relatively short-lived genetic backgrounds, suggesting that bolstering antioxidant defences only helps in compromised backgrounds.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/8108730/",
+    "https://pubmed.ncbi.nlm.nih.gov/12581785/"
+   ],
+   "tags": [
+    "mechanisms",
+    "free-radical",
+    "multihop",
+    "trap"
+   ]
+  },
+  {
+   "id": "long-a074",
+   "question": "What happened to C. elegans lifespan when all five superoxide dismutase genes were manipulated, and what role was left for sod-4?",
+   "answer": "No major effects on lifespan were seen from manipulating any of the five sod genes, and the sod genes were not required for the longevity of daf-2 insulin/IGF-1 receptor mutants either. The one interesting exception went the wrong way for the damage theory: loss of the extracellular Cu/ZnSOD sod-4 enhanced daf-2 longevity and constitutive diapause, which the authors read as a signalling rather than a detoxifying role for sod-4. Doonan and colleagues concluded that superoxide is not a major determinant of ageing in C. elegans.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/19056880/"
+   ],
+   "tags": [
+    "mechanisms",
+    "free-radical",
+    "c-elegans",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-a075",
+   "question": "Möss som saknar ena kopian av Sod2 har mer oxidativ skada hela livet. Hur mycket kortare lever de?",
+   "answer": "Inte alls kortare. Sod2+/--möss har 50 procent nedsatt MnSOD-aktivitet i alla vävnader livet ut och tydligt mer oxidativ skada, med signifikant förhöjda nivåer av 8-oxo-2-deoxiguanosin i kärn-DNA i alla undersökta vävnader; vid 26 månaders ålder var nivåerna mellan 15 procent högre i hjärtat och över 60 procent högre i levern jämfört med vildtyp, och även mitokondrie-DNA i lever och hjärna var mer skadat. Tumörincidensen fördubblades hos gamla Sod2+/--möss. Ändå var både medellivslängd och maximal livslängd identiska med vildtypens, och åldersmarkörer som gråstarr, immunsvar och glykoxidationsprodukterna karboxymetyllysin och pentosidin i hudkollagen förändrades i samma takt i båda grupperna.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/14679299/"
+   ],
+   "tags": [
+    "mechanisms",
+    "free-radical",
+    "multihop",
+    "trap",
+    "sv"
+   ]
+  },
+  {
+   "id": "long-a076",
+   "question": "How many antioxidant-gene manipulations did the Richardson group test in mice, and how many changed lifespan?",
+   "answer": "Eighteen genetic manipulations, under- or overexpressing a wide variety of genes coding for antioxidant enzymes, accumulated over about eight years. Exactly one of the eighteen affected lifespan: deletion of the Sod1 gene. The authors note that invertebrate and rodent studies show a correlation between increased lifespan and resistance to oxidative stress, and sometimes reduced oxidative damage, but that direct evidence is limited to a few transgenic Drosophila studies; their own survival data call seriously into question the hypothesis that alterations in oxidative damage or stress play a role in mouse longevity.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/19524016/"
+   ],
+   "tags": [
+    "mechanisms",
+    "free-radical",
+    "synthesis"
+   ]
+  },
+  {
+   "id": "long-a077",
+   "question": "Where did catalase have to be targeted to extend mouse lifespan in the 2005 Science paper, and how large was the effect?",
+   "answer": "To mitochondria. Transgenic mice overexpressing human catalase localized to the peroxisome, the nucleus or mitochondria were compared, and both median and maximum lifespan were maximally increased in the mitochondrial catalase (MCAT) animals, by averages of about 5 months and 5.5 months respectively. Cardiac pathology and cataract development were delayed, oxidative damage was reduced, hydrogen peroxide production and hydrogen peroxide-induced aconitase inactivation were attenuated, and the development of mitochondrial deletions was reduced. Schriner and colleagues present this as support for the free radical theory and for mitochondria as the important radical source, which makes it one of the few positive results in an otherwise negative literature.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/15879174/"
+   ],
+   "tags": [
+    "mechanisms",
+    "free-radical",
+    "mitochondria",
+    "multihop"
+   ]
+  },
+  {
+   "id": "long-a078",
+   "question": "Long-lived C. elegans mitochondrial mutants such as nuo-6 and isp-1 were assumed to live long because they make less superoxide. What did direct measurement show?",
+   "answer": "The opposite. Yang and Hekimi adapted flow cytometry to measure ROS directly in isolated mitochondria and found that superoxide generation is elevated in nuo-6 and isp-1 mutants, even though overall ROS levels are not elevated and oxidative stress is low. The elevation was necessary and sufficient for the longevity: it was abolished by the antioxidants NAC and vitamin C, and phenocopied by mild treatment with the prooxidant paraquat. The additivity of paraquat and the absence of an NAC effect on other mutants indicate the pathway is distinct from insulin signalling, dietary restriction, ubiquinone deficiency, the hypoxic response and hormesis. The proposal is that superoxide acts as a protective signal, which reframes the correlation between ROS and the aged phenotype as a response to damage rather than its cause.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/21151885/"
+   ],
+   "tags": [
+    "mechanisms",
+    "free-radical",
+    "c-elegans",
+    "multihop"
+   ]
+  },
+  {
+   "id": "long-a079",
+   "question": "What is mitohormesis, and what was the direct evidence for it in the 2007 glucose-restriction experiment in C. elegans?",
+   "answer": "Mitohormesis is the idea that a mild increase in mitochondrially generated reactive oxygen species triggers an adaptive response that ends up extending life. Schulz and colleagues showed that increased glucose availability shortened C. elegans lifespan while impaired glucose metabolism extended it by inducing mitochondrial respiration. The histone deacetylase Sir2.1 was dispensable, whereas disrupting aak-2, the AMPK homologue, abolished the extension. Reduced glucose promoted ROS formation, induced catalase activity and increased oxidative stress resistance and survival, and treating the worms with various antioxidants and vitamins prevented the lifespan extension, which is the direct evidence that the ROS step is required rather than incidental.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/17908557/"
+   ],
+   "tags": [
+    "mechanisms",
+    "free-radical",
+    "c-elegans",
+    "multihop"
+   ]
+  },
+  {
+   "id": "long-a080",
+   "question": "Är det en bra idé att ta antioxidanttillskott runt sin träning? Vad visade den kliniska studien från 2009?",
+   "answer": "Nej, i den studien slog tillskotten ut träningseffekten. Ristow och medarbetare gav C-vitamin 1000 mg per dag och E-vitamin 400 IE per dag till tidigare otränade och till redan tränade friska unga män under fyra veckors fysisk träning, och mätte insulinkänslighet som glukosinfusionshastighet under euglykemisk hyperinsulinemisk clamp. Insulinkänsligheten och plasmaadiponektin ökade av träningen bara i frånvaro av antioxidanter, i båda grupperna. Detsamma gällde uttrycket av de ROS-känsliga regulatorerna PPAR-gamma, PGC1-alfa och PGC1-beta, och även kroppens egna ROS-försvar, superoxiddismutas 1 och 2 samt glutationperoxidas, inducerades av träning men blockerades av tillskotten. Tolkningen är mitohormesis: den oxidativa stressen från träningen är själva signalen.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/19433800/"
+   ],
+   "tags": [
+    "mechanisms",
+    "free-radical",
+    "multihop",
+    "trap",
+    "sv"
+   ]
+  },
+  {
+   "id": "long-a081",
+   "question": "Resveratrol was reported to activate SIRT1. What technical artefact was identified in those assays, and what happened when native substrates were used?",
+   "answer": "The activation depended on a non-physiological fluorophore attached to the peptide substrate. Kaeberlein and colleagues showed that resveratrol enhances binding and deacetylation of peptide substrates containing Fluor de Lys but has no effect on acetylated peptides lacking the fluorophore, and that in three yeast backgrounds it had no detectable effect on Sir2 activity in vivo as measured by rDNA recombination, telomeric silencing or lifespan. Pacholec and colleagues extended this to SRT1720, SRT2183 and SRT1460: with a p53-derived peptide lacking a fluorophore and with purified full-length p53 and acetyl-CoA synthetase 1, none of the compounds activated SIRT1, though all did with fluorophore-containing peptide; NMR, surface plasmon resonance and isothermal calorimetry showed the compounds interact directly with the fluorophore-containing substrates. SRT1720 also failed to lower plasma glucose or improve mitochondrial capacity in high-fat-fed mice, and all four compounds showed multiple off-target activities.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/15684413/",
+    "https://pubmed.ncbi.nlm.nih.gov/20061378/"
+   ],
+   "tags": [
+    "mechanisms",
+    "sirtuins",
+    "multihop"
+   ]
+  },
+  {
+   "id": "long-a082",
+   "question": "Did resveratrol extend the lifespan of mice?",
+   "answer": "Only under one particular condition, and not the one usually quoted. Baur and colleagues (2006) reported that resveratrol shifted the physiology of middle-aged mice on a high-calorie diet towards that of mice on a standard diet and significantly increased their survival, with increased insulin sensitivity, reduced IGF-1, increased AMPK and PGC-1alpha activity, more mitochondria and better motor function. Pearson and colleagues (2008) then tested standard-diet mice starting at 12 months of age: resveratrol produced a range of benefits, including reduced albuminuria, less inflammation and endothelial apoptosis, greater aortic elasticity, better motor coordination, less cataract formation and preserved bone mineral density, and induced gene expression patterns paralleling dietary restriction, but the mice did not live longer. So the accurate statement is that resveratrol rescued survival on a high-calorie diet and delayed age-related deterioration on a standard one without extending lifespan there.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/17086191/",
+    "https://pubmed.ncbi.nlm.nih.gov/18599363/"
+   ],
+   "tags": [
+    "mechanisms",
+    "sirtuins",
+    "multihop",
+    "trap"
+   ]
+  },
+  {
+   "id": "long-a083",
+   "question": "What happened to the reported lifespan extension from Sir2 overexpression in worms and flies when genetic background was controlled, and what caused the original worm result?",
+   "answer": "It disappeared. Burnett and colleagues found that standardizing genetic background and using appropriate controls abolished the apparent effects in both C. elegans and Drosophila. In the worm, outcrossing a line with high-level sir-2.1 overexpression removed the longevity increase without removing the overexpression; longevity instead co-segregated with a second-site mutation affecting sensory neurons. Outcrossing a low-copy-number line also abolished longevity. In Drosophila, a UAS-GAL4 line ubiquitously overexpressing dSir2 was long-lived against wild-type controls as previously reported, but not against the appropriate transgenic controls, and neither was a new line with stronger overexpression. They also found that dietary restriction extended fly lifespan independently of dSir2. The authors are careful to say this does not rule out a role for sirtuins, but casts doubt on the robustness of the reported effects.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/21938067/"
+   ],
+   "tags": [
+    "mechanisms",
+    "sirtuins",
+    "multihop"
+   ]
+  },
+  {
+   "id": "long-a084",
+   "question": "Which single downstream component of the mTOR pathway was deleted in the 2009 Science paper that extended mouse lifespan, and what did the resulting gene expression resemble?",
+   "answer": "Ribosomal protein S6 kinase 1, S6K1, a component of the nutrient-responsive mTOR pathway. Deleting it increased lifespan and conferred resistance to age-related pathologies including bone, immune and motor dysfunction and loss of insulin sensitivity. The gene expression patterns induced by S6K1 deletion resembled those seen under caloric restriction or with pharmacological activation of AMP-activated protein kinase, which is a conserved regulator of the metabolic response to caloric restriction. Selman and colleagues suggested therapeutic manipulation of S6K1 and AMPK as a way of mimicking caloric restriction.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/19797661/"
+   ],
+   "tags": [
+    "mechanisms",
+    "mtor",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-a085",
+   "question": "Rapamycin förlänger livet men försämrar samtidigt glukostoleransen, vilket verkar självmotsägande. Hur löstes den paradoxen 2012?",
+   "answer": "Genom att skilja på mTORC1 och mTORC2. Lamming och medarbetare visade att rapamycin in vivo även slår ut det andra mTOR-komplexet, mTORC2, och att mTORC2 krävs för att insulin ska kunna hämma glukosnybildningen i levern; det är alltså mTORC2-störningen som ger insulinresistensen, inte den livsförlängande mekanismen. Att de två går att skilja åt visades genetiskt: honmöss som var heterozygota för både mTOR och mLST8 hade sänkt mTORC1-signalering och förlängd livslängd men helt normal glukostolerans och insulinkänslighet. Minskad mTORC1-signalering räcker alltså för livsförlängning oberoende av förändrad glukosomsättning.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/22461615/"
+   ],
+   "tags": [
+    "mechanisms",
+    "mtor",
+    "multihop",
+    "sv"
+   ]
+  },
+  {
+   "id": "long-a086",
+   "question": "Which autophagy gene did the 2003 Science paper show is required for insulin-pathway lifespan extension in C. elegans, and which other autophagy orthologues were involved in dauer formation?",
+   "answer": "bec-1, the C. elegans orthologue of the yeast and mammalian autophagy gene APG6/VPS30/beclin 1, is essential both for normal dauer morphogenesis and for the lifespan extension of a loss-of-function insulin-like signalling mutant. Dauer formation itself is associated with increased autophagy and additionally requires the C. elegans orthologues of the yeast autophagy genes APG1, APG7, APG8 and AUT10. Meléndez and colleagues concluded that autophagy is a cellular pathway essential for both dauer development and life-span extension.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/12958363/"
+   ],
+   "tags": [
+    "mechanisms",
+    "autophagy",
+    "c-elegans",
+    "multihop"
+   ]
+  },
+  {
+   "id": "long-a087",
+   "question": "By how much did ubiquitous Atg5 overexpression extend mouse median lifespan, and what other phenotypes came with it?",
+   "answer": "By 17.2 percent. Atg5 is a protein essential for autophagosome formation, and moderate ubiquitous overexpression enhanced autophagy in the mice. The transgenic animals showed anti-ageing phenotypes including leanness, increased insulin sensitivity and improved motor function. Mouse embryonic fibroblasts from the transgenics were more tolerant of oxidative damage and of cell death induced by oxidative stress, and that tolerance was reversed by an autophagy inhibitor, which is the evidence that the effect runs through autophagic activity.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/23939249/"
+   ],
+   "tags": [
+    "mechanisms",
+    "autophagy",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-a088",
+   "question": "How did the 2018 Nature paper raise basal autophagy in mice without deleting a gene, and what did the same mutation do to klotho-deficient animals?",
+   "answer": "By a knock-in point mutation: Phe121Ala in beclin 1 (Becn1 F121A/F121A), which decreases beclin 1 binding to its negative regulator BCL2. The interaction was disrupted in several tissues and basal autophagic flux was higher. Both male and female knock-in mice lived significantly longer than wild-type littermates, with less age-related renal and cardiac pathology and less spontaneous tumorigenesis. Mice deficient in the anti-ageing protein klotho showed increased beclin 1-BCL2 interaction and decreased autophagy, and their phenotypes, including premature lethality and infertility, were rescued by the beclin 1 F121A mutation.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/29849149/"
+   ],
+   "tags": [
+    "mechanisms",
+    "autophagy",
+    "multihop"
+   ]
+  },
+  {
+   "id": "long-a089",
+   "question": "What did the XPF-ERCC1 progeroid patient and mouse reveal about how unrepaired DNA damage connects to endocrine control of lifespan?",
+   "answer": "That genotoxic stress suppresses the somatotroph axis. A patient with a severe XPF mutation showed profound crosslink sensitivity and dramatic progeroid symptoms; XPF-ERCC1 endonuclease is required for repair of helix-distorting lesions and interstrand crosslinks. The liver transcriptome of the mouse model correlated highly significantly with that of old mice, and expression data indicated increased cell death and antioxidant defences, a shift towards anabolism, and reduced growth hormone/IGF-1 signalling, a known regulator of lifespan. Wild-type mice showed similar changes under chronic genotoxic stress, under caloric restriction and with ageing. Niedernhofer and colleagues concluded that unrepaired cytotoxic DNA damage induces a conserved metabolic response that reallocates resources from growth to somatic preservation.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/17183314/"
+   ],
+   "tags": [
+    "mechanisms",
+    "dna-repair",
+    "multihop"
+   ]
+  },
+  {
+   "id": "long-a090",
+   "question": "Ercc1-brist ger möss ett kraftigt förkortat liv. Vad hände när de sattes på 30 procent kostrestriktion, och vad hände med de långa generna?",
+   "answer": "Effekten var dramatisk: 30 procent kostrestriktion tredubblade både medianåterstående och maximal återstående livslängd hos Ercc1-defekta möss, som annars bara blir fyra till sex månader gamla, och bromsade en lång rad accelererade åldrandedrag. Mössen behöll 50 procent fler neuron och full motorisk funktion långt bortom kontrollernas livslängd, och Xpg-defekta möss, en modell för Cockaynes syndrom, svarade likadant. Det som hände med generna var att levern hos fritt matade Ercc1-möss uppvisade en selektiv utsläckning av uttrycket av just långa gener, ett fenomen som forskarna också såg i flera normalt åldrande vävnader och som stämmer med ansamling av slumpmässiga transkriptionsblockerande skador, eftersom en lång gen är ett större mål. Kostrestriktion förhindrade i stort sett det tapp i transkription och minskade antalet gamma-H2AX-fokus.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/27556946/"
+   ],
+   "tags": [
+    "mechanisms",
+    "dna-repair",
+    "multihop",
+    "sv"
+   ]
+  },
+  {
+   "id": "long-b001",
+   "question": "In the 2009 Nature report from the NIA Interventions Testing Program, rapamycin was first fed to genetically heterogeneous mice starting at 600 days of age. Based on age at 90% mortality, how much did it extend life in each sex?",
+   "answer": "An increase of 14% for females and 9% for males, reproduced at three independent test sites. A separate cohort started at 270 days of age also showed increased survival in both sexes at an interim analysis near the median survival point. Disease patterns in rapamycin-treated mice did not differ from controls, so the authors could not say whether the gain came from postponing cancer death, from retarding ageing mechanisms, or both.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/19587680/"
+   ],
+   "tags": [
+    "interventions",
+    "rapamycin",
+    "itp",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-b002",
+   "question": "When the Interventions Testing Program retested rapamycin at a threefold higher dose, what median lifespan increases did it report, and what did the authors offer as an explanation for the sex difference?",
+   "answer": "Median lifespan rose 23% in males and 26% in females, and maximal longevity increased in both sexes. Rapamycin increased lifespan more in females than in males at every dose evaluated, which the authors suggest may reflect sexual dimorphism in blood levels of the drug. The same paper reports that several endocrine and metabolic changes seen under diet restriction do not occur under rapamycin, and that hepatic xenobiotic-metabolism gene expression differs between the two, so rapamycin is metabolically distinct from dietary restriction.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/24341993/"
+   ],
+   "tags": [
+    "interventions",
+    "rapamycin",
+    "itp",
+    "multihop"
+   ]
+  },
+  {
+   "id": "long-b003",
+   "question": "Of the four agents in the Interventions Testing Program's 2014 Aging Cell report (acarbose, 17-alpha-estradiol, nordihydroguaiaretic acid and methylene blue), which raised maximum lifespan in both sexes, and by how much?",
+   "answer": "Acarbose: maximum lifespan, measured as the 90th percentile, rose 11% in males (P < 0.001) and 9% in females (P = 0.001). Its median-lifespan effect was strongly male-biased (22% in males, P < 0.0001, versus only 5% in females, P = 0.01), and that dimorphism was not explained by differences in body weight. NDGA raised male median lifespan 8-10% across three doses with no female benefit, 17-alpha-estradiol raised male median lifespan 12% with no significant maximum-lifespan effect, and methylene blue changed neither sex's median but produced a small 6% increase in female maximum lifespan.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/24245565/"
+   ],
+   "tags": [
+    "interventions",
+    "itp",
+    "acarbose",
+    "multihop"
+   ]
+  },
+  {
+   "id": "long-b004",
+   "question": "17-alpha-estradiol is an estrogen, so it is usually assumed to be a female-directed intervention. What did the Interventions Testing Program actually find?",
+   "answer": "The opposite. 17-alpha-estradiol increased MALE median lifespan by 12% (P = 0.002) and did not alter female lifespan at all. The benefit was also much stronger at one of the three test sites than at the other two, and was not explained by effects on body weight. This is why it is described as a non-feminizing estrogen: the lifespan effect in the ITP is male-specific, and quoting it as an anti-ageing effect in women misreports the primary result.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/24245565/"
+   ],
+   "tags": [
+    "interventions",
+    "itp",
+    "trap",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-b005",
+   "question": "Jag har läst att nikotinamidribosid (NR) skulle förlänga livet. Vad hände när ITP faktiskt testade det på möss?",
+   "answer": "Ingenting. NR förlängde inte livslängden alls, varken hos hanar eller honor, vid den dos som testades, trots att en del data hade förutspått en effekt. Detsamma gällde candesartancilexetil, geranylgeranylaceton och MIF098 i samma studie. Det som däremot fungerade var 17-alfa-östradiol, som gav 19% längre medianlivslängd hos hanar när det gavs från 16 månaders ålder (p < 0.0001) och 11% från 20 månaders ålder (p = 0.007); 90:e percentilen ökade med 7% (p = 0.004) respektive 5%, där det senare inte var signifikant (p = 0.17). Hanarnas kroppsvikt sjönk omkring 20% på 17-alfa-östradioldieten.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/33788371/"
+   ],
+   "tags": [
+    "interventions",
+    "nad",
+    "itp",
+    "sv",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-b006",
+   "question": "Has the NIA Interventions Testing Program shown that metformin extends mouse lifespan?",
+   "answer": "Not by the analysis the ITP normally uses. Metformin was not among the 12 compounds the ITP identified as life-extending by the log-rank test. A 2024 reanalysis of all ITP data from 2004-2022 using the Gehan test, which is more sensitive to mortality differences earlier in the life course and does not assume a uniformly reduced hazard, did find a significant survival increase for metformin, but in males only. The defensible claim is therefore a male-only signal that depends on which survival test is applied, not that metformin extends lifespan.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/38630424/"
+   ],
+   "tags": [
+    "interventions",
+    "metformin",
+    "itp",
+    "trap",
+    "multihop"
+   ]
+  },
+  {
+   "id": "long-b007",
+   "question": "The 2024 Gehan-test reanalysis of the Interventions Testing Program found five compounds the log-rank test had missed. Name them and say which sex each helped.",
+   "answer": "Metformin, enalapril and 17-DMAG (17-dimethylaminoethylamino-17-demethoxygeldanamycin hydrochloride) were effective in males only; caffeic acid phenethyl ester (CAPE) and green tea extract were effective in females only. In addition, 1,3-butanediol, which by log-rank had increased survival in females but not males, was significant in males by the Gehan test. The authors' conclusion is that tests sensitive to non-uniform drug efficacy across the lifespan should be part of the standard ITP protocol.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/38630424/"
+   ],
+   "tags": [
+    "interventions",
+    "itp",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-b008",
+   "question": "Caloric restriction is often said to be proven to extend lifespan in monkeys. What did the National Institute on Aging rhesus study report in 2012?",
+   "answer": "That its CR regimen, started in both young and older rhesus monkeys, did NOT improve survival outcomes. The NIA authors explicitly contrasted this with the Wisconsin study, which had reported improved survival on 30% CR begun in adults aged 7-14 years. Their reading was that health effects, morbidity and mortality can separate, and that study design, husbandry and diet composition may strongly affect whether CR prolongs life in a long-lived primate.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/22932268/"
+   ],
+   "tags": [
+    "interventions",
+    "cr",
+    "primates",
+    "trap",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-b009",
+   "question": "How did the Wisconsin group explain the discrepancy with the NIA rhesus caloric-restriction study, and what did the 2017 joint comparison of both studies conclude?",
+   "answer": "In 2014 the Wisconsin group reported that roughly 30% restriction from young adulthood significantly improved both age-related and all-cause survival, and argued from body weights of the control animals in both studies, compared against a multi-centre relational database of primate ageing, that the NIA control monkeys were effectively already undergoing caloric restriction. The 2017 direct comparison of longitudinal data from the two studies (survival, body weight, food intake, fasting glucose, age-related morbidity) concluded that the health benefits of CR are conserved in monkeys, and attributed the differing survival outcomes to species specificity in the optimal age of onset and in diet composition.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/24691430/",
+    "https://pubmed.ncbi.nlm.nih.gov/28094793/"
+   ],
+   "tags": [
+    "interventions",
+    "cr",
+    "primates",
+    "multihop"
+   ]
+  },
+  {
+   "id": "long-b010",
+   "question": "CALERIE prescribed 25% caloric restriction for two years in healthy non-obese adults. What restriction did participants actually achieve, and how much weight did they lose?",
+   "answer": "The CR group achieved a mean reduction in calorie intake of 11.9% (SE 0.7), from 2467 to 2170 kcal per day, against 0.8% in the ad libitum control group, so under half the prescribed restriction. Sustained mean weight reduction was 7.5 kg (SE 0.4) versus a 0.1 kg gain in controls, and 71% of the weight change was fat mass. 218 participants aged 21-50 with BMI 22.0-27.9 were randomised 2:1 across three US centres.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/31303390/"
+   ],
+   "tags": [
+    "interventions",
+    "cr",
+    "calerie",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-b011",
+   "question": "What safety signal came out of the two-year CALERIE caloric-restriction trial in non-obese adults?",
+   "answer": "Bone loss. At both 12 and 24 months, bone mineral density at the lumbar spine, total hip and femoral neck was significantly lower in the CR group than in the ad libitum group. Three participants were withdrawn for safety concerns, there were no deaths and one serious adverse event in the CR group, and within the CR group nervous-system (p = 0.02), musculoskeletal (p = 0.02) and reproductive-system (p = 0.002) disorders were significantly more frequent among normal-weight than among overweight participants. The overall verdict was that CR at the level achieved was safe and well tolerated, with close monitoring for excessive bone loss and anaemia.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/26992237/"
+   ],
+   "tags": [
+    "interventions",
+    "cr",
+    "calerie",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-b012",
+   "question": "Vad var egentligen huvudmålet i den första senolytiska studien på människor, den med dasatinib och quercetin vid idiopatisk lungfibros?",
+   "answer": "Genomförbarhet, inte effekt. De primära utfallsmåtten var kvarhållandegrad och andelen genomförda kliniska undersökningar hos 14 patienter med stabil idiopatisk lungfibros, som fick dasatinib 100 mg/dag och quercetin 1250 mg/dag tre dagar i veckan under tre veckor. Kvarhållandet var 100% utan att någon avbröt, och 13 av 14 fullföljde alla planerade undersökningar. Fysisk funktion förbättrades signifikant och kliniskt meningsfullt (sex minuters gångsträcka, gånghastighet på fyra meter, uppresningstest, p < 0.05), medan lungfunktion, klinisk kemi, skörhetsindex och självrapporterad hälsa var oförändrade. Effekterna på SASP-faktorer i blodet var inte entydiga.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/30616998/"
+   ],
+   "tags": [
+    "interventions",
+    "senolytics",
+    "sv",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-b013",
+   "question": "In the diabetic-kidney-disease senolytics pilot, how long were dasatinib and quercetin given, when were tissues sampled, and what does the phrase hit-and-run mean in that paper?",
+   "answer": "Three days of oral dasatinib 100 mg plus quercetin 1000 mg in nine subjects with diabetic kidney disease; adipose tissue, skin biopsies and blood were collected before treatment and 11 days after it finished. Adipose senescent-cell burden fell within those 11 days, with fewer p16INK4A- and p21CIP1-expressing cells, fewer cells with senescence-associated beta-galactosidase activity, fewer adipose macrophages and crown-like structures, and lower circulating SASP factors including IL-1alpha, IL-6, MMP-9 and MMP-12. Hit-and-run refers to the fact that both drugs have elimination half-lives under 11 hours, so the senescent-cell reduction persisted long after the drugs had cleared.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/31542391/"
+   ],
+   "tags": [
+    "interventions",
+    "senolytics",
+    "multihop"
+   ]
+  },
+  {
+   "id": "long-b014",
+   "question": "How was fisetin selected as a senolytic, and what did late-life treatment do in normal mice?",
+   "answer": "It was the most potent of a panel of 10 flavonoid polyphenols screened for senolytic activity on senescent murine and human fibroblasts driven by oxidative and genotoxic stress respectively. Acute or intermittent fisetin given to progeroid and to old wild-type mice reduced senescence markers in multiple tissues, consistent with a hit-and-run mechanism, and reduced senescence in only a subset of cells in murine and human adipose tissue, showing cell-type specificity. Given to wild-type mice late in life it restored tissue homeostasis, reduced age-related pathology, and extended both median and maximum lifespan.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/30279143/"
+   ],
+   "tags": [
+    "interventions",
+    "senolytics",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-b015",
+   "question": "Human trials show that nicotinamide riboside raises NAD+. Does raising NAD+ mean the supplement works?",
+   "answer": "No, and the two questions have different answers in the literature. A 26-week randomised, double-blind, placebo-controlled crossover trial in healthy middle-aged and older adults established that chronic NR is well tolerated and effectively stimulates NAD+ metabolism, with an early hint at blood pressure and arterial stiffness worth testing further. But the 2023 critical review of all 25 published human NR supplementation studies concluded that oral NR has collectively displayed few clinically relevant effects, and named an unfortunate tendency in the literature to exaggerate the importance and robustness of the reported effects, while allowing a possible role in reducing inflammatory states.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/29599478/",
+    "https://pubmed.ncbi.nlm.nih.gov/37478182/"
+   ],
+   "tags": [
+    "interventions",
+    "nad",
+    "trap",
+    "synthesis"
+   ]
+  },
+  {
+   "id": "long-b016",
+   "question": "Which blood-based biomarkers did the TAME Biomarkers Workgroup shortlist for geroscience-guided trials, and what did the shortlisting exercise reveal about the state of the field?",
+   "answer": "The shortlist is IL-6, TNF-receptor I or II, CRP, GDF15, insulin, IGF1, cystatin C, NT-proBNP and haemoglobin A1c. It was narrowed from 258 initial candidates by four selection criteria: measurement reliability and feasibility, relevance to ageing, robust and consistent prediction of all-cause mortality and of clinical and functional outcomes, and responsiveness to intervention. The exercise also revealed the scarcity of well-vetted biomarkers for human studies that reflect underlying biological hallmarks of ageing, and the need to use planned trials themselves for biomarker discovery and validation.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/30151729/"
+   ],
+   "tags": [
+    "interventions",
+    "metformin",
+    "biomarkers",
+    "multihop"
+   ]
+  },
+  {
+   "id": "long-b017",
+   "question": "Which experiment in the 2016 spermidine paper shows the cardioprotection is autophagy-dependent?",
+   "answer": "Spermidine feeding failed to provide cardioprotection in mice lacking the autophagy-related protein Atg5 specifically in cardiomyocytes. In normal mice oral spermidine extended lifespan, reduced cardiac hypertrophy and preserved diastolic function in old animals, enhanced cardiac autophagy, mitophagy and mitochondrial respiration, improved the mechano-elastical properties of cardiomyocytes with increased titin phosphorylation, and suppressed subclinical inflammation. In Dahl salt-sensitive rats on a high-salt diet it lowered blood pressure and delayed progression to heart failure, and in humans high dietary spermidine intake correlated with lower blood pressure and less cardiovascular disease.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/27841876/"
+   ],
+   "tags": [
+    "interventions",
+    "spermidine",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-b018",
+   "question": "Is dietary restriction a universal life-extending intervention in mice?",
+   "answer": "No. When 40% dietary restriction was applied to 41 recombinant inbred mouse strains, DR SHORTENED mean lifespan in more strains than it lengthened it. Mean strain-specific lifespan varied two- to threefold under ad libitum feeding but six- to tenfold under DR. The strains that did badly did not have low food intake or poor reproductive potential, so neither predicted the outcome, and strain-specific lifespans under DR and under ad libitum feeding were uncorrelated, implying the genetic determinants of lifespan differ between the two conditions. Results from a single mouse strain therefore do not generalise.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/19878144/"
+   ],
+   "tags": [
+    "interventions",
+    "cr",
+    "trap",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-b019",
+   "question": "Om jag tränar kondition och samtidigt tar metformin, förstärker de varandra?",
+   "answer": "Nej, i den studie som testade det motverkade metformin träningen. I en dubbelblind randomisering fick äldre vuxna (62 plus/minus 1 år) placebo (n = 26) eller metformin (n = 27) under tolv veckors konditionsträning. Oberoende av behandling minskade fettmassa, HbA1c, fasteinsulin och glukosvariabilitet. Men metformin dämpade ökningen av helkroppsinsulinkänslighet och av VO2 max efter träningsperioden, och upphävde träningens ökning av mitokondriell andning i skelettmuskel. I metformingruppen fanns ingen sammantagen förändring av insulinkänsligheten eftersom vissa förbättrades och andra försämrades, och förändringen följde förändringen i mitokondriell andning. Proteinsyntesen i mitokondrierna skilde sig inte mellan grupperna.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/30548390/"
+   ],
+   "tags": [
+    "interventions",
+    "metformin",
+    "sv",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-b020",
+   "question": "What did the mTOR inhibitor RAD001 do to influenza vaccination response in elderly volunteers?",
+   "answer": "It enhanced the response to influenza vaccine by about 20% at doses that were relatively well tolerated, and reduced the percentage of CD4 and CD8 T lymphocytes expressing the PD-1 receptor, which inhibits T-cell signalling and is more highly expressed with age. The authors framed this as a first indication that mTOR inhibition may act on immunosenescence in humans, not as a demonstration that it affects ageing itself.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/25540326/"
+   ],
+   "tags": [
+    "interventions",
+    "rapamycin",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-b021",
+   "question": "The Interventions Testing Program states that it publishes all results, negative or positive. Which five popular supplement-style agents did its 2013 report find to have no lifespan effect, and what was the single hint in the secondary analysis?",
+   "answer": "Green tea extract, curcumin, oxaloacetic acid, medium-chain triglyceride oil and resveratrol, each administered from 4 months of age in genetically heterogeneous mice at three parallel test sites. None had a statistically significant effect on the lifespan of male or female mice by log-rank at the concentrations tested. The only hint was in a secondary analysis, suggesting green tea extract might diminish the risk of midlife deaths in females only. This is the ITP's declared publish-everything policy in action, and it is why a positive result from an uncontrolled or single-site supplement study should be checked against the ITP record before it is repeated.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/22451473/"
+   ],
+   "tags": [
+    "interventions",
+    "itp",
+    "trap",
+    "multihop"
+   ]
+  },
+  {
+   "id": "long-b022",
+   "question": "What did 8% dietary glycine do in the Interventions Testing Program, and what else was tested in the same cohort?",
+   "answer": "Glycine produced a small but statistically significant lifespan increase of 4-6% in both males (p = 0.002) and females (p < 0.001), including an increase in maximum lifespan, and pooled across sex it increased lifespan at all three sites. Glycine-supplemented females were lighter than controls with no weight effect in males, end-of-life necropsy suggested treated mice were less likely to die of pulmonary adenocarcinoma (p = 0.03), and none of 40 incidental pathologies was significantly increased. In parallel analyses of the same cohort there was no benefit from TM5441 (a PAI-1 inhibitor), inulin, or aspirin at either of two doses.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/30916479/"
+   ],
+   "tags": [
+    "interventions",
+    "itp",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-b023",
+   "question": "What did calcium alpha-ketoglutarate do in ageing C57BL/6 mice, and what mediator did the authors propose?",
+   "answer": "Delivered as the calcium salt CaAKG it produced a longer and healthier life, and because it reduced frailty at the same time as it extended longevity the authors describe the result as a compression of morbidity in the mouse. The proposed mechanism is induction of IL-10 by dietary AKG suppressing chronic inflammation; levels of systemic inflammatory cytokines decreased. The claim rests on a series of longitudinal, clinically relevant measurements taken to relate healthspan extension to lifespan extension in the same animals.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/32877690/"
+   ],
+   "tags": [
+    "interventions",
+    "healthspan",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-b024",
+   "question": "What did the first randomised rapamycin trial in companion dogs measure, and what did it find?",
+   "answer": "24 middle-aged healthy dogs received either placebo or a non-immunosuppressive dose of rapamycin for 10 weeks, with clinical and haematological exams before, during and after, and echocardiography before and after. There were no clinical side effects relative to placebo. Echocardiography suggested improvement in both diastolic and systolic age-related measures of heart function, specifically E/A ratio, fractional shortening and ejection fraction. Haematological values stayed within normal ranges, although mean corpuscular volume decreased in treated dogs. The stated purpose was to justify a larger, longer trial rather than to demonstrate an effect on lifespan.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/28374166/"
+   ],
+   "tags": [
+    "interventions",
+    "rapamycin",
+    "translation",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-b025",
+   "question": "Is alternate-day fasting better than ordinary daily calorie restriction?",
+   "answer": "Not in the one-year randomised comparison in metabolically healthy obese adults. Dropout was highest in the alternate-day fasting group (13 of 34, 38%) versus daily calorie restriction (10 of 35, 29%) and no-intervention control (8 of 31, 26%). Mean weight loss was essentially identical at 6 months (-6.8% in both arms) and at 12 months (-6.0% versus -5.3%). Participants in the fasting arm ate more than prescribed on fast days and less than prescribed on feast days, while the calorie-restriction arm generally met its targets. There were no between-arm differences in blood pressure, heart rate, triglycerides, fasting glucose, fasting insulin, insulin resistance, CRP or homocysteine, and LDL cholesterol was significantly HIGHER in the fasting arm by month 12.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/28459931/"
+   ],
+   "tags": [
+    "interventions",
+    "fasting",
+    "trap",
+    "multihop"
+   ]
+  },
+  {
+   "id": "long-b026",
+   "question": "Funkar 16:8-metoden för viktnedgång jämfört med att bara äta som vanligt?",
+   "answer": "Knappt. I TREAT-studien randomiserades 116 personer med övervikt eller fetma i tolv veckor till antingen tre strukturerade måltider per dag eller tidsbegränsat ätande mellan klockan 12 och 20. Tidsbegränsat ätande gav en signifikant viktnedgång inom gruppen (-0.94 kg; 95% KI -1.68 till -0.20), men skillnaden MELLAN grupperna var inte signifikant (-0.26 kg; 95% KI -1.30 till 0.78; p = 0.63). I den undergrupp på 50 personer som undersöktes på plats fanns ingen skillnad i fettmassa, fasteinsulin, fasteglukos, HbA1c eller energiförbrukning, men däremot en signifikant skillnad mellan grupperna i appendikulärt muskelmasseindex (-0.16 kg/m2; 95% KI -0.27 till -0.05; p = .005), där den tidsbegränsade gruppen låg lägre. Slutsatsen i studien är att tidsbegränsat ätande utan andra åtgärder inte är effektivare för viktnedgång än att äta under hela dagen.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/32986097/"
+   ],
+   "tags": [
+    "interventions",
+    "fasting",
+    "sv",
+    "multihop"
+   ]
+  },
+  {
+   "id": "long-b027",
+   "question": "How much can a SINGLE period of transient OSKM expression change in a naturally aged mouse, and in which tissues was it measured?",
+   "answer": "One transient period of OSKM expression was sufficient to reverse the DNA methylation changes that occur with ageing in pancreas, liver, spleen and blood, to revert transcriptional changes, especially in biological processes known to change with age, and to restore some serum metabolites and biomarkers altered by ageing to youthful levels. So a single cycle drives epigenetic, transcriptomic and metabolomic changes toward a younger configuration in multiple tissues and in serum at once. The study was motivated by how little was known about the mechanism behind partial, reversible reprogramming, which reverses ageing markers without changing cell identity, improves tissue-injury repair in aged mice and extends longevity in progeroid mice.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/35235716/"
+   ],
+   "tags": [
+    "reprogramming",
+    "multihop"
+   ]
+  },
+  {
+   "id": "long-b028",
+   "question": "What is maturation phase transient reprogramming, and how much rejuvenation did it produce in human fibroblasts?",
+   "answer": "MPTR expresses the reprogramming factors only until the maturation phase of somatic cell reprogramming, the point at which the epigenome is already rejuvenated, and then withdraws them; the premise is that full reprogramming is not required to reverse the ageing of somatic cells. Applied to dermal fibroblasts from middle-aged donors, the cells temporarily lost and then reacquired their fibroblast identity, possibly through epigenetic memory at enhancers or persistent expression of some fibroblast genes. The transcriptome was rejuvenated by around 30 years as measured by a new transcriptome clock, and the epigenome to a similar extent including H3K9me3 levels and the DNA methylation clock, a larger magnitude than earlier transient protocols. The cells also produced youthful levels of collagen proteins and showed partial functional rejuvenation of migration speed, and the authors report that optimal time windows differ for rejuvenating the transcriptome and the epigenome.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/35390271/"
+   ],
+   "tags": [
+    "reprogramming",
+    "multihop"
+   ]
+  },
+  {
+   "id": "long-b029",
+   "question": "Hur länge måste partiell omprogrammering pågå för att ge effekt hos vanliga möss som åldras normalt?",
+   "answer": "Behandlingens längd avgjorde effektens storlek, och långa regimer var effektivare än korta. Studien prövade flera långtidsprotokoll med olika starttidpunkter under fysiologiskt åldrande hos vildtypsmöss, till skillnad från de korta cykliska pulser som tidigare bara prövats i en modell för för tidigt åldrande. Föryngrande effekter sågs i olika vävnader, bland annat njure och hud, och på hela organismnivån. De var kopplade till en återgång i den epigenetiska klockan och till förändringar i metabolism och transkriptom, däribland minskat uttryck av gener för inflammation, senescens och stressvar. Författarnas slutsats är att protokoll för partiell omprogrammering går att utforma så att de är både säkra och verksamma.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/37118377/"
+   ],
+   "tags": [
+    "reprogramming",
+    "sv",
+    "multihop"
+   ]
+  },
+  {
+   "id": "long-b030",
+   "question": "What is the ICE system, what did it do to mice, and what reversed it?",
+   "answer": "ICE stands for inducible changes to the epigenome. It was built to test whether epigenetic information loss is itself a cause of ageing rather than a consequence, taking as its starting point the yeast finding that epigenetic information is lost over time because chromatin-modifying proteins relocalise to DNA breaks and cells lose their identity. In mice, the act of FAITHFUL DNA repair, so not mutation but the repair process itself, advanced ageing at physiological, cognitive and molecular levels, including erosion of the epigenetic landscape, cellular exdifferentiation, senescence, and advancement of the DNA methylation clock. Those changes could be reversed by OSK-mediated rejuvenation, which is the paper's evidence for an information theory of ageing in which epigenetic information loss is a REVERSIBLE cause.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/36638792/"
+   ],
+   "tags": [
+    "reprogramming",
+    "multihop"
+   ]
+  },
+  {
+   "id": "long-b031",
+   "question": "Is GDF11 a circulating rejuvenating factor that declines with age?",
+   "answer": "That was the 2014 Science claim, and it did not survive replication. The 2014 report said systemic GDF11 normally declines with age and that restoring it by heterochronic parabiosis or recombinant protein reversed functional impairment in aged muscle stem cells and improved strength and endurance. The 2015 Cell Metabolism follow-up showed those claims were not reproducible and that the reagents previously used to detect GDF11 were not GDF11-specific. With a purpose-built GDF11-specific immunoassay there was a trend toward INCREASED GDF11 in aged rat and human sera, GDF11 mRNA rose in rat muscle with age, and recombinant GDF11 significantly inhibited muscle regeneration and reduced satellite-cell expansion in mice, signalling through SMAD2/3 like myostatin. The proposal that followed was to BLOCK GDF11 for sarcopenia, not supply it.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/26001423/",
+    "https://pubmed.ncbi.nlm.nih.gov/24797481/"
+   ],
+   "tags": [
+    "reprogramming",
+    "parabiosis",
+    "trap",
+    "synthesis"
+   ]
+  },
+  {
+   "id": "long-b032",
+   "question": "Which chemokine did Villeda and colleagues identify as an ageing systemic factor, and what happened when it was raised in young mice?",
+   "answer": "CCL11, also known as eotaxin. Its plasma level correlated with reduced neurogenesis in heterochronic parabionts and in aged mice, and it is elevated in the plasma and cerebrospinal fluid of healthy ageing humans. Increasing peripheral CCL11 in young mice decreased adult neurogenesis and impaired learning and memory. The same study showed that exposing a young mouse to an old systemic environment, or to plasma from old mice, decreased synaptic plasticity and impaired contextual fear conditioning and spatial learning and memory, so blood-borne factors act in both directions depending on age.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/21886162/"
+   ],
+   "tags": [
+    "reprogramming",
+    "parabiosis",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-b033",
+   "question": "How was beta-2-microglobulin shown to be a pro-ageing blood factor, and through which pathway does it appear to act?",
+   "answer": "B2M, a component of MHC class I molecules, is elevated in the blood of ageing humans and mice, and in the hippocampus of aged mice and of young heterochronic parabionts. Exogenous B2M injected systemically or locally into the hippocampus impaired hippocampal-dependent cognitive function and neurogenesis in young mice. The negative effects of B2M and of heterochronic parabiosis were partly mitigated in young mice deficient for Tap1, which have reduced cell-surface MHC I, implicating that pathway. Conversely, absence of endogenous B2M abrogated age-related cognitive decline and enhanced neurogenesis in aged mice.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/26147761/"
+   ],
+   "tags": [
+    "reprogramming",
+    "parabiosis",
+    "multihop"
+   ]
+  },
+  {
+   "id": "long-b034",
+   "question": "Finns det något i navelsträngsblod som kan pigga upp minnet hos gamla möss?",
+   "answer": "Ja, och proteinet heter TIMP2 (tissue inhibitor of metalloproteinases 2). Behandling med humant navelsträngsplasma återupplivade hippocampus och förbättrade kognitionen hos gamla möss. TIMP2 är anrikat i humant navelsträngsplasma, i plasma från unga möss och i unga mössers hippocampus, det dyker upp i hjärnan efter systemisk tillförsel och ökar synaptisk plasticitet och hippocampusberoende kognition hos gamla möss. Tömningsförsök visade att TIMP2 är nödvändigt för navelsträngsplasmans effekt. Dessutom behövs kroppens egen TIMP2 för rumsminne hos unga möss, och antikroppar mot TIMP2 blockerar långtidspotentiering i hjärnsnitt, vilket pekar på en tidigare okänd roll för TIMP2 i normal hippocampusfunktion.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/28424512/"
+   ],
+   "tags": [
+    "reprogramming",
+    "parabiosis",
+    "sv",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-b035",
+   "question": "What does the neutral blood exchange experiment show about whether young blood is necessary for systemic rejuvenation?",
+   "answer": "That it is not necessary. Replacing half the plasma of old mice with saline containing 5% albumin, with no young blood involved at all, met or exceeded the effects of heterochronic blood sharing: enhanced muscle repair, reduced liver adiposity and fibrosis, and increased hippocampal neurogenesis. Comparative proteomics of serum after neutral blood exchange and after human therapeutic plasma exchange showed a molecular re-setting of the systemic signalling milieu, with some proteins ELEVATED rather than merely diluted. Added albumin was not the determinant, since albumin neither falls with age nor rises with the procedure. The proposed model is dilution of age-elevated autoregulatory proteins with long-lasting downstream effects on gene expression.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/32474458/"
+   ],
+   "tags": [
+    "reprogramming",
+    "parabiosis",
+    "multihop"
+   ]
+  },
+  {
+   "id": "long-b036",
+   "question": "In the follow-up study on the ageing brain, how did neutral blood exchange compare with the senolytic ABT-263?",
+   "answer": "Neutral blood exchange was the more robust intervention. After a single exchange, old mice performed much better on novel object and novel texture (whisker discrimination) tests, with reduced neuroinflammation seen as fewer activated CD68+ microglia. Peripherally acting ABT-263 had limited effects on neuroinflammation and did not enhance hippocampal neurogenesis, though both interventions reduced senescence-associated beta-galactosidase signal in the old brain, which the authors take as evidence that peripheral senescence propagates to the brain. Because the exchange outperformed the senolytic, they argue rejuvenation is not simply a consequence of reducing senescence or of diluting a peripheral SASP.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/33191466/"
+   ],
+   "tags": [
+    "reprogramming",
+    "senolytics",
+    "multihop"
+   ]
+  },
+  {
+   "id": "long-b037",
+   "question": "In the phase II trial of allogeneic mesenchymal stem cells for aging frailty, which dose performed better on the functional endpoints?",
+   "answer": "The lower dose. Thirty patients with a mean age of 75.5 plus/minus 7.3 received 100 million or 200 million allogeneic human MSCs intravenously, or placebo. The primary endpoint was treatment-emergent serious adverse events at one month, and none related to therapy occurred. Six-minute walk test, short physical performance exam and forced expiratory volume in one second improved in the 100M group (p = .01) but not in the 200M or placebo groups, and serum TNF-alpha fell only in the 100M group (p = .03). Immunological improvement was seen at both doses: B-cell intracellular TNF-alpha improved in the 100M (p < .0001) and 200M (p = .002) groups and versus placebo, and activated T-cells were reduced.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/28977399/"
+   ],
+   "tags": [
+    "stemcells",
+    "frailty",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-b038",
+   "question": "What did the PLASMA trial of young fresh frozen plasma in Alzheimer's disease actually test?",
+   "answer": "Safety, tolerability and feasibility, not efficacy. Eighteen patients with probable mild-to-moderate Alzheimer dementia (MMSE 12-24, aged 50-90) received four once-weekly infusions of one unit, about 250 mL, of plasma from male donors aged 18 to 30; nine in a double-blind crossover against saline with a six-week washout, and nine open-label after a protocol amendment. There were no related serious adverse events; one patient discontinued for urticaria and one for an unrelated stroke, and other adverse events were mild to moderate and not different from placebo. The stated conclusion is that the treatment was safe, well tolerated and feasible, with small sample size, short duration and the mid-study design change named as limitations.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/30383097/"
+   ],
+   "tags": [
+    "parabiosis",
+    "translation",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-b039",
+   "question": "Vad visade AMBAR-studien, där man bytte ut plasma mot albumin hos patienter med Alzheimers sjukdom?",
+   "answer": "347 patienter randomiserades till skenbehandling eller till tre behandlingsarmar med plasmabyte och låg eller hög dos albumin, med eller utan intravenöst immunglobulin. Mätningarna gjordes vid start, vid månad 2 efter veckovisa konventionella plasmabyten, vid månad 6, 9 och 12 med månatliga plasmabyten med låg volym, samt vid månad 14. Vid månad 14 hade den behandlade gruppen med mild sjukdom bättre ordflöde och bearbetningshastighet än placebo (effektstorlekar över 100%, p från .03 till .001), och gruppen med måttlig sjukdom bättre korttidsminne för ord (effektstorlekar 94% och uppåt, p från .02 till .003). De milda fallen rapporterade också bättre livskvalitet. De neuropsykiatriska symtomen utvecklades som i placebogruppen, alltså varken bättre eller sämre.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/34726348/"
+   ],
+   "tags": [
+    "parabiosis",
+    "translation",
+    "sv",
+    "multihop"
+   ]
+  },
+  {
+   "id": "long-b040",
+   "question": "Two 2022 studies of partial reprogramming in naturally aged mice reached different conclusions about how long the factors should be expressed. Reconcile them.",
+   "answer": "They are measuring different endpoints, so they do not actually conflict. The single-cycle study asked what one transient period of OSKM expression can do to molecular state, and found it sufficient to reverse ageing-associated DNA methylation changes in pancreas, liver, spleen and blood, to revert age-related transcriptional changes, and to restore some serum metabolites and biomarkers toward youthful levels. The long-term study asked what happens to phenotype under physiological ageing, ran several regimens with different onset timings, and found that the DURATION of treatment determined the extent of rejuvenation in kidney and skin and at the organismal level, accompanied by reversion of the epigenetic clock and reduced expression of inflammation, senescence and stress-response genes, concluding that longer regimens delay ageing phenotypes more effectively while remaining safe. One cycle is enough to move the molecular marks; sustained exposure is what the tissue-level and organism-level benefit scaled with.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/35235716/",
+    "https://pubmed.ncbi.nlm.nih.gov/37118377/"
+   ],
+   "tags": [
+    "reprogramming",
+    "synthesis"
+   ]
+  },
+  {
+   "id": "long-b041",
+   "question": "The blood-factor literature has argued both that young blood carries rejuvenating factors and that old blood carries pro-ageing ones. What evidence supports each, and what does the plasma-dilution result imply about the argument?",
+   "answer": "The pro-ageing side has direct evidence: exposing a young mouse to an old systemic environment or to old plasma decreased synaptic plasticity and impaired learning and memory, with CCL11 identified as one such factor, and beta-2-microglobulin was shown to impair cognition and neurogenesis when given to young mice, while its genetic absence protected aged mice. The plasma-dilution experiment then removed the need for a young-blood factor entirely: exchanging half of an old mouse's plasma for saline with 5% albumin matched or exceeded heterochronic blood sharing on muscle repair, liver fibrosis and hippocampal neurogenesis. Together these favour dilution or removal of age-elevated systemic factors over supplementation with youthful ones, and the dilution study additionally found some proteins rose after the exchange, so the mechanism is a re-set of the signalling milieu rather than simple subtraction.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/21886162/",
+    "https://pubmed.ncbi.nlm.nih.gov/26147761/",
+    "https://pubmed.ncbi.nlm.nih.gov/32474458/"
+   ],
+   "tags": [
+    "parabiosis",
+    "synthesis"
+   ]
+  },
+  {
+   "id": "long-b042",
+   "question": "How many CpG sites make up the Horvath multi-tissue epigenetic clock, and what evidence did the original paper give that it measures something biological rather than just calendar time?",
+   "answer": "353 CpG sites, developed from around 8,000 samples across 82 Illumina methylation datasets covering 51 healthy tissues and cell types. The biological arguments given were that DNA methylation age is close to zero for embryonic and induced pluripotent stem cells, that it correlates with cell passage number, that age acceleration derived from it is highly heritable, that it transfers to chimpanzee tissues, and that all 20 cancer types examined across about 6,000 samples showed significant age acceleration, averaging 36 years. Horvath proposed the clock measures the cumulative effect of an epigenetic maintenance system.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/24138928/"
+   ],
+   "tags": [
+    "clocks",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-b043",
+   "question": "How does the Hannum clock differ from the Horvath clock in the data it was built on?",
+   "answer": "The Hannum model was built from a single tissue, whole blood, using more than 450,000 CpG markers in 656 individuals aged 19 to 101, and was framed as a quantitative model of the RATE at which an individual's methylome ages, shown to be influenced by sex and by genetic variants. The Horvath predictor was built from around 8,000 samples spanning 51 healthy tissues and cell types across 82 datasets and reduced to 353 CpGs, so it is explicitly multi-tissue and applicable where blood is not available. Both were tested beyond their training data: Hannum's model was shown to hold in other human tissues and to reveal advanced ageing rate in tumour tissue, Horvath's showed significant age acceleration in all 20 cancer types examined.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/23177740/",
+    "https://pubmed.ncbi.nlm.nih.gov/24138928/"
+   ],
+   "tags": [
+    "clocks",
+    "multihop"
+   ]
+  },
+  {
+   "id": "long-b044",
+   "question": "Vad är det egentligen DNAm PhenoAge är tränad på, och varför spelar det roll?",
+   "answer": "Den är tränad mot ett sammansatt kliniskt mått på fenotypisk ålder, inte mot kalenderålder. Den första generationens epigenetiska klockor använde kalenderålder som ersättning för biologisk ålder; PhenoAge byggdes i stället i två steg, där ett kliniskt mått som fångar skillnader i livslängd och hälsospann först togs fram och en DNA-metyleringsmodell sedan tränades mot det. Det gör att den slår tidigare mått på en rad utfall: total dödlighet, cancer, hälsospann, fysisk funktion och Alzheimers sjukdom. Måttet togs fram i helblod men korrelerar starkt med ålder i alla vävnader och celltyper som prövats. Förhöjd epigenetisk ålder i förhållande till kalenderålder följdes av ökad aktivering av proinflammatoriska vägar och interferonvägar och minskad aktivering av transkriptions- och translationsmaskineri, DNA-skadesvar och mitokondriella signaturer.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/29676998/"
+   ],
+   "tags": [
+    "clocks",
+    "sv",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-b045",
+   "question": "What is DNAm GrimAge actually composed of?",
+   "answer": "It is a composite of seven DNA methylation based surrogate estimators of plasma proteins, including plasminogen activator inhibitor 1 (PAI-1) and growth differentiation factor 15, plus a DNA methylation based estimator of smoking pack-years. The composite is expressed in units of years, and adjusting it for chronological age gives the age-acceleration measure AgeAccelGrim. In validation across thousands of individuals it stood out among existing clocks for predicting time to death (Cox P = 2.0E-75), time to coronary heart disease (P = 6.2E-24) and time to cancer (P = 1.3E-12), and correlated with CT-measured fatty liver and visceral fat and with age at menopause.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/30669119/"
+   ],
+   "tags": [
+    "clocks",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-b046",
+   "question": "If two people both have accelerated biological age, does it matter which measure was used to say so?",
+   "answer": "Yes, because the measures do not agree with one another. Eleven quantifications of biological ageing (telomere length and erosion, three epigenetic clocks and their ticking rates, and three biomarker composites) were implemented on the SAME 964 middle-aged people in the Dunedin cohort, and agreement between them was low, contrary to expectation. Only the 71-CpG epigenetic clock and the biomarker composites were consistently related to the outcomes geroprotective therapies aim at (physical functioning, cognitive decline, subjective signs of ageing including facial appearance), and even there the effect sizes were modest. The authors' conclusion is that different proposed approaches may not be measuring the same aspect of ageing at all, so a result stated as accelerated biological ageing is only interpretable together with the instrument that produced it.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/29149257/"
+   ],
+   "tags": [
+    "clocks",
+    "biomarkers",
+    "trap",
+    "multihop"
+   ]
+  },
+  {
+   "id": "long-b047",
+   "question": "What did GrimAge version 2 add to the original GrimAge, and what did it buy?",
+   "answer": "Two new DNA methylation based estimators of log-transformed plasma proteins: high-sensitivity C-reactive protein (logCRP) and haemoglobin A1c (logA1C). Evaluated in 13,399 blood samples across nine cohorts and adjusted for age and sex, GrimAge2 outperformed GrimAge for mortality prediction across multiple racial and ethnic groups (meta P = 3.6E-167 versus 2.6E-144), and related to coronary heart disease, to FEV1 (correlation -0.31) and to CT measures of fatty liver disease. It was also shown to apply to younger individuals and to saliva samples. DNAm logA1C was highly associated with type 2 diabetes and DNAm PAI-1 outperformed the other age-adjusted markers, including GrimAge2, for triglycerides and visceral fat.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/36516495/"
+   ],
+   "tags": [
+    "clocks",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-b048",
+   "question": "What makes DunedinPACE different in construction from a clock like PhenoAge or GrimAge?",
+   "answer": "It estimates a RATE rather than an age. It was modelled on within-individual decline in 19 indicators of organ-system integrity measured at four time points spanning two decades in the Dunedin 1972-1973 birth cohort, and that two-decade Pace of Aging was then distilled into a single-time-point blood test by elastic-net regression, on a methylation dataset restricted to exclude probes with low test-retest reliability. In five further datasets DunedinPACE showed high test-retest reliability and associations with morbidity, disability and mortality, indicated faster ageing in young adults who had experienced childhood adversity, had effect sizes similar to GrimAge, and added incremental prediction beyond GrimAge for incident morbidity, disability and mortality.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/35029144/"
+   ],
+   "tags": [
+    "clocks",
+    "multihop"
+   ]
+  },
+  {
+   "id": "long-b049",
+   "question": "How reproducible is a single epigenetic-clock reading from one person's blood?",
+   "answer": "Much less than the reported precision suggests. Technical noise produced deviations of up to 9 years between replicate samples for six prominent epigenetic clocks, which limits their use for individual readings, longitudinal tracking and intervention trials. The proposed fix is computational rather than experimental: calculate principal components from CpG-level data and use those as input to the age predictor. Retrained principal-component versions of the same six clocks agreed between most replicates within 1.5 years, improved detection of clock associations and of intervention effects, and gave reliable longitudinal trajectories in vivo and in vitro. The method adds one step, needs no replicates or prior knowledge of CpG reliabilities in training, and can be applied to any existing or future epigenetic biomarker.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/36277076/"
+   ],
+   "tags": [
+    "clocks",
+    "trap",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-b050",
+   "question": "Om min DNA-metyleringsålder ligger fem år över min kalenderålder, vad innebär det?",
+   "answer": "I en metaanalys av fyra longitudinella kohorter av äldre människor var fem års högre metyleringsålder kopplad till 21% högre risk att dö, justerat för ålder och kön. Efter ytterligare justering för barndoms-IQ, utbildning, samhällsklass, högt blodtryck, diabetes, hjärt-kärlsjukdom och APOE e4-status kvarstod 16% högre risk, alltså oberoende av hälsotillstånd, livsstilsfaktorer och kända genetiska faktorer. Skillnaden mellan metyleringsålder och kalenderålder är dessutom ärftlig: en separat släktbaserad analys gav en ärftlighet på 0.43. Det handlar om en riskökning skattad på gruppnivå, inte om en prognos för en enskild människa.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/25633388/"
+   ],
+   "tags": [
+    "clocks",
+    "sv",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-b051",
+   "question": "When methylation clocks were applied to the CALERIE caloric-restriction trial, which measure moved and which did not?",
+   "answer": "DunedinPACE moved; the age-style clocks did not. In a post hoc analysis of blood from the 220 non-obese adults randomised to 25% caloric restriction or ad libitum diet for two years, the intervention slowed the pace of ageing as measured by DunedinPACE, but did not produce significant changes in biological age estimates from clocks including PhenoAge and GrimAge. Treatment effect sizes were small. The authors read this as support for the geroscience hypothesis from a randomised trial rather than from small uncontrolled studies, while noting that a conclusive test needs long-term follow-up to primary healthy-ageing endpoints such as chronic-disease incidence and mortality.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/37118425/"
+   ],
+   "tags": [
+    "clocks",
+    "cr",
+    "calerie",
+    "multihop"
+   ]
+  },
+  {
+   "id": "long-b052",
+   "question": "In the TILDA cohort comparison of four epigenetic clocks against clinical phenotypes, which clocks predicted health and which did not?",
+   "answer": "In 490 participants of the Irish Longitudinal Study on Ageing followed up to 10 years, Horvath and Hannum age acceleration were not predictive of health at all. PhenoAge acceleration was associated with 4 of 9 outcomes (walking speed, frailty, MOCA, MMSE) in minimally adjusted models but not once social and lifestyle factors were included. GrimAge acceleration was associated with 8 of 9 outcomes, all except grip strength, in minimally adjusted models, and remained a significant predictor of walking speed, polypharmacy, frailty and all-cause mortality in fully adjusted models. The nine outcomes were walking speed, grip strength, Fried frailty, polypharmacy, MMSE, MOCA, sustained attention reaction time and two-choice reaction time, plus mortality.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/33211845/"
+   ],
+   "tags": [
+    "clocks",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-b053",
+   "question": "What is a transcriptomic age, and on what scale of data was the first blood-based one built?",
+   "answer": "It is an age prediction from whole-blood gene expression rather than from methylation. The meta-analysis behind it covered 14,983 individuals of European ancestry including replication and identified 1,497 genes differentially expressed with chronological age. Those age-associated genes did not carry more age-associated CpG methylation sites than other genes, but were enriched for potentially functional CpG methylation sites in enhancer and insulator regions associated with both age and expression level. The gap between transcriptomic age and chronological age was associated with blood pressure, cholesterol, fasting glucose and body mass index, and the authors present the model as complementing rather than replacing epigenetic predictors.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/26490707/"
+   ],
+   "tags": [
+    "clocks",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-b054",
+   "question": "What do plasma-proteomic organ-specific ageing models add over a single whole-body clock, and what sex difference did they show?",
+   "answer": "They resolve ageing by organ and system rather than giving one number. Built by elastic-net regularisation on plasma proteome data from over 50,000 UK Biobank subjects and other cohorts, and trained on chronological age, on mortality and on longitudinal proteome data, they predict organ- and system-specific disease. Men were found to age faster than women in most organs. Accelerated ageing of a given organ led to disease in that organ, and specific diets, lifestyles, professions and medications influenced organ ageing rates, with the driving proteins identified. The framing is that age-related chronic diseases epitomise accelerated organ-specific ageing, which argues for personalised organ-targeted interventions alongside whole-organism ones.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/39488213/"
+   ],
+   "tags": [
+    "clocks",
+    "biomarkers",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-b055",
+   "question": "What did the largest GWAS of epigenetic-clock measures find, and what was surprising about where the loci sat?",
+   "answer": "Using methylation and SNP data from more than 40,000 individuals, GWAS meta-analyses of four epigenetic clocks plus epigenetic surrogates for granulocyte proportion and PAI-1 identified 137 genome-wide significant loci, of which 113 were novel. Loci shared with the Horvath clock included expression of transcripts for genes linked to lipid metabolism and immune function. The notable point is that these loci were INDEPENDENT of those already reported to regulate methylation levels at the constituent clock CpGs, so the genetics of clock acceleration is not simply the genetics of methylation at the clock sites. A polygenic score for GrimAge acceleration was strongly associated with adiposity traits, educational attainment, parental longevity and C-reactive protein.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/34187551/"
+   ],
+   "tags": [
+    "clocks",
+    "gwas",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-b056",
+   "question": "Hur räknar man ut ett skörhetsindex, ett frailty index, och vad har det för egenskaper?",
+   "answer": "Som andelen av de möjliga bristerna som en person faktiskt har. Symtom, tecken, sjukdomar och funktionsnedsättningar räknas alla som brister och summeras i ett index, och poängen speglar hur stor andel av de tänkbara bristerna som finns hos just den personen och därmed hur sannolikt det är att skörhet föreligger. Trots att det bara är en uppräkning har indexet flera intressanta egenskaper: en karakteristisk ackumulationstakt, en submaximal gräns som i praktiken inte överskrids, och en karakteristisk förändring av fördelningen med stigande ålder. Det fungerar som en tillståndsvariabel som kvantitativt sammanfattar sårbarhet, där skörhet ses som en åldersrelaterad och ospecifik sårbarhet snarare än en enskild sjukdom.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/17634318/"
+   ],
+   "tags": [
+    "frailty",
+    "biomarkers",
+    "sv",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-b057",
+   "question": "What does an epigenetic clock reading not tell you about an individual?",
+   "answer": "Two limits are documented. First, agreement between measures is poor: eleven telomere, epigenetic-clock and biomarker-composite quantifications applied to the same 964 people showed low agreement, and only some of them related to physical functioning, cognitive decline and subjective signs of ageing, with modest effect sizes even then. Second, the clocks differ sharply from one another in predictive value: in 490 TILDA participants, Horvath and Hannum age acceleration were not predictive of any clinical phenotype, PhenoAge acceleration lost its associations once social and lifestyle factors were adjusted for, and only GrimAge acceleration survived full adjustment, and only for walking speed, polypharmacy, frailty and mortality. So a clock number is a population-level risk indicator tied to the specific algorithm used, not a personal statement of how much biological ageing has occurred.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/29149257/",
+    "https://pubmed.ncbi.nlm.nih.gov/33211845/"
+   ],
+   "tags": [
+    "clocks",
+    "biomarkers",
+    "synthesis"
+   ]
+  },
+  {
+   "id": "long-b058",
+   "question": "What did the 40-month metformin study in male cynomolgus monkeys measure, and what was the headline effect?",
+   "answer": "It combined physiological, imaging, histological and molecular evaluation with purpose-built monkey ageing clocks derived from pan-tissue transcriptomics, DNA methylomics, plasma proteomics and metabolomics, and used those clocks to gauge the drug's effect. Metformin slowed the ageing indicators, with the headline being roughly a 6-year regression in brain ageing, together with preserved brain structure and improved cognitive ability. The neuroprotective effect on primate neurons was partly mediated by activation of Nrf2. The claim is a reduction in multi-dimensional biological age in a primate, measured by clocks, not a demonstrated effect on lifespan.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/39270656/"
+   ],
+   "tags": [
+    "clocks",
+    "metformin",
+    "primates",
+    "multihop"
+   ]
+  },
+  {
+   "id": "long-b059",
+   "question": "What is the difference between a clock trained on chronological age and one trained on a phenotype, and what does that difference imply about how each should be read?",
+   "answer": "The first generation, of which the 353-CpG multi-tissue predictor is the reference, was trained to predict calendar age using chronological age as a surrogate for biological age, so its residual against calendar age is a derived quantity rather than the thing it optimised. The second generation was trained on something else entirely: DNAm PhenoAge was built in two steps around a composite clinical measure of phenotypic age capturing lifespan and healthspan differences, and outperforms the first generation on mortality, cancer, healthspan, physical functioning and Alzheimer's disease. The practical implication is that a first-generation clock is best read as an accurate age estimator whose deviations are noisy indicators, while a phenotype- or mortality-trained clock is read as a risk score, and the two are not interchangeable inputs to a trial endpoint.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/24138928/",
+    "https://pubmed.ncbi.nlm.nih.gov/29676998/"
+   ],
+   "tags": [
+    "clocks",
+    "synthesis"
+   ]
+  },
+  {
+   "id": "long-b060",
+   "question": "What was the effect size for the FOXO3A longevity association in the 2008 study of long-lived men of Japanese ancestry, and how was the study designed to avoid the usual pitfalls?",
+   "answer": "The odds ratio comparing homozygous minor with homozygous major allele carriers between cases and controls was 2.75 (P = 0.00009; adjusted P = 0.00135). The design chose a large, homogeneous, long-lived population of men well characterised for ageing phenotypes and ran a nested case-control study of five candidate genes in the insulin/IGF-1 signalling pathway, precisely to avoid the small samples, imprecise phenotyping and population stratification that had hampered earlier attempts. The long-lived men also had lower prevalence of cancer and cardiovascular disease, better self-reported health, high physical and cognitive function, and markers of greater insulin sensitivity associated with the FOXO3A GG genotype.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/18765803/"
+   ],
+   "tags": [
+    "genetics",
+    "foxo3",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-b061",
+   "question": "Long life is commonly said to be 15-30% heritable. What did the analysis of very large pedigree data conclude?",
+   "answer": "That the usual figure is substantially inflated. Using pedigree data from Ancestry public trees covering hundreds of millions of historical persons, nominal heritability estimates based on correlations among genetic relatives agreed with the prior literature, but the majority of that correlation was ALSO captured by correlations among non-genetic in-law relatives, which points to highly assortative mating around lifespan-influencing factors. After accounting for assortative mating with structural equation modelling, the true heritability of human longevity for birth cohorts across the 1800s and early 1900s was well below 10%. The 15-30% figure is therefore an artefact of who marries whom, not a measure of transmitted genetics.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/30401766/"
+   ],
+   "tags": [
+    "genetics",
+    "epidemiology",
+    "trap",
+    "multihop"
+   ]
+  },
+  {
+   "id": "long-b062",
+   "question": "Which variants reached genome-wide significance in the 2019 longevity GWAS meta-analysis, and in which direction did each act?",
+   "answer": "Three. rs429358, the APOE epsilon-4 allele, was associated with LOWER odds of surviving to the 90th and 99th percentile age. rs7412, the APOE epsilon-2 allele, showed the opposite direction. And rs7676745, located near GPR78, associated with lower odds of surviving to the 90th percentile age. Gene-level analysis additionally implicated tissue-specific expression of multiple genes in longevity, and genetic correlation with disease-related phenotypes pointed to a shared architecture between health and longevity.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/31413261/"
+   ],
+   "tags": [
+    "genetics",
+    "gwas",
+    "apoe",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-b063",
+   "question": "Hur definierade Deelen och medarbetare 2019 vem som räknas som långlivad i sin GWAS-metaanalys?",
+   "answer": "Med en relativ, överlevnadsbaserad definition i stället för en fast åldersgräns. Fall var personer som överlevde till eller bortom den ålder som motsvarar 90:e respektive 99:e överlevnadspercentilen, vilket gav 11 262 fall för 90:e percentilen och 3 484 för 99:e. Kontroller var personer vars dödsålder eller ålder vid senaste kontakt låg vid eller under den ålder som motsvarar 60:e överlevnadspercentilen, totalt 25 483 personer. Två separata metaanalyser kördes, en för varje falldefinition. Poängen med att förankra gränserna i överlevnadspercentiler är att en och samma kalenderålder betyder olika saker i olika befolkningar och födelsekohorter, så en fast gräns som till exempel 90 år skulle blanda ihop verkligt exceptionell överlevnad med vanlig.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/31413261/"
+   ],
+   "tags": [
+    "genetics",
+    "gwas",
+    "sv",
+    "multihop"
+   ]
+  },
+  {
+   "id": "long-b064",
+   "question": "Before informed GWAS was applied, how many loci reached significance for exceptional human longevity in the two study cohorts, and what was the idea behind the informed method?",
+   "answer": "In a standard GWAS analysis of those two studies of long-lived humans, only ONE locus was significant at a 10% false discovery rate: APOE/TOMM40. The informed GWAS method (iGWAS) takes prior knowledge from large studies of age-related DISEASE and uses it to narrow the search for longevity-associated SNPs, motivated by the demonstrated overlap between disease loci and extreme-longevity loci, with several disease variants apparently depleted in centenarians relative to the general population. Drawing on 14 meta-analyses of disease and trait GWAS, iGWAS raised the count to eight loci significant at FDR below 10%.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/26677855/"
+   ],
+   "tags": [
+    "genetics",
+    "gwas",
+    "multihop"
+   ]
+  },
+  {
+   "id": "long-b065",
+   "question": "Which longevity loci replicated in independent cohorts in the informed-GWAS study, and what is each known for?",
+   "answer": "Four replicated at FDR below 5%, with suggestive evidence for one more. They were APOE/TOMM40, associated with Alzheimer's disease; CDKN2B/ANRIL, implicated in the regulation of cellular senescence; ABO, which tags the O blood group; and SH2B3/ATXN2, a signalling gene that extends lifespan in Drosophila and is involved in neurological disease. The pattern was taken as evidence of genetic overlap between longevity and age-related diseases and traits including coronary artery disease and Alzheimer's disease.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/26677855/"
+   ],
+   "tags": [
+    "genetics",
+    "gwas",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-b066",
+   "question": "A 2010 Science paper reported a 150-SNP genetic signature that predicted exceptional longevity with 77% accuracy. Can that model be used?",
+   "answer": "No. The paper was RETRACTED. As published it reported a genome-wide association study of exceptional longevity in 1055 centenarians and 1267 controls, a 150-SNP model said to predict exceptional longevity with 77% accuracy in an independent set, and 19 genetic signature clusters covering 90% of centenarians and correlating with prevalence and age of onset of dementia, hypertension and cardiovascular disease. Its retraction is the reason later work reports so few genome-wide significant longevity loci: subsequent properly powered meta-analyses recover essentially APOE plus a handful of others, not a high-accuracy multi-SNP predictor. Any answer that cites the 77% figure as a current result is citing withdrawn work.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/20595579/"
+   ],
+   "tags": [
+    "genetics",
+    "gwas",
+    "centenarians",
+    "trap",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-b067",
+   "question": "What lipoprotein phenotype and which CETP genotype were associated with exceptional longevity in the Ashkenazi centenarian study?",
+   "answer": "Larger HDL and LDL particle sizes, measured by proton NMR, significantly higher in the 213 probands of mean age 98.2 than in either control group (P = .001), independent of plasma HDL and LDL cholesterol and of apolipoprotein A1 and B levels. The genotype was homozygosity for the valine allele of the codon 405 isoleucine-to-valine (I405V) variant in the cholesteryl ester transfer protein gene: probands and offspring had 2.9-fold and 3.6-fold higher frequency of the VV genotype in men, and 2.7-fold and 1.5-fold in women, than controls (P < .001). Probands with the VV genotype had larger lipoprotein particles and lower serum CETP concentrations.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/14559957/"
+   ],
+   "tags": [
+    "genetics",
+    "centenarians",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-b068",
+   "question": "The FOXO3 rs2802292 G allele is associated with longevity across populations. Which cause of death actually drives the survival advantage?",
+   "answer": "Coronary heart disease. In a 17-year prospective study of 3584 older American men of Japanese ancestry from the Honolulu Heart Program, replicated in 1595 white and 1056 black participants of the Health Aging and Body Composition cohort, G allele carriers had a combined 10% reduction in all-cause mortality (HR 0.90; 95% CI 0.84-0.95; P = 0.001). That was mostly contributed by a 26% lower risk of death from coronary heart disease (HR 0.74; 95% CI 0.64-0.86; P = 0.00004). No other cause of death, including cancer or stroke, made a significant contribution.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/27071935/"
+   ],
+   "tags": [
+    "genetics",
+    "foxo3",
+    "epidemiology",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-b069",
+   "question": "Stämmer det att kortare män lever längre?",
+   "answer": "I den kohort där saken undersöktes noggrant pekar data åt det hållet, men effekten per centimeter är liten. I Honolulu Heart Program och Honolulu-Asia Aging Study följdes 8 003 amerikanska män av japansk härkomst i över 40 år. Kroppslängd i medelåldern var positivt kopplad till total dödlighet, RR 1.007 per enhet ökad längd (95% KI 1.003-1.011; p = 0.002), och justering för tänkbara störfaktorer ändrade det bara marginellt (RR 1.006; p = 0.007). Längd var också positivt kopplad till cancerdöd och till dödlighet i cancer utan koppling till rökning, och den relativa risken ökade med stigande ålder i kohorten. Den långlivadhetsassocierade FOXO3-varianten var omvänt kopplad till längd, och längd var positivt kopplad till fasteinsulin, vilket författarna tolkar som stöd för att insulin- och IGF-1-signaleringen är den underliggande mekanismen snarare än längden i sig.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/24804734/"
+   ],
+   "tags": [
+    "genetics",
+    "foxo3",
+    "epidemiology",
+    "sv",
+    "multihop"
+   ]
+  },
+  {
+   "id": "long-b070",
+   "question": "On what data are current estimates of sibling relative risk for exceptional longevity based, and what does the accompanying model let you compute?",
+   "answer": "On more than 1,700 sibships, used to update estimates of the relative risk of a sibling of a long-lived person also living to extreme age, together with an examination of how heritability trends across different birth-year cohorts. The accompanying network model spans familial longevity across three generations and computes an individual's increased chance of exceptional longevity conditional on their family history, including the separate effects of paternal and maternal longevity. The motivation given is that mortality risk assessment normally ignores familial longevity information entirely.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/27041978/"
+   ],
+   "tags": [
+    "genetics",
+    "epidemiology",
+    "centenarians",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-b071",
+   "question": "How long has the Okinawa Centenarian Study been running, how does it define a centenarian, and how many have been examined?",
+   "answer": "It began in 1975 as a population-based study of centenarians and other selected elderly people living on the main island of Okinawa prefecture, and by 2015 had examined over 1000 centenarians, so more than four decades of continuous work. Note the definition used: the study counts 99-year-olds and older as centenarians, not only those who have passed 100. The research group's summary position is that by several measures of health and longevity the Okinawans can claim to be the world's healthiest and longest-lived people.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/27845177/"
+   ],
+   "tags": [
+    "epidemiology",
+    "centenarians",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-b072",
+   "question": "The Sardinian blue zone is usually presented as a validated example of a long-lived population. What did the study that identified it actually say about validation?",
+   "answer": "It said the opposite of what the popular account implies. The AKEA study defined an extreme longevity index from the percentage of people born in Sardinia between 1880 and 1900 who reached 100, and used gaussian smoothing to locate a blue zone in the mountainous central-eastern part of the island, where the male-to-female ratio among centenarians was 1.35 against 2.43 in the rest of Sardinia. But the authors state explicitly that although longevity hot spots have been identified in various regions of the world over the years, NONE of these longevity regions had been fully validated, and they name Sardinia's low female-to-male ratio among validated centenarians as what makes their own case unusual. They also offer inbreeding, through frequent consanguineous marriage and low immigration, as an alternative explanation to any lifestyle account.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/15489066/"
+   ],
+   "tags": [
+    "epidemiology",
+    "centenarians",
+    "bluezones",
+    "trap",
+    "multihop"
+   ]
+  },
+  {
+   "id": "long-b073",
+   "question": "What happened when parental lifespan was used as the phenotype in a genome-wide association study in the Health and Retirement Study?",
+   "answer": "The lead signal failed to replicate. A genome-wide significant association was found for rs35715456 on chromosome 18 (log10 Bayes factor 6.3) for the dichotomous trait of having at least one long-lived parent versus none, but that association was not replicated in independent samples from InCHIANTI and the Framingham Heart Study. Among SNPs in established longevity candidate genes (APOE, MINIPP1, FOXO3, EBF1, CAMKIV, OTOL1) the most significant association was in the EBF1 gene region (rs17056207, p = .0002). The result is reported as a promising signal that did not hold, which is the normal outcome for lifespan GWAS at this sample size.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/27816938/"
+   ],
+   "tags": [
+    "genetics",
+    "gwas",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-b074",
+   "question": "Vad hade barnen till de exceptionellt långlivade i den judiska hundraåringsstudien gemensamt med sina föräldrar?",
+   "answer": "Fenotypen med stora lipoproteinpartiklar. Både probanderna, 213 personer med en medelålder på 98.2 år, och deras 216 barn med en medelålder på 68.3 år hade signifikant större HDL- och LDL-partiklar än åldersmatchade kontroller, oberoende av plasmanivåerna av HDL- och LDL-kolesterol och av apolipoprotein A1 och B. Barnen delade alltså fenotypen, medan kontrollerna inte gjorde det. Både barnen och kontrollerna hade större partiklar om de var fria från högt blodtryck, hjärt-kärlsjukdom eller metabolt syndrom. Barnen hade också en klart högre frekvens av homozygoti för valinallelen i CETP-varianten I405V, 3.6 gånger hos män och 1.5 gånger hos kvinnor jämfört med kontroller.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/14559957/"
+   ],
+   "tags": [
+    "genetics",
+    "centenarians",
+    "sv",
+    "multihop"
+   ]
+  },
+  {
+   "id": "long-b075",
+   "question": "What does the genetic architecture of human longevity look like once modern GWAS are taken together, and why does so little of it survive?",
+   "answer": "It is dominated by APOE with a thin tail behind it. The 2019 meta-analysis using survival-percentile case definitions found rs429358 (epsilon-4, reducing odds of survival), rs7412 (epsilon-2, the opposite) and rs7676745 near GPR78, plus gene-level evidence for tissue-specific expression of multiple genes, and genetic correlation with disease phenotypes indicating a shared architecture between health and longevity. The informed-GWAS study makes the reason for the thinness explicit: in an ordinary analysis of its two long-lived cohorts only APOE/TOMM40 passed a 10% FDR, and it took borrowing power from 14 disease and trait GWAS meta-analyses to recover CDKN2B/ANRIL, ABO and SH2B3/ATXN2. Meanwhile the heritability the search is aimed at is itself smaller than assumed, well under 10% once assortative mating is modelled, so most of the missing signal was never there.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/31413261/",
+    "https://pubmed.ncbi.nlm.nih.gov/26677855/",
+    "https://pubmed.ncbi.nlm.nih.gov/30401766/"
+   ],
+   "tags": [
+    "genetics",
+    "gwas",
+    "synthesis"
+   ]
+  },
+  {
+   "id": "long-b076",
+   "question": "What two demographic observations did the 2016 Nature analysis use to argue that human lifespan has a fixed limit?",
+   "answer": "First, that improvements in survival with age tend to DECLINE after age 100, so the gains that keep raising life expectancy do not extend into the extreme ages. Second, that the age at death of the world's oldest person has not increased since the 1990s. The authors set this against the background they acknowledge: an ongoing reduction in old-age mortality, a rising maximum age at death, and evidence from other species that lifespan is flexible and can be raised genetically or pharmacologically. Their conclusion is that maximum human lifespan is fixed and subject to natural constraints.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/27706136/"
+   ],
+   "tags": [
+    "demography",
+    "maxlifespan",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-b077",
+   "question": "What data underpin the 2018 claim of a human mortality plateau, and where does the hazard curve level off?",
+   "answer": "Records for all inhabitants of Italy aged 105 and older between 2009 and 2015, born 1896-1910, a total of 3836 documented cases. Hazard rates estimated from these data were level, essentially constant beyond age 105. The authors emphasise that their estimates are free from the aggregation artifacts that limited earlier studies, and present the result as the best evidence to date for extreme-age mortality plateaus in humans, which bears directly on whether there is a biological limit to lifespan and on evolutionary accounts of human longevity.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/29954979/"
+   ],
+   "tags": [
+    "demography",
+    "maxlifespan",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-b078",
+   "question": "Late-life mortality deceleration is often taken as evidence that ageing slows or stops in extreme old age. What is the competing explanation?",
+   "answer": "Demographic error. Age estimation and cohort blending errors introduced at rates BELOW 1 in 10,000 are sufficient to produce late-life mortality deceleration and plateaus, and in humans the observed error rates of birth and death registration predict the magnitude of the deceleration actually seen. Correcting for these error sources with a mixed linear model eliminates both the deceleration and the late-life plateaus without invoking any biological or evolutionary mechanism. The implications drawn are that models built to explain the deceleration were fitted to an error distribution, that ageing does not slow or stop in old age in humans, and that there is a finite limit to human longevity.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/30571676/"
+   ],
+   "tags": [
+    "demography",
+    "maxlifespan",
+    "trap",
+    "multihop"
+   ]
+  },
+  {
+   "id": "long-b079",
+   "question": "Hur mycket längre kan vi räkna med att leva under det här århundradet, enligt den demografiska analysen från 2024?",
+   "answer": "Betydligt mindre än under 1900-talet. Analysen använde överlevnadsmått ur nationell dödsstatistik 1990-2019 för de åtta länder som har de mest långlivade befolkningarna, nämligen Australien, Frankrike, Italien, Japan, Sydkorea, Spanien, Sverige och Schweiz, samt Hongkong och USA. Under 1900-talet steg den förväntade livslängden vid födseln med omkring 30 år i höginkomstländerna, men sedan 1990 har förbättringstakten bromsat in. Samtidigt ökade motståndet mot ytterligare förbättringar, medan ojämlikheten i livslängd minskade och dödligheten komprimerades. Författarna beräknar att andelen som når 100 år knappast överstiger 15% för kvinnor och 5% för män, och drar slutsatsen att radikal livsförlängning är osannolik under 2000-talet om inte själva åldrandeprocessen kan bromsas påtagligt.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/39375565/"
+   ],
+   "tags": [
+    "demography",
+    "maxlifespan",
+    "sv",
+    "multihop"
+   ]
+  },
+  {
+   "id": "long-b080",
+   "question": "What is the compression of morbidity, as Fries originally set it out in 1980, and what number did he attach to the ideal average lifespan?",
+   "answer": "The argument is that average length of life had risen from 47 to 73 years over the century while maximum lifespan had not increased, so survival curves were becoming ever more rectangular; 80% of years of life lost to non-traumatic premature death had been eliminated and most premature deaths were by then from chronic diseases of later life. Fries calculated an ideal average lifespan of approximately 85 years. His proposal was that if chronic illness can be postponed by changes in lifestyle, and the physiologic and psychologic markers of ageing modified, then the average age at first infirmity rises, the morbidity curve also becomes rectangular, and adult vigour extends into a FIXED lifespan, compressing senescence into a short period near the end.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/7383070/"
+   ],
+   "tags": [
+    "demography",
+    "healthspan",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-b081",
+   "question": "Has the compression of morbidity actually happened at population scale? What did the GBD 2023 analysis of the morbidity gap find?",
+   "answer": "No; the gap widened almost everywhere. Defining the morbidity gap as life expectancy minus healthy life expectancy across 204 countries and territories from 1990 to 2023, the global gap rose from 8.8 years (95% UI 6.7-11.2) to 10.7 (8.2-13.7), an increase of 1.9 years or 21.9%, with point estimates showing widening in 203 of 204 countries. The share of life spent in poor health rose from 13.6% to 14.5%. Age-specific gaps widened across the adult life course rather than concentrating in the final years, gaps were LARGEST in the high-SDI quintile and smallest in the low-SDI quintile, and a few chronic largely non-fatal causes dominated: musculoskeletal disorders led by low back pain, depressive and anxiety disorders, age-related hearing loss, falls and other non-communicable diseases together made up 57.4% of unhealthy years in 2023.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/42480564/"
+   ],
+   "tags": [
+    "demography",
+    "healthspan",
+    "multihop"
+   ]
+  },
+  {
+   "id": "long-b082",
+   "question": "Why is reporting only the average number of years spent in poor health insufficient for testing compression of morbidity, and what did the Danish hospitalisation analysis show once variation was included?",
+   "answer": "Because Fries framed compression in terms of VARIATION in age at morbidity onset, not the mean, and studies routinely report only the average years in an unhealthy state. Using incidence of first hospitalisation after age 60 in Danish population registers over 1987-2014, the average age at first admission of two or more days rose from 67.8 years (95% CI 67.7-67.9) to 69.5 (69.4-69.6) in men and from 69.1 to 70.5 in women, so onset shifted to older ages. But the coefficient of variation in age at first admission also rose, from 9.1% to 9.9% in men and from 10.3% to 10.6% in women. Populations are therefore ageing in better health than before while becoming more heterogeneous in how they do so, which average measures cannot capture and which pensions, social care and health services have to plan for.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/32418023/"
+   ],
+   "tags": [
+    "demography",
+    "healthspan",
+    "multihop"
+   ]
+  },
+  {
+   "id": "long-b083",
+   "question": "What does the study of supercentenarians show about the relationship between healthspan and lifespan at the extreme of survival?",
+   "answer": "That they converge. Following 104 supercentenarians (110-119), 430 semisupercentenarians (105-109), 884 centenarians (100-104), 343 nonagenarians and 436 controls prospectively for an average of 3 years, the older the age group the LATER the onset of cancer, cardiovascular disease, dementia and stroke, and of cognitive and functional decline. Hazard ratios for these individual diseases became progressively smaller in older groups, and the relative period of time spent with disease was lower with increasing age group. As the approximate limit of human lifespan is reached in supercentenarians, compression of morbidity is generally observed, so healthspan approximates lifespan in these individuals.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/22219514/"
+   ],
+   "tags": [
+    "demography",
+    "healthspan",
+    "centenarians",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-b084",
+   "question": "Är det sant att diabetiker som tar metformin lever längre än folk utan diabetes?",
+   "answer": "Det är vad en brittisk registerstudie fann, men den kan inte bära den tolkning som brukar läggas på den. Ur Clinical Practice Research Datalink valdes 78 241 personer med typ 2-diabetes som fick metformin i monoterapi, 12 222 som fick sulfonylurea, och 90 463 matchade personer utan diabetes, med sammanlagt 503 384 personår och 7 498 dödsfall. Med metformingruppen som referens var den justerade mediantiden till död 15% kortare hos de matchade icke-diabetikerna (survival time ratio 0.85; 95% KI 0.81-0.90) och 38% kortare hos sulfonylureagruppen (0.62; 0.58-0.66). Men detta är retrospektiva observationsdata, inte en randomiserad prövning: den som får metformin i monoterapi är den som har mildare sjukdom och tål läkemedlet, och den jämförelsen kan inte skiljas från läkemedlets egen effekt. Författarna formulerar också slutsatsen försiktigt, som att resultatet antyder att metformin kan ge nytta även utan diabetes.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/25041462/"
+   ],
+   "tags": [
+    "translation",
+    "metformin",
+    "epidemiology",
+    "sv",
+    "multihop"
+   ]
+  },
+  {
+   "id": "long-b085",
+   "question": "What was the primary objective of the first senolytic trial in Alzheimer's disease, and how many patients did it involve?",
+   "answer": "The primary objective was to evaluate whether dasatinib and quercetin penetrate the central nervous system, assessed by analysis of cerebrospinal fluid collected at baseline and after 12 weeks of intermittent treatment. It was an open-label vanguard study in five older adults with early-stage Alzheimer's disease. Secondary measures covered target engagement plus cognitive, functional and physical outcomes, and preliminary safety, feasibility and efficacy data. The stated purpose was to inform the design of a subsequent randomised, double-blind, placebo-controlled multicentre phase II trial, not to establish efficacy.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/35098970/"
+   ],
+   "tags": [
+    "translation",
+    "senolytics",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-b086",
+   "question": "Why did CALERIE need an elaborate behavioural intervention rather than simply instructing people to eat 25% less, and what did the design involve?",
+   "answer": "Because sustaining a defined restriction for two years in free-living non-obese people is the hard part of the experiment, and CALERIE was the first investigation of long-term caloric restriction on the ageing process in non-obese humans. 220 healthy volunteers with BMI at least 22 and under 28 were recruited across three sites from May 2007 and randomised 2:1 to restriction or an ad libitum diet. The intervention combined a mixed schedule of group and individual sessions, a meal-provision phase exposing participants to various diets, personal digital assistants for monitoring intake, portion-estimation training, tailored treatment through a computer tracking system, toolbox strategies and algorithms, and coverage of nutrition and behavioural topics, several of which were novel methods for achieving restriction.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/21767664/"
+   ],
+   "tags": [
+    "translation",
+    "cr",
+    "calerie",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-b087",
+   "question": "Why is it difficult to run a clinical trial of an anti-ageing intervention, in terms of what you would measure?",
+   "answer": "Because the endpoint problem has no settled answer. Trials that use clinical endpoints such as disease diagnosis or death need biomarkers to show the intervention is acting on the underlying biology long before enough events accumulate, but there is no standard set of biomarkers of ageing for clinical trials. The TAME Biomarkers Workgroup screened 258 candidates against reliability and feasibility, relevance to ageing, prediction of mortality and of clinical and functional outcomes, and responsiveness to intervention, and arrived at a short list of nine blood markers while noting the scarcity of well-vetted biomarkers reflecting biological hallmarks of ageing. The candidate composite outcome measures fare no better: eleven telomere, epigenetic-clock and biomarker-composite quantifications applied to the same 964 people agreed poorly with each other, and only some related to functional outcomes, with modest effect sizes.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/30151729/",
+    "https://pubmed.ncbi.nlm.nih.gov/29149257/"
+   ],
+   "tags": [
+    "translation",
+    "biomarkers",
+    "synthesis"
+   ]
+  },
+  {
+   "id": "long-b088",
+   "question": "What is the geroscience hypothesis, in the terms its own proponents use?",
+   "answer": "That mammalian ageing can be delayed by genetic, dietary and pharmacologic means, and that because ageing is the greatest risk factor for the majority of chronic diseases driving morbidity and mortality, targeting ageing itself should postpone many diseases at once; the practical corollary is that geroscience research aimed at extending human healthspan must be expanded as the elderly population grows. The companion framing from the same period is historical: identification of gene variants extending lifespan in multicellular model organisms about thirty years ago gave the biology of ageing its scientific credibility, and the field is described as reaching an inflection point with medical, commercial and societal consequences.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/25417146/",
+    "https://pubmed.ncbi.nlm.nih.gov/31292558/"
+   ],
+   "tags": [
+    "translation",
+    "geroscience",
+    "single-fact"
+   ]
+  },
+  {
+   "id": "long-b089",
+   "question": "Varför lever kvinnor längre än män?",
+   "answer": "En metaanalys ställde frågan tvärtom: beror skillnaden på faktorer som ger kvinnor låg dödlighet, eller på faktorer som ger män hög? Den undersökte variationen i dödlighet, alltså spännvidden i dödstal mellan olika delgrupper, i 72 empiriska studier med 146 totaleffekter och 1 718 enskilda effekter för 21 riskfaktorer. I 85% av totaleffekterna och tre fjärdedelar av de enskilda effekterna var variationen större bland män än bland kvinnor, även med hänsyn tagen till männens högre dödlighet överlag; ser man på de direkta skillnaderna i variation är siffrorna 92% respektive 82%. Fall där kvinnor har större variation är sällsynta undantag och dyker främst upp i de allra äldsta åldersgrupperna. Slutsatsen är att skillnaden i förväntad livslängd till stor del drivs av vissa mansgrupper med mycket hög dödlighet, kopplade främst till socioekonomiska förhållanden, och att folkhälsoarbetet därför bör riktas mot dessa grupper.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/24296637/"
+   ],
+   "tags": [
+    "demography",
+    "epidemiology",
+    "sv",
+    "multihop"
+   ]
+  },
+  {
+   "id": "long-b090",
+   "question": "Lay out the maximum-lifespan debate as the primary literature actually leaves it: what is claimed, what is contested, and what is agreed.",
+   "answer": "Three positions have to be held at once. The 2016 analysis argued for a fixed limit from two observations: survival improvements decline after age 100, and the age at death of the world's oldest person has not risen since the 1990s. The 2018 Italian study cut against that by showing, in 3836 documented cases aged 105 and over born 1896-1910, hazard rates that are essentially constant beyond 105, which is what a plateau rather than a hard wall looks like, and which the authors present as free of the aggregation artifacts of earlier work. The same year a third analysis showed that age-estimation and cohort-blending errors at rates below 1 in 10,000 are enough to manufacture exactly such plateaus, that observed birth and death registration error rates predict the magnitude seen in humans, and that correcting for them removes the plateau entirely, concluding that ageing does not slow in old age and that longevity is finite. What is not contested is that the record has not moved and that improvement at extreme ages has stalled; what is contested is whether the flat hazard at 105-plus is biology or bad paperwork, and it is a data-quality question before it is a biological one.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/27706136/",
+    "https://pubmed.ncbi.nlm.nih.gov/29954979/",
+    "https://pubmed.ncbi.nlm.nih.gov/30571676/"
+   ],
+   "tags": [
+    "demography",
+    "maxlifespan",
+    "synthesis"
+   ]
+  }
+ ]
+}

@@ -17,6 +17,196 @@ The instrument is `scripts/rag-eval.mjs`, the procedure is the
 
 ---
 
+## 2026-08-10 — longevity: two new needle sets, and pool churn turns out to measure the wrong thing
+
+The largest PubMed fill since the corpus was built — **56,688 vectors**,
+1,731,517 → 1,787,309 — plus a small arXiv leg of **625** (823,097 →
+823,722), because the whole longevity literature on arXiv is 996 papers.
+Read back at run time the PubMed index reported **1,788,205**; Vectorize is
+eventually consistent and the extra ~900 is the tail of the same upsert, not a
+second fill.
+
+Two things were measured: what the new domain retrieves like (no before exists
+— the papers were not in the index), and what the fill did to a domain it did
+not target.
+
+### The instrument
+
+Two hand-written needle sets, committed, PAIRED shape (`{gold, en, sv}`, one
+entry per paper, so no paper is double-weighted):
+
+| set | needles | distinct papers | sampled from |
+|---|---|---|---|
+| `tests/needles/longevity-pubmed.json` | 66 | 66 | seeded random draw from the 56,688 harvested records, excluding the 176 papers the eval set cites |
+| `tests/needles/longevity-arxiv.json` | 41 | 41 | seeded random draw from the 996-paper arXiv longevity set |
+
+Every gold was checked with `get_by_ids` before the queries were written —
+180/180 and 70/70 of the sampled candidates were present — and `run` printed
+**no unanswerable-needle warning** for either set. Papers whose abstract the
+index cannot hold were excluded up front by an abstract-length filter, which is
+what keeps the ageing landmarks that carry no abstract at all (Hamilton 1966,
+Harman 1956, Hayflick & Moorhead 1961, Oeppen & Vaupel 2002) out of a set where
+they would have scored as permanent misses.
+
+The Swedish arm is deliberately **vernacular** (åldrande, utslitna celler,
+rundmask, jäst, bananfluga) rather than translated scientific Swedish — the
+register the 2026-08-08 entry showed retrieval is worst at.
+
+### Longevity, post-fill baseline
+
+Runs `data/eval/pubmed-longevity-postfill.json` and
+`data/eval/arxiv-longevity-postfill.json`, pool 50, floor 0.01, 4 workers.
+
+| corpus | lang | n | inPool | r@1 | r@5 | r@10 | MRR | ms med | ms p95 |
+|---|---|---|---|---|---|---|---|---|---|
+| PubMed | EN | 66 | 77.3 | 66.7 | 72.7 | **75.8** | 69.8 | 1495 | 3230 |
+| PubMed | SV | 66 | 60.6 | 48.5 | 60.6 | **60.6** | 52.4 | 1527 | 2735 |
+| arXiv | EN | 41 | 90.2 | 87.8 | 90.2 | **90.2** | 89.0 | 1355 | 2629 |
+| arXiv | SV | 41 | 70.7 | 68.3 | 70.7 | **70.7** | 68.9 | 1352 | 2041 |
+
+Loss breakdown — the stage that is the ceiling:
+
+| corpus | lang | in top10 | never retrieved | rerank demoted | floored out |
+|---|---|---|---|---|---|
+| PubMed | EN | 75.8 | **22.7** | 1.5 | 0 |
+| PubMed | SV | 60.6 | **39.4** | 0 | 0 |
+| arXiv | EN | 90.2 | **9.8** | 0 | 0 |
+| arXiv | SV | 70.7 | **29.3** | 0 | 0 |
+
+Essentially all loss is **dense**. Reranking costs 1.5 points once and nothing
+elsewhere; the floor costs nothing in any arm. An idea aimed at the reranker or
+the floor is bounded at about one point here before it is tried.
+
+The 14.4-point PubMed/arXiv gap on English reproduces the 2026-08-09 (later)
+finding exactly: longevity biology is a crowded neighbourhood inside PubMed
+(56,688 papers matched the enumeration) and a nearly empty one inside arXiv
+(996 papers, `senescence` in 81 abstracts archive-wide), and difficulty tracks
+vocabulary distinctiveness within the corpus rather than subject matter.
+
+### The Swedish register penalty is NOT corpus-specific — that open question closes
+
+`parity`, paired EN vs SV on the same documents:
+
+| corpus | stage | metric | paired | SV loses | SV wins | p |
+|---|---|---|---|---|---|---|
+| PubMed | dense | inPool | 66 | 15 | 4 | **0.01921** |
+| PubMed | final | r@1 | 66 | 17 | 5 | **0.01690** |
+| PubMed | final | r@10 | 66 | 15 | 5 | **0.04139** |
+| arXiv | dense | inPool | 41 | 8 | 0 | **0.00781** |
+| arXiv | final | r@1 | 41 | 8 | 0 | **0.00781** |
+| arXiv | final | r@10 | 41 | 8 | 0 | **0.00781** |
+
+The 2026-08-09 (later) entry left this open: vernacular Swedish beat English on
+AI-security arXiv needles (89.5 vs 84.8, n=19), and the entry said not to read
+that as a refutation because the paired arXiv EN/SV set to settle it did not
+exist. It exists now. **arXiv vernacular Swedish loses 8 needles and wins 0,
+p=0.0078** — a significant deficit on the corpus where the earlier arm
+suggested there was none. The cognate-vocabulary reading of the AI-security
+result (promptinjektion, autentisering, kryptering) survives; the
+corpus-specific reading does not.
+
+The deficit is **entirely at the dense stage** in both corpora — `inPool` is as
+significant as r@10, and `rerank demoted` is 0 in three of the four arms. That
+locates it in the embedding, not in the cross-encoder, which is a different
+place than the 2026-08-08 entry's score-scale collapse and worth keeping
+separate.
+
+### The control arm: `adna-pubmed`, and the standing rule
+
+Ancient DNA is the same corpus and a different neighbourhood. Re-ran the
+committed set (156 queries over 150 distinct papers, 126 EN / 30 SV) and paired
+it against `data/eval/pubmed-adna-questions.json` (1,694,272 vectors,
+2026-08-09T09:17Z). Post-run:
+`data/eval/pubmed-adna-control-postlongevity.json`.
+
+**The interval spans three fills, not one:** +93,933 vectors = AI consciousness
+(16,196) + AI security (20,907) + longevity (56,688 as pushed). No adna run
+exists at the intermediate 1,731,517 state, so this is the closest baseline
+available and the attribution below is what separates them.
+
+| arm | metric | before | after | paired | lost | gained | p |
+|---|---|---|---|---|---|---|---|
+| EN | r@1 | 75.4 | 76.2 | 121 | 7 | 8 | **1.0000** |
+| EN | r@10 | 88.9 | 90.5 | 121 | 5 | 7 | **0.7744** |
+| SV | r@1 | 56.7 | 60.0 | 30 | 1 | 2 | **1.0000** |
+| SV | r@10 | 70.0 | 73.3 | 30 | 1 | 2 | **1.0000** |
+
+`inPool` EN 89.7 → 92.1, SV 76.7 → 83.3; MRR 80.0 → 81.1 and 60.8 → 65.0.
+Latency median 1482 → 1567, p95 2634 → 2739, paired sign slower on 80 / faster
+on 73, **p=0.6278**. Every metric moved slightly UP and nothing is significant.
+
+### Pool churn was 49.4% — and it is not the pressure signal
+
+The 2026-08-09 (latest) entry proposed measuring **pool churn and gold-rank
+displacement instead of r@10** when an ingest is small relative to the corpus.
+Applied here it produces a number that looks alarming and means almost nothing:
+
+| | value |
+|---|---|
+| dense pool slots turned over | **3,852 / 7,800 = 49.4%** (EN 47.8%, SV 55.9%) |
+| entrants from the longevity enumeration | 127 / 3,852 = **3.3%** |
+| entrants from aicon / aisec | 13 (0.3%) / 13 (0.3%) |
+| entrants from ANY of the three fills | 153 / 3,852 = **4.0%** |
+| post-fill pool slots held by any of the three | 183 / 7,800 = **2.3%** |
+| the three fills' share of the post-fill index | **5.25%** |
+| gold dense rank worse / better / unchanged | **32 / 32 / 92**, exact binomial **p=1.00000** |
+
+**A noise floor was measured rather than assumed.** The same 156 queries were
+run a second time against the same index state
+(`data/eval/pubmed-adna-control-repeat.json`, identical vector count, every
+reported rate identical to the decimal): churn **3 / 7,800 = 0.04%**, rank
+displacement **0 worse / 0 better / 156 unchanged**. So the search is
+deterministic at a fixed index state and the 49.4% is real — but it is not
+competition.
+
+Half the candidate pool was replaced by **documents that were already in the
+index before the fill**. Adding ~94k vectors perturbs the approximate-nearest-
+neighbour graph globally, and the pool re-shuffles among old neighbours. The
+new documents did not invade: they hold 2.3% of the post-fill pool slots
+against a 5.25% share of the index, i.e. **below chance**, which is what a
+fill landing in a different neighbourhood should look like.
+
+> **Amendment.** Pool churn measures ANN-graph perturbation, which scales with
+> how much was added *anywhere*, not with where it landed. It is not a measure
+> of neighbourhood pressure and must not be quoted as one. The pressure signal
+> is **entrant PROVENANCE** — what share of the new pool entrants come from the
+> fill, against the fill's share of the index — together with gold dense-rank
+> displacement. Read against chance, not against zero.
+>
+> This qualifies the 2026-08-09 (latest) entry's 9.6%-vs-3.1% churn contrast
+> rather than overturning it: that entry's conclusion also rested on entrant
+> provenance (99.1% of entrants pre-2310, the band the ingest filled) and on
+> 6/0 rank displacement at p=0.03125, both of which are provenance-style
+> evidence. The churn percentages beside them are not comparable across
+> corpora or across ingest sizes, and this corpus shows why: a churn figure
+> five times larger than the "target neighbourhood" arXiv figure came out of a
+> fill that demonstrably went somewhere else.
+
+**The standing rule survives, as a recall prediction and as a pressure
+prediction.** A different-neighbourhood fill of 56,688 records — the largest
+this corpus has had — produced no recall change (all four p ≥ 0.7744), no
+gold-rank displacement (32/32, p=1.00000), and below-chance occupancy of the
+ancient-DNA candidate pools. Nothing needs amending about neighbourhood; the
+instrument for observing it does.
+
+### Open
+
+1. PubMed English `never retrieved` is 22.7% on this domain against 7.9% on
+   ancient DNA, on the same corpus and the same day. Both sets are hand-written
+   contribution paraphrases; the difference is neighbourhood density. That is
+   the largest single loss bucket anywhere in this ledger and it is a dense-
+   stage problem.
+2. The Swedish dense deficit now reproduces on both corpora with vernacular
+   queries and is absent from generated (near-translation) sets. A `svsci` arm
+   on these two sets would separate register from language in the new domain
+   the way `scripts/pubmed-palaeogenomics-goldset.json` does for ancient DNA;
+   it is not built.
+3. The adna control spans three fills. A run at the intermediate 1,731,517
+   state would have cost minutes on 2026-08-09 and cannot be recovered now —
+   **run the control BEFORE the next ingest, not only after it.**
+
+---
+
 ## 2026-08-09 (latest) — the neighbourhood rule predicts POOL PRESSURE, not recall
 
 The third arXiv ingest, and the first one deliberately shaped to make the
@@ -331,7 +521,7 @@ population genetics, and domestication genomics from archaeological material.
 ### The enumeration was validated against two independent positive sets
 
 A query cannot detect its own gaps, so recall was measured against sets the
-query had no hand in choosing: Dalén's 169 papers plus 90 curated adjacent
+query had no hand in choosing: one palaeogenomics group's 169 papers plus 90 curated adjacent
 landmarks (259), and — separately — the 187 papers four question authors
 independently cited while writing an eval set. Raw recall 75.7% and 88.2%;
 **~99% and ~97%** once modern conservation genomics of extant species is
