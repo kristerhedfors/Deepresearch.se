@@ -1,0 +1,146 @@
+#!/usr/bin/env bash
+# The video-capture review deck on the LIVE site — the publish + read side of
+# the capture pipeline. Wraps /api/admin/captures (src/captures.js) using the
+# break-glass Basic Auth credentials, the same BASIC_AUTH_USER /
+# BASIC_AUTH_PASS env vars scripts/testpoints and scripts/feedback use. See
+# .claude/skills/video-capture/SKILL.md for the four stages this is the last
+# two of (record → edit → PUBLISH → REVIEW).
+#
+# Publishing a finished clip (after `npm run capture:edit`), three calls:
+#   scripts/captures --add '{"label":"Deep Research answers a geothermal question","agent":"research","model":"mistral-small","prompt":"How much of Icelands electricity comes from geothermal?","starter":"geo-01","lang":"en","shape":"portrait","duration_ms":8400,"source_ms":41000,"cut_ms":30000,"speed":1.5,"wait_mode":"speed","width":1080,"height":1350}'
+#   scripts/captures --upload 12 captures/2026-08-10/research__…/final.mp4
+#   scripts/captures --poster 12 captures/2026-08-10/research__…/poster.jpg
+#
+# --add prints the new id (and the two upload URLs). The whole edit report can
+# ride along as a "meta" object — edit.json is exactly that shape:
+#   scripts/captures --add "$(jq '{label:("Capture " + (.meta.slug // "")), agent:.meta.agent, model:.meta.model, prompt:.meta.prompt, starter:.meta.starter, lang:.meta.lang, shape:.shape, duration_ms:.output_ms, source_ms:.source_ms, cut_ms:.cut_ms, speed:.speed, wait_mode:.wait_mode, width:.probe.width, height:.probe.height, size_bytes:.probe.bytes, meta:.}' <dir>/edit.json)"
+#
+# Reading the deck:
+#   scripts/captures                        the un-swiped deck (status=new), readable text
+#   scripts/captures --all                  every clip, any status
+#   scripts/captures --status needs_work    the RE-SHOOT list — what came back with feedback
+#                                           (new|liked|needs_work|archived)
+#   scripts/captures --agent research       one agent / one model
+#   scripts/captures --model mistral-small
+#   scripts/captures --q "geothermal"       substring match on label OR prompt
+#   scripts/captures --id 12                one clip (incl. every review note)
+#   scripts/captures --json                 JSON instead of text
+#
+# Reviewing from the terminal (the swipe deck on /admin is the usual way):
+#   scripts/captures --review 12 like
+#   scripts/captures --review 12 feedback "the model dropdown is cut off"
+#                                           a feedback verdict WITHOUT a note is
+#                                           rejected by the server on purpose
+#
+# Editing / lifecycle:
+#   scripts/captures --set 12 '{"status":"archived"}'   retire a clip (label|status|ref)
+#   scripts/captures --delete 12                        row + reviews + both R2 objects
+#
+# BASE_URL overrides the target (default https://deepresearch.se).
+set -euo pipefail
+
+: "${BASIC_AUTH_USER:?Set BASIC_AUTH_USER (break-glass credentials)}"
+: "${BASIC_AUTH_PASS:?Set BASIC_AUTH_PASS (break-glass credentials)}"
+BASE_URL="${BASE_URL:-https://deepresearch.se}"
+
+format="text"
+queue="1"
+status=""
+agent=""
+model=""
+id=""
+query=""
+action=""
+arg=""
+arg2=""
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --json) format="json" ;;
+    --all) queue="" ;;
+    --queue) queue="1" ;;
+    --status) queue=""; status="$2"; shift ;;
+    --agent) queue=""; agent="$2"; shift ;;
+    --model) queue=""; model="$2"; shift ;;
+    --id) id="$2"; shift ;;
+    --q) queue=""; query="$2"; shift ;;
+    --add) action="add"; arg="$2"; shift ;;
+    --set) action="set"; id="$2"; arg="$3"; shift 2 ;;
+    --upload) action="upload"; id="$2"; arg="$3"; shift 2 ;;
+    --poster) action="poster"; id="$2"; arg="$3"; shift 2 ;;
+    # The note is optional (a `like` carries none), so this case cannot shift a
+    # fixed count — with no note there is no 4th token to shift, and under
+    # `set -e` a short shift ends the script silently. It is terminal anyway:
+    # break out and let the action below run.
+    --review) action="review"; id="$2"; arg="$3"; arg2="${4:-}"; break ;;
+    --delete) action="delete"; id="$2"; shift ;;
+    *) echo "unknown argument: $1" >&2; exit 2 ;;
+  esac
+  shift
+done
+
+curl_auth() {
+  curl -sS -u "$BASIC_AUTH_USER:$BASIC_AUTH_PASS" "$@"
+}
+
+# Upload the raw bytes of one file. The content-type is REQUIRED by the server
+# (it stores the object with that type and serves it straight back to a <video>
+# / <img>), and curl -T does not set one, so it is passed explicitly here.
+upload_file() {
+  local path="$1" type="$2" endpoint="$3"
+  [ -f "$path" ] || { echo "no such file: $path" >&2; exit 2; }
+  curl_auth -X PUT -H "content-type: $type" --upload-file "$path" \
+    "$BASE_URL/api/admin/captures/$id/$endpoint"
+}
+
+case "$action" in
+  add)
+    out="$(curl_auth -X POST -H 'content-type: application/json' -d "$arg" "$BASE_URL/api/admin/captures")"
+    if command -v jq >/dev/null 2>&1; then
+      # The id is what the two uploads need next, so it is what gets printed.
+      printf '%s\n' "$out" | jq -r 'if .capture then "capture \(.capture.id)\n  video:  \(.upload.video)\n  poster: \(.upload.poster)" else . end'
+    else
+      printf '%s\n' "$out"
+    fi
+    exit 0 ;;
+  set)
+    curl_auth -X PATCH -H 'content-type: application/json' \
+      -d "$arg" "$BASE_URL/api/admin/captures/$id"
+    exit 0 ;;
+  upload)
+    upload_file "$arg" "video/mp4" "video"
+    exit 0 ;;
+  poster)
+    upload_file "$arg" "image/jpeg" "poster"
+    exit 0 ;;
+  review)
+    # like = 👍 (no note needed); feedback = ✍️ and the server REQUIRES the note.
+    if [ "$arg" = "feedback" ] && [ -z "$arg2" ]; then
+      echo "a feedback verdict needs a note: scripts/captures --review $id feedback \"what is wrong\"" >&2
+      exit 2
+    fi
+    curl_auth -X POST -H 'content-type: application/json' \
+      -d "$(jq -n --arg v "$arg" --arg n "$arg2" '{verdict:$v} + (if $n=="" then {} else {note:$n} end)')" \
+      "$BASE_URL/api/admin/captures/$id/review"
+    exit 0 ;;
+  delete)
+    curl_auth -X DELETE "$BASE_URL/api/admin/captures/$id"
+    exit 0 ;;
+esac
+
+if [ -n "$id" ]; then
+  url="$BASE_URL/api/admin/captures/$id"
+  [ "$format" = "text" ] && url="$url?format=text"
+  curl_auth "$url"
+  exit 0
+fi
+
+qs="limit=100"
+[ "$format" = "text" ] && qs="$qs&format=text"
+[ -n "$queue" ] && qs="$qs&queue=1"
+[ -n "$status" ] && qs="$qs&status=$status"
+[ -n "$agent" ] && qs="$qs&agent=$(printf %s "$agent" | jq -sRr @uri)"
+[ -n "$model" ] && qs="$qs&model=$(printf %s "$model" | jq -sRr @uri)"
+[ -n "$query" ] && qs="$qs&q=$(printf %s "$query" | jq -sRr @uri)"
+
+curl_auth "$BASE_URL/api/admin/captures?$qs"

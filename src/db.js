@@ -256,6 +256,63 @@ CREATE TABLE IF NOT EXISTS test_point_messages (
   body TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_test_point_messages_point ON test_point_messages(point_id, id);
+-- VIDEO CAPTURES (src/captures.js, the video-capture skill). One row per
+-- finished clip produced by the capture pipeline: tests/capture.mjs records a
+-- deep-research run in a real browser, scripts/capture-edit.mjs cuts the dead
+-- air and encodes a LinkedIn-ready MP4, and the row is what makes that clip
+-- reviewable. The bytes themselves are NOT here — the MP4 and its poster live
+-- in R2 under captures/<id>/, and video_key/poster_key are the pointers (both
+-- null until the upload lands, which is why the row is created first).
+--
+-- The columns split three ways: WHAT WAS RECORDED (slug, agent, mode, model,
+-- prompt, starter, lang) so a clip is traceable back to the run that made it;
+-- WHAT THE EDIT DID (shape, duration_ms = the finished clip, source_ms = the
+-- real run, cut_ms, speed, wait_mode, width/height, size_bytes) so a review
+-- can judge the edit and not just the footage; and THE VERDICT (status, likes,
+-- ref). meta_json carries the whole edit.json report verbatim for anything the
+-- columns do not name.
+--
+-- capture_reviews is append-only: one row per swipe, so a clip re-shot three
+-- times keeps the history of why. A 'feedback' verdict always carries a note
+-- (enforced in the validator — a left swipe with no words is not a review).
+CREATE TABLE IF NOT EXISTS captures (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  slug TEXT NOT NULL,
+  label TEXT NOT NULL,
+  agent TEXT NOT NULL,
+  mode TEXT,
+  model TEXT NOT NULL,
+  prompt TEXT NOT NULL,
+  starter TEXT,
+  lang TEXT,
+  shape TEXT,
+  duration_ms INTEGER NOT NULL DEFAULT 0,
+  source_ms INTEGER NOT NULL DEFAULT 0,
+  cut_ms INTEGER NOT NULL DEFAULT 0,
+  speed REAL NOT NULL DEFAULT 1,
+  wait_mode TEXT,
+  width INTEGER,
+  height INTEGER,
+  size_bytes INTEGER NOT NULL DEFAULT 0,
+  video_key TEXT,
+  poster_key TEXT,
+  status TEXT NOT NULL DEFAULT 'new',
+  likes INTEGER NOT NULL DEFAULT 0,
+  ref TEXT,
+  meta_json TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_captures_status ON captures(status, id DESC);
+CREATE TABLE IF NOT EXISTS capture_reviews (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  capture_id INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  verdict TEXT NOT NULL,
+  note TEXT,
+  reviewer TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_capture_reviews_capture ON capture_reviews(capture_id, id);
 -- The OAUTH connector's two stateful tables (src/oauth-store.js, F-20). A
 -- signed token carries its own claims, so these rows exist for the two things
 -- a signature cannot express: an authorization code must be usable EXACTLY

@@ -9,6 +9,7 @@
     "test:live": "playwright test --grep @live",
     "test:mocked": "playwright test --grep-invert @live",
     "test:local": "E2E_TARGET=local playwright test --project=mocked",
+    "capture": "node capture.mjs",
     "eval:models": "node model-eval.mjs",
     "eval:bench": "node eval-bench.mjs",
     "eval:hf": "node hf-bench.mjs",

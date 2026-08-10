@@ -232,6 +232,12 @@ tests/eval-bench-results/
 tests/hf-bench-results/
 tests/starter-eval-results/
 
+# Video captures (tests/capture.mjs → scripts/capture-edit.mjs). Recordings and
+# encoded clips are large binaries regenerated from the site itself; the durable
+# artifacts are the code that makes them and whatever gets uploaded to the
+# Capture reviews panel. See docs/VIDEO-CAPTURE.md.
+/captures/
+
 # Local scratch / one-off verification files (should live in the scratchpad dir)
 /scratch_*
 

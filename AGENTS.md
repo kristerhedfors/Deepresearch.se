@@ -237,3 +237,8 @@ the summaries below with the parser in `introspect-core.js` if a skill's
   the inventory, the drift greps, the regenerate-never-hand-edit rules.
 - **ux-conventions** — the numbered registry of codified UX interaction rules
   ("when X → then Y") that must feel the same everywhere.
+- **video-capture** — recording the site in a browser across selected agents
+  and models and turning it into a shareable clip: the activity timeline that
+  makes dead air cuttable, the speed/cut knobs, the ffmpeg settings LinkedIn
+  actually plays, and the admin swipe deck that likes a clip or sends it back
+  with feedback.
