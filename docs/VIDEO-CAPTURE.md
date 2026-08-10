@@ -1,9 +1,9 @@
 # Video capture — recording the site, editing for sharing, reviewing by swipe
 
-*Shipped 2026-08-10. Status: the recorder, the editor and the review surface
-are IMPLEMENTED and unit-tested. The encode leg has not been run against
-ffmpeg inside an agent container — none of them has ffmpeg installed — so the
-plan is verified and the pixels are not (§8).*
+*Shipped 2026-08-10. Status: RUN END TO END the same day. Four real sessions
+were recorded against the live site, cut, encoded and uploaded; the deck
+served them back with working Range requests. The pixels are verified (§8);
+what remains untested is the gesture on a real touch screen.*
 
 The working guide is the **video-capture** skill; this is the reference —
 formats, endpoints, fields, and the reasoning behind the numbers.
@@ -26,8 +26,8 @@ than a re-edit.
 ## 2. The four stages
 
 ```
-tests/capture.mjs          scripts/capture-edit.mjs        scripts/captures        /admin
-──────────────────         ────────────────────────        ────────────────        ──────
+tests/capture.mjs          scripts/capture-edit.mjs        scripts/captures      /captures/
+──────────────────         ────────────────────────        ────────────────      ──────────
  browser, live      →   raw.webm + timeline.json   →   final.mp4 + edit.json  →  D1 row + R2
                         + meta.json                     + poster.jpg               ↓
                                                                               swipe right → like
@@ -250,8 +250,22 @@ board keeps working — the metadata list is useful on its own.
 
 ### 6.3 The swipe deck
 
-The **Capture reviews** panel on `/admin` (registered in `src/panels.js` as
-`captures`, so the attention board can promote or bury it like any other).
+**Capture reviews** is its own admin-gated page at **`/captures/`**, reached
+from the account panel's admin row beside "Admin interface".
+
+It was a panel section inside `/admin` until 2026-08-10, when the owner moved
+it up a level. The reasoning is worth keeping: `/admin` is where the site is
+OPERATED — approvals, quotas, alerts, grants, the fix boards — and every one
+of those is a decision about the service. Watching a recorded run and judging
+whether the answer was any good is a different job, done at a different time,
+usually on a phone. It is also deliberately NOT registered in `src/panels.js`
+any more: the attention board orders *admin panels*, and a review surface that
+is not one of them would only distort that ordering.
+
+The route gate in `src/index.js` duplicates `/admin`'s three lines rather than
+generalising them, so a non-admin gets exactly the same 302 to `/rver` — no
+403 body naming a surface they cannot see. Neither the page nor its CSS/JS is
+on the public allowlist in `src/assets.js`.
 
 - **Right = like.** Posts immediately, the deck advances.
 - **Left = feedback.** The card leaves and a **feedback input field takes its
@@ -289,16 +303,53 @@ attached to a claim about speed it is not. Two things keep this straight:
    `wait_mode` and `speed`. Whatever the post says, the record of what was
    done to the footage exists alongside it.
 
-## 8. What is not verified
+## 8. The first batch — what it verified, and what it changed
 
-- **The encode has not run.** No agent container here has ffmpeg, and the
-  package mirror in this one could not supply it. The filter graph, the argv
-  and the plan are unit-tested; the pixels are not. First run on a machine
-  with ffmpeg should check `ffprobe` reports `h264` / `yuv420p` and that
-  `moov` precedes `mdat`.
-- **The recorder has not been run against the live site from here.** It is
-  built on the same helpers the e2e suite uses against production, but a first
-  batch should be a single run with `--limit 1` before a matrix.
-- **The panel has not been exercised on a touch device.** The thresholds in
-  `captures-core.js` are reasoned, not measured; a thumb on a phone is the
-  test that matters.
+Four sessions were recorded against the live site on 2026-08-10 with
+`openai/gpt-oss-120b` (the site's own first up model, so the clips show what a
+visitor gets), one starter prompt each, `--budget 60`:
+
+| # | Agent | Starter | Recorded | Final |
+|---|---|---|---|---|
+| 1 | introspection | `int-pipeline` | 1m 18s | 39 s, 12.3 MB |
+| 2 | research | `res-news-tech` (en) | 54 s | 27 s, 10.1 MB |
+| 3 | research | `res-sv-elpris` (sv) | 54 s | 34 s, 12.5 MB |
+| 4 | scholar | `sch-vitamin-d` | 56 s | 25 s, 9.8 MB |
+
+What that settled, each of which was an open caveat when this document was
+first written:
+
+- **The encode runs and produces what LinkedIn plays.** `ffprobe` reports
+  `h264` / profile `High` / `yuv420p` at 1080×1350, and `moov` precedes `mdat`
+  (so `+faststart` is doing its job). ffmpeg is NOT preinstalled in these
+  containers — `apt-get install -y --no-install-recommends ffmpeg` supplies it;
+  `--no-install-recommends` matters, because a recommended VA-API driver 404s
+  against the mirror and takes the whole install down with it. Playwright's
+  own bundled `ffmpeg-linux` is not a substitute: it ships libvpx only, so it
+  can cut a webm but cannot produce H.264.
+- **The recorder drives the real site.** All four runs completed with real
+  searches and real sources — capture #3's footer reads
+  `gpt-oss-120b · 41.0 s · 27,116 tokens · 4 searches`. The markers land where
+  they should: `send` at 8.8 s, `first_token` at 32.7 s, so the 24 s the
+  pipeline spent researching is exactly the span the editor acts on.
+- **Range works on the served video.** A `bytes=1000000-1000999` request
+  answers `206` with the right `content-range` and exactly 1000 bytes, which is
+  what lets the deck scrub a clip rather than only play it.
+
+And one thing it CHANGED. The default `--min-still 1500` is wrong for a
+research run: the activity bar posts a new search step every couple of
+seconds, so almost every gap qualifies as dead air and the plan comes out as
+thirteen segments strobing between 1.25× and 8×. `--min-still 3500` cuts the
+same clip into five segments — only the genuinely long waits accelerate — and
+that is the setting to use for anything with a visible activity log. The
+default is left alone because it is right for a direct answer with no search
+phase; this is a per-run knob, not a bug.
+
+### Still not verified
+
+- **The deck has not met a thumb.** The thresholds in `captures-core.js` are
+  reasoned and unit-tested, and the page has been rendered at phone width in a
+  headless browser — but no real touch screen has dragged a card. The four test
+  points in `docs/test-requests/` exist for this.
+- **Nothing has been swiped yet.** The four captures above sit at status
+  `new`; no like or feedback verdict has round-tripped through the live API.

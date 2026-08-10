@@ -113,17 +113,10 @@
       <div id="features"></div>
     </section>
 
-    <section id="captures-sec" data-panel="captures" hidden>
-      <h2>Capture reviews</h2>
-      <p class="muted">Recorded runs of the research pipeline — one agent, one
-      model, one of the shipped example prompts — edited down for sharing.
-      Review them as a deck: <b>swipe right</b> (or →, or the 👍 button) to
-      keep a clip, <b>swipe left</b> (or ←, or ✍️) to send it back. A left
-      swipe opens a note field: feedback without words is a shrug, so the
-      note is required and lands where the re-record loop reads it
-      (<code>scripts/captures --status needs_work</code>).</p>
-      <div id="captures"></div>
-    </section>
+    <!-- Capture reviews moved OUT of this page on 2026-08-10 (owner
+         directive): the swipe deck is a review tool, not an ops panel, so it
+         has its own admin-gated door at /captures/. Reached from the account
+         panel's button row (public/js/account-views.js). -->
 
     <section id="wssvc-sec" data-panel="websearch_service" hidden>
       <h2>Web search service</h2>

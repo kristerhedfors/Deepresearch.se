@@ -4,13 +4,13 @@
   "requested_at": "2026-08-10",
   "points": [
     {
-      "label": "Capture reviews panel appears on /admin",
-      "summary": "A new admin panel, 'Capture reviews', holds the recorded video clips of the site answering (one per agent x model x example prompt) and is where each one is judged. PASS: signed in as admin, open /admin — a collapsed 'Capture reviews' section is in the panel list; tapping the header opens it. With no clips uploaded yet it must show a calm empty state naming how to record some (npm run capture), NOT an error, a spinner that never resolves, or a blank box. FAIL: the section missing, a JS error in the console when it loads, or an empty deck rendering as a broken card.",
-      "target": "/admin",
+      "label": "Capture reviews has its own page at /captures/",
+      "summary": "A dedicated admin-only page at /captures/ holds the recorded video clips of the site answering (one per agent x model x example prompt) and is where each one is judged. PASS: signed in as admin, open /captures/ (or tap 'Capture reviews' in the account panel, beside 'Admin interface') — the page loads with its title and explanation, and FOUR clips are waiting to review (a Swedish and an English Deep Research run, a Deep Science run, and an Introspection run, all recorded 2026-08-10). FAIL: the page 404ing or redirecting an admin away, a JS error in the console, an empty deck when four clips exist, or a non-admin account being able to reach /captures/ at all.",
+      "target": "/captures/",
       "actions": [
         {
           "type": "note",
-          "text": "This one is worth checking BEFORE any clip exists — the empty state is the state the panel will be in most often, and it is the one most likely to have been left unhandled."
+          "text": "Also worth one check a non-admin cannot do for you: the page must be admin-only. Signed in as a regular account, /captures/ must redirect to /rver, and the 'Capture reviews' link must not appear in the account panel at all."
         }
       ],
       "runs": 1,
@@ -19,12 +19,12 @@
     },
     {
       "label": "Swipe right on a capture files it as liked",
-      "summary": "In the Capture reviews deck, dragging the top card to the RIGHT past about a third of its width files that clip as liked and advances to the next one. PASS: the card leans as you drag, a 👍 hint fades in on the right, releasing past the threshold flies it out and the next clip appears with the counter advancing ('2 of 5'); a short drag that you release early springs the card back with nothing recorded. The 👍 button under the deck and the → arrow key must do the same thing. FAIL: the page scrolling sideways instead of the card moving, a like that does not stick after a reload, or the deck not advancing.",
-      "target": "/admin",
+      "summary": "On /captures/, dragging the top card to the RIGHT past about a third of its width files that clip as liked and advances to the next one. PASS: the card leans as you drag, a 👍 hint fades in on the right, releasing past the threshold flies it out and the next clip appears with the counter advancing ('2 of 5'); a short drag that you release early springs the card back with nothing recorded. The 👍 button under the deck and the → arrow key must do the same thing. FAIL: the page scrolling sideways instead of the card moving, a like that does not stick after a reload, or the deck not advancing.",
+      "target": "/captures/",
       "actions": [
         {
           "type": "note",
-          "text": "Needs at least one uploaded clip. A vertical drag on the card must still scroll the admin page — that is the case most likely to be wrong on a phone."
+          "text": "A vertical drag on the card must still scroll the page — that is the case most likely to be wrong on a phone, and it is what `touch-action: pan-y` on the card is there for."
         }
       ],
       "runs": 2,
@@ -34,7 +34,7 @@
     {
       "label": "Swipe left opens the feedback field and files the note",
       "summary": "Dragging the top card to the LEFT does NOT record a bare thumbs-down: the card leaves and a feedback input field takes its place, titled with the clip so you know what you are writing about. PASS: a ✍️ hint fades in on the left while dragging; on release the textarea appears focused, Cancel returns the card to the deck with nothing recorded, and typing a note and pressing Send files it and advances the deck; sending an EMPTY note is refused inline rather than posted. The ← arrow key and the ✍️ button do the same. FAIL: a left swipe posting immediately with no chance to write, the textarea not focusable or not usable with the phone keyboard up, or an empty note being accepted.",
-      "target": "/admin",
+      "target": "/captures/",
       "actions": [
         {
           "type": "note",
@@ -48,11 +48,11 @@
     {
       "label": "A recorded clip plays and is scrubbable in the deck",
       "summary": "Each card plays its own MP4 inline. PASS: the clip plays inline (not full-screen-hijacked on iOS), the poster frame shows before playback, and dragging the video's scrubber jumps to that point in the clip — seeking is what proves the server's Range support works. The facts row under the clip names its size, length, speed and how much wait time was cut. FAIL: a video that will not play, one that must download entirely before it starts, a scrubber that jumps back to zero, or facts showing 'undefined'.",
-      "target": "/admin",
+      "target": "/captures/",
       "actions": [
         {
           "type": "note",
-          "text": "Needs an uploaded clip. Scrubbing is the specific thing to try — a video element that plays but cannot seek means Range support is broken, and it looks fine until you try."
+          "text": "Scrubbing is the specific thing to try — a video element that plays but cannot seek means Range support is broken, and it looks fine until you drag the scrubber."
         }
       ],
       "runs": 1,

@@ -849,16 +849,22 @@ replays (seeded as conversations, in place), `/my/project-<hash>` deep
 links, and the `/free*` legacy aliases (`/?continue=<slug>` is the
 legacy replay handoff).
 Admin UI: `admin/index.html` + `js/admin.js` + `css/admin.css` (served
-only to admins). One admin panel has its own module pair: **Capture
-reviews** — `js/captures.js` (the card deck: a recorded research run plays,
-a swipe RIGHT files it as liked, a swipe LEFT replaces the card with a
-feedback input field, and the arrow keys plus two buttons do the same two
-things so a gesture is never the only way to act) over the Node-tested pure
-`js/captures-core.js` (the swipe thresholds and direction test, the drag
-tilt, the hint overlay, the deck order, the note validation and the fact
-formatting). Its server half is `src/captures.js` and the clips it plays are
-made by the video pipeline — see **`docs/VIDEO-CAPTURE.md`** and the
-**video-capture** skill. Vendored libs in `vendor/` (`marked` and `DOMPurify`
+only to admins). **Capture reviews** (`captures/index.html` + `css/captures.css`
++ `js/captures.js`) is its OWN admin-gated page at `/captures/`, not part of
+the admin UI — it was a panel section there until 2026-08-10, when the owner
+moved it up a level because watching a recorded research run and filing it is
+a review task rather than an ops one (so it is deliberately NOT in
+`src/panels.js`'s catalog; the gate in `index.js` mirrors `/admin`'s, and the
+account panel carries the admin-only door beside "Admin interface").
+`js/captures.js` is the card deck — a clip plays, a swipe RIGHT files it as
+liked, a swipe LEFT replaces the card with a feedback input field, and the
+arrow keys plus two buttons do the same two things so a gesture is never the
+only way to act — over the Node-tested pure `js/captures-core.js` (the swipe
+thresholds and direction test, the drag tilt, the hint overlay, the deck
+order, the note validation and the fact formatting). Its server half is
+`src/captures.js` and the clips it plays are made by the video pipeline — see
+**`docs/VIDEO-CAPTURE.md`** and the **video-capture** skill. Vendored libs in
+`vendor/` (`marked` and `DOMPurify`
 for Markdown rendering + sanitizing; `mermaid.min.js`, lazy-loaded by
 `markdown.js` only when an answer contains a mermaid diagram block;
 `jsPDF`, lazy-loaded by `report.js`

@@ -5,7 +5,6 @@
 // actions. Accounts are provisioned by Google sign-in — there is nothing
 // to create here.
 
-import { loadCaptures } from "./captures.js";
 import { alertSeverityBadge, escapeHtml, formatCount as count, pendingApprovalLine } from "./notifications.js";
 
 const $ = (id) => document.getElementById(id);
@@ -105,9 +104,8 @@ async function load() {
   loadServerTokens();
   loadSecurity();
   loadFeatures();
-  // The capture deck owns its own fetching and failure handling (it must not
-  // take the page down for a non-admin), so it only borrows the count badge.
-  loadCaptures({ onCount: (n) => setPanelCount("captures-sec", n) });
+  // (Capture reviews used to load here. It moved up a level to its own
+  // admin-gated page, /captures/, on 2026-08-10 — see public/js/captures.js.)
   loadPanels();
 }
 
