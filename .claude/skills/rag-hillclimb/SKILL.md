@@ -210,6 +210,31 @@ place. So a before/after that spans an ingest measures TWO changes at once. Say
 which one you mean, and if you want to attribute a retrieval change to a
 pipeline change, hold the corpus fixed.
 
+**Measuring an ingest's effect: use entrant PROVENANCE against chance, not pool
+churn.** When recall does not move, the obvious next instrument is how much of
+the 50-candidate pool turned over. That instrument is wrong, and it was caught
+only by measuring its noise floor (2026-08-10 ledger entry).
+
+Re-running the SAME 156 queries against the SAME index state churned
+**3 of 7,800 slots (0.04%)** — so the harness is essentially deterministic. But
+across a fill, ancient-DNA needles churned **49.4%** while only **4.0%** of the
+entrants came from the fill at all, and the fill's documents held **2.3%** of
+post-fill slots against a **5.25%** share of the index — *below* chance. Half the
+pool was replaced by documents that were already there. Churn tracks ANN-graph
+perturbation, which scales with how much was added ANYWHERE, not with pressure
+in the gold's own neighbourhood.
+
+So measure two things instead:
+
+- **entrant provenance read against chance** — what share of new pool entrants
+  came from the fill, compared with the fill's share of the whole index. At or
+  below chance means the additions did not land in this neighbourhood.
+- **gold dense-rank displacement**, worse/better counts with an exact binomial.
+
+And measure the noise floor before trusting any of it: re-run one arm against an
+unchanged index. A number with no null distribution behind it is not evidence,
+and this one looked enormous.
+
 **Six underpowered tests all pointing the same way is not "no effect".** Each
 of those six was individually non-significant (p from 0.125 to 0.5 at n=56) and
 reporting "no significant change" would have been true and misleading. The
