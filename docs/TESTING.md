@@ -899,7 +899,12 @@ cannot pass. The rest:
 `pulse-themes.test.mjs` + `pulse-time.test.mjs` (the commit-analytics tagger
 and rollups), `dup-scan.test.mjs` + `line-scan.test.mjs` (the refactor-pass
 surveys), `merge-markers.test.mjs` and `check-merged-branches.test.mjs` (the
-merge hygiene guards behind the push hook).
+merge hygiene guards behind the push hook). `capture-core.test.mjs` covers the
+video pipeline's whole editing model — which spans of a recording are provably
+dead air, what the cut plan does with them, the ffmpeg filter graph and argv,
+and LinkedIn's delivery fences — WITHOUT ffmpeg, because no agent container
+here has it and a plan that can only be checked by encoding is a plan nobody
+checks.
 
 **`tests/`** — the two eval harnesses' pure helpers, unit-tested so a scoring
 change is a caught diff rather than a silently different ledger:
@@ -1357,6 +1362,33 @@ npx playwright test --config=sandbox-perf.pw.config.js -g "agent trace"    # one
 Results and the guidance drawn from them: **`docs/SANDBOX-PERFORMANCE.md`**.
 These are exploration tools, not gates — they assert only that they produced
 usable data, since the numbers vary with network conditions.
+
+### The capture harness (`tests/capture.mjs`) — a recorder, not a test
+
+Driven by Playwright and living in `tests/`, but it asserts nothing: it
+RECORDS the site running real queries across selected agents and selected
+models, and writes a video plus an activity timeline per run for
+`scripts/capture-edit.mjs` to cut into a shareable clip.
+
+```bash
+cd tests && npm install
+npm run capture -- --agents research --models <id> --dry-run   # the matrix, no browser
+npm run capture -- --agents research,introspection --models <id> --per-agent 2
+```
+
+It is listed here because it shares the e2e suite's plumbing and its traps —
+break-glass Basic Auth, `stripCrossOriginAuth`, the pre-installed Chromium
+path, the pinned settings that keep the app in a known state — so a change to
+`tests/e2e/helpers.js` is a change to the recorder too. What it produces, and
+what the second stage does with it: **`docs/VIDEO-CAPTURE.md`** and the
+**video-capture** skill.
+
+The parts that can be tested without a browser are, in the ordinary `npm test`
+run: `tests/capture.test.js` (the argv parser, the content-signature composer,
+the timeline assembler) and `scripts/capture-core.test.mjs` (the whole editing
+model — dead-air detection, the cut plan, the ffmpeg filter graph and argv,
+LinkedIn's delivery fences), which is deliberately free of ffmpeg so it runs
+in a container that has none.
 
 ### The theme audit (`tests/theme-contrast.mjs`) — every agent switch, measured
 

@@ -101,6 +101,12 @@ export const PANEL_ITEMS = [
       "FEATURES.md §3's feature backlog with votes/effort/note/priority — the feature-build loop's work order.",
   },
   {
+    id: "captures",
+    title: "Capture reviews",
+    summary:
+      "Recorded runs of the research pipeline across agents and models, edited for sharing — a card deck where swiping right keeps a clip and swiping left opens a note saying what is wrong with it.",
+  },
+  {
     id: "websearch_service",
     title: "Web search service",
     summary:
