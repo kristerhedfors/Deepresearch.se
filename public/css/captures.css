@@ -121,6 +121,12 @@ input, select, textarea {
 .cap-filter { padding: .28rem .6rem; font-size: .76rem; }
 .cap-filter.is-on { background: var(--accent); color: #fff; border: 1px solid var(--accent); }
 
+/* The queue's health — "14 of 20 unanswered". One calm line under the
+   filters: the target is 20, and the number that matters is how far the queue
+   is from it, not the size of whichever list is open. */
+.cap-health { margin: 0 0 .5rem; font-variant-numeric: tabular-nums; }
+.cap-health[hidden] { display: none; }
+
 .cap-progress { margin: 0 0 .4rem; font-variant-numeric: tabular-nums; }
 .cap-hintline { margin: .5rem 0 0; }
 .cap-empty { padding: .8rem 0; }
@@ -173,8 +179,38 @@ input, select, textarea {
   object-fit: contain;
 }
 
+/* The version strip under the player. Only rendered when a capture has been
+   re-recorded, so its absence is the common case and costs nothing. */
+.cap-stage { position: relative; }
+.cap-versions {
+  display: flex; flex-wrap: wrap; gap: .3rem; align-items: center;
+  margin-top: .4rem;
+}
+.cap-versions-lead { margin-right: .15rem; }
+.cap-version { padding: .18rem .45rem; font-size: .72rem; }
+.cap-version.is-on { background: var(--accent); color: #fff; border: 1px solid var(--accent); }
+/* Which cut is on screen — shown only while an OLDER version is playing. */
+.cap-playing { margin: .35rem 0 0; }
+
 .cap-body { padding-top: .5rem; }
 .cap-title { margin: 0 0 .35rem; font-size: .9rem; overflow-wrap: anywhere; }
+/* THE NUMBER. It is how a capture is referred to out loud ("produce a review
+   of #12"), so it leads the card and it has to be selectable — the card sets
+   user-select:none for the drag, which would otherwise make the one string
+   worth copying the one string you cannot copy. */
+.cap-tag {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: .82rem; color: var(--accent); letter-spacing: .01em;
+}
+.cap-title, .cap-row .head b { user-select: text; -webkit-user-select: text; }
+.cap-sep { color: var(--muted); }
+.cap-name { font-weight: 600; }
+/* The commit the recording was made at: provenance, kept quiet. */
+.cap-sha {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: .72rem; background: var(--panel-2); border-radius: 4px; padding: 0 .25rem;
+}
+.cap-sub { margin: .15rem 0 0; }
 .cap-chips { display: flex; flex-wrap: wrap; gap: .3rem; margin-bottom: .35rem; }
 .cap-prompt {
   margin: 0 0 .35rem; font-size: .82rem; color: var(--text);
@@ -213,9 +249,19 @@ input, select, textarea {
 .cap-feedback-err { margin: .4rem 0 0; }
 .cap-feedback-actions { display: flex; gap: .5rem; margin-top: .6rem; }
 
-/* Read-only rendering for the liked / needs-work / all filters. */
+/* Read-only rendering for the appreciated / needs-work / all filters. */
 .cap-row .cap-facts, .cap-row .cap-review { margin-top: .3rem; }
 .cap-link { font-size: .8rem; color: var(--accent); }
+
+/* The feedback thread on a needs-work row: what was asked for, oldest first,
+   which is what the next version has to answer. */
+.cap-thread {
+  margin: .4rem 0 .1rem; padding: .4rem .55rem;
+  background: var(--panel-2); border-radius: 8px;
+}
+.cap-msg { margin: .15rem 0; font-size: .8rem; overflow-wrap: anywhere; }
+.cap-msg strong { color: var(--muted); font-weight: 600; margin-right: .15rem; }
+.cap-msg.like strong { color: var(--ok); }
 
 /* Reduced motion: the transforms ARE the animation here, so a reduced-motion
    reviewer gets the same state changes with no travel — the card simply is,

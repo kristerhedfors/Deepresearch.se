@@ -275,12 +275,21 @@ CREATE INDEX IF NOT EXISTS idx_test_point_messages_point ON test_point_messages(
 -- capture_reviews is append-only: one row per swipe, so a clip re-shot three
 -- times keeps the history of why. A 'feedback' verdict always carries a note
 -- (enforced in the validator — a left swipe with no words is not a review).
+--
+-- A capture is a THREAD, not a file (queue v2, 2026-08-11). id is the
+-- increasing series the owner refers a clip by (#CAP-12), name its short
+-- few-word handle, version the cut currently on the card, commit_sha the code
+-- that cut was recorded against (without it a clip is un-reproducible six
+-- merges later), and answered_at the moment the FIRST verdict landed — set
+-- once, never cleared, which is how the top-up tells a genuinely fresh capture
+-- from a re-cut that went back on the deck.
 CREATE TABLE IF NOT EXISTS captures (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
   slug TEXT NOT NULL,
   label TEXT NOT NULL,
+  name TEXT,
   agent TEXT NOT NULL,
   mode TEXT,
   model TEXT NOT NULL,
@@ -298,12 +307,45 @@ CREATE TABLE IF NOT EXISTS captures (
   size_bytes INTEGER NOT NULL DEFAULT 0,
   video_key TEXT,
   poster_key TEXT,
+  commit_sha TEXT,
+  version INTEGER NOT NULL DEFAULT 1,
+  answered_at INTEGER,
   status TEXT NOT NULL DEFAULT 'new',
   likes INTEGER NOT NULL DEFAULT 0,
   ref TEXT,
   meta_json TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_captures_status ON captures(status, id DESC);
+-- Every version a capture has ever had, newest never overwriting oldest: a
+-- 'feedback' verdict is answered by RE-CUTTING the clip, and the point of the
+-- thread is that the earlier cut stays watchable next to the new one. One row
+-- per version; the bytes sit at captures/<id>/v<version>/{video.mp4,poster.jpg}
+-- in R2 and video_key/poster_key are the pointers (null until the upload
+-- lands). The four captures recorded before this table existed have no rows at
+-- all — src/captures.js reads their unversioned captures/<id>/… keys as v1 and
+-- materialises that row the first time a second version is added, so nothing
+-- recorded earlier is orphaned.
+CREATE TABLE IF NOT EXISTS capture_versions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  capture_id INTEGER NOT NULL,
+  version INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  commit_sha TEXT,
+  model TEXT,
+  video_key TEXT,
+  poster_key TEXT,
+  size_bytes INTEGER NOT NULL DEFAULT 0,
+  duration_ms INTEGER NOT NULL DEFAULT 0,
+  source_ms INTEGER NOT NULL DEFAULT 0,
+  cut_ms INTEGER NOT NULL DEFAULT 0,
+  speed REAL NOT NULL DEFAULT 1,
+  wait_mode TEXT,
+  width INTEGER,
+  height INTEGER,
+  note TEXT,
+  meta_json TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_capture_versions_capture ON capture_versions(capture_id, version);
 CREATE TABLE IF NOT EXISTS capture_reviews (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   capture_id INTEGER NOT NULL,
@@ -576,6 +618,18 @@ const ALTERS = [
   "ALTER TABLE pool_consumers ADD COLUMN decided_at INTEGER",
   "ALTER TABLE pool_tokens ADD COLUMN owner TEXT",
   "ALTER TABLE pool_providers ADD COLUMN owner TEXT",
+  // The capture QUEUE v2 (2026-08-11): a capture became a named, numbered
+  // THREAD with successive versions. The table is already live with rows in
+  // it, so these four are additive — a CREATE TABLE IF NOT EXISTS would not
+  // touch an existing table, and the deployed rows must keep working.
+  // The four rows recorded before the queue existed read back as version 1
+  // (SQLite serves the constant DEFAULT for rows written before the column),
+  // with no name, no commit and no answer — which is exactly what they are.
+  // src/captures.js treats a falsy version as 1 either way.
+  "ALTER TABLE captures ADD COLUMN name TEXT",
+  "ALTER TABLE captures ADD COLUMN commit_sha TEXT",
+  "ALTER TABLE captures ADD COLUMN version INTEGER DEFAULT 1",
+  "ALTER TABLE captures ADD COLUMN answered_at INTEGER",
 ];
 
 let migrated = false; // per isolate

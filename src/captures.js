@@ -21,6 +21,32 @@
 // for the next capture run. Every verdict is also appended to
 // `capture_reviews`, so a clip re-shot three times keeps the history of why.
 //
+// A QUEUE OF TWENTY THAT REFILLS ITSELF (owner directive, 2026-08-11). The
+// unanswered clips ARE the queue — twenty of them, spanning every agent — and
+// answering one is what makes room for the next: `queue-status` reports the
+// deficit and the (agent, starter) pairs already spoken for, and the top-up
+// records exactly that many new runs. Two consequences shape this module:
+//
+//  * **A capture is a THREAD, not a file.** A ✍️ verdict is answered by
+//    RE-CUTTING the clip, so a new version is APPENDED (`capture_versions`)
+//    and the earlier cut stays watchable beside it — nothing is overwritten.
+//    The new version puts the capture back to `new` so it re-enters the queue.
+//  * **`answered_at` is set once and never cleared.** It is the difference
+//    between a genuinely fresh capture and a re-cut that came back around,
+//    which is the one thing a status alone cannot say.
+//
+// Each capture also carries a number from an increasing series (`id`, written
+// `#CAP-12`), a short few-word `name` derived with no model call, and the
+// `commit_sha` it was recorded at — without which a clip is un-reproducible
+// six merges later.
+//
+// VERSIONED BYTES, WITHOUT ORPHANING THE OLD ONES. A version's media lives at
+// `captures/<id>/v<n>/{video.mp4,poster.jpg}`. The captures recorded before
+// versions existed have their bytes at the UNVERSIONED `captures/<id>/…` keys
+// and no `capture_versions` rows at all, so this module reads them as a
+// synthetic v1 (see `syntheticVersionRow`) and materialises that row the
+// moment a second version is added. Nothing recorded earlier stops playing.
+//
 // Access: the whole surface is ADMIN-gated (the gate is applied upstream, in
 // index.js → admin-api.js). Captures are unpublished marketing material, so
 // nothing here is reachable by a signed-in user, let alone a stranger.
@@ -34,16 +60,23 @@
 //   GET    /api/admin/captures            newest first; ?status= ?agent=
 //                                         ?model= ?q= ?queue=1 ?limit=
 //                                         ?format=text
+//   GET    /api/admin/captures/queue-status   what the top-up needs: the
+//                                         deficit against the target of 20 and
+//                                         every (agent, starter) already used
 //   POST   /api/admin/captures            create the metadata row; the 201
 //                                         carries the two upload URLs
-//   GET    /api/admin/captures/:id        one capture (reviews attached)
-//   PATCH  /api/admin/captures/:id        {label?, status?, ref?}
-//   DELETE /api/admin/captures/:id        row + reviews + both R2 objects
-//   PUT    /api/admin/captures/:id/video  raw MP4 bytes (200 MB cap)
-//   GET    /api/admin/captures/:id/video  the MP4, with real Range support
+//   GET    /api/admin/captures/:id        one capture (reviews + versions)
+//   PATCH  /api/admin/captures/:id        {label?, name?, status?, ref?}
+//   DELETE /api/admin/captures/:id        row + reviews + versions + R2 objects
+//   PUT    /api/admin/captures/:id/video  raw MP4 bytes (100 MB cap)
+//   GET    /api/admin/captures/:id/video  the CURRENT version, with Range
 //   PUT    /api/admin/captures/:id/poster raw JPEG bytes (4 MB cap)
 //   GET    /api/admin/captures/:id/poster the poster frame
 //   POST   /api/admin/captures/:id/review THE SWIPE — {verdict, note?}
+//   GET    /api/admin/captures/:id/versions          the thread, newest first
+//   POST   /api/admin/captures/:id/versions          a NEW cut: version = max+1
+//   PUT|GET /api/admin/captures/:id/versions/:v/video   one version's MP4
+//   PUT|GET /api/admin/captures/:id/versions/:v/poster  one version's poster
 
 import { getDb } from "./db.js";
 import { jsonResponse, textResponse } from "./http.js";
@@ -59,12 +92,24 @@ import { cleanStr, likePattern } from "./chatlog.js";
  *   cut_ms: number, speed: number, wait_mode?: string | null, width?: number | null,
  *   height?: number | null, size_bytes: number, video_key?: string | null,
  *   poster_key?: string | null, status: string, likes: number, ref?: string | null,
- *   meta_json?: string | null }} CaptureRow
+ *   name?: string | null, commit_sha?: string | null, version?: number | null,
+ *   answered_at?: number | null, meta_json?: string | null }} CaptureRow
  */
 /**
  * A D1 `capture_reviews` row.
  * @typedef {{ id: number, capture_id: number, created_at: number, verdict: string,
  *   note?: string | null, reviewer?: string | null }} CaptureReviewRow
+ */
+/**
+ * A D1 `capture_versions` row. `id` is null for the SYNTHETIC v1 of a capture
+ * recorded before the table existed — the row is real to every reader, it just
+ * has no storage of its own until a second version materialises it.
+ * @typedef {{ id: number | null, capture_id: number, version: number, created_at: number,
+ *   commit_sha?: string | null, model?: string | null, video_key?: string | null,
+ *   poster_key?: string | null, size_bytes?: number | null, duration_ms?: number | null,
+ *   source_ms?: number | null, cut_ms?: number | null, speed?: number | null,
+ *   wait_mode?: string | null, width?: number | null, height?: number | null,
+ *   note?: string | null, meta_json?: string | null }} CaptureVersionRow
  */
 
 // ---------------------------------------------------------------------------
@@ -73,6 +118,13 @@ import { cleanStr, likePattern } from "./chatlog.js";
 
 export const CAPTURE_CAPS = {
   label: 200,
+  // The short handle a human says out loud ("produce a review of #12, the
+  // electricity one"). Deliberately much shorter than the label: a name that
+  // does not fit on the card is a label with extra steps.
+  name: 80,
+  // A git object id, hex. Capped generously so an annotated ref ("abc1234" or
+  // a full 40-char sha with a -dirty tail) fits without a rule about which.
+  commit: 120,
   prompt: 8_000,
   note: 4_000,
   ref: 200,
@@ -108,8 +160,16 @@ export const CAPTURE_CAPS = {
 
 // Lifecycle. `new` = not yet swiped (the deck). A 👍 moves it to `liked`
 // (publishable), a ✍️ to `needs_work` (re-shoot with the note as the brief);
-// `archived` retires a clip without deleting the file.
+// `archived` retires a clip without deleting the file. A new VERSION on a
+// `needs_work` capture puts it back to `new` — that is the whole thread loop.
 export const CAPTURE_STATUSES = ["new", "liked", "needs_work", "archived"];
+
+// How many unanswered clips the deck is meant to hold. Twenty is the owner's
+// number: enough that the queue spans every agent, few enough that emptying it
+// is an evening rather than a project. The top-up reads the DEFICIT against
+// this (queue-status) rather than counting for itself, so the target lives in
+// exactly one place.
+export const CAPTURE_QUEUE_TARGET = 20;
 
 // The two swipe directions. Deliberately NOT a like/dislike pair: a clip that
 // is wrong is re-shot, so the left swipe collects the reason instead of a
@@ -218,6 +278,62 @@ export function captureSlug(run) {
   );
 }
 
+// The public reference for a capture — what the owner says and types when
+// asking for one by number ("produce a review of #CAP-12"). The id IS the
+// increasing series, never reused, so the tag needs no separate counter. The
+// shape matches the repo's existing #UC-<id> / #XP-<nn> conventions.
+/**
+ * @param {number | string} id
+ * @returns {string}
+ */
+export function captureTag(id) {
+  return `#CAP-${id}`;
+}
+
+// The short, few-word name that rides next to the number. Derived from the
+// STARTER ID rather than the prompt on purpose: the id is already a
+// hand-written slug of what the prompt is about (`res-sv-elpris`,
+// `sch-vitamin-d`), so stripping the agent prefix and title-casing gives a
+// usable name with NO network call, NO model call and no per-prompt
+// maintenance — which is what a queue that tops itself up unattended needs.
+// It is only a DEFAULT: `PATCH {name}` (scripts/captures --name) improves any
+// one of them by hand, and the harness may send its own.
+//
+// `res-sv-elpris` → "Sv Elpris"; `sch-vitamin-d` → "Vitamin D";
+// `int-pipeline` → "Pipeline".
+/**
+ * @param {{ agent?: string | null, starter?: string | null, prompt?: string | null }} run
+ * @returns {string} never empty — an unnamed card in a deck of twenty is the
+ *   one nobody can refer to
+ */
+export function captureName(run) {
+  const parts = String(run?.starter || "")
+    .trim()
+    .split(/[-_\s]+/)
+    .filter(Boolean);
+  // The first segment is the agent prefix (res- / sch- / int- / orc- …).
+  // Dropping it is what turns an id into a name — but a starter that is a
+  // single word IS the name, so a strip that leaves nothing is not applied.
+  const words = parts.length > 1 ? parts.slice(1) : parts;
+  if (words.length) {
+    return words
+      .slice(0, 4)
+      .map((w) => w[0].toUpperCase() + w.slice(1))
+      .join(" ")
+      .slice(0, CAPTURE_CAPS.name);
+  }
+  // No usable starter id (a hand-driven run): the prompt's opening words are a
+  // worse name but never an empty one.
+  const fromPrompt = String(run?.prompt || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .split(" ")
+    .slice(0, 4)
+    .join(" ")
+    .slice(0, CAPTURE_CAPS.name);
+  return fromPrompt || "Untitled capture";
+}
+
 // POST body → the row fields for a new capture, or {error}. The five required
 // fields are the ones without which a clip cannot be reviewed at all: what it
 // shows (label), what produced it (agent, model, prompt) and how long it runs
@@ -226,11 +342,12 @@ export function captureSlug(run) {
 /**
  * @param {any} body
  * @returns {{ error: string } | { error?: undefined, entry: {
- *   slug: string, label: string, agent: string, mode: string | null, model: string,
- *   prompt: string, starter: string | null, lang: string | null, shape: string | null,
- *   duration_ms: number, source_ms: number, cut_ms: number, speed: number,
- *   wait_mode: string | null, width: number | null, height: number | null,
- *   size_bytes: number, ref: string | null, meta_json: string | null } }}
+ *   slug: string, label: string, name: string, agent: string, mode: string | null,
+ *   model: string, prompt: string, starter: string | null, lang: string | null,
+ *   shape: string | null, duration_ms: number, source_ms: number, cut_ms: number,
+ *   speed: number, wait_mode: string | null, width: number | null, height: number | null,
+ *   size_bytes: number, commit_sha: string | null, ref: string | null,
+ *   meta_json: string | null } }}
  */
 export function validateCaptureCreate(body) {
   if (!body || typeof body !== "object") return { error: "Request body must be a JSON object." };
@@ -251,6 +368,9 @@ export function validateCaptureCreate(body) {
     entry: {
       slug,
       label,
+      // A name is never absent: an unnamed clip cannot be asked for by name,
+      // and the derivation costs nothing (see captureName).
+      name: cleanStr(body.name, CAPTURE_CAPS.name) || captureName({ agent, starter, prompt }),
       agent,
       mode: cleanStr(body.mode, CAPTURE_CAPS.mode),
       model,
@@ -266,7 +386,51 @@ export function validateCaptureCreate(body) {
       width: optionalInt(body.width),
       height: optionalInt(body.height),
       size_bytes: nonNegInt(body.size_bytes, 0),
+      // Null when the harness could not resolve git HEAD. Honest beats a
+      // guess: a wrong commit is worse than a missing one when the whole point
+      // is reproducing the run.
+      commit_sha: cleanStr(body.commit_sha, CAPTURE_CAPS.commit),
       ref: cleanStr(body.ref, CAPTURE_CAPS.ref),
+      meta_json: serializeMeta(body.meta),
+    },
+  };
+}
+
+// POST …/versions body → the fields of ONE new cut, or {error}.
+//
+// Same descriptive shape as a create, minus everything that identifies the
+// capture: the agent, model choice, prompt and starter belong to the THREAD
+// and a version that changed them would be a different capture, not a re-cut.
+// `duration_ms` stays required for the same reason it is on a create — a
+// zero-length version is a failed edit, and filing it would push a broken
+// clip back onto the deck as if it were a fix.
+/**
+ * @param {any} body
+ * @returns {{ error: string } | { error?: undefined, entry: {
+ *   commit_sha: string | null, model: string | null, duration_ms: number,
+ *   source_ms: number, cut_ms: number, speed: number, wait_mode: string | null,
+ *   width: number | null, height: number | null, size_bytes: number,
+ *   note: string | null, meta_json: string | null } }}
+ */
+export function validateCaptureVersion(body) {
+  if (!body || typeof body !== "object") return { error: "Request body must be a JSON object." };
+  const duration_ms = nonNegInt(body.duration_ms, 0);
+  if (!duration_ms) return { error: "duration_ms must be a positive number of milliseconds." };
+  return {
+    entry: {
+      commit_sha: cleanStr(body.commit_sha, CAPTURE_CAPS.commit),
+      model: cleanStr(body.model, CAPTURE_CAPS.model),
+      duration_ms,
+      source_ms: nonNegInt(body.source_ms, 0),
+      cut_ms: nonNegInt(body.cut_ms, 0),
+      speed: clampSpeed(body.speed),
+      wait_mode: normalizeWaitMode(body.wait_mode),
+      width: optionalInt(body.width),
+      height: optionalInt(body.height),
+      size_bytes: nonNegInt(body.size_bytes, 0),
+      // What this cut was meant to fix — usually the previous version's
+      // feedback note, carried forward so the thread reads as a conversation.
+      note: cleanStr(body.note, CAPTURE_CAPS.note),
       meta_json: serializeMeta(body.meta),
     },
   };
@@ -302,6 +466,13 @@ export function validateCapturePatch(body) {
     if (!label) return { error: "label cannot be empty." };
     patch.label = label;
   }
+  // The derived name is a default; this is how a human improves it. Empty is
+  // rejected like the label — a nameless card is the one nobody can ask for.
+  if ("name" in body) {
+    const name = cleanStr(body.name, CAPTURE_CAPS.name);
+    if (!name) return { error: "name cannot be empty." };
+    patch.name = name;
+  }
   if ("status" in body) {
     const status = normalizeCaptureStatus(body.status);
     if (!status) return { error: `status must be one of: ${CAPTURE_STATUSES.join(", ")}.` };
@@ -309,7 +480,7 @@ export function validateCapturePatch(body) {
   }
   if ("ref" in body) patch.ref = cleanStr(body.ref, CAPTURE_CAPS.ref);
   if (!Object.keys(patch).length) {
-    return { error: "Nothing to update — send label, status and/or ref." };
+    return { error: "Nothing to update — send label, name, status and/or ref." };
   }
   return { patch };
 }
@@ -347,6 +518,27 @@ export function posterUrl(id) {
   return `/api/admin/captures/${id}/poster`;
 }
 
+// The per-version URLs. The unversioned pair above always serves the CURRENT
+// version, so the deck can keep using it and only the thread view needs these.
+/** @param {number} id @param {number} version */
+export function versionVideoUrl(id, version) {
+  return `/api/admin/captures/${id}/versions/${version}/video`;
+}
+
+/** @param {number} id @param {number} version */
+export function versionPosterUrl(id, version) {
+  return `/api/admin/captures/${id}/versions/${version}/poster`;
+}
+
+// A version number that came off a URL or a row. Falsy → 1: a capture written
+// before the column existed IS version 1, and reading it as 0 would make its
+// bytes unreachable.
+/** @param {unknown} v @returns {number} */
+export function captureVersionNumber(v) {
+  const n = Math.round(Number(v));
+  return Number.isFinite(n) && n > 0 ? n : 1;
+}
+
 /** @param {string | null | undefined} json */
 function parseMeta(json) {
   if (!json) return {};
@@ -374,23 +566,95 @@ export function projectCaptureReview(row) {
   };
 }
 
+// The v1 that a capture recorded before `capture_versions` existed HAS but has
+// no row for. Read straight off the captures row — including its unversioned
+// `video_key`, which is precisely why those four live clips keep playing. Pure:
+// the same object is what gets INSERTed when a second version materialises it.
+/**
+ * @param {CaptureRow} row
+ * @returns {CaptureVersionRow}
+ */
+export function syntheticVersionRow(row) {
+  return {
+    id: null, // no storage of its own — yet
+    capture_id: row.id,
+    version: 1,
+    created_at: row.created_at,
+    commit_sha: row.commit_sha || null,
+    model: row.model || null,
+    video_key: row.video_key || null,
+    poster_key: row.poster_key || null,
+    size_bytes: row.size_bytes || 0,
+    duration_ms: row.duration_ms || 0,
+    source_ms: row.source_ms || 0,
+    cut_ms: row.cut_ms || 0,
+    speed: row.speed || 1,
+    wait_mode: row.wait_mode || null,
+    width: row.width || null,
+    height: row.height || null,
+    note: null,
+    meta_json: null,
+  };
+}
+
+// A version row → API object. `is_current` is what the thread view renders as
+// "the one on the card"; everything else is the same descriptive set the
+// capture itself carries, so a viewer can compare two cuts side by side.
+/**
+ * @param {CaptureVersionRow} row
+ * @param {number} currentVersion the capture's `version` column
+ * @returns {any}
+ */
+export function projectCaptureVersion(row, currentVersion) {
+  const version = captureVersionNumber(row.version);
+  return {
+    id: row.id ?? null,
+    version,
+    created_at: row.created_at || 0,
+    time: new Date(row.created_at || 0).toISOString(),
+    commit_sha: row.commit_sha || null,
+    model: row.model || null,
+    size_bytes: row.size_bytes || 0,
+    duration_ms: row.duration_ms || 0,
+    source_ms: row.source_ms || 0,
+    cut_ms: row.cut_ms || 0,
+    speed: row.speed || 1,
+    wait_mode: row.wait_mode || null,
+    width: row.width || null,
+    height: row.height || null,
+    note: row.note || null,
+    video_url: versionVideoUrl(row.capture_id, version),
+    poster_url: versionPosterUrl(row.capture_id, version),
+    has_video: !!row.video_key,
+    is_current: version === captureVersionNumber(currentVersion),
+  };
+}
+
 // Row → API object. The key set is a CONTRACT with the swipe deck: it reads
 // `video_url`/`poster_url` straight into the <video>/<img>, `has_video` to
 // decide whether the card is playable at all, and `meta` for the edit report.
 // Optional columns are null-safe because a hand-made row (or an older row
 // created before a column was populated) must still render.
+//
+// `versions` is attached only when the caller asked for the thread (the single
+// -capture GET), never on the list — twenty cards do not each need their
+// history, and the key would be a lie if it were always an empty array.
 /**
  * @param {CaptureRow} row
+ * @param {CaptureVersionRow[]} [versions] newest first
  * @returns {any}
  */
-export function projectCapture(row) {
+export function projectCapture(row, versions) {
+  const version = captureVersionNumber(row.version);
   return {
     id: row.id,
+    tag: captureTag(row.id),
     created_at: row.created_at,
     updated_at: row.updated_at,
     time: new Date(row.created_at).toISOString(),
     slug: row.slug,
     label: row.label,
+    name: row.name || null,
     agent: row.agent,
     mode: row.mode || null,
     model: row.model,
@@ -409,12 +673,68 @@ export function projectCapture(row) {
     status: row.status,
     likes: row.likes || 0,
     ref: row.ref || null,
+    commit_sha: row.commit_sha || null,
+    version,
+    // Set on the FIRST verdict and never cleared — `status` alone cannot tell
+    // a fresh capture from a re-cut that came back around to `new`.
+    answered_at: row.answered_at || null,
+    answered: !!row.answered_at,
     has_video: !!row.video_key,
     has_poster: !!row.poster_key,
     video_url: videoUrl(row.id),
     poster_url: posterUrl(row.id),
     meta: parseMeta(row.meta_json),
     reviews: [],
+    ...(versions ? { versions: versions.map((v) => projectCaptureVersion(v, version)) } : {}),
+  };
+}
+
+// The top-up's whole input, computed from the capture rows in one pass.
+//
+// `deficit` is what it records next: how many NEW runs bring the unanswered
+// deck back to the target. `used` is what stops it recording the same prompt
+// twice — every (agent, starter) pair already in the deck IN ANY STATUS, so a
+// liked or archived clip's prompt is not silently re-shot as if it were new.
+// `by_agent` is the spread over the queue, which is how the top-up keeps
+// twenty clips from all being the same agent.
+/**
+ * @param {Array<{ agent?: string | null, starter?: string | null, status?: string | null }>} rows
+ * @param {{ target?: number, agents?: string[] }} [opts] `agents` seeds the
+ *   spread with zeroes so an agent with nothing in the queue is visible as a
+ *   gap rather than an absent key
+ * @returns {{ target: number, unanswered: number, deficit: number,
+ *   by_agent: Record<string, number>, used: Array<{ agent: string, starter: string }> }}
+ */
+export function captureQueueStatus(rows, opts = {}) {
+  const target = Math.min(Math.max(Math.round(Number(opts.target)) || CAPTURE_QUEUE_TARGET, 1), 200);
+  // A Map rather than a plain object: agent ids come off rows and query
+  // strings, and "__proto__" as a key must be a counter, not a prototype.
+  /** @type {Map<string, number>} */
+  const byAgent = new Map();
+  for (const a of opts.agents || []) if (a) byAgent.set(String(a), 0);
+  let unanswered = 0;
+  /** @type {Array<{ agent: string, starter: string }>} */
+  const used = [];
+  const seen = new Set();
+  for (const row of rows || []) {
+    const agent = String(row?.agent || "");
+    if (row?.status === "new") {
+      unanswered++;
+      if (agent) byAgent.set(agent, (byAgent.get(agent) || 0) + 1);
+    }
+    const starter = row?.starter ? String(row.starter) : "";
+    if (!agent || !starter) continue; // nothing to de-duplicate a re-record on
+    const key = `${agent} ${starter}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    used.push({ agent, starter });
+  }
+  return {
+    target,
+    unanswered,
+    deficit: Math.max(0, target - unanswered),
+    by_agent: Object.fromEntries(byAgent),
+    used,
   };
 }
 
@@ -445,7 +765,9 @@ export function formatCapturesText(entries) {
   return (
     entries
       .map((e) => {
-        const lines = [`── #${e.id} [${e.status}] ${e.label}`];
+        // The tag rather than a bare id: it is how the owner refers to a clip
+        // out loud, so the text view spells it the same way ("#CAP-12").
+        const lines = [`── ${captureTag(e.id)} [${e.status}] ${e.name ? `${e.name} — ` : ""}${e.label}`];
         const facts = [`${e.agent} · ${e.model}`];
         if (e.mode) facts.push(`mode ${e.mode}`);
         if (e.lang) facts.push(e.lang);
@@ -461,6 +783,16 @@ export function formatCapturesText(entries) {
         ];
         if (e.wait_mode) edit.push(`waits ${e.wait_mode}`);
         lines.push(`EDIT: ${edit.join(" · ")}`);
+        // The thread's state in one line: which cut is on the card, the commit
+        // it was recorded at (what makes it reproducible) and whether this
+        // capture has ever been answered.
+        const thread = [`v${e.version || 1}`];
+        if (e.commit_sha) thread.push(`commit ${String(e.commit_sha).slice(0, 12)}`);
+        if (Array.isArray(e.versions) && e.versions.length > 1) {
+          thread.push(`${e.versions.length - 1} earlier version${e.versions.length > 2 ? "s" : ""} kept`);
+        }
+        thread.push(e.answered_at ? `answered ${new Date(e.answered_at).toISOString()}` : "UNANSWERED");
+        lines.push(`THREAD: ${thread.join(" · ")}`);
         const media = [e.has_video ? `${e.video_url} (${mb(e.size_bytes)})` : "no video uploaded"];
         if (e.width && e.height) media.push(`${e.width}x${e.height}`);
         if (e.has_poster) media.push("poster");
@@ -532,10 +864,20 @@ export function parseRange(header, size) {
 // Shared queries
 // ---------------------------------------------------------------------------
 
+// The UNVERSIONED keys. Everything recorded before versions existed lives
+// here, and this stays the fallback for v1 forever — those objects are not
+// worth a migration job, and a key that already works is the cheapest possible
+// back-compat.
 /** @param {number} id */
 const videoKey = (id) => `captures/${id}/video.mp4`;
 /** @param {number} id */
 const posterKey = (id) => `captures/${id}/poster.jpg`;
+
+// Where a version's bytes go from now on.
+/** @param {number} id @param {number} v */
+const versionVideoKey = (id, v) => `captures/${id}/v${v}/video.mp4`;
+/** @param {number} id @param {number} v */
+const versionPosterKey = (id, v) => `captures/${id}/v${v}/poster.jpg`;
 
 /**
  * @param {D1Database} db
@@ -546,6 +888,80 @@ async function getCapture(db, id) {
   return /** @type {Promise<CaptureRow | null>} */ (
     db.prepare("SELECT * FROM captures WHERE id = ?").bind(id).first()
   );
+}
+
+// A capture's whole thread, newest first. A capture with NO rows is one
+// recorded before the table existed: it still has a v1, so one is synthesized
+// from the captures row rather than reporting an empty history. Fail-soft — a
+// read that errors degrades to that same single version.
+/**
+ * @param {D1Database} db
+ * @param {CaptureRow} capture
+ * @returns {Promise<CaptureVersionRow[]>}
+ */
+async function listVersions(db, capture) {
+  const { results } = await db
+    .prepare("SELECT * FROM capture_versions WHERE capture_id = ? ORDER BY version DESC")
+    .bind(capture.id)
+    .all()
+    .catch(() => ({ results: [] }));
+  const rows = /** @type {CaptureVersionRow[]} */ (results || []);
+  return rows.length ? rows : [syntheticVersionRow(capture)];
+}
+
+// Materialise the synthetic v1 as a real row, so that adding v2 does not leave
+// the original cut describable only by a captures row that v2 is about to
+// overwrite. Idempotent by construction: it only ever runs when the capture has
+// no rows at all.
+/**
+ * @param {D1Database} db
+ * @param {CaptureRow} capture
+ * @param {CaptureVersionRow[]} existing the result of listVersions
+ * @returns {Promise<void>}
+ */
+async function materializeV1(db, capture, existing) {
+  if (existing.some((v) => v.id != null)) return; // already stored
+  const v1 = syntheticVersionRow(capture);
+  await db
+    .prepare(
+      `INSERT INTO capture_versions (capture_id, version, created_at, commit_sha, model, video_key,
+         poster_key, size_bytes, duration_ms, source_ms, cut_ms, speed, wait_mode, width, height, note, meta_json)
+       VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL)`,
+    )
+    .bind(
+      capture.id, v1.created_at, v1.commit_sha, v1.model, v1.video_key, v1.poster_key,
+      v1.size_bytes, v1.duration_ms, v1.source_ms, v1.cut_ms, v1.speed, v1.wait_mode,
+      v1.width, v1.height,
+    )
+    .run()
+    .catch(() => {});
+}
+
+// Which R2 key holds one version's bytes.
+//
+// THE BACK-COMPAT RULE lives here: v1 falls back to the capture's own
+// `video_key`/`poster_key` (the unversioned object) whenever the version row
+// has none — which covers both a capture recorded before versions existed and
+// a v1 row materialised from one. Null means "there is nothing to serve",
+// which the caller turns into a 404 rather than a throw.
+/**
+ * @param {CaptureRow} capture
+ * @param {CaptureVersionRow[]} versions
+ * @param {number} v
+ * @param {"video" | "poster"} kind
+ * @returns {string | null}
+ */
+function versionKeyFor(capture, versions, v, kind) {
+  const row = versions.find((r) => captureVersionNumber(r.version) === v);
+  const stored = row ? (kind === "video" ? row.video_key : row.poster_key) : null;
+  if (stored) return String(stored);
+  if (v !== 1) return null;
+  // The capture's own pointer only speaks for v1 while v1 IS the current cut.
+  // Past that it names the newest version's bytes, and serving those as v1
+  // would quietly answer "show me the original" with the re-cut.
+  const own =
+    captureVersionNumber(capture.version) === 1 ? (kind === "video" ? capture.video_key : capture.poster_key) : null;
+  return own || (kind === "video" ? videoKey(capture.id) : posterKey(capture.id));
 }
 
 // Attach each capture's reviews (oldest first, capped) to a list of projected
@@ -644,12 +1060,44 @@ export async function handleAdminCaptures(request, env, url, log) {
       (where.length ? ` WHERE ${where.join(" AND ")}` : "") +
       " ORDER BY id DESC LIMIT ?";
     const { results } = await db.prepare(sql).bind(...binds, limit).all();
+    // Not `.map(projectCapture)`: map passes the INDEX as the second argument,
+    // which projectCapture now reads as the version list.
     const entries = await attachReviews(
       db,
-      (/** @type {CaptureRow[]} */ (results || [])).map(projectCapture),
+      (/** @type {CaptureRow[]} */ (results || [])).map((r) => projectCapture(r)),
     );
     if (p.get("format") === "text") return textResponse(formatCapturesText(entries));
     return jsonResponse({ captures: entries, count: entries.length });
+  }
+
+  // GET /api/admin/captures/queue-status — the top-up's entire input.
+  //
+  // Answered by ONE scan of the rows rather than four aggregate queries: the
+  // `used` list needs every (agent, starter) pair anyway, and a deck of a few
+  // hundred captures is a small read. The scan is bounded all the same — a
+  // status endpoint that gets slower forever is a status endpoint that stops
+  // being called.
+  if (path === "/queue-status" && method === "GET") {
+    const p = url.searchParams;
+    // The caller may name the agents it intends to record from (the harness
+    // knows the roster; the Worker deliberately does not pull the starter
+    // registry into its bundle), so an agent with nothing in the queue shows
+    // as a 0 rather than an absent key.
+    const agents = (p.get("agents") || "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .slice(0, 50);
+    const { results } = await db
+      .prepare("SELECT agent, starter, status FROM captures ORDER BY id DESC LIMIT ?")
+      .bind(2_000)
+      .all()
+      .catch(() => ({ results: [] }));
+    const status = captureQueueStatus(/** @type {any[]} */ (results || []), {
+      target: Number(p.get("target")) || CAPTURE_QUEUE_TARGET,
+      agents,
+    });
+    return jsonResponse(status);
   }
 
   // POST /api/admin/captures — the metadata row. The bytes follow in two
@@ -663,15 +1111,15 @@ export async function handleAdminCaptures(request, env, url, log) {
     const now = Date.now();
     const res = await db
       .prepare(
-        `INSERT INTO captures (created_at, updated_at, slug, label, agent, mode, model, prompt, starter,
+        `INSERT INTO captures (created_at, updated_at, slug, label, name, agent, mode, model, prompt, starter,
            lang, shape, duration_ms, source_ms, cut_ms, speed, wait_mode, width, height, size_bytes,
-           status, likes, ref, meta_json)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new', 0, ?, ?)`,
+           commit_sha, version, answered_at, status, likes, ref, meta_json)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, NULL, 'new', 0, ?, ?)`,
       )
       .bind(
-        now, now, e.slug, e.label, e.agent, e.mode, e.model, e.prompt, e.starter,
+        now, now, e.slug, e.label, e.name, e.agent, e.mode, e.model, e.prompt, e.starter,
         e.lang, e.shape, e.duration_ms, e.source_ms, e.cut_ms, e.speed, e.wait_mode,
-        e.width, e.height, e.size_bytes, e.ref, e.meta_json,
+        e.width, e.height, e.size_bytes, e.commit_sha, e.ref, e.meta_json,
       )
       .run();
     const id = /** @type {number} */ (res.meta?.last_row_id);
@@ -688,15 +1136,51 @@ export async function handleAdminCaptures(request, env, url, log) {
     );
   }
 
-  const idMatch = path.match(/^\/(\d+)(\/video|\/poster|\/review)?$/);
-  if (!idMatch) return jsonResponse({ error: "Not found." }, 404);
-  const capture = await getCapture(db, Number(idMatch[1]));
+  // Two shapes past the collection: /:id[/video|/poster|/review|/versions] and
+  // the per-version media /:id/versions/:v/(video|poster). Matched separately
+  // so an unknown tail still 404s instead of being read as a sub-path.
+  const verMatch = path.match(/^\/(\d+)\/versions\/(\d+)\/(video|poster)$/);
+  const idMatch = verMatch ? null : path.match(/^\/(\d+)(\/video|\/poster|\/review|\/versions)?$/);
+  const match = verMatch || idMatch;
+  if (!match) return jsonResponse({ error: "Not found." }, 404);
+  const capture = await getCapture(db, Number(match[1]));
   if (!capture) return jsonResponse({ error: "No such capture." }, 404);
-  const sub = idMatch[2] || "";
+  const sub = (idMatch && idMatch[2]) || "";
 
-  // GET /api/admin/captures/:id — one card, reviews attached.
+  // PUT|GET /api/admin/captures/:id/versions/:v/(video|poster) — one cut's
+  // bytes. This is what makes older versions RETAINED rather than replaced:
+  // the current card plays /:id/video, and every earlier cut stays reachable
+  // at its own path forever.
+  if (verMatch) {
+    const v = captureVersionNumber(verMatch[2]);
+    const kind = /** @type {"video" | "poster"} */ (verMatch[3]);
+    const versions = await listVersions(db, capture);
+    if (method === "PUT") {
+      // v1 may still be synthetic (a capture recorded before the table) — give
+      // it a row before writing bytes at it, so the thread stays complete.
+      if (v === 1) await materializeV1(db, capture, versions);
+      const known = v === 1 || versions.some((r) => captureVersionNumber(r.version) === v);
+      if (!known) return jsonResponse({ error: `No version v${v} on this capture.` }, 404);
+      return putMedia(request, env, log, db, capture, {
+        kind,
+        key: kind === "video" ? versionVideoKey(capture.id, v) : versionPosterKey(capture.id, v),
+        contentType: kind === "video" ? "video/mp4" : "image/jpeg",
+        maxBytes: kind === "video" ? CAPTURE_CAPS.video_bytes : CAPTURE_CAPS.poster_bytes,
+        version: v,
+      });
+    }
+    if (method === "GET") {
+      const key = versionKeyFor(capture, versions, v, kind);
+      if (!key) return jsonResponse({ error: `No version v${v} on this capture.` }, 404);
+      return getMedia(request, env, capture.id, key, kind === "video" ? "video/mp4" : "image/jpeg", kind === "video");
+    }
+    return jsonResponse({ error: "Not found." }, 404);
+  }
+
+  // GET /api/admin/captures/:id — one card, reviews AND the whole thread.
   if (!sub && method === "GET") {
-    const [projected] = await attachReviews(db, [projectCapture(capture)]);
+    const versions = await listVersions(db, capture);
+    const [projected] = await attachReviews(db, [projectCapture(capture, versions)]);
     if (url.searchParams.get("format") === "text") return textResponse(formatCapturesText([projected]));
     return jsonResponse({ capture: projected });
   }
@@ -714,52 +1198,130 @@ export async function handleAdminCaptures(request, env, url, log) {
     }
     await db.prepare(`UPDATE captures SET ${sets.join(", ")} WHERE id = ?`).bind(...binds, capture.id).run();
     log.info("capture.patched", { id: capture.id, fields: Object.keys(v.patch) });
-    const row = await getCapture(db, capture.id);
-    const [projected] = await attachReviews(db, [projectCapture(/** @type {CaptureRow} */ (row))]);
-    return jsonResponse({ capture: projected });
+    return jsonResponse({ capture: await readBack(db, capture.id) });
   }
 
-  // DELETE /api/admin/captures/:id — the clip, its reviews and its bytes.
-  // The R2 deletes are fail-soft on purpose: an object that was never uploaded
-  // (or that a previous half-finished delete already removed) must not strand
-  // the row, which would leave an undeletable card in the deck forever.
+  // DELETE /api/admin/captures/:id — the clip, its reviews, EVERY version and
+  // all their bytes. The R2 deletes are fail-soft on purpose: an object that
+  // was never uploaded (or that a previous half-finished delete already
+  // removed) must not strand the row, which would leave an undeletable card in
+  // the deck forever.
   if (!sub && method === "DELETE") {
     const b = bucket(env);
     if (b) {
-      await b.delete(videoKey(capture.id)).catch(() => {});
-      await b.delete(posterKey(capture.id)).catch(() => {});
+      // Both eras: the unversioned pair a pre-versions capture used, and every
+      // key the thread ever recorded.
+      const keys = new Set([videoKey(capture.id), posterKey(capture.id)]);
+      if (capture.video_key) keys.add(capture.video_key);
+      if (capture.poster_key) keys.add(capture.poster_key);
+      for (const v of await listVersions(db, capture)) {
+        if (v.video_key) keys.add(v.video_key);
+        if (v.poster_key) keys.add(v.poster_key);
+      }
+      for (const key of keys) await b.delete(key).catch(() => {});
     }
     await db.prepare("DELETE FROM capture_reviews WHERE capture_id = ?").bind(capture.id).run().catch(() => {});
+    await db.prepare("DELETE FROM capture_versions WHERE capture_id = ?").bind(capture.id).run().catch(() => {});
     await db.prepare("DELETE FROM captures WHERE id = ?").bind(capture.id).run();
     log.info("capture.deleted", { id: capture.id });
     return jsonResponse({ ok: true });
   }
 
-  // PUT …/video, PUT …/poster — the raw bytes.
-  if (sub === "/video" && method === "PUT") {
+  // PUT …/video, PUT …/poster — the raw bytes of the CURRENT version. Exactly
+  // equivalent to PUT …/versions/<current>/video: the uploader that just
+  // recorded a re-cut should not have to know which number it is.
+  if ((sub === "/video" || sub === "/poster") && method === "PUT") {
+    const kind = sub === "/poster" ? "poster" : "video";
+    const current = captureVersionNumber(capture.version);
     return putMedia(request, env, log, db, capture, {
-      kind: "video",
-      key: videoKey(capture.id),
-      contentType: "video/mp4",
-      maxBytes: CAPTURE_CAPS.video_bytes,
-    });
-  }
-  if (sub === "/poster" && method === "PUT") {
-    return putMedia(request, env, log, db, capture, {
-      kind: "poster",
-      key: posterKey(capture.id),
-      contentType: "image/jpeg",
-      maxBytes: CAPTURE_CAPS.poster_bytes,
+      kind,
+      key: kind === "video" ? versionVideoKey(capture.id, current) : versionPosterKey(capture.id, current),
+      contentType: kind === "video" ? "video/mp4" : "image/jpeg",
+      maxBytes: kind === "video" ? CAPTURE_CAPS.video_bytes : CAPTURE_CAPS.poster_bytes,
+      version: current,
     });
   }
 
-  // GET …/video — with real Range support (see parseRange).
+  // GET …/video — the CURRENT version, with real Range support (see
+  // parseRange). `video_key` is the pointer the last upload wrote; the
+  // unversioned key is the fallback that keeps the four pre-versions captures
+  // playing.
   if (sub === "/video" && method === "GET") {
-    return getMedia(request, env, capture.id, videoKey(capture.id), "video/mp4", true);
+    return getMedia(request, env, capture.id, capture.video_key || videoKey(capture.id), "video/mp4", true);
   }
   // GET …/poster — a poster frame is small; nothing seeks into a JPEG.
   if (sub === "/poster" && method === "GET") {
-    return getMedia(request, env, capture.id, posterKey(capture.id), "image/jpeg", false);
+    return getMedia(request, env, capture.id, capture.poster_key || posterKey(capture.id), "image/jpeg", false);
+  }
+
+  // GET …/versions — the thread on its own, newest first.
+  if (sub === "/versions" && method === "GET") {
+    const versions = await listVersions(db, capture);
+    const current = captureVersionNumber(capture.version);
+    return jsonResponse({
+      capture_id: capture.id,
+      tag: captureTag(capture.id),
+      version: current,
+      versions: versions.map((v) => projectCaptureVersion(v, current)),
+    });
+  }
+
+  // POST …/versions — A NEW CUT OF THE SAME CAPTURE, which is what answering a
+  // ✍️ verdict produces. The number is max+1 over what the thread already has
+  // (never a count, never a reuse), the earlier versions are left exactly as
+  // they are, and the capture goes back to `new` so it re-enters the queue of
+  // twenty. `answered_at` is deliberately NOT cleared: this clip has been
+  // answered once, and the top-up needs to know that.
+  if (sub === "/versions" && method === "POST") {
+    const v = validateCaptureVersion(await request.json().catch(() => null));
+    if (typeof v.error === "string") return jsonResponse({ error: v.error }, 400);
+    const e = v.entry;
+    const existing = await listVersions(db, capture);
+    // The pre-versions v1 becomes a real row BEFORE the parent columns are
+    // overwritten with the new cut's numbers — otherwise the original would
+    // survive only as bytes nothing describes.
+    await materializeV1(db, capture, existing);
+    const highest = existing.reduce((max, r) => Math.max(max, captureVersionNumber(r.version)), 0);
+    const version = Math.max(highest, captureVersionNumber(capture.version)) + 1;
+    const now = Date.now();
+    await db
+      .prepare(
+        `INSERT INTO capture_versions (capture_id, version, created_at, commit_sha, model, video_key,
+           poster_key, size_bytes, duration_ms, source_ms, cut_ms, speed, wait_mode, width, height, note, meta_json)
+         VALUES (?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .bind(
+        capture.id, version, now, e.commit_sha, e.model || capture.model, e.size_bytes,
+        e.duration_ms, e.source_ms, e.cut_ms, e.speed, e.wait_mode, e.width, e.height,
+        e.note, e.meta_json,
+      )
+      .run();
+    // The parent row describes the CURRENT cut, so it takes the new numbers —
+    // and drops the media pointers, because this version has no bytes yet. The
+    // old bytes are not deleted; they belong to the version row that now names
+    // them.
+    await db
+      .prepare(
+        `UPDATE captures SET version = ?, commit_sha = ?, model = ?, duration_ms = ?, source_ms = ?,
+           cut_ms = ?, speed = ?, wait_mode = ?, width = ?, height = ?, size_bytes = ?,
+           video_key = NULL, poster_key = NULL, status = 'new', updated_at = ? WHERE id = ?`,
+      )
+      .bind(
+        version, e.commit_sha, e.model || capture.model, e.duration_ms, e.source_ms, e.cut_ms,
+        e.speed, e.wait_mode, e.width, e.height, e.size_bytes, now, capture.id,
+      )
+      .run();
+    log.info("capture.version", { id: capture.id, version, commit: e.commit_sha });
+    return jsonResponse(
+      {
+        capture: await readBack(db, capture.id),
+        upload: {
+          video: versionVideoUrl(capture.id, version),
+          poster: versionPosterUrl(capture.id, version),
+        },
+      },
+      201,
+    );
   }
 
   // POST …/review — THE SWIPE. Right = 👍 like (status `liked`, likes+1),
@@ -782,15 +1344,37 @@ export async function handleAdminCaptures(request, env, url, log) {
       .prepare("UPDATE captures SET status = ?, likes = likes + ?, updated_at = ? WHERE id = ?")
       .bind(VERDICT_STATUS[v.verdict], v.verdict === "like" ? 1 : 0, now, capture.id)
       .run();
+    // ANSWERED, once and for all. The `answered_at IS NULL` predicate is the
+    // whole rule expressed in SQL: the first verdict stamps it, every later
+    // verdict on the same capture — including one on a re-cut that went back to
+    // `new` — leaves the original moment alone. Nothing ever clears it.
+    await db
+      .prepare("UPDATE captures SET answered_at = ? WHERE id = ? AND answered_at IS NULL")
+      .bind(now, capture.id)
+      .run()
+      .catch(() => {});
     // The note is the owner's own words about an unpublished clip — the row
     // holds it; the log line stays metadata.
     log.info("capture.review", { id: capture.id, verdict: v.verdict });
-    const row = await getCapture(db, capture.id);
-    const [projected] = await attachReviews(db, [projectCapture(/** @type {CaptureRow} */ (row))]);
-    return jsonResponse({ capture: projected }, 201);
+    return jsonResponse({ capture: await readBack(db, capture.id) }, 201);
   }
 
   return jsonResponse({ error: "Not found." }, 404);
+}
+
+// Re-read one capture after a write and project it the way the single-capture
+// GET does — reviews and the whole thread attached. Every mutating endpoint
+// answers with this, so a client never has to re-fetch to see what it changed.
+/**
+ * @param {D1Database} db
+ * @param {number} id
+ * @returns {Promise<any>}
+ */
+async function readBack(db, id) {
+  const row = /** @type {CaptureRow} */ (await getCapture(db, id));
+  const versions = await listVersions(db, row);
+  const [projected] = await attachReviews(db, [projectCapture(row, versions)]);
+  return projected;
 }
 
 // ---------------------------------------------------------------------------
@@ -803,7 +1387,8 @@ export async function handleAdminCaptures(request, env, url, log) {
  * @param {Logger} log
  * @param {D1Database} db
  * @param {CaptureRow} capture
- * @param {{ kind: "video" | "poster", key: string, contentType: string, maxBytes: number }} spec
+ * @param {{ kind: "video" | "poster", key: string, contentType: string, maxBytes: number,
+ *   version: number }} spec
  * @returns {Promise<Response>}
  */
 async function putMedia(request, env, log, db, capture, spec) {
@@ -830,24 +1415,49 @@ async function putMedia(request, env, log, db, capture, spec) {
   if (!bytes.byteLength) return jsonResponse({ error: `The ${spec.kind} body is empty.` }, 400);
   await b.put(spec.key, bytes, { httpMetadata: { contentType: spec.contentType } });
   const now = Date.now();
-  // Two whole statements rather than one with an interpolated column name:
+  // Whole statements rather than one with an interpolated column name:
   // src/sql-injection-guard.test.js allows only hand-audited identifiers into
-  // SQL, and "there are exactly two of these" is a better answer than another
+  // SQL, and "there are exactly four of these" is a better answer than another
   // allowlist entry. The MP4 IS the artefact, so only it writes size_bytes.
+  //
+  // The version row is always updated (a no-op when the version has no row of
+  // its own — a fresh capture's synthetic v1 reads its keys off the parent),
+  // and the PARENT row only when the upload belongs to the version currently
+  // on the card. That is what stops re-uploading an old cut from silently
+  // replacing what the deck plays.
+  const isCurrent = spec.version === captureVersionNumber(capture.version);
   if (spec.kind === "video") {
     await db
-      .prepare("UPDATE captures SET video_key = ?, size_bytes = ?, updated_at = ? WHERE id = ?")
-      .bind(spec.key, bytes.byteLength, now, capture.id)
-      .run();
+      .prepare("UPDATE capture_versions SET video_key = ?, size_bytes = ? WHERE capture_id = ? AND version = ?")
+      .bind(spec.key, bytes.byteLength, capture.id, spec.version)
+      .run()
+      .catch(() => {});
+    if (isCurrent) {
+      await db
+        .prepare("UPDATE captures SET video_key = ?, size_bytes = ?, updated_at = ? WHERE id = ?")
+        .bind(spec.key, bytes.byteLength, now, capture.id)
+        .run();
+    }
   } else {
     await db
-      .prepare("UPDATE captures SET poster_key = ?, updated_at = ? WHERE id = ?")
-      .bind(spec.key, now, capture.id)
-      .run();
+      .prepare("UPDATE capture_versions SET poster_key = ? WHERE capture_id = ? AND version = ?")
+      .bind(spec.key, capture.id, spec.version)
+      .run()
+      .catch(() => {});
+    if (isCurrent) {
+      await db
+        .prepare("UPDATE captures SET poster_key = ?, updated_at = ? WHERE id = ?")
+        .bind(spec.key, now, capture.id)
+        .run();
+    }
   }
-  log.info("capture.media_put", { id: capture.id, kind: spec.kind, size: bytes.byteLength });
-  const row = await getCapture(db, capture.id);
-  return jsonResponse({ capture: projectCapture(/** @type {CaptureRow} */ (row)) });
+  log.info("capture.media_put", {
+    id: capture.id,
+    kind: spec.kind,
+    version: spec.version,
+    size: bytes.byteLength,
+  });
+  return jsonResponse({ capture: await readBack(db, capture.id) });
 }
 
 /**
