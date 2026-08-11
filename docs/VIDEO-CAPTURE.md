@@ -121,15 +121,29 @@ and trimming — never for cutting.
 
 **`meta.json`** — what was run: `slug`, `agent`, `mode`, `model`, `prompt`,
 `starter`, `xp`, `lang`, `name`, `shape`, `viewport`, `base`, `commit_sha`,
-`intro`, `budget_s`, `search`, `started_at`, `ended_at`, `durationMs`, `ok`,
+`deployed_digest`, `intro`, `budget_s`, `search`, `started_at`, `ended_at`, `durationMs`, `ok`,
 `error`.
 
-Two of those exist for the review queue rather than for the edit:
+Three of those exist for the review queue rather than for the edit:
 
-- **`commit_sha`** is the git HEAD the recording was made at, resolved once per
-  batch. Without it a clip is un-reproducible — the deck outlives the code, and
-  six merges later "why does this video not match the app" has no answer. It is
-  `null` rather than a guess when git is unavailable.
+- **`commit_sha`** is the commit the SITE WAS SERVING, resolved once per batch.
+  Without it a clip is un-reproducible — the deck outlives the code, and six
+  merges later "why does this video not match the app" has no answer.
+
+  It is deliberately **not** always the working tree's HEAD. Against a loopback
+  base the local worker really is running this tree, so HEAD is exact; against
+  a REMOTE base it is not, and stamping it names a commit the site has very
+  likely never run. That is confident wrong provenance, which is worse than
+  none because it invites someone to check out that commit to explain a clip.
+  The first twenty captures were stamped that way and had to be corrected by
+  hand. A remote base therefore records `origin/main` — this repo deploys main
+  — and `null` rather than a guess when git is unavailable.
+
+- **`deployed_digest`** is the fingerprint the site actually served: the
+  `digest` at the head of the committed introspection snapshot, which every
+  deploy rebuilds, read with a 300-byte Range request. `origin/main` is still
+  only a best answer (a branch build also deploys here), so this is what makes
+  a wrong `commit_sha` **detectable** rather than believed.
 - **`name`** is the short human name the deck shows beside the capture's
   `#CAP-<id>` number, derived from the starter id (`res-sv-elpris` → "Elpris":
   the agent prefix and the language marker are noise, not name) so it needs no

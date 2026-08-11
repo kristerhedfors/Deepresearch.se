@@ -85,10 +85,55 @@ export const PREINSTALLED_CHROMIUM = "/opt/pw-browsers/chromium";
  * cost a metadata field, never a recording. A null is honest; a guess is not.
  * @returns {string | null}
  */
-export function headCommit() {
+export function headCommit(ref = "HEAD") {
   try {
-    // eslint-disable-next-line no-undef
-    return execFileSync("git", ["rev-parse", "HEAD"], { cwd: ROOT, encoding: "utf8" }).trim() || null;
+    return execFileSync("git", ["rev-parse", ref], { cwd: ROOT, encoding: "utf8" }).trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The commit to STAMP ON A CAPTURE, which is not always the working tree's.
+ *
+ * A recording is made against whatever the BASE is serving. For a loopback
+ * base that is this working tree, so local HEAD is exactly right. For a REMOTE
+ * base it is not: local HEAD names a commit the site has very likely never
+ * run, and stamping it produces confident wrong provenance — which is worse
+ * than none, because it invites someone to check out that commit to explain a
+ * clip. The first twenty captures were stamped this way and had to be
+ * corrected by hand.
+ *
+ * `origin/main` is the best available answer for a remote base: this repo
+ * deploys main. It is still only a best answer — a branch build also deploys
+ * here — which is why `deployedDigest` records what the site ACTUALLY served,
+ * so a mismatch is detectable rather than assumed away.
+ * @param {string} base
+ * @returns {string | null}
+ */
+export function commitForBase(base) {
+  if (isLoopback(base)) return headCommit();
+  return headCommit("origin/main") || headCommit();
+}
+
+/**
+ * A fingerprint of the source the site is ACTUALLY serving: the digest at the
+ * head of the committed introspection snapshot, which every deploy rebuilds.
+ * Read with a Range request, so it costs 300 bytes rather than 18 MB.
+ *
+ * Fail-soft to null: provenance is worth a request, never a recording.
+ * @param {string} base
+ * @param {Record<string, string>} headers
+ * @returns {Promise<string | null>}
+ */
+export async function deployedDigest(base, headers) {
+  try {
+    const res = await fetch(`${base}/introspect/source-snapshot.json`, {
+      headers: { ...headers, Range: "bytes=0-300" },
+    });
+    if (!res.ok && res.status !== 206) return null;
+    const head = await res.text();
+    return (head.match(/"digest"\s*:\s*"([0-9a-f]{16,64})"/) || [])[1] || null;
   } catch {
     return null;
   }
@@ -478,6 +523,7 @@ export function buildMeta(run, opts, timing) {
     // per batch (see `headCommit`) and null when git is unavailable, which is
     // honest rather than a guess.
     commit_sha: opts.commit || null,
+    deployed_digest: opts.deployedDigest || null,
     intro: !!opts.intro,
     budget_s: opts.budget,
     search: !!opts.search,
@@ -937,7 +983,7 @@ export async function runBatch(opts) {
   // Resolved HERE rather than in parseArgs, which is pure and unit-tested:
   // this shells out to git. One resolution per batch, so every clip in a batch
   // carries the same commit even if the tree moves under a long run.
-  if (!opts.commit) opts.commit = headCommit();
+  if (!opts.commit) opts.commit = commitForBase(opts.base);
 
   const auth = resolveAuth(opts.base);
   // A dry run that already names its models touches nothing: no credentials, no
@@ -948,6 +994,12 @@ export async function runBatch(opts) {
   if (needsSite && !auth.headers) {
     console.error(`✗ ${auth.reason}`);
     return 1;
+  }
+
+  // What the SITE is actually serving, so a wrong `commit_sha` is detectable
+  // rather than believed. One request per batch, and null is fine.
+  if (needsSite && auth.headers && !opts.dryRun) {
+    opts.deployedDigest = await deployedDigest(opts.base, auth.headers);
   }
 
   let models = opts.models;

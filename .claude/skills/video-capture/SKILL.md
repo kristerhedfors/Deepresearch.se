@@ -74,15 +74,28 @@ The matrix is **agent-major**: all of one agent's runs, then the next. An
 interrupted batch therefore covers whole agents instead of leaving every agent
 half-captured.
 
-**No intro, and a commit stamp.** Every recording opens the site with
-`?anim=0` (the documented inverse of `?anim=1`, which forces the intro on) AND
-with `prefers-reduced-motion` set — two independent gates, because a recording
-is expensive to redo and the media query works against deploys that predate
-the parameter. `--intro` opts back in for the one combined cut that wants an
-intro beat. Every capture also carries the **git HEAD it was recorded at**, so
-a clip stays traceable to the code that produced it once the deck outlives the
-commit, plus a short derived **name** (`res-sv-elpris` → "SV Elpris") that the
-deck shows beside its `#CAP-<id>` number.
+**A capture's commit is the DEPLOYED one, not your working tree's.** Against a
+remote base, local HEAD names a commit the site has very likely never run;
+stamping it is confident wrong provenance, which is worse than none because it
+invites someone to check out that commit to explain a clip. The first twenty
+captures were stamped that way and had to be corrected by hand. A remote base
+records `origin/main`, a loopback base records local HEAD, and
+`deployed_digest` (the served snapshot's fingerprint, via a 300-byte Range
+request) is what makes a wrong stamp detectable.
+
+**No intro.** Every recording opens the site with `?anim=0` (the documented
+inverse of `?anim=1`, which forces the intro on) AND with
+`prefers-reduced-motion` set — two independent gates, because a recording is
+expensive to redo and the media query works against deploys that predate the
+parameter. `--intro` opts back in for the one combined cut that wants an intro
+beat.
+
+**A name to refer to it by.** Each capture carries a short derived name
+(`res-sv-elpris` → "Elpris" — the agent prefix and the language marker are
+noise, not name), shown beside its `#CAP-<id>` number so a clip can be asked
+for out loud. The derivation lives once, in `public/js/captures-core.js`'s
+`starterName`; the harness, the top-up, the server and the deck all call it.
+`scripts/captures --name <id> "…"` improves any one by hand.
 
 **Shapes.** `--shape portrait|square|landscape|raw` sets the CSS viewport AND
 the delivery frame together. Portrait (720×900 recorded → 1080×1350 delivered)

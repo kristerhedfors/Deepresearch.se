@@ -21,6 +21,8 @@ import {
   buildTimeline,
   captureName,
   captureUrl,
+  commitForBase,
+  headCommit,
   contentSignature,
   formatSummary,
   isLoopback,
@@ -278,6 +280,11 @@ test("meta.json carries the run's identity, the shape it was recorded at, and it
     // Null in a unit test: parseArgs is pure and leaves this for runBatch,
     // which is the only place allowed to shell out to git.
     commit_sha: null,
+    // What the SITE served, when it could be read. Null in a unit test, and
+    // the reason `commit_sha` being wrong is DETECTABLE rather than believed:
+    // the first twenty captures were stamped with a local HEAD the deployed
+    // site had never run.
+    deployed_digest: null,
     intro: false,
     budget_s: 60,
     search: true,
@@ -397,4 +404,17 @@ test("the summary names each run's verdict and counts the batch", () => {
   assert.match(text, /no answer within 300s/);
   assert.match(text, /1\/2 captured\./);
   assert.equal(formatSummary([]), "No runs.\n");
+});
+
+test("a remote base is stamped with the DEPLOYED commit, not the working tree's", () => {
+  // Local HEAD names a commit the deployed site has very likely never run.
+  // Stamping it is confident wrong provenance — worse than none, because it
+  // invites someone to check out that commit to explain a clip. This is not
+  // hypothetical: the first twenty captures were stamped that way and had to
+  // be corrected by hand.
+  const local = headCommit();
+  const mainSha = headCommit("origin/main");
+  if (!local || !mainSha || local === mainSha) return; // nothing to prove here
+  assert.equal(commitForBase("https://deepresearch.se"), mainSha, "remote → what production serves");
+  assert.equal(commitForBase("http://127.0.0.1:8788"), local, "loopback → this working tree really is what runs");
 });
