@@ -243,6 +243,120 @@ describe("the first-visit state (§3)", () => {
   });
 });
 
+describe("the intro OFF switch — ?anim=0 (§3)", () => {
+  // `?anim=1` forces the intro THROUGH every suppression gate; `?anim=0` is
+  // its mirror image and forces it OFF through all of them, so a screen
+  // recording of the product does not open on an animation. Two properties
+  // make it safe, and both are pinned here rather than left to a comment:
+  // it accepts EXACTLY the value 0, and it writes no "seen" key.
+  const SURFACES = {
+    "public/welcome/index.html": LANDING,
+    "public/cure/drc.js": DRC,
+    "public/js/app.js": APP,
+  };
+
+  // The literal each surface tests `location.search` with, lifted out of the
+  // source so the battery below measures the shipped pattern rather than a
+  // copy of it that can drift.
+  const offPatterns = (src) =>
+    [...src.matchAll(/\/(\[\?&\]anim=0[^/]*)\//g)].map((m) => new RegExp(m[1]));
+
+  const MATCH = ["?anim=0", "?anim=0&try=x", "?x=1&anim=0", "?x=1&anim=0&y=2"];
+  const NO_MATCH = [
+    "", // the ordinary visit — the parameter must be inert by absence
+    "?anim=1",
+    "?anim=rev",
+    "?anim=01",
+    "?anim=00",
+    "?anim=0.5",
+    "?anim=0x",
+    "?anim=",
+    "?animation=0",
+    "?x=anim=0", // a value that merely ends in the parameter is not the parameter
+  ];
+
+  for (const [name, src] of Object.entries(SURFACES)) {
+    test(`${name} carries the ?anim=0 gate`, () => {
+      assert.ok(
+        offPatterns(src).length > 0,
+        `${name} has no ?anim=0 test — the surface cannot be recorded without its intro`,
+      );
+    });
+
+    test(`${name} accepts ONLY the exact value 0`, () => {
+      for (const re of offPatterns(src)) {
+        for (const q of MATCH) {
+          assert.ok(re.test(q), `${name}: ${re} should treat "${q}" as intro-off`);
+        }
+        for (const q of NO_MATCH) {
+          assert.ok(
+            !re.test(q),
+            `${name}: ${re} must not read "${q}" as intro-off — only ?anim=0 turns the intro off`,
+          );
+        }
+      }
+    });
+  }
+
+  test("the landing returns before the overlay AND the mascot, writing no seen key", () => {
+    // One return covers both of the landing's first-visit layers: the #wintro
+    // overlay is un-hidden after it, and the mascot beat is chained onto the
+    // overlay's dismissal.
+    const off = LANDING.indexOf("if (off) return;");
+    const seenGate = LANDING.indexOf("if (seen && !force) return;");
+    const write = LANDING.indexOf('localStorage.setItem("dr_welcome_seen"');
+    const unhide = LANDING.indexOf("intro.hidden = false;");
+    assert.ok(off > -1, "the landing lost its ?anim=0 return");
+    assert.ok(seenGate > off, "the off switch must short-circuit before the seen/force gate");
+    assert.ok(unhide > off, "#wintro must not be un-hidden past the off switch");
+    assert.ok(write > off, "dr_welcome_seen must only be written on the path the off switch skips");
+  });
+
+  test("Se/cure suppresses all three of its layers and burns none of their keys", () => {
+    // The umbrella intro — and with it the strolling ghost, which is chained
+    // onto a REAL play (`played`), so it needs no gate of its own.
+    assert.match(
+      DRC,
+      /if \(ANIM_OFF\) return Promise\.resolve\(false\);/,
+      "the umbrella intro must return unplayed under ?anim=0",
+    );
+    const umbrellaOff = DRC.indexOf("if (ANIM_OFF) return Promise.resolve(false);");
+    const umbrellaSeen = DRC.indexOf("const markUmbrellaSeen");
+    assert.ok(umbrellaSeen > umbrellaOff, "?anim=0 must return before the umbrella flag is written");
+
+    // The #ghostsay greeter — returns BEFORE its seen key is written, so the
+    // greeting is deferred to a real visit rather than spent on a recording.
+    const greeter = DRC.indexOf("function showGhostSay()");
+    const greeterOff = DRC.indexOf("if (ANIM_OFF) return;", greeter);
+    const greeterSeen = DRC.indexOf('localStorage.setItem("dr_secure_intro_seen"', greeter);
+    assert.ok(greeterOff > greeter, "#ghostsay has no ?anim=0 gate");
+    assert.ok(greeterSeen > greeterOff, "?anim=0 must return before dr_secure_intro_seen is written");
+
+    // The #intro glass pane's first-visit bookkeeping.
+    assert.match(
+      DRC,
+      /if \(!ANIM_OFF\) \{\s*try \{\s*localStorage\.setItem\("dr_intro_seen"/,
+      "dr_intro_seen must not be written on the ?anim=0 path",
+    );
+  });
+
+  test("Se/rver returns before its seen key and before the greeter it chains", () => {
+    const off = APP.search(/if \(\/\[\?&\]anim=0\(\?:&\|\$\)\/\.test\(location\.search\)\) return;/);
+    const seenKey = APP.indexOf('const SEEN_KEY = "dr_rver_intro_seen"');
+    const write = APP.indexOf("localStorage.setItem(SEEN_KEY");
+    const greeter = APP.indexOf("showBalloonGreeter");
+    assert.ok(off > -1, "Se/rver's balloon intro lost its ?anim=0 return");
+    assert.ok(seenKey > off && write > off, "?anim=0 must return before dr_rver_intro_seen is touched");
+    assert.ok(greeter > off, "the balloon greeter is chained past the off switch, so it is suppressed too");
+  });
+
+  test("the contract document describes the switch it now ships", () => {
+    assert.match(DOC, /`\?anim=0`/, "§3 must document the OFF switch beside ?anim=1");
+    assert.match(DOC, /Exactly the value `0` counts/i);
+    assert.match(DOC, /writes no `seen` key/i);
+  });
+});
+
 describe("R11 — the intro says the uncomfortable parts out loud", () => {
   test("the landing states experimental, invite-only, and not a product", () => {
     assert.match(LANDING, /still experimental and nowhere\s+near production-ready/);

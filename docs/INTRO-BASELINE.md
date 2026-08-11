@@ -223,7 +223,7 @@ so blocked storage degrades to "unseen" rather than throwing.
 
 | Key | Gates | Set | Notes |
 |---|---|---|---|
-| `dr_welcome_seen` | The landing overlay `#wintro` (and therefore the mascot) | On dismiss | Replay: `?anim=1` |
+| `dr_welcome_seen` | The landing overlay `#wintro` (and therefore the mascot) | On dismiss | Replay: `?anim=1`; suppress: `?anim=0` |
 | `dr_umbrella_seen_v2` | Se/cure's umbrella intro | **Only after the intro actually ran** | Versioned key: the v1 key was set *before* the play, so a browser that hit the stuck-canvas bug recorded an intro it never saw |
 | `dr_secure_intro_seen` | Se/cure's `#ghostsay` greeter | On show | |
 | `dr_intro_seen` | Se/cure's `#intro` glass pane | After the umbrella beat | The pane no longer auto-opens; the key keeps anything from re-popping it |
@@ -234,6 +234,23 @@ so blocked storage degrades to "unseen" rather than throwing.
 already-seen, and a deep link (`?try=`, a project, a published replay) each
 suppress the animation. `?anim=1` — and `?anim=rev` for the reverse play —
 force through **all** of them, and are the supported verification path.
+
+**`?anim=0` is the mirror image: it forces the intro OFF through all of
+them**, the never-been-here case included, on whichever surface it is used on.
+On the landing that is the `#wintro` overlay and the mascot beat behind it; on
+`/cure` the umbrella intro, the `#ghostsay` greeter, the `#intro` pane's
+first-visit bookkeeping, and the strolling ghost chained onto a real play; on
+Se/rver the balloon intro and the balloon greeter that follows it. It exists
+because a screen recording of the product should not spend its first seconds
+on an animation — the capture harness appends it to every recording URL. Two
+properties make it safe to hand to a recorder:
+
+- **Exactly the value `0` counts.** No other value is read as "off", so a
+  stray or truncated parameter cannot silently disable the front door.
+- **It writes no `seen` key.** Suppressing an intro is not the same as
+  consuming a visitor's one first visit: after a recording, a real person on
+  that browser still gets the intro. This is the same rule as the next
+  paragraph, seen from the other side.
 
 **Marking "seen" only after a real play is a rule, not an implementation
 detail.** A browser gets its one first visit; a failed module load must not
@@ -273,6 +290,7 @@ allowlist**, and **two test files that read the tree**.
 | R4 | — | `landing.test.js` — "stays short — it is a doorway, not the page" |
 | R5 | Markup and copy | `landing.test.js` — "names Se/cure before Se/rver…"; `intro-phase.test.js` — the wordmark-shape check |
 | R6 | `try`/`catch` wrappers, `.catch(() => {})`, the transition watchdog, the deliberate absence of a chrome-hiding head script | `intro-phase.test.js` — the reduced-motion, watchdog, and no-head-guard checks |
+| §3's `?anim=0` | One `anim=0` test per surface, placed at the same seam that reads `?anim=1`, returning before any `seen` key is written | `intro-phase.test.js` — "the intro OFF switch" suite |
 | R7 | `canned-faq.js` with `CANNED_LABEL`; no `/api/chat` on the landing | `intro-phase.test.js` — "the signed-out helper is prepackaged, never the model" |
 | R8 | First-visit gating in `drc.js` / `app.js` | UX-3 in the `ux-conventions` skill; `intro-phase.test.js` — the seen-key table |
 | R9 | `isPublicAsset` in `src/assets.js` | `intro-phase.test.js` — "every door the intro offers is reachable without auth" |
@@ -303,7 +321,11 @@ directive for the balloon.
    `src/landing.test.js` for the landing's own structure. A new rule with no
    test is a rule that lasts until the next session.
 5. **Verify the replay paths by hand**: `/?anim=1`, `/cure?anim=1`,
-   `/cure?anim=rev`, `/rver?anim=1`, and a genuinely fresh profile.
+   `/cure?anim=rev`, `/rver?anim=1`, and a genuinely fresh profile. The OFF
+   switch is verified the same way, on a fresh profile that has seen nothing:
+   `/?anim=0`, `/cure?anim=0`, `/rver?anim=0` must show no intro layer at all
+   — and the next visit WITHOUT the parameter must still play it, which is how
+   you see that nothing was marked seen.
 6. **Run `npm test`.** Editing tracked text can stale the committed docs
    corpus; regenerate with `npm run bundle:docs` / `bundle:docs-rag`, never by
    hand.

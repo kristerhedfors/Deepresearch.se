@@ -70,7 +70,7 @@ import {
 } from "./stream.js";
 import { BUDGET_MAX_S, BUDGET_MIN_S, budgetTier, fmtBudget, posToSeconds, secondsToPos } from "./timescale.js";
 import { clearChatDom, EMPTY_TEXT, initTurns } from "./turns.js";
-import { initTestpoints } from "./testpoints.js";
+import { badgeText, queueUnanswered } from "./captures-core.js";
 import { initStarters } from "./starters.js";
 import { parseComposerDeepLink } from "./deeplink-core.js";
 import { mountSlashMenu } from "./slash-menu.js";
@@ -1074,6 +1074,19 @@ try {
 // pays nothing for it on every later visit).
 (() => {
   try {
+    // `?anim=0` is the mirror image of the `?anim=1` replay override: where
+    // that forces the intro THROUGH every suppression gate, this forces it OFF
+    // through all of them — including the never-been-here case that would
+    // otherwise play it — so a screen recording of the product does not open
+    // on an animation (docs/INTRO-BASELINE.md §3). One return covers both of
+    // this tier's first-visit layers, the balloon intro and the balloon
+    // greeter chained onto its onDone. EXACTLY the value `0` counts; no other
+    // value is silently read as "off". It writes NO seen key — suppressing an
+    // intro is not the same as consuming the visitor's one first visit, so a
+    // recording must not burn the intro for a real person using this browser
+    // afterwards. (An unreadable location lands in the outer catch, which is
+    // already the fail-soft path.)
+    if (/[?&]anim=0(?:&|$)/.test(location.search)) return;
     const rev = /[?&]anim=rev\b/.test(location.search);
     const force = rev || /[?&]anim=1\b/.test(location.search);
     const SEEN_KEY = "dr_rver_intro_seen";

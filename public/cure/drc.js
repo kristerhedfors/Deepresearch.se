@@ -161,6 +161,31 @@ const $ = (id) => document.getElementById(id);
 // to decide whether to hold the chrome hidden for the play — keep them in sync.
 const UMBRELLA_SEEN_KEY = "dr_umbrella_seen_v2";
 
+// INTRO BASELINE (docs/INTRO-BASELINE.md §3): the intro's OFF switch, the
+// mirror image of the `?anim=1` / `?anim=rev` replay overrides. Where those
+// force the intro THROUGH every suppression gate, `?anim=0` forces it off
+// through all of them — including the never-been-here case that would
+// otherwise play it. It exists so a screen recording of the product does not
+// spend its first seconds on an animation.
+//
+// It suppresses every first-visit layer this tier has: the umbrella intro, the
+// #ghostsay greeter, the #intro glass pane's auto-dismissal bookkeeping, and
+// (because that one is chained onto a real play) the strolling ghost.
+//
+// EXACTLY the value `0` counts — no other value is silently read as "off".
+// And it writes NO "seen" key: suppressing an intro is not the same as
+// consuming the visitor's one first visit, so a recording must never burn the
+// intro for a real person who uses this browser afterwards (§3, "marking seen
+// only after a real play is a rule, not an implementation detail"). Read
+// defensively, so an unreadable or malformed location degrades to the ordinary
+// visit rather than throwing.
+let ANIM_OFF = false;
+try {
+  ANIM_OFF = /[?&]anim=0(?:&|$)/.test(location.search);
+} catch {
+  // no location — behave exactly as before
+}
+
 let profile = null; // {refHash, blobId, blobKey} — null while the session is unsaved
 let state = emptyDrcState(); // the working state (keys included), from the first keystroke
 let convId = null; // active conversation id
@@ -484,10 +509,13 @@ function afterUmbrella(deepLinked) {
   if (!deepLinked) {
     $("intro").hidden = true;
     // Mark the pane "seen" so nothing re-pops it, and land in the composer.
-    try {
-      localStorage.setItem("dr_intro_seen", "1");
-    } catch {
-      // storage blocked — nothing auto-shows the pane anyway
+    // Under `?anim=0` the key is left untouched (see ANIM_OFF).
+    if (!ANIM_OFF) {
+      try {
+        localStorage.setItem("dr_intro_seen", "1");
+      } catch {
+        // storage blocked — nothing auto-shows the pane anyway
+      }
     }
     $("input").focus();
     // The ghost greets a first-time visitor and points at the account button.
@@ -524,6 +552,10 @@ async function loadIntroPublications() {
 // opt-in overrides it). Entirely fail-soft: any import or play failure
 // resolves straight through to the intro pane.
 function maybePlayUmbrella(deepLinked) {
+  // `?anim=0` is the OFF switch (ANIM_OFF above): no intro at all, no flag
+  // written, and — because the strolling ghost is chained onto a real play —
+  // no ambient ghost either. It wins over the force overrides below.
+  if (ANIM_OFF) return Promise.resolve(false);
   // `?anim=rev` forces the REVERSE easter-egg play (which normally fires once
   // every 40 plays on its own); like `?anim=1` it also forces through every
   // suppression gate so "show me the backwards one" always works.
@@ -647,6 +679,10 @@ function closeDrawer() {
 // account button — the menu holding the door to Se/rver. Shown once (dr_secure_intro_seen);
 // dismisses on its close button or any outside tap (UX-1).
 function showGhostSay() {
+  // `?anim=0` suppresses the greeter with the rest of the first-visit layers,
+  // and returns BEFORE the seen key is written so the greeting is only
+  // deferred, never spent (see ANIM_OFF).
+  if (ANIM_OFF) return;
   let seen = false;
   try {
     seen = localStorage.getItem("dr_secure_intro_seen") === "1";
