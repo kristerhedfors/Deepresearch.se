@@ -119,6 +119,7 @@ export function selectApps(apps, opts = {}) {
   const q = opts.q ?? "";
   const sort = APP_SORTS.includes(/** @type {any} */ (opts.sort)) ? opts.sort : "new";
   const rows = (Array.isArray(apps) ? apps : []).filter((a) => appMatches(a, q));
+  /** @param {any} a @param {any} b */
   const byNew = (a, b) => (Number(b?.createdAt) || 0) - (Number(a?.createdAt) || 0);
   rows.sort((a, b) => {
     if (sort === "old") return -byNew(a, b);
@@ -183,7 +184,8 @@ export function planFileRemove(current, rawPath) {
   return { files };
 }
 
-/** Human byte sizes, matching the units the build summary already uses. */
+/** Human byte sizes, matching the units the build summary already uses.
+ * @param {unknown} n */
 export function formatBytes(n) {
   const v = Number(n);
   if (!Number.isFinite(v) || v < 0) return "—";

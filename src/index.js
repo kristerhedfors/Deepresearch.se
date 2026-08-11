@@ -88,6 +88,7 @@ import { handleQuizGrade } from "./quiz-api.js";
 import { handleGames } from "./games.js";
 import { handlePubGet, handlePubWrite } from "./pub.js";
 import { handleBuildDelete, handleBuildGet, handleBuildManualPublish } from "./build-pub.js";
+import { handleApps } from "./apps.js";
 import { handleWebSearch, handleWebSearchAdjust, handleWebSearchGrant, handleWebSearchStatus } from "./websearch.js";
 import {
   handleProxyAdjust,
@@ -871,6 +872,32 @@ async function routeAuthed(request, env, url, log, identity, ctx, requestId) {
       return new Response(null, { status: 302, headers: { Location: "/rver" } });
     }
     return serveAsset(request, env);
+  }
+
+  // PUBLISHED APPS (/apps/) — the management surface over what Agent Studio
+  // published (src/apps.js). Signed in, NOT admin: an app belongs to the
+  // account whose chat built it, so every signed-in user gets the door and the
+  // ownership check happens per app inside the handler (canManageApp — owner or
+  // admin). That is the difference from /captures above, which is an operator
+  // surface and 302s a non-admin away.
+  //
+  // Both spellings for the same reason /captures matches its own bare form:
+  // `/apps` must reach the assets binding and get its trailing-slash redirect
+  // rather than falling through to the SPA fallback. Not a prefix match —
+  // there is one page here. It cannot collide with the PUBLIC /app/<slug>/
+  // route earlier in this file: that one is a regex anchored on `/app/` with a
+  // non-empty slug segment (`^\/app\/([^/]+)(\/(.*))?$`), which "/apps" does
+  // not match.
+  if (url.pathname === "/apps" || url.pathname === "/apps/") {
+    return serveAsset(request, env);
+  }
+
+  // …and its JSON API. Same reasoning for the gate: signed-in rather than
+  // admin, with ownership enforced per app. The admin-only PUT/DELETE
+  // /api/build/:slug below are a DIFFERENT surface and stay as they are —
+  // scripts/publish-app depends on the PUT.
+  if (url.pathname === "/api/apps" || url.pathname.startsWith("/api/apps/")) {
+    return handleApps(request, env, url, log, identity);
   }
 
   // Publishing (PUT/DELETE /api/pub/:slug) is the ONE write surface of the
