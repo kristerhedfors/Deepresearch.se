@@ -515,7 +515,16 @@ export function captureRef(c) {
 // Words that carry no meaning in a starter id: the agent prefix and the
 // language marker. Stripping them is what turns "res-sv-elpris" into
 // "Elpris" rather than "Res Sv Elpris".
-const STARTER_NOISE = new Set(["res", "sch", "int", "sdk", "orc", "out", "mod", "sci", "en", "sv"]);
+// Every prefix the shipped registry actually uses (checked against
+// starters-data.js rather than guessed: "mdl" and "agb" were missing and
+// produced "Mdl Cheapest Vision" / "Agb Minimal"), plus the two language
+// markers. "sdk"/"mod"/"sci" are kept as historical spellings — a retired
+// prefix in an old capture should still resolve to a clean name.
+const STARTER_NOISE = new Set([
+  "res", "sch", "int", "orc", "out", "mdl", "agb", "pal", "sec", "unc",
+  "sdk", "mod", "sci",
+  "en", "sv",
+]);
 
 /**
  * A short name derived from a starter id, per the shared contract §6: dashes
@@ -525,7 +534,7 @@ const STARTER_NOISE = new Set(["res", "sch", "int", "sdk", "orc", "out", "mod", 
  * @param {unknown} starter
  * @returns {string} "" when there is nothing to derive from
  */
-function starterName(starter) {
+export function starterName(starter) {
   const raw = typeof starter === "string" ? starter.trim() : "";
   if (!raw) return "";
   const words = raw

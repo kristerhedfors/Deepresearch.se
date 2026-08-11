@@ -62,6 +62,7 @@
 // BASIC_AUTH_USER / BASIC_AUTH_PASS, with BASE_URL overriding the target.
 // `--dry-run --queue-status-file <json>` needs neither.
 
+import { starterName } from "../public/js/captures-core.js";
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -427,27 +428,10 @@ function pairKey(agent, starter) {
  * @returns {string}
  */
 export function captureName(o = {}) {
-  const starter = String(o.starter || "").trim();
-  /** @type {string[]} */
-  let words = [];
-  if (starter) {
-    const parts = starter.split(/[-_]+/).filter(Boolean);
-    // The first segment is the agent prefix (`res-`, `sch-`, `int-`); drop it,
-    // unless dropping it would leave nothing.
-    words = parts.length > 1 ? parts.slice(1) : parts;
-  }
-  if (!words.length) {
-    words = String(o.prompt || "")
-      .replace(/[^\p{L}\p{N}\s]/gu, " ")
-      .split(/\s+/)
-      .filter(Boolean);
-  }
-  const name = words
-    .slice(0, 4)
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
-    .join(" ")
-    .trim();
-  return name || "Capture";
+  const derived = starterName(o?.starter);
+  if (derived) return derived;
+  const fromPrompt = String(o?.prompt || "").replace(/\s+/g, " ").trim().split(" ").slice(0, 4).join(" ");
+  return fromPrompt || "Untitled capture";
 }
 
 // ---------------------------------------------------------------------------

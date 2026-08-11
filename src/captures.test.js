@@ -20,7 +20,7 @@ import {
   CAPTURE_WAIT_MODES,
   VERDICT_STATUS,
   VERDICT_SYMBOLS,
-  captureName,
+  deriveCaptureName,
   captureQueueStatus,
   captureSlug,
   captureTag,
@@ -115,28 +115,28 @@ test("captureTag spells the increasing series the way the owner says it", () => 
   assert.equal(captureTag("7"), "#CAP-7");
 });
 
-test("captureName derives a short name from the starter id, no network, no model", () => {
-  assert.equal(captureName({ agent: "research", starter: "res-sv-elpris" }), "Sv Elpris");
-  assert.equal(captureName({ agent: "scholar", starter: "sch-vitamin-d" }), "Vitamin D");
-  assert.equal(captureName({ agent: "introspection", starter: "int-pipeline" }), "Pipeline");
+test("deriveCaptureName derives a short name from the starter id, no network, no model", () => {
+  assert.equal(deriveCaptureName({ agent: "research", starter: "res-sv-elpris" }), "Elpris");
+  assert.equal(deriveCaptureName({ agent: "scholar", starter: "sch-vitamin-d" }), "Vitamin D");
+  assert.equal(deriveCaptureName({ agent: "introspection", starter: "int-pipeline" }), "Pipeline");
   // Capped at four words, however long the id is.
   assert.equal(
-    captureName({ starter: "res-one-two-three-four-five-six" }),
+    deriveCaptureName({ starter: "res-one-two-three-four-five-six" }),
     "One Two Three Four",
   );
   // A single-word starter IS the name — stripping the prefix would leave
   // nothing, so nothing is stripped.
-  assert.equal(captureName({ starter: "elpris" }), "Elpris");
+  assert.equal(deriveCaptureName({ starter: "elpris" }), "Elpris");
 });
 
-test("captureName falls back to the prompt, and is never empty", () => {
+test("deriveCaptureName falls back to the prompt, and is never empty", () => {
   assert.equal(
-    captureName({ agent: "research", prompt: "how much geothermal electricity does Iceland use" }),
+    deriveCaptureName({ agent: "research", prompt: "how much geothermal electricity does Iceland use" }),
     "how much geothermal electricity",
   );
-  assert.equal(captureName({}), "Untitled capture");
-  assert.equal(captureName({ starter: "   ", prompt: "  " }), "Untitled capture");
-  assert.ok(captureName({ starter: `res-${"x".repeat(300)}` }).length <= CAPTURE_CAPS.name);
+  assert.equal(deriveCaptureName({}), "Untitled capture");
+  assert.equal(deriveCaptureName({ starter: "   ", prompt: "  " }), "Untitled capture");
+  assert.ok(deriveCaptureName({ starter: `res-${"x".repeat(300)}` }).length <= CAPTURE_CAPS.name);
 });
 
 test("captureVersionNumber reads a missing or nonsense version as 1", () => {
@@ -229,7 +229,7 @@ test("validateCaptureCreate: a name is always present, and the commit rides alon
   // Given → kept.
   assert.equal(validateCaptureCreate({ ...CREATE, name: "  Elpris  " }).entry.name, "Elpris");
   // Absent → derived from the starter, never empty.
-  assert.equal(validateCaptureCreate({ ...CREATE, starter: "res-sv-elpris" }).entry.name, "Sv Elpris");
+  assert.equal(validateCaptureCreate({ ...CREATE, starter: "res-sv-elpris" }).entry.name, "Elpris");
   assert.ok(validateCaptureCreate(CREATE).entry.name);
   // The commit is what makes a clip reproducible; absent is null, not a guess.
   assert.equal(validateCaptureCreate({ ...CREATE, commit_sha: " abc1234 " }).entry.commit_sha, "abc1234");
@@ -1368,7 +1368,7 @@ test("POST /captures names the new capture and records the commit", async () => 
     starter: "res-sv-elpris",
     commit_sha: "abc1234",
   });
-  assert.equal(created.json.capture.name, "Sv Elpris");
+  assert.equal(created.json.capture.name, "Elpris");
   assert.equal(created.json.capture.commit_sha, "abc1234");
   assert.equal(created.json.capture.version, 1);
   assert.equal(created.json.capture.answered, false);
@@ -1386,4 +1386,18 @@ test("countNewCaptures counts the deck and fails soft to 0", async () => {
     },
   };
   assert.equal(await countNewCaptures(/** @type {any} */ ({ DB: broken })), 0);
+});
+
+test("commit_sha can be backfilled, but only as a real sha", () => {
+  // The first four captures were published before the column existed. A
+  // provenance field nobody can fill in afterwards is provenance those rows
+  // never get — but it must not become a place to write "unknown", which
+  // looks like an answer.
+  const ok = validateCapturePatch({ commit_sha: "B49C68AA" });
+  assert.equal(ok.error, undefined);
+  assert.equal(ok.patch.commit_sha, "b49c68aa", "normalised to lower case");
+  assert.equal(validateCapturePatch({ commit_sha: null }).patch.commit_sha, null);
+  for (const bad of ["unknown", "main", "b49c68", "zzzzzzz", "b49c68aa-dirty", ""]) {
+    assert.match(validateCapturePatch({ commit_sha: bad }).error || "", /commit_sha/, `${bad} must be refused`);
+  }
 });

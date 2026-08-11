@@ -271,7 +271,7 @@ test("meta.json carries the run's identity, the shape it was recorded at, and it
     lang: "sv",
     // The short human name the deck refers to a capture by, beside its
     // #CAP-<id> number. Derived from the starter id, so it needs no network.
-    name: "SV Elpris",
+    name: "Elpris",
     shape: "portrait",
     viewport: { width: 720, height: 900 },
     base: "https://deepresearch.se",
@@ -311,7 +311,7 @@ test("a capture's name is derived from the starter id, not the prompt", () => {
   // The starter id is already a hand-written slug of the subject, so this
   // needs no model call — which is what lets the queue top itself up
   // unattended.
-  assert.equal(captureName({ starter: "res-sv-elpris" }), "SV Elpris");
+  assert.equal(captureName({ starter: "res-sv-elpris" }), "Elpris");
   assert.equal(captureName({ starter: "sch-vitamin-d" }), "Vitamin D");
   assert.equal(captureName({ starter: "int-pipeline" }), "Pipeline");
 });

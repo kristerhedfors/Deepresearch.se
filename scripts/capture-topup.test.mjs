@@ -317,7 +317,7 @@ test("an unreadable queue status plans a full deck rather than nothing", () => {
 // ---------------------------------------------------------------------------
 
 test("captureName derives the contract's examples", () => {
-  assert.equal(captureName({ agent: "research", starter: "res-sv-elpris" }), "Sv Elpris");
+  assert.equal(captureName({ agent: "research", starter: "res-sv-elpris" }), "Elpris");
   assert.equal(captureName({ agent: "scholar", starter: "sch-vitamin-d" }), "Vitamin D");
   assert.equal(captureName({ agent: "introspection", starter: "int-pipeline" }), "Pipeline");
 });
@@ -325,8 +325,11 @@ test("captureName derives the contract's examples", () => {
 test("captureName caps at four words and never returns empty", () => {
   assert.equal(captureName({ starter: "res-a-b-c-d-e" }), "A B C D");
   assert.equal(captureName({ starter: "solo" }), "Solo");
-  assert.equal(captureName({ starter: "", prompt: "Vad påverkar elpriset i Sverige just nu?" }), "Vad Påverkar Elpriset I");
-  assert.equal(captureName({}), "Capture");
+  // The PROMPT fallback is left verbatim rather than title-cased: it is a
+  // sentence fragment, and "Vad Påverkar Elpriset I" reads like a headline
+  // nobody wrote. Title case is for the starter id, which is a slug.
+  assert.equal(captureName({ starter: "", prompt: "Vad påverkar elpriset i Sverige just nu?" }), "Vad påverkar elpriset i");
+  assert.equal(captureName({}), "Untitled capture");
 });
 
 // ---------------------------------------------------------------------------
@@ -424,7 +427,7 @@ test("buildAddPayload carries the queue-v2 fields: name and commit_sha", () => {
   assert.equal(payload.name, "Sv Elpris");
   assert.equal(payload.commit_sha, "abc1234");
   // No name given: derived from the starter, never left blank.
-  assert.equal(buildAddPayload({ edit: EDIT }).name, "Sv Elpris");
+  assert.equal(buildAddPayload({ edit: EDIT }).name, "Elpris");
 });
 
 test("buildAddPayload omits nulls rather than sending them", () => {

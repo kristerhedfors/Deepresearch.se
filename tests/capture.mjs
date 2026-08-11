@@ -59,6 +59,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, w
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { starterName } from "../public/js/captures-core.js";
 import {
   CAPTURABLE_AGENTS,
   DEFAULT_SHAPE,
@@ -431,8 +432,8 @@ export function captureUrl(opts) {
  * `#CAP-<id>` number ("produce a review of #12, the electricity one").
  *
  * Derived from the STARTER ID rather than the prompt: the id is already a
- * hand-written slug of what the prompt is about (`res-sv-elpris`,
- * `sch-vitamin-d`), so stripping the agent prefix and title-casing gives a
+ * hand-written slug of what the prompt is about (`res-sv-elpris` → "Elpris",
+ * `sch-vitamin-d` → "Vitamin D"), so stripping the prefix and title-casing gives a
  * usable name with no model call, no network, and no per-prompt maintenance —
  * which matters because the queue tops itself up unattended. It is a DEFAULT:
  * `scripts/captures --name <id> "…"` improves any one of them by hand.
@@ -440,17 +441,8 @@ export function captureUrl(opts) {
  * @returns {string}
  */
 export function captureName(run) {
-  const starter = String(run?.starter || "").trim();
-  const words = starter
-    .split("-")
-    .slice(1) // the agent prefix: res- / sch- / int- / orc- …
-    .filter(Boolean);
-  if (words.length) {
-    return words
-      .slice(0, 4)
-      .map((w) => (w.length <= 2 ? w.toUpperCase() : w[0].toUpperCase() + w.slice(1)))
-      .join(" ");
-  }
+  const derived = starterName(run?.starter);
+  if (derived) return derived;
   // No usable starter id (a hand-driven run): fall back to the prompt's first
   // few words, which is worse but never empty — an unnamed card in a deck of
   // twenty is the one nobody can refer to.

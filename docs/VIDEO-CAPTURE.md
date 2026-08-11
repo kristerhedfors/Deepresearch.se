@@ -1,9 +1,12 @@
 # Video capture — recording the site, editing for sharing, reviewing by swipe
 
-*Shipped 2026-08-10. Status: RUN END TO END the same day. Four real sessions
-were recorded against the live site, cut, encoded and uploaded; the deck
-served them back with working Range requests. The pixels are verified (§8);
-what remains untested is the gesture on a real touch screen.*
+*Shipped 2026-08-10, run end to end the same day. Extended 2026-08-11 (owner
+directive) into a SELF-REFILLING QUEUE OF TWENTY that replaced the try-it
+queue's launcher in the chat header: twenty unanswered clips spanning all
+seven agents, each numbered and named, each stamped with the commit it was
+recorded at, and each able to grow a thread of successive versions when it
+comes back with feedback. The pixels are verified (§8); what remains untested
+is the gesture on a real touch screen.*
 
 The working guide is the **video-capture** skill; this is the reference —
 formats, endpoints, fields, and the reasoning behind the numbers.
@@ -128,8 +131,9 @@ Two of those exist for the review queue rather than for the edit:
   six merges later "why does this video not match the app" has no answer. It is
   `null` rather than a guess when git is unavailable.
 - **`name`** is the short human name the deck shows beside the capture's
-  `#CAP-<id>` number, derived from the starter id (`res-sv-elpris` → "SV
-  Elpris") so it needs no model call and never blocks an unattended top-up. It
+  `#CAP-<id>` number, derived from the starter id (`res-sv-elpris` → "Elpris":
+  the agent prefix and the language marker are noise, not name) so it needs no
+  model call and never blocks an unattended top-up. It
   is a default: `scripts/captures --name <id> "…"` improves any one by hand.
 
 A batch also writes `batch.json` at the root: the options used plus one row
@@ -233,13 +237,27 @@ output time — a frame from the raw recording usually lands inside a cut), and
 
 ### 6.1 Storage
 
-D1 `captures` (one row per clip: identity, the run it came from, the edit's
-numbers, `status`, `likes`) and `capture_reviews` (one row per verdict). The
-MP4 and poster live in R2 under `captures/<id>/`. Metadata and media are split
-because R2 has no meaningful object-size constraint and D1 has a 2 MB row
-ceiling — the same judgement `src/storage.js` documents for conversations.
+Three D1 tables: `captures` (one row per clip — identity, the run it came
+from, the current cut's numbers, `name`, `commit_sha`, `version`,
+`answered_at`, `status`, `likes`), `capture_versions` (one row per CUT, so an
+older version is retained rather than overwritten) and `capture_reviews` (one
+row per verdict — the thread). Media lives in R2 at
+`captures/<id>/v<version>/{video.mp4,poster.jpg}`. Metadata and media are
+split because R2 has no meaningful object-size constraint and D1 has a 2 MB
+row ceiling — the same judgement `src/storage.js` documents for conversations.
 
-`status` moves `new → liked | needs_work → archived`.
+`status` moves `new → liked | needs_work → archived`, and a new version puts a
+`needs_work` capture back to `new` so the re-cut gets judged.
+
+**The four captures published before versioning existed** are not orphaned and
+needed no migration job. Their bytes are at the old unversioned keys, and
+three things keep them working: `listVersions` returns a SYNTHETIC v1 built
+from the capture row when it has no version rows; `versionKeyFor` falls back
+for v1 to the capture's own key and then to the legacy path; and the first new
+version MATERIALISES that synthetic row before the parent columns are
+overwritten. The fallback to the capture's own pointer applies only while the
+capture is still at v1 — past that the pointer names the newest cut, and
+serving it as v1 would answer "show me the original" with the re-cut.
 
 ### 6.2 The API
 
@@ -251,13 +269,22 @@ Admin-gated, under `/api/admin/captures` (`src/captures.js`, dispatched from
 | `GET` | `/api/admin/captures` | List. `?queue=1` is the unreviewed deck; also `status`, `agent`, `model`, `q`, `limit`, `format=text`. |
 | `POST` | `/api/admin/captures` | Create the metadata row; returns the upload URLs. |
 | `GET` | `/api/admin/captures/:id` | One capture with its reviews. |
-| `PATCH` | `/api/admin/captures/:id` | `{label?, status?, ref?}`. |
-| `DELETE` | `/api/admin/captures/:id` | Row, reviews and R2 objects. |
-| `PUT` | `/api/admin/captures/:id/video` | Raw MP4 bytes → `captures/<id>/video.mp4`. |
-| `PUT` | `/api/admin/captures/:id/poster` | Raw JPEG bytes → `captures/<id>/poster.jpg`. |
-| `GET` | `/api/admin/captures/:id/video` | Streams with real HTTP Range support. |
+| `PATCH` | `/api/admin/captures/:id` | `{label?, name?, status?, ref?, commit_sha?}`. |
+| `DELETE` | `/api/admin/captures/:id` | Row, reviews, version rows, every R2 key. |
+| `GET` | `/api/admin/captures/queue-status` | What the top-up reads: `{target, unanswered, deficit, by_agent, used}`. |
+| `PUT` | `/api/admin/captures/:id/video` | Raw MP4 bytes → the CURRENT version's key. |
+| `PUT` | `/api/admin/captures/:id/poster` | Raw JPEG bytes → the current version's poster. |
+| `GET` | `/api/admin/captures/:id/video` | The current version, with real HTTP Range support. |
 | `GET` | `/api/admin/captures/:id/poster` | The thumbnail. |
+| `GET` | `/api/admin/captures/:id/versions` | Every cut of this capture, newest first. |
+| `POST` | `/api/admin/captures/:id/versions` | A NEW cut: `version = max+1`, status back to `new`. |
+| `PUT`/`GET` | `/api/admin/captures/:id/versions/:v/{video,poster}` | One specific cut; Range preserved. |
 | `POST` | `/api/admin/captures/:id/review` | The verdict: `{verdict:"like"\|"feedback", note?}`. |
+
+`commit_sha` on `PATCH` is for BACKFILL — the recorder stamps it at capture
+time and nothing in the normal path edits it — and is validated as a hex sha
+rather than free text, because a provenance field holding "unknown" is worse
+than an empty one: it looks like an answer.
 
 Range support is not a nicety: the surface exists so a clip can be scrubbed in
 a deck, and a `<video>` element seeks by range.
@@ -307,7 +334,44 @@ the video element and the fetches, and fails soft: a failed review POST leaves
 the card in place with an inline error rather than silently dropping a
 verdict.
 
-### 6.4 The loop it feeds
+### 6.4 The queue of twenty
+
+The deck is not a pile that drains — it is a **queue held at twenty**
+(`QUEUE_TARGET`), because its purpose is to let the owner judge how the
+product answers without running a prompt and waiting for it. Twenty unanswered
+clips spanning all seven agents is enough to sample the whole surface in one
+sitting.
+
+**Every capture has a number and a name.** The number is its row id, rendered
+`#CAP-12` — an increasing series, never reused, so "produce a review of #12"
+is unambiguous. The name is short and human ("Elpris", "Vitamin D"), derived
+from the starter id and improvable by hand.
+
+**Every capture records its commit.** `commit_sha` is the git HEAD the
+recording was made at. The deck outlives the code; without it, "why does this
+video not match the app" has no answer.
+
+**What happens when one is answered:**
+
+| Verdict | The capture | The queue |
+|---|---|---|
+| **Like** (swipe right) | → `liked`, filed in **Appreciated**, still viewable | one short; the top-up records a new one |
+| **Feedback** (swipe left, note required) | → `needs_work`, and the note joins its **thread** | one short; the top-up records a new one |
+
+A capture with feedback is not discarded and not overwritten. It grows
+**versions**: a later recording of the same prompt is added as version *n+1*,
+the earlier cuts are retained and still playable from the card, and the
+capture returns to the queue as `new` so the re-cut gets judged. `answered_at`
+is stamped on the FIRST verdict and never cleared, which is how the top-up
+tells a genuinely fresh capture from a re-cut of an old one.
+
+`npm run capture:topup` reads `queue-status`, records whatever is missing —
+always giving the next slot to the agent with the fewest captures in the deck,
+and never re-recording an (agent, starter) pair already there — then edits,
+publishes, and reports. `deficit <= 0` exits without recording, so it is safe
+on a timer.
+
+### 6.5 The loop it feeds
 
 `scripts/captures --status needs_work` (or `?format=text` on the endpoint) is
 what a Claude Code session reads to learn which capture to re-record and what

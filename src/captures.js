@@ -81,6 +81,12 @@
 import { getDb } from "./db.js";
 import { jsonResponse, textResponse } from "./http.js";
 import { cleanStr, likePattern } from "./chatlog.js";
+import { captureTag, starterName } from "../public/js/captures-core.js";
+
+// Re-exported, not mirrored: `captureTag` is the SAME function the deck
+// renders with, so the number on a card and the number in `?format=text`
+// cannot drift apart. src/facade-contract.test.js enforces the identity.
+export { captureTag };
 
 /** @typedef {import('./types.js').Env} Env */
 /** @typedef {import('./types.js').Logger} Logger */
@@ -286,9 +292,6 @@ export function captureSlug(run) {
  * @param {number | string} id
  * @returns {string}
  */
-export function captureTag(id) {
-  return `#CAP-${id}`;
-}
 
 // The short, few-word name that rides next to the number. Derived from the
 // STARTER ID rather than the prompt on purpose: the id is already a
@@ -299,29 +302,28 @@ export function captureTag(id) {
 // It is only a DEFAULT: `PATCH {name}` (scripts/captures --name) improves any
 // one of them by hand, and the harness may send its own.
 //
-// `res-sv-elpris` → "Sv Elpris"; `sch-vitamin-d` → "Vitamin D";
+// `res-sv-elpris` → "Elpris"; `sch-vitamin-d` → "Vitamin D";
 // `int-pipeline` → "Pipeline".
+//
+// The DERIVATION itself lives once, in public/js/captures-core.js's
+// `starterName` — the same façade pattern as chat-modes.js and starters.js
+// (the browser can only import served modules; the Worker bundler can import
+// from anywhere). It was written out four times in one afternoon and the
+// copies had already drifted on whether "sv" is part of the name, which is
+// exactly the drift a shared core exists to prevent.
+// NOT called `captureName`: the client core exports a function of that name
+// which does something DIFFERENT — it RESOLVES what to display (server name →
+// label → derived → prompt). This one DERIVES the default a new row is
+// created with. Two different jobs must not share a name across a façade
+// boundary, and src/facade-contract.test.js enforces exactly that.
 /**
  * @param {{ agent?: string | null, starter?: string | null, prompt?: string | null }} run
  * @returns {string} never empty — an unnamed card in a deck of twenty is the
  *   one nobody can refer to
  */
-export function captureName(run) {
-  const parts = String(run?.starter || "")
-    .trim()
-    .split(/[-_\s]+/)
-    .filter(Boolean);
-  // The first segment is the agent prefix (res- / sch- / int- / orc- …).
-  // Dropping it is what turns an id into a name — but a starter that is a
-  // single word IS the name, so a strip that leaves nothing is not applied.
-  const words = parts.length > 1 ? parts.slice(1) : parts;
-  if (words.length) {
-    return words
-      .slice(0, 4)
-      .map((w) => w[0].toUpperCase() + w.slice(1))
-      .join(" ")
-      .slice(0, CAPTURE_CAPS.name);
-  }
+export function deriveCaptureName(run) {
+  const derived = starterName(run?.starter);
+  if (derived) return derived.slice(0, CAPTURE_CAPS.name);
   // No usable starter id (a hand-driven run): the prompt's opening words are a
   // worse name but never an empty one.
   const fromPrompt = String(run?.prompt || "")
@@ -369,8 +371,8 @@ export function validateCaptureCreate(body) {
       slug,
       label,
       // A name is never absent: an unnamed clip cannot be asked for by name,
-      // and the derivation costs nothing (see captureName).
-      name: cleanStr(body.name, CAPTURE_CAPS.name) || captureName({ agent, starter, prompt }),
+      // and the derivation costs nothing (see deriveCaptureName).
+      name: cleanStr(body.name, CAPTURE_CAPS.name) || deriveCaptureName({ agent, starter, prompt }),
       agent,
       mode: cleanStr(body.mode, CAPTURE_CAPS.mode),
       model,
@@ -479,8 +481,24 @@ export function validateCapturePatch(body) {
     patch.status = status;
   }
   if ("ref" in body) patch.ref = cleanStr(body.ref, CAPTURE_CAPS.ref);
+  // BACKFILL ONLY. The recorder stamps this at capture time and nothing in the
+  // normal path edits it — but the first four captures were published before
+  // the column existed, and provenance that cannot be filled in afterwards is
+  // provenance those rows never get. Validated as a hex sha rather than free
+  // text, because a commit field holding "unknown" is worse than an empty one:
+  // it looks like an answer.
+  if ("commit_sha" in body) {
+    if (body.commit_sha === null) patch.commit_sha = null;
+    else {
+      const sha = cleanStr(body.commit_sha, 40);
+      if (!sha || !/^[0-9a-f]{7,40}$/i.test(sha)) {
+        return { error: "commit_sha must be a hex commit sha (7–40 chars), or null." };
+      }
+      patch.commit_sha = sha.toLowerCase();
+    }
+  }
   if (!Object.keys(patch).length) {
-    return { error: "Nothing to update — send label, name, status and/or ref." };
+    return { error: "Nothing to update — send label, name, status, ref and/or commit_sha." };
   }
   return { patch };
 }
@@ -724,7 +742,7 @@ export function captureQueueStatus(rows, opts = {}) {
     }
     const starter = row?.starter ? String(row.starter) : "";
     if (!agent || !starter) continue; // nothing to de-duplicate a re-record on
-    const key = `${agent} ${starter}`;
+    const key = `${agent}\u0000${starter}`;
     if (seen.has(key)) continue;
     seen.add(key);
     used.push({ agent, starter });
