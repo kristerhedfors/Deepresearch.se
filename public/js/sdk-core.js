@@ -555,7 +555,7 @@ export const BUILD_TOOLS = [
   {
     name: "write_file",
     description:
-      "Stage one file of the app you are building. Give a relative path (e.g. index.html, css/app.css, js/app.js) and the file's FULL content. Re-writing a path replaces it. The collection is published as a static site, so make it self-contained (no external CDNs) and include an index.html entry point.",
+      "Stage one file of the app you are building. Give a relative path (e.g. index.html, css/app.css, js/app.js) and the file's FULL content. Re-writing a path replaces it. The collection is published as a static site, so make it self-contained (no external CDNs) and include an index.html entry point. NEVER use a module script (type=module) or an ES `import` in the published app: a module script is fetched in CORS mode, and the app is served into an OPAQUE ORIGIN, so the browser blocks it SILENTLY — the page renders, throws no error, and does nothing, because none of your handlers ever ran. Use classic script tags with src=… (and plain function/var scope) instead. This is not theoretical: a published agent was inert for exactly this reason.",
     input_schema: {
       type: "object",
       properties: {
@@ -935,7 +935,7 @@ export function buildSdkContextBlock(manifest, opts = {}) {
       "```html",
       "…the complete file content…",
       "```",
-      "One FILE line + one fenced block per file; relative paths; always include index.html. The build runs in a sandboxed opaque origin (no cookies/storage-with-origin/credentialed requests) — use in-memory state. The server collects the blocks, publishes them, and shares the live URL.",
+      "One FILE line + one fenced block per file; relative paths; always include index.html. The build runs in a sandboxed opaque origin (no cookies/storage-with-origin/credentialed requests) — use in-memory state. NEVER use a module script (type=module) or an ES `import` in the published app: a module script is fetched in CORS mode, and the app is served into an OPAQUE ORIGIN, so the browser blocks it SILENTLY — the page renders, throws no error, and does nothing, because none of your handlers ever ran. Use classic script tags with src=… (and plain function/var scope) instead. This is not theoretical: a published agent was inert for exactly this reason. The server collects the blocks, publishes them, and shares the live URL.",
     );
   }
   return parts.join("\n");

@@ -477,3 +477,24 @@ test("the SDK context block carries the app-kit note on both targets", () => {
     assert.ok(block.includes(APP_KIT_PATH), `${target} build is told about the kit`);
   }
 });
+
+test("a build is told not to use module scripts, which the sandbox blocks silently", () => {
+  // Ground truth, 2026-08-11: the published Socratic Tutor renders, throws
+  // nothing, and does nothing — its `<script type="module">` is fetched in
+  // CORS mode and blocked by the opaque origin the app is served into. The
+  // build model cannot discover that from the failure, because there is no
+  // failure to see, so it has to be told.
+  // Both routes a build can take: the native write_file tool, and the
+  // deterministic fenced-block fallback for a model without tool use
+  // (invariant 1). A constraint stated on only one of them is a constraint
+  // half the models never see.
+  const surfaces = [
+    BUILD_TOOLS.find((t) => t.name === "write_file")?.description || "",
+    buildSdkContextBlock(null, {}),
+  ];
+  for (const text of surfaces) {
+    assert.match(text, /type=module|module script/i, "the constraint must be stated");
+    assert.match(text, /opaque origin/i, "and say why, or it reads as a style preference");
+    assert.match(text, /silent/i, "the silence is the point — there is no error to debug");
+  }
+});
