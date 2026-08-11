@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import { CAPTURABLE_AGENTS, expandMatrix, pickPrompts } from "./capture-core.mjs";
 import {
+  appVerdictOf,
   DEFAULT_MIN_STILL,
   DEFAULT_TARGET,
   addPayloadProblems,
@@ -563,4 +564,31 @@ test("formatSummary shouts about a row whose video never landed", () => {
 
 test("captureTag matches the repo's #CAP-<id> convention", () => {
   assert.equal(captureTag(7), "#CAP-7");
+});
+
+// ---------------------------------------------------------------------------
+// The Agent Studio gate (owner directive, 2026-08-11)
+// ---------------------------------------------------------------------------
+
+test("only an Agent Studio capture whose app passed may be published", () => {
+  // Every other agent: no verdict, nothing to gate on.
+  assert.equal(appVerdictOf({ meta: {} }), null);
+  assert.equal(appVerdictOf({}), null);
+  assert.equal(appVerdictOf(null), null);
+
+  const passed = appVerdictOf({ meta: { app_e2e: { pass: true, failures: [] } } });
+  assert.equal(passed.pass, true);
+
+  const failed = appVerdictOf({ meta: { app_e2e: { pass: false, failures: ["the key field is not masked"] } } });
+  assert.equal(failed.pass, false);
+  assert.deepEqual(failed.failures, ["the key field is not masked"]);
+});
+
+test("a verdict that cannot be understood is a failure, not a pass", () => {
+  // Consent to publish must be explicit. A malformed verdict read as "no
+  // verdict" would publish exactly the unchecked build the gate exists for.
+  for (const bad of [{ pass: "yes" }, {}, [], "ok", 1, true]) {
+    const v = appVerdictOf({ meta: { app_e2e: bad } });
+    assert.equal(v.pass, false, `${JSON.stringify(bad)} must not read as a pass`);
+  }
 });

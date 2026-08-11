@@ -490,6 +490,26 @@ export function fitMeta(edit, cap = META_CAP) {
  * run reproducible).
  * @param {{ edit: any, name?: string | null, commit?: string | null, label?: string | null }} o
  */
+/**
+ * The Agent Studio end-to-end verdict carried on a capture's edit report, or
+ * null when the run was not an Agent Studio one (every other agent).
+ *
+ * Pure and separate from the gate that uses it, so "what counts as a failure"
+ * is testable without recording anything. An `app_e2e` present but shapeless
+ * reads as a FAILURE rather than an absence: a verdict that cannot be
+ * understood must not be treated as consent to publish.
+ * @param {any} edit  the parsed edit.json
+ * @returns {{ pass: boolean, failures?: string[] } | null}
+ */
+export function appVerdictOf(edit) {
+  const v = edit && edit.meta ? edit.meta.app_e2e : null;
+  if (v == null) return null;
+  if (typeof v !== "object" || typeof v.pass !== "boolean") {
+    return { pass: false, failures: ["the app_e2e verdict on this capture is malformed"] };
+  }
+  return v;
+}
+
 export function buildAddPayload(o) {
   const edit = o.edit || {};
   const meta = edit.meta || {};
@@ -885,6 +905,17 @@ function topUpOne(planned, opts, ctx) {
   if (!opts.publish) {
     result.warnings.push(`--no-publish: ${video} was left on disk`);
     return done(null, true);
+  }
+
+  // THE AGENT STUDIO GATE (owner directive, 2026-08-11): "only keep those app
+  // studio creation videos that also pass end2end test of the generated app".
+  // The recorder walked to the published app and used it; if that failed, the
+  // clip stays on disk with its verdict and never reaches the deck. A video of
+  // a build that does not work is worse than no video — it is a demo of a
+  // broken thing, filed as if it were a demo of a working one.
+  const verdict = appVerdictOf(edit);
+  if (verdict && verdict.pass === false) {
+    return done(`the built app failed its end-to-end test — NOT published: ${(verdict.failures || []).join("; ") || "no reason recorded"}`);
   }
 
   // 3. publish the row

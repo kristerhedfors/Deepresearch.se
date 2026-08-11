@@ -28,6 +28,7 @@ import {
   isLoopback,
   launchOptions,
   parseArgs,
+  publishedAppUrl,
   resolveAuth,
   runPaths,
   validateOptions,
@@ -293,6 +294,9 @@ test("meta.json carries the run's identity, the shape it was recorded at, and it
     durationMs: 32_000,
     ok: true,
     error: null,
+    // Null for every agent but Agent Studio, whose captures carry the verdict
+    // on the app they built — and are not published when it failed.
+    app_e2e: null,
   });
 });
 
@@ -417,4 +421,23 @@ test("a remote base is stamped with the DEPLOYED commit, not the working tree's"
   if (!local || !mainSha || local === mainSha) return; // nothing to prove here
   assert.equal(commitForBase("https://deepresearch.se"), mainSha, "remote → what production serves");
   assert.equal(commitForBase("http://127.0.0.1:8788"), local, "loopback → this working tree really is what runs");
+});
+
+// ---------------------------------------------------------------------------
+// Agent Studio: the published app's URL
+// ---------------------------------------------------------------------------
+
+test("the published app URL is read off the build chip, and only when there is one", () => {
+  const base = "https://deepresearch.se";
+  assert.equal(publishedAppUrl("/app/my-agent-ab12/", base), "https://deepresearch.se/app/my-agent-ab12/");
+  assert.equal(publishedAppUrl("/app/my-agent-ab12", base), "https://deepresearch.se/app/my-agent-ab12/");
+  // The chip's resting state. Telling this apart from a broken app matters:
+  // "the build never published" and "the app published and is broken" are
+  // different verdicts and only one of them is the build model's fault.
+  assert.equal(publishedAppUrl("#", base), null);
+  assert.equal(publishedAppUrl("", base), null);
+  assert.equal(publishedAppUrl(null, base), null);
+  // Anything that is not an /app/ link is refused rather than guessed at.
+  assert.equal(publishedAppUrl("/rver", base), null);
+  assert.equal(publishedAppUrl("https://evil.example/app/x/", base), "https://deepresearch.se/app/x/");
 });

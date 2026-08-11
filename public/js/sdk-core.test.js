@@ -439,6 +439,38 @@ test("APP_KIT_NOTE names the exact API a build has to call", () => {
   assert.match(APP_KIT_NOTE, /never write this file yourself|do NOT write this file yourself/);
 });
 
+test("APP_KIT_NOTE makes an unmasked or leaked key a stated failure", () => {
+  // The two apps published on 2026-08-11 both chose type="password" by
+  // themselves. That was luck: the note said nothing about masking, so the next
+  // build was free to render a pasted key — a live credential — in plain text
+  // on screen, and on camera. These three requirements are what removed the
+  // luck; pin the SUBSTANCE so a rewrite of the prose cannot drop them.
+  const lines = APP_KIT_NOTE.split("\n");
+
+  // 1. Masked, and not helpfully autofilled or spell-checked into a dictionary.
+  assert.match(APP_KIT_NOTE, /type="password"/, 'the key input is required to be type="password"');
+  assert.match(APP_KIT_NOTE, /autocomplete="off"/);
+  assert.match(APP_KIT_NOTE, /spellcheck="false"/);
+
+  // 2. Not echoed — into the page's text, another element's attributes, or the URL.
+  const echo = lines.find((l) => /echo/i.test(l));
+  assert.ok(echo, "the note forbids echoing the key back into the page");
+  for (const place of [/heading/i, /status/i, /title/i, /value/i, /\bURL\b/]) {
+    assert.match(echo, place, `the no-echo rule names ${place}`);
+  }
+
+  // 3. Not persisted. The kit's own header promises the key stays in a
+  //    variable on the page; the app must not undo that promise behind it.
+  const stored = lines.find((l) => /localStorage/.test(l));
+  assert.ok(stored, "the note forbids writing the key to storage");
+  assert.match(stored, /sessionStorage/);
+  assert.match(stored, /cookie/i);
+
+  // 4. And it says WHY, the way the rest of the note does — a rule with a
+  //    reason survives a rewrite that a bare rule does not.
+  assert.match(APP_KIT_NOTE, /credential/i);
+});
+
 test("the SDK context block carries the app-kit note on both targets", () => {
   for (const target of ["agent", "platform"]) {
     const block = buildSdkContextBlock(null, { target });

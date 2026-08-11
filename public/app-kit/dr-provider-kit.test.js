@@ -182,6 +182,7 @@ describe("app kit — the picker", () => {
   function el(tag = "div") {
     const node = {
       tag,
+      tagName: String(tag).toUpperCase(),
       value: "",
       hidden: false,
       title: "",
@@ -203,6 +204,39 @@ describe("app kit — the picker", () => {
     };
     return node;
   }
+
+  // A pasted key is a live credential. The build prompt (APP_KIT_NOTE) asks
+  // every generated app for type="password"; the kit does not depend on the
+  // model having complied, because an unmasked field shows the key to whoever
+  // is looking at the screen — or watching a recording of the app being used.
+  describe("the key field is masked by the kit, not by whoever wired it", () => {
+    test("a bare <input> comes back masked", () => {
+      const kit = loadKit();
+      const keyInput = el("input"); // no type, no autocomplete, no spellcheck
+      kit.mountModelPicker({ keyInput, modelSelect: el("select") });
+      assert.equal(keyInput.type, "password");
+      assert.equal(keyInput.autocomplete, "off");
+      assert.equal(keyInput.spellcheck, false);
+    });
+
+    test("masking is the initial state, not a lock on the app's own reveal toggle", () => {
+      const kit = loadKit();
+      const keyInput = el("input");
+      kit.mountModelPicker({ keyInput, modelSelect: el("select") });
+      keyInput.type = "text"; // the app's own "show key" button
+      assert.equal(keyInput.type, "text", "the kit sets the field once, at mount");
+    });
+
+    test("anything that is not an <input> is left alone", () => {
+      // `type` is read-only on a <textarea>, and the kit runs under "use
+      // strict" — assigning it there would throw and take the mount with it.
+      const kit = loadKit();
+      const keyInput = el("textarea");
+      const picker = kit.mountModelPicker({ keyInput, modelSelect: el("select") });
+      assert.equal(keyInput.type, undefined);
+      assert.equal(typeof picker.state, "function", "the picker still mounted");
+    });
+  });
 
   test("pasting a key auto-loads the models into a flagged dropdown", async () => {
     const kit = loadKit({

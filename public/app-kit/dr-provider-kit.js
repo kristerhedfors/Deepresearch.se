@@ -20,7 +20,9 @@
 // browser DIRECTLY to the provider they configured. This site's server is in no
 // data path here. The key stays in a variable on the page (never localStorage,
 // which an opaque-origin sandbox has no access to anyway, and never a log), and
-// nothing but the key and the conversation is ever sent.
+// nothing but the key and the conversation is ever sent. It is not shown
+// either: the picker masks the key field it is handed, so a build that forgot
+// `type="password"` still cannot render a live credential in plain text.
 //
 // The registry below MIRRORS public/js/drc-providers.js (ids, base URLs, key
 // patterns, curation rules, fallback catalogs) and public/js/provider-region.js
@@ -325,6 +327,32 @@
   }
 
   /**
+   * Mask the key field the app handed us, rather than trusting it to have done
+   * so. A pasted key is a live credential; an unmasked field shows it to
+   * whoever is looking at the screen — or watching a recording of it. The
+   * build prompt asks for type="password", but "the two apps published so far
+   * happened to do it" is luck, not a guarantee, so the kit makes it
+   * structural: a bare <input> comes back masked.
+   *
+   * Only the INITIAL state is set, once at mount — an app's own "show key"
+   * toggle still works, it just cannot start revealed. Anything that is not an
+   * <input> is left alone (`type` is read-only on a <textarea>, and assigning
+   * it under "use strict" throws), and the whole thing is caught anyway: this
+   * is a hardening step, never a reason the picker fails to mount.
+   */
+  function maskKeyField(el) {
+    if (!el) return;
+    if (el.tagName && el.tagName !== "INPUT") return;
+    try {
+      if (el.type !== "password") el.type = "password";
+      el.autocomplete = "off";
+      el.spellcheck = false;
+    } catch (e) {
+      /* an element that refuses — its own markup then decides. */
+    }
+  }
+
+  /**
    * Wire an API-key input to a model <select>: the provider follows the pasted
    * key, the models load themselves, and every option carries the flag of the
    * country the conversation is processed in.
@@ -350,6 +378,7 @@
     var models = [];
     var token = 0; // guards against an older fetch resolving last
 
+    maskKeyField(keyInput);
     if (providerSelect) fillProviderSelect(providerSelect, null);
 
     function key() {

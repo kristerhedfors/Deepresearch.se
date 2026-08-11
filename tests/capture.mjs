@@ -408,6 +408,8 @@ export function runPaths(outRoot, slug) {
 
 /** Human labels for the markers, used as chapter titles by the editor. */
 export const MARKER_LABELS = {
+  app_open: "opened the built app",
+  app_done: "finished using the built app",
   open: "app opened",
   send: "prompt sent",
   first_token: "first token",
@@ -532,6 +534,11 @@ export function buildMeta(run, opts, timing) {
     durationMs: Math.max(0, timing.endedAt - timing.startedAt),
     ok: !!timing.ok,
     error: timing.error || null,
+    // The Agent Studio verdict, when there was one: what the built app scored
+    // when the capture walked to it and used it. Null for every other agent.
+    // The publish step reads `app_e2e.pass` and skips a capture that failed —
+    // a clip of a build that does not work is worse than no clip.
+    app_e2e: timing.appE2E || null,
   };
 }
 
@@ -700,6 +707,8 @@ export async function captureRun(browser, run, opts, net) {
   let context = null;
   let page = null;
   let stopSampler = () => {};
+  /** @type {any} */
+  let appE2E = null;
 
   const mark = (/** @type {string} */ id) => markers.push({ t: Date.now() - t0, id });
 
@@ -808,6 +817,17 @@ export async function captureRun(browser, run, opts, net) {
     // Let the last paint settle so the final frame is not mid-render — a clip
     // that ends on a half-drawn answer reads as a crash.
     await sleep(1500);
+
+    // AGENT STUDIO: a build is only worth showing if the thing it built works.
+    // So the capture does not stop at the transcript — it walks to the
+    // published app and uses it, ON CAMERA, and the verdict decides whether
+    // this clip is published at all (owner directive, 2026-08-11).
+    if (finished && run.mode === "sdk") {
+      appE2E = await checkBuiltApp(page, opts, mark);
+      if (appE2E && !appE2E.pass) {
+        error = `the built app failed its end-to-end test: ${appE2E.failures.join("; ")}`;
+      }
+    }
   } catch (e) {
     error = e instanceof Error ? e.message : String(e);
     mark("error");
@@ -830,10 +850,81 @@ export async function captureRun(browser, run, opts, net) {
     paths.timeline,
     JSON.stringify(buildTimeline({ samples, markers, durationMs, sampleMs: opts.sample }), null, 2),
   );
-  const meta = buildMeta(run, opts, { startedAt, endedAt, ok: !error, error });
+  const meta = buildMeta(run, opts, { startedAt, endedAt, ok: !error, error, appE2E });
   writeFileSync(paths.meta, JSON.stringify(meta, null, 2));
 
-  return { slug: run.slug, agent: run.agent, model: run.model, starter: run.starter, ok: !error, durationMs, error };
+  return { slug: run.slug, agent: run.agent, model: run.model, starter: run.starter, ok: !error, durationMs, error, appE2E };
+}
+
+/**
+ * The published app's URL, from the SDK build chip's href.
+ *
+ * Pure so the "did this build actually publish anything" decision is testable
+ * without a browser. Returns null for the chip's empty/`#` resting state,
+ * which is how "the build never finished" is told apart from "it finished and
+ * the app is broken" — two different verdicts.
+ * @param {string | null | undefined} href
+ * @param {string} base
+ * @returns {string | null}
+ */
+export function publishedAppUrl(href, base) {
+  const raw = typeof href === "string" ? href.trim() : "";
+  if (!raw || raw === "#") return null;
+  const m = raw.match(/\/app\/([a-z0-9][a-z0-9-]*)\/?$/i);
+  if (!m) return null;
+  return `${String(base).replace(/\/+$/, "")}/app/${m[1]}/`;
+}
+
+/**
+ * AGENT STUDIO's second half: walk to the app the build just published and USE
+ * it, while the recording is still running.
+ *
+ * Two things at once, both owner directives (2026-08-11). The clip gains the
+ * only part that proves the build was real — the app being used — and the run
+ * gains a VERDICT, because "only keep those videos that also pass an
+ * end-to-end test of the generated app" needs something to pass.
+ *
+ * Fail-soft in one direction only: anything that stops the check from running
+ * (no chip, no slug, a module that would not load) is reported as a failure
+ * rather than swallowed, because silently publishing an unchecked build is the
+ * outcome this exists to prevent. What it must never do is throw — that would
+ * cost the recording as well as the verdict.
+ * @param {any} page
+ * @param {CaptureOptions} opts
+ * @param {(id: string) => void} mark
+ * @returns {Promise<any | null>}
+ */
+async function checkBuiltApp(page, opts, mark) {
+  const fail = (/** @type {string} */ reason) => ({ pass: false, url: null, checks: [], failures: [reason] });
+  let href = null;
+  try {
+    // The chip is populated when the build publishes; give it a moment, since
+    // the publish lands just after the stats do.
+    await page.waitForFunction(
+      () => {
+        const a = document.getElementById("sdkbuildlink");
+        return !!(a && !a.hidden && a.getAttribute("href") && a.getAttribute("href") !== "#");
+      },
+      { timeout: 20_000 },
+    );
+    href = await page.getAttribute("#sdkbuildlink", "href");
+  } catch {
+    return fail("the build published no app (the /app/ link never appeared)");
+  }
+  const url = publishedAppUrl(href, opts.base);
+  if (!url) return fail(`the build chip's link is not an /app/ URL (${href})`);
+
+  mark("app_open");
+  try {
+    const { exerciseApp, gradeApp } = await import("./app-e2e.mjs");
+    const observations = await exerciseApp(page, url, { timeout: 45_000 });
+    const graded = gradeApp(observations);
+    mark("app_done");
+    return { ...graded, url, slug: url.replace(/\/$/, "").split("/").pop() };
+  } catch (e) {
+    mark("app_done");
+    return fail(`the end-to-end check could not run: ${e instanceof Error ? e.message : String(e)}`);
+  }
 }
 
 /**
