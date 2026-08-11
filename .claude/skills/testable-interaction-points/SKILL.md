@@ -8,8 +8,10 @@ description: >-
   fix or feature is ready to test ("queue this for testing", "add a test
   point", "what's in the test queue"), or when touching src/testpoints.js,
   public/js/testpoints.js, public/js/testpoints-core.js, scripts/testpoints,
-  the /try/:id route, the test_points / test_point_messages D1 tables, or
-  the #tryqueuebtn / #trybanner UI. Covers the deep-link ACTION GRAMMAR (the
+  the /try/:id route, or the test_points / test_point_messages D1 tables.
+  (The #tryqueuebtn / #trybanner chat-interface UI was RETIRED 2026-08-11 and
+  the header slot now holds the capture review deck — see the table.) Covers
+  the deep-link ACTION GRAMMAR (the
   exact boundary of what "reachable" means), the producer→test→verdict loop,
   the clarification thread, the API surface, and where the boundary ends.
 ---
@@ -45,16 +47,24 @@ The whole surface is **admin-only** — a deep link can prefill the composer or
 open settings, so it is a developer/owner tool, not an end-user one. The
 client fails soft for everyone else: the launcher and banner never render.
 
+**Status 2026-08-11:** the CHAT-INTERFACE half of this is retired — the header
+launcher and the in-page banner are gone, replaced by the capture review deck
+(the **video-capture** skill). The producer side (declaring points, the API,
+`scripts/testpoints`, `/try/:id`, `docs/test-requests/**`) is untouched and
+still the way a fix gets queued for testing; what a tester no longer gets is
+the banner that set the scene and took the verdict in place. Read §The loop's
+step 2 with that in mind.
+
 ## The pieces
 
 | Piece | Responsibility |
 |---|---|
 | `src/testpoints.js` | Pure core (validation, projection, `?format=text`, `deepLink`) + `handleAdminTestpoints` (CRUD + verdict + thread) + `handleTryRedirect` (the `/try/:id` resolver). D1 `test_points` + `test_point_messages` (the clarification thread). |
 | `public/js/testpoints-core.js` | Client pure core: `parseTryId`/`stripTryParam`/`deepLink`, `partitionActions` (known vs unknown for THIS build), `nextOpenPoint`. Node-tested. |
-| `public/js/testpoints.js` | The DRS client: the queue overlay, the try-it banner, and the ACTION EXECUTOR. Wired from `app.js` via `initTestpoints({ hooks })`. |
+| `public/js/testpoints.js` | The DRS client: the queue overlay, the try-it banner, and the ACTION EXECUTOR. **No longer wired** — `app.js` stopped calling `initTestpoints` on 2026-08-11 when the header slot went to the capture deck. The module is kept, not deleted, so a replacement surface can re-wire it. |
 | `scripts/testpoints` | The producer/reader CLI over `/api/admin/testpoints` (break-glass Basic Auth). |
 | `/try/:id` | Shareable deep link → 302 to `<target>?try=<id>` (routed in `index.js`, admin-gated, home-on-miss). |
-| `#tryqueuebtn` / `#trybanner` | Header launcher (shown only when the queue probe succeeds) + the fixed bottom-sheet banner. |
+| ~~`#tryqueuebtn` / `#trybanner`~~ | **RETIRED 2026-08-11** (owner directive): the chat-interface launcher and banner were removed and the header slot now holds the capture review deck (`#capreviewbtn` → `/captures/`, the **video-capture** skill) — the owner prefers watching a recorded run to being handed a prompt to try. Everything else below still works: the API, `scripts/testpoints`, `/try/:id` and the `docs/test-requests/**` flow are untouched. What a point NO LONGER has is a banner at the target that sets the scene and collects the verdict in place; record verdicts with `scripts/testpoints --result` until a replacement surface exists. |
 
 ## The loop
 

@@ -1028,7 +1028,7 @@ the outside it is indistinguishable from a broken button, and that is exactly ho
 users report it. When a control genuinely has nothing to act on, pick one of two
 honest outcomes:
 
-- **Hide it** until it does (`hidden`, the way `#historybtn` / `#tryqueuebtn` /
+- **Hide it** until it does (`hidden`, the way `#historybtn` / `#capreviewbtn` /
   `#ghostbtn` come and go), or
 - **Let it act anyway and show the empty state in words** — the panel opens and
   says what is missing, or reports the work in flight that will fill it.

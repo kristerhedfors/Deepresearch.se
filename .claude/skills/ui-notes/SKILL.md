@@ -207,7 +207,7 @@ description: >-
   notice/intro), mock `/api/me` + GET `/api/settings` + `/api/messages`
   as a plain user (hides the admin-only test-queue button, keeps
   `bob@gmail.com` in the panel shot instead of a real account), force
-  `historybtn`/`ghostbtn` visible and `tryqueuebtn`/`termbtn`/
+  `historybtn`/`ghostbtn` visible and `capreviewbtn`/`termbtn`/
   `projectchip` hidden, then clip element rects: `.header-bar`
   (header.png), `#composer` (composer-on/off.png — toggle
   `.knob-track` between shots), `#searchpop` unhidden + `#composer`
