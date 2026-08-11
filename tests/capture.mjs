@@ -945,10 +945,43 @@ async function selectMode(page, mode) {
   const current = await page.$eval("#modesel", (/** @type {any} */ el) => el.value);
   // Already there (the localStorage pin took): selecting again would fire a
   // change event and replay the mode's entry animation mid-recording.
-  if (current === mode) return;
-  await page.selectOption("#modesel", mode, { force: true, timeout: 15_000 });
-  // The mode swap re-themes the composer and can rebuild the model list.
-  await sleep(500);
+  if (current !== mode) {
+    await page.selectOption("#modesel", mode, { force: true, timeout: 15_000 });
+    // The mode swap re-themes the composer and can rebuild the model list.
+    await sleep(500);
+  }
+
+  // AND THEN HOLD IT. The mode is read in two places, and the second one
+  // arrives late: app.js adopts the server's `chat_mode` from /api/settings
+  // whenever that resolves, which can be seconds after the dropdown was set.
+  // The early return above made this worse rather than better — the
+  // `dr_chat_mode` pin means the dropdown ALREADY reads the wanted mode, so
+  // selectMode returned satisfied, and then settings landed and knocked it
+  // back to `normal`.
+  //
+  // That is not a cosmetic race. It silently records THE WRONG AGENT: an
+  // Agent Studio capture that reverted to Deep Research answers by printing
+  // code as prose and never builds anything, and the clip looks fine unless
+  // you read the composer. Observed on 2026-08-11, twice in one batch.
+  //
+  // So: watch the value for a window, re-apply if it drifts, and fail the run
+  // if it will not hold — the same posture as an unavailable mode, for the
+  // same reason.
+  const deadline = Date.now() + 8_000;
+  let reapplied = 0;
+  for (;;) {
+    await sleep(500);
+    const now = await page.$eval("#modesel", (/** @type {any} */ el) => el.value).catch(() => null);
+    if (now !== mode) {
+      if (++reapplied > 3) {
+        throw new Error(`chat mode “${mode}” will not stick (the composer keeps reverting to “${now}”)`);
+      }
+      await page.selectOption("#modesel", mode, { force: true, timeout: 15_000 });
+      await sleep(500);
+      continue;
+    }
+    if (Date.now() >= deadline) return;
+  }
 }
 
 /**

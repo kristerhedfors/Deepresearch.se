@@ -134,6 +134,19 @@ const NOISE_PATTERNS = [
   /cors|cross-origin|access-control-allow-origin|preflight/i,
   /refused to connect|violates the following content security policy/i,
   /aborterror|the operation was aborted|signal is aborted/i,
+  // THE SANDBOX DENYING STORAGE. `/app/<slug>/` is served into an opaque
+  // origin, so reading localStorage/sessionStorage/cookies throws a
+  // SecurityError — and this checker's OWN key_not_persisted probe is what
+  // provokes it. The probe catches its own throw (a denial is a pass, and a
+  // stronger one than an empty store), but Chromium ALSO reports it on the
+  // page-error channel, where it was landing as "the app threw".
+  //
+  // Without this, every generated app fails no_page_errors on an error the
+  // checker caused. Observed on the first live run: two builds that touch no
+  // storage anywhere in their source both failed with this exact message.
+  /the document is sandboxed and lacks the '?allow-same-origin'? flag/i,
+  /securityerror[^\n]{0,80}(localstorage|sessionstorage|cookie)/i,
+  /(localstorage|sessionstorage)[^\n]{0,60}(denied|sandbox|not available|access is denied)/i,
 ];
 
 /**

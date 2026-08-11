@@ -600,3 +600,25 @@ test("the exercise's documented defaults are the ones it uses", () => {
   assert.equal(EXERCISE_DEFAULTS.navTimeout >= EXERCISE_DEFAULTS.timeout, true);
   assert.ok(DEFAULT_PROMPT.length > 0 && DEFAULT_PROMPT.length < 120);
 });
+
+test("the sandbox denying storage is the checker's own probe, not the app throwing", () => {
+  // /app/<slug>/ is an opaque origin, so reading storage throws a
+  // SecurityError — and key_not_persisted's probe is what provokes it.
+  // Chromium reports it on the page-error channel too, so without this filter
+  // EVERY generated app fails no_page_errors on an error the checker caused.
+  // Observed live: two builds whose source contains the string "storage"
+  // zero times both failed with exactly this message.
+  const denial =
+    "SecurityError: Failed to read the 'localStorage' property from 'Window': " +
+    "The document is sandboxed and lacks the 'allow-same-origin' flag.";
+  assert.equal(isProviderNoise(denial), true);
+  assert.equal(
+    isProviderNoise("SecurityError: Failed to read the 'sessionStorage' property from 'Window': The document is sandboxed and lacks the 'allow-same-origin' flag."),
+    true,
+  );
+  // A real app error must still count. The filter is about one specific
+  // sandbox denial, not about SecurityErrors in general.
+  assert.equal(isProviderNoise("TypeError: cannot read properties of null"), false);
+  assert.equal(isProviderNoise("SecurityError: The operation is insecure"), false);
+  assert.equal(isProviderNoise("ReferenceError: DRKit is not defined"), false);
+});
