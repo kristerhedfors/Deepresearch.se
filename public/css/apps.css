@@ -1,0 +1,251 @@
+/* Published apps (/apps/) — the management surface for what Agent Studio has
+   published to /app/<slug>/.
+
+   Two halves, the same split /captures/ uses:
+     1. the page chrome — deliberately the SAME palette and element conventions
+        as admin.css and captures.css (the variables, header, main/section,
+        .muted, .badge, the button/input rules), because a signed-in reader
+        moving between these doors should not feel a change of product. It is a
+        COPY rather than an import: admin.css carries a dozen panels' worth of
+        rules this page has no use for, and a shared base file would be a third
+        thing to keep in sync for the sake of three pages. Keep them aligned by
+        hand, as captures.css already does.
+     2. the .app-* rules — the card grid, the two-step delete, and the file
+        editor.
+
+   Phone-first: the grid collapses to one column on its own (auto-fill over a
+   minmax track, no breakpoint needed), the detail view REPLACES the grid rather
+   than floating over it, and every control is a real button sized for a thumb.
+*/
+
+:root {
+  --bg: #6fc3fd;
+  --panel: #f2f9ff;
+  --panel-2: #e2f1ff;
+  --border: #8ec4ec;
+  --text: #0a2e5c;
+  --muted: #2f5d8e;
+  --accent: #0d4fa0;
+  --ok: #157a4b;
+  --warn: #9a1c1c;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; min-height: 100%; overflow-x: hidden; }
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+header {
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+}
+header .title a { text-decoration: none; color: var(--accent); margin-right: .4rem; }
+main {
+  /* Wider than /captures/'s 720px: this page is a GRID of cards, and a column
+     the width of one portrait clip would show a single card per row on a
+     desktop for no reason. Matches /admin's 980px. */
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+section {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1rem 1.1rem;
+}
+h2 { margin: 0 0 .8rem; font-size: 1rem; display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+/* How many apps there are, beside the heading. Empty means zero, and an empty
+   badge is hidden rather than rendered as a blank pill. */
+h2 .count {
+  background: var(--accent); color: #fff; border-radius: 10px;
+  font-size: .75rem; padding: .1rem .5rem; vertical-align: middle;
+}
+h2 .count:empty { display: none; }
+.lead { margin: 0 0 .9rem; font-size: .85rem; color: var(--muted); }
+.muted { color: var(--muted); font-size: .8rem; }
+.err { color: var(--warn); font-size: .85rem; }
+code { background: var(--panel-2); border-radius: 4px; padding: 0 .25rem; }
+
+.badge {
+  font-size: .7rem; padding: .12rem .45rem; border-radius: 8px;
+  background: var(--panel-2); border: 1px solid var(--border); color: var(--muted);
+}
+
+/* Buttons & inputs */
+button {
+  background: var(--accent); color: #fff; border: 0; border-radius: 8px;
+  padding: .42rem .8rem; font: inherit; font-size: .82rem; font-weight: 600; cursor: pointer;
+}
+button.secondary { background: var(--panel-2); color: var(--text); border: 1px solid var(--border); }
+button:disabled { opacity: .5; cursor: default; }
+input, select, textarea {
+  background: #fff; color: inherit; border: 1px solid var(--border);
+  border-radius: 8px; padding: .42rem .55rem; font: inherit; font-size: .85rem;
+}
+/* The focus ring is load-bearing, not decoration: every action on this page is
+   reachable by keyboard, and a page that manages destructive operations must
+   never leave a keyboard user guessing which control is armed. */
+a:focus-visible, button:focus-visible, input:focus-visible,
+select:focus-visible, textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ===========================================================================
+   The listing (public/js/apps.js).
+   =========================================================================== */
+
+.app-toolbar {
+  display: flex; flex-wrap: wrap; gap: .6rem .8rem; align-items: flex-end;
+  margin-bottom: .8rem;
+}
+.app-field { display: flex; flex-direction: column; gap: .15rem; }
+/* Search takes whatever room is left; on a phone it drops to its own full-width
+   row rather than squeezing the sort control to nothing. */
+.app-field:first-child { flex: 1 1 12rem; }
+.app-lbl { font-size: .72rem; color: var(--muted); font-weight: 600; }
+.app-search { width: 100%; }
+.app-check {
+  display: flex; align-items: center; gap: .3rem;
+  font-size: .8rem; color: var(--muted); padding-bottom: .45rem;
+}
+
+.app-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: .7rem;
+}
+.app-card {
+  border: 1px solid var(--border); border-radius: 12px; background: #fff;
+  padding: .7rem .8rem;
+  box-shadow: 0 2px 8px rgba(10, 46, 92, .1);
+  display: flex; flex-direction: column; gap: .3rem;
+}
+.app-head { display: flex; flex-wrap: wrap; gap: .35rem; align-items: baseline; }
+.app-title {
+  margin: 0; font-size: .95rem; font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.app-owner { overflow-wrap: anywhere; }
+.app-slug {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: .75rem; color: var(--muted);
+  align-self: flex-start;
+  overflow-wrap: anywhere;
+}
+.app-facts { margin: 0; font-variant-numeric: tabular-nums; }
+
+.app-actions { display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; margin-top: .35rem; }
+/* Open is an <a>, not a button — it opens a URL in a new tab, and it should
+   behave like a link does (middle-click, copy address, the lot). It is dressed
+   as the card's primary action anyway. */
+.app-btn {
+  display: inline-block; text-decoration: none;
+  background: var(--accent); color: #fff; border-radius: 8px;
+  padding: .42rem .8rem; font-size: .82rem; font-weight: 600;
+}
+.app-danger { color: var(--warn); border-color: #d9a3a3; }
+.app-danger-solid { background: var(--warn); }
+/* The clipboard fallback: the URL, on screen, selected. */
+.app-copyfallback { flex: 1 1 12rem; font-size: .75rem; }
+/* A button that reads as inline prose ("Clear the search" inside a sentence). */
+button.linkish {
+  background: none; border: 0; padding: 0; color: var(--accent);
+  font-size: inherit; font-weight: 600; text-decoration: underline; cursor: pointer;
+}
+
+/* The empty state. It is the page's answer to "where do apps come from", so it
+   gets room rather than being a grey line under an empty grid. */
+.app-empty { padding: .6rem 0 .2rem; }
+.app-empty p { margin: 0 0 .4rem; }
+.app-cta {
+  display: inline-block; text-decoration: none; margin-top: .3rem;
+  background: var(--accent); color: #fff; border-radius: 8px;
+  padding: .45rem .9rem; font-size: .85rem; font-weight: 600;
+}
+
+/* Rename, inline in the card (and at the top of the detail view). */
+.app-rename { display: flex; flex-direction: column; gap: .3rem; margin-top: .3rem; }
+.app-rename-input { width: 100%; }
+/* The remaining-characters hint. Hidden until the typed name is near the cap —
+   a countdown on a three-word name is noise. */
+.app-hint { margin: 0; }
+.app-hint[hidden] { display: none; }
+.app-rename-err { margin: 0; }
+.app-rename-err[hidden] { display: none; }
+
+/* The two-step delete. Step two lands in the card, in place, and says what is
+   about to happen — never a bare confirm() on somebody's published work. */
+.app-confirm {
+  border: 1px solid #d9a3a3; border-radius: 10px; background: #fdeeee;
+  padding: .6rem .7rem; margin-top: .35rem;
+}
+.app-confirm-lead { margin: 0 0 .3rem; font-size: .88rem; font-weight: 700; }
+.app-confirm p { margin: 0 0 .35rem; overflow-wrap: anywhere; }
+.app-confirm code { background: #fff; }
+
+/* ===========================================================================
+   The detail / edit view. It REPLACES the grid rather than floating over it:
+   on a phone a dialog holding a file list and a code editor is a scroll trap
+   whose close button ends up off screen.
+   =========================================================================== */
+
+.app-back { margin-bottom: .7rem; }
+.app-detail-head { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+.app-detail-head .app-rename { flex: 1 1 100%; }
+.app-detail-title { margin: 0; font-size: 1rem; overflow-wrap: anywhere; }
+.app-detail-sub { margin: .25rem 0 .8rem; overflow-wrap: anywhere; }
+.app-live { color: var(--accent); }
+.app-detail-actions { margin-top: 1rem; }
+
+.app-files { margin-bottom: .7rem; }
+.app-files-lead { margin: 0 0 .35rem; }
+.app-filelist { display: flex; flex-direction: column; gap: .3rem; }
+.app-file {
+  display: flex; flex-wrap: wrap; gap: .4rem; align-items: center;
+  border: 1px solid var(--border); border-radius: 8px; background: #fff;
+  padding: .3rem .45rem;
+}
+.app-file.is-on { border-color: var(--accent); background: var(--panel-2); }
+/* The path itself is the control: tapping it loads the file. It is a real
+   button dressed as a monospace label, so it keeps its keyboard behaviour. */
+.app-file-pick {
+  flex: 1 1 auto; text-align: left;
+  background: none; color: var(--text); border: 0; padding: .15rem 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: .8rem; font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.app-file.is-on .app-file-pick { color: var(--accent); font-weight: 700; }
+.app-file-size { font-variant-numeric: tabular-nums; }
+.app-file-rm { font-size: .72rem; padding: .2rem .5rem; color: var(--warn); border-color: #d9a3a3; }
+
+.app-editor { display: flex; flex-direction: column; gap: .4rem; }
+.app-code {
+  width: 100%;
+  /* Tall enough to be an editor on a phone without pushing the Save button off
+     the bottom of the screen; resizable for anyone who wants more. */
+  min-height: 40vh;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: .78rem; line-height: 1.45;
+  resize: vertical;
+  /* Code does not wrap at word boundaries; a long line scrolls. */
+  white-space: pre;
+  overflow-wrap: normal;
+  overflow-x: auto;
+  tab-size: 2;
+}
+.app-editor-status { margin: 0; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.app-editor-msg { margin: 0; font-size: .8rem; overflow-wrap: anywhere; }
+.app-editor-msg[hidden] { display: none; }
+.app-ok { color: var(--ok); }
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
+}

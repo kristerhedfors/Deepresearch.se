@@ -65,7 +65,10 @@ export const appUrl = (slug) => `/app/${slug}/`;
  */
 export function normalizeAppTitle(raw) {
   if (typeof raw !== "string") return "";
-  return raw.replace(/\s+/g, " ").trim().slice(0, APP_TITLE_MAX);
+  // Trimmed AFTER the slice as well as before it: the cut lands wherever 120
+  // characters end, which can be mid-gap, and a stored title ending in a space
+  // renders as a title with a stray gap before whatever follows it.
+  return raw.replace(/\s+/g, " ").trim().slice(0, APP_TITLE_MAX).trim();
 }
 
 /**
@@ -148,31 +151,71 @@ export function selectApps(apps, opts = {}) {
  * @returns {{files: Array<{path: string, content: string}>} | {error: string}}
  */
 export function planFileEdit(current, rawPath, rawContent) {
+  const files = (Array.isArray(current) ? current : []).map((f) => ({ path: f.path, content: f.content }));
+  const sizes = files.map((f) => ({ path: f.path, size: new TextEncoder().encode(String(f.content ?? "")).length }));
+  const check = checkFileEdit(sizes, rawPath, rawContent);
+  if ("error" in check) return { error: check.error };
+
+  const at = files.findIndex((f) => f.path === check.path);
+  if (at >= 0) files[at] = { path: check.path, content: /** @type {string} */ (rawContent) };
+  else files.push({ path: check.path, content: /** @type {string} */ (rawContent) });
+  return { files };
+}
+
+/**
+ * The SAME ruleset as `planFileEdit`, decided from a `[{path, size}]` listing
+ * instead of the files' contents.
+ *
+ * This exists because the two callers hold different things. The server has
+ * read every file (it has to — publishBuild republishes the collection), so it
+ * plans. The BROWSER has only what `GET /api/apps/:slug` returns, which is
+ * sizes: pulling all 40 files just to weigh the collection would make opening
+ * an app cost as much as downloading it. Sizes are all the caps actually need
+ * — the edited file's own content is the only one whose bytes change — so the
+ * page can refuse an over-cap save with a sentence under the button instead of
+ * a round trip that ends in a 400.
+ *
+ * `planFileEdit` delegates here, which is what keeps the two answers identical.
+ * @param {Array<{path: string, size: number}>} sizes
+ * @param {unknown} rawPath
+ * @param {unknown} rawContent
+ * @returns {{path: string, size: number} | {error: string}}
+ */
+export function checkFileEdit(sizes, rawPath, rawContent) {
   const path = sanitizeBuildPath(rawPath);
   if (!path) return { error: "Invalid file path for a published app." };
   if (typeof rawContent !== "string") return { error: "File content must be text." };
   const size = new TextEncoder().encode(rawContent).length;
   if (size > MAX_BUILD_FILE_BYTES) return { error: "That file is over the per-file size cap." };
 
-  const files = (Array.isArray(current) ? current : []).map((f) => ({ path: f.path, content: f.content }));
-  const at = files.findIndex((f) => f.path === path);
-  if (at >= 0) files[at] = { path, content: rawContent };
-  else files.push({ path, content: rawContent });
+  const rows = (Array.isArray(sizes) ? sizes : []).map((f) => ({
+    path: String(f?.path ?? ""),
+    size: Number(f?.size) > 0 ? Number(f.size) : 0,
+  }));
+  const at = rows.findIndex((f) => f.path === path);
+  if (at >= 0) rows[at] = { path, size };
+  else rows.push({ path, size });
 
-  if (files.length > MAX_BUILD_FILES) return { error: "That would take the app over the file-count cap." };
+  if (rows.length > MAX_BUILD_FILES) return { error: "That would take the app over the file-count cap." };
   let total = 0;
-  for (const f of files) total += new TextEncoder().encode(f.content).length;
+  for (const f of rows) total += f.size;
   if (total > MAX_BUILD_TOTAL_BYTES) return { error: "That would take the app over the total size cap." };
-  if (!files.some((f) => f.path === "index.html")) return { error: "An app needs an index.html entry point." };
-  return { files };
+  if (!rows.some((f) => f.path === "index.html")) return { error: "An app needs an index.html entry point." };
+  return { path, size };
 }
 
 /**
  * Same, for removing a file. Refuses to remove the entry point, because the
  * result would be a published app that 404s at its own URL.
- * @param {Array<{path: string, content: string}>} current
+ *
+ * Generic over the row shape because a removal reads nothing but the path: the
+ * server passes `{path, content}` (it republishes what comes back) and the page
+ * passes the `{path, size}` listing it already has, and both get their own
+ * shape back.
+ * @template {{path: string}} T
+ * @param {T[]} current
  * @param {unknown} rawPath
- * @returns {{files: Array<{path: string, content: string}>} | {error: string}}
+ * @returns {{files: T[]} | {error: string}}
  */
 export function planFileRemove(current, rawPath) {
   const path = sanitizeBuildPath(rawPath);
@@ -187,6 +230,10 @@ export function planFileRemove(current, rawPath) {
 /** Human byte sizes, matching the units the build summary already uses.
  * @param {unknown} n */
 export function formatBytes(n) {
+  // `null` is checked before Number(), which turns it into 0 — a missing byte
+  // count would otherwise render as a confident "0 B", i.e. as the claim that
+  // the app is empty rather than that nobody counted.
+  if (n === null || n === undefined || n === "") return "—";
   const v = Number(n);
   if (!Number.isFinite(v) || v < 0) return "—";
   if (v < 1024) return `${Math.round(v)} B`;
@@ -229,9 +276,14 @@ export function renderAppsText(apps, now = Date.now()) {
   if (!rows.length) return "No published apps.\n";
   const lines = [`${rows.length} published app${rows.length === 1 ? "" : "s"}`, ""];
   for (const a of rows) {
+    // Both timestamps, but only when they differ: an agent asked to act on
+    // "the app I just changed" cannot find it from a made-on date alone, and
+    // printing "edited" on every row (where it equals the build date) would
+    // be noise on the majority that were never touched.
+    const edited = Number(a.updatedAt) > Number(a.createdAt) ? `  ·  edited ${formatWhen(a.updatedAt, now)}` : "";
     lines.push(
       `${a.slug}  ${a.title}`,
-      `    ${a.url}  ·  ${a.files} file${a.files === 1 ? "" : "s"}  ·  ${formatBytes(a.bytes)}  ·  ${formatWhen(a.createdAt, now)}`,
+      `    ${a.url}  ·  ${a.files} file${a.files === 1 ? "" : "s"}  ·  ${formatBytes(a.bytes)}  ·  ${formatWhen(a.createdAt, now)}${edited}`,
     );
   }
   return `${lines.join("\n")}\n`;
