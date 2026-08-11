@@ -102,6 +102,9 @@ const state = {
   unanswered: null,
   /** @type {number} the queue's target size — the health line's denominator */
   target: QUEUE_TARGET,
+  /** @type {Set<string>} ids whose full record (with `versions`) has been
+   * merged in. Guards the lazy hydration against re-asking on every render. */
+  hydrated: new Set(),
 };
 
 // ---- tiny DOM helpers ------------------------------------------------------
@@ -306,6 +309,43 @@ function render(box, error) {
   box.appendChild(el("p", "cap-hintline muted", "Swipe right to keep it, left to send it back — or use ← / → and the buttons."));
 
   wireDrag(/** @type {HTMLElement} */ (stack.firstElementChild), deck[0], box);
+  hydrateTop(box, deck[0]);
+}
+
+/**
+ * Pull the TOP card's full record, which is the only place the version list
+ * lives: `GET /api/admin/captures` leaves `versions` off (fifty captures ×
+ * their whole history is a lot of rows for a deck that shows one card), while
+ * `GET /api/admin/captures/:id` attaches it. So the deck asks for the one card
+ * it is actually showing, and only once per capture.
+ *
+ * Silent on every failure — an older Worker answers without `versions`, and
+ * the card it already rendered is correct without them. It re-renders ONLY
+ * when there is a history to show, so a capture with a single version never
+ * flickers.
+ *
+ * @param {HTMLElement} box
+ * @param {Capture} capture
+ */
+async function hydrateTop(box, capture) {
+  if (!capture || capture.id == null) return;
+  const id = String(capture.id);
+  // Marked before the fetch, not after: render() runs again when the answer
+  // lands and would otherwise ask for the same card forever.
+  if (state.hydrated.has(id)) return;
+  state.hydrated.add(id);
+  const data = await api(`${API}/${encodeURIComponent(id)}`);
+  const full = data && !data.__error ? data.capture : null;
+  if (!full || !hasVersionHistory(full)) return;
+  const i = state.rows.findIndex((r) => r && String(r.id) === id);
+  if (i < 0) return;
+  state.rows[i] = { ...state.rows[i], ...full };
+  // Still the top card? A verdict may have landed while the fetch was in
+  // flight, and re-rendering then would throw away the card the reviewer is
+  // now looking at.
+  const top = nextDeck(state.rows, { reviewedIds: state.reviewed })[0];
+  if (!top || String(top.id) !== id) return;
+  render(box, null);
 }
 
 /**
@@ -571,7 +611,7 @@ function actionRow(box, capture) {
 }
 
 /**
- * Read-only rendering for the liked / needs-work / all filters.
+ * Read-only rendering for the appreciated / needs-work / all filters.
  * @param {HTMLElement} box
  */
 function renderList(box) {

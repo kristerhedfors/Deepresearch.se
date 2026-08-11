@@ -23,8 +23,27 @@
 #   scripts/captures --agent research       one agent / one model
 #   scripts/captures --model mistral-small
 #   scripts/captures --q "geothermal"       substring match on label OR prompt
-#   scripts/captures --id 12                one clip (incl. every review note)
+#   scripts/captures --id 12                one clip (incl. every review note + versions)
 #   scripts/captures --json                 JSON instead of text
+#   scripts/captures --queue-status         what the top-up needs: how far the unanswered
+#                                           deck is below 20, the spread over agents, and
+#                                           every (agent, starter) pair already recorded
+#
+# THE THREAD — answering a ✍️ verdict by re-cutting the clip. A new version is
+# APPENDED; the earlier cuts stay watchable at their own paths forever:
+#   scripts/captures --versions 12                        every version, newest first
+#   scripts/captures --add-version 12 '{"duration_ms":9000,"source_ms":40000,"commit_sha":"abc1234","note":"dropdown in frame"}'
+#   scripts/captures --upload-version 12 2 <dir>/final.mp4
+#   scripts/captures --poster-version 12 2 <dir>/poster.jpg
+#
+# --add-version prints the new version number and its two upload URLs, puts the
+# capture back on the deck (status new) and leaves answered_at alone, so the
+# top-up can tell a re-cut from a genuinely fresh capture. Plain --upload /
+# --poster always target the CURRENT version, so the two-step above is only
+# needed when re-uploading an OLDER cut.
+#
+# Naming (the derived name is a default; this is how a human improves it):
+#   scripts/captures --name 12 "Swedish electricity prices"
 #
 # Reviewing from the terminal (the swipe deck on /admin is the usual way):
 #   scripts/captures --review 12 like
@@ -66,8 +85,15 @@ while [ $# -gt 0 ]; do
     --q) queue=""; query="$2"; shift ;;
     --add) action="add"; arg="$2"; shift ;;
     --set) action="set"; id="$2"; arg="$3"; shift 2 ;;
+    --name) action="name"; id="$2"; arg="$3"; shift 2 ;;
     --upload) action="upload"; id="$2"; arg="$3"; shift 2 ;;
     --poster) action="poster"; id="$2"; arg="$3"; shift 2 ;;
+    --queue-status) action="queue-status" ;;
+    --versions) action="versions"; id="$2"; shift ;;
+    --add-version) action="add-version"; id="$2"; arg="$3"; shift 2 ;;
+    # <id> <version> <file>: three operands, so three shifts past the flag.
+    --upload-version) action="upload-version"; id="$2"; arg2="$3"; arg="$4"; shift 3 ;;
+    --poster-version) action="poster-version"; id="$2"; arg2="$3"; arg="$4"; shift 3 ;;
     # The note is optional (a `like` carries none), so this case cannot shift a
     # fixed count — with no note there is no 4th token to shift, and under
     # `set -e` a short shift ends the script silently. It is terminal anyway:
@@ -107,11 +133,39 @@ case "$action" in
     curl_auth -X PATCH -H 'content-type: application/json' \
       -d "$arg" "$BASE_URL/api/admin/captures/$id"
     exit 0 ;;
+  name)
+    # The short handle the clip is asked for by, next to its #CAP-<id> number.
+    curl_auth -X PATCH -H 'content-type: application/json' \
+      -d "$(jq -n --arg n "$arg" '{name:$n}')" "$BASE_URL/api/admin/captures/$id"
+    exit 0 ;;
   upload)
     upload_file "$arg" "video/mp4" "video"
     exit 0 ;;
   poster)
     upload_file "$arg" "image/jpeg" "poster"
+    exit 0 ;;
+  queue-status)
+    curl_auth "$BASE_URL/api/admin/captures/queue-status"
+    exit 0 ;;
+  versions)
+    curl_auth "$BASE_URL/api/admin/captures/$id/versions"
+    exit 0 ;;
+  add-version)
+    out="$(curl_auth -X POST -H 'content-type: application/json' -d "$arg" \
+      "$BASE_URL/api/admin/captures/$id/versions")"
+    if command -v jq >/dev/null 2>&1; then
+      # The version number is what the two uploads need next, so it is what
+      # gets printed.
+      printf '%s\n' "$out" | jq -r 'if .capture then "capture \(.capture.id) is now v\(.capture.version)\n  video:  \(.upload.video)\n  poster: \(.upload.poster)" else . end'
+    else
+      printf '%s\n' "$out"
+    fi
+    exit 0 ;;
+  upload-version)
+    upload_file "$arg" "video/mp4" "versions/$arg2/video"
+    exit 0 ;;
+  poster-version)
+    upload_file "$arg" "image/jpeg" "versions/$arg2/poster"
     exit 0 ;;
   review)
     # like = 👍 (no note needed); feedback = ✍️ and the server REQUIRES the note.

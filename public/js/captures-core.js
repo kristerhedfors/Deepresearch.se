@@ -726,7 +726,11 @@ export function playbackSource(c, version) {
   const video = str(c.video_url);
   return {
     video_url: video,
-    poster_url: c.has_poster === false ? "" : str(c.poster_url),
+    // `has_poster` gates the poster, not the URL's presence: the capture-level
+    // poster_url is DERIVED from the id and so is always a string, even when no
+    // poster was ever uploaded. Trusting it would point every posterless card
+    // at a 404.
+    poster_url: c.has_poster ? str(c.poster_url) : "",
     has_video: c.has_video !== false && !!video,
   };
 }

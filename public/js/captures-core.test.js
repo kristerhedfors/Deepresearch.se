@@ -529,6 +529,9 @@ test("playbackSource falls back to the capture's own URLs when there is no versi
     has_video: true,
   });
   assert.equal(playbackSource({ has_video: false, video_url: "/v.mp4" }).has_video, false);
+  // The capture-level poster_url is derived from the id, so it is a string
+  // even when nothing was uploaded — `has_poster` is what decides.
+  assert.equal(playbackSource({ video_url: "/v.mp4", poster_url: "/p.jpg" }).poster_url, "");
   assert.equal(playbackSource({}).has_video, false);
   const v = captureVersions(VERSIONED)[0];
   assert.equal(playbackSource(VERSIONED, v).video_url, "/api/admin/captures/7/versions/3/video");

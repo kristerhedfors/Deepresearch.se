@@ -1339,12 +1339,13 @@ test("GET /captures/queue-status reports the deficit, the spread and the used pa
   assert.equal(s.json.unanswered, 2);
   assert.equal(s.json.deficit, 18);
   assert.deepEqual(s.json.by_agent, { research: 1, scholar: 1 });
-  // A liked capture's prompt is still spoken for — the top-up must not
-  // silently re-record it as if it were new.
+  // Newest first, like every other list here. A liked capture's prompt is
+  // still spoken for — the top-up must not silently re-record it as if it
+  // were new.
   assert.deepEqual(s.json.used, [
-    { agent: "research", starter: "res-a" },
-    { agent: "research", starter: "res-b" },
     { agent: "scholar", starter: "sch-a" },
+    { agent: "research", starter: "res-b" },
+    { agent: "research", starter: "res-a" },
   ]);
 
   const seeded = await call(db, "GET", "/api/admin/captures/queue-status?target=3&agents=research,orchestrator");
