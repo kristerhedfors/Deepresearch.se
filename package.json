@@ -23,6 +23,7 @@
     "pulse:all": "npm run pulse && npm run pulse:timeline && npm run pulse:size",
     "capture": "node tests/capture.mjs",
     "capture:edit": "node scripts/capture-edit.mjs",
+    "capture:topup": "node scripts/capture-topup.mjs",
     "proof:agents": "node scripts/agent-proof.mjs",
     "mcp:probe": "node scripts/mcp-probe.mjs",
     "arxiv:harvest": "node scripts/arxiv-harvest.mjs",

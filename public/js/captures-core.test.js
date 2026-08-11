@@ -13,20 +13,39 @@ import {
   KEY_VERDICTS,
   MAX_TILT_DEG,
   NOTE_MAX,
+  QUEUE_TARGET,
   SWIPE,
+  activeVersion,
+  badgeText,
   captureFacts,
+  captureHeadline,
+  captureName,
+  captureRef,
+  captureTag,
+  captureThread,
   captureTitle,
+  captureVersions,
   cardStyle,
   flingVerdict,
   formatBytes,
   formatClock,
+  formatDay,
   formatDuration,
+  hasVersionHistory,
   nextDeck,
+  playbackSource,
+  queueHealthLine,
+  queueTarget,
+  queueUnanswered,
   reviewSummary,
+  shortSha,
+  statusLabel,
   swipeHint,
   swipeThreshold,
   swipeVerdict,
   validateNote,
+  versionLabel,
+  versionMedia,
 } from "./captures-core.js";
 
 // A card wide enough that the fractional threshold governs rather than the
@@ -355,4 +374,264 @@ test("DECK_FILTERS covers every server status plus all", () => {
   // means captures that were filed simply vanish from the admin.
   assert.deepEqual(DECK_FILTERS.map((f) => f.id), ["new", "liked", "needs_work", ""]);
   for (const f of DECK_FILTERS) assert.ok(f.label, "every filter is labelled");
+});
+
+// ===========================================================================
+// The 2026-08-11 extension: identity (the number + the name), provenance (the
+// commit), version history, the feedback thread, and the queue's health.
+// ===========================================================================
+
+// ---- captureTag / captureRef ----------------------------------------------
+
+test("captureTag writes the reference the owner speaks in", () => {
+  // "produce a review of #12" only works if the card SHOWS #CAP-12.
+  assert.equal(captureTag(12), "#CAP-12");
+  assert.equal(captureTag("12"), "#CAP-12");
+  assert.equal(captureTag(12.7), "#CAP-12");
+});
+
+test("captureTag renders nothing rather than a wrong number", () => {
+  // "#CAP-undefined" as the leading fact of a card is worse than no heading.
+  assert.equal(captureTag(undefined), "");
+  assert.equal(captureTag(null), "");
+  assert.equal(captureTag(""), "");
+  assert.equal(captureTag(NaN), "");
+});
+
+test("captureRef prefers the server's tag over one derived from the id", () => {
+  // A future renumbering must not need a client release to be shown right.
+  assert.equal(captureRef({ id: 3, tag: "#CAP-903" }), "#CAP-903");
+  assert.equal(captureRef({ id: 3 }), "#CAP-3");
+  assert.equal(captureRef(null), "");
+});
+
+// ---- captureName / captureHeadline -----------------------------------------
+
+test("captureName prefers the server's short name, then the label", () => {
+  assert.equal(captureName({ name: "Swedish electricity prices", label: "x" }), "Swedish electricity prices");
+  assert.equal(captureName({ label: "Elpris i Sverige" }), "Elpris i Sverige");
+});
+
+test("captureName derives a few-word name from the starter id", () => {
+  // The fallback the four pre-versions captures need: no name column, but a
+  // starter id that says what the clip is about.
+  assert.equal(captureName({ starter: "res-sv-elpris" }), "Elpris");
+  assert.equal(captureName({ starter: "sch-vitamin-d" }), "Vitamin D");
+  assert.equal(captureName({ starter: "int-pipeline" }), "Pipeline");
+  // Never more than four words — this is a NAME, not a sentence.
+  assert.equal(captureName({ starter: "a-b-c-d-e-f" }).split(" ").length, 4);
+});
+
+test("captureName falls back to a short prompt, never a paragraph", () => {
+  const c = { prompt: "z".repeat(300) };
+  const name = captureName(c);
+  assert.ok(name.length <= 48, `name stayed short: ${name.length}`);
+  assert.equal(captureName({}), "Untitled capture");
+});
+
+test("captureHeadline leads with the number", () => {
+  const h = captureHeadline({ id: 12, name: "Swedish electricity prices" });
+  assert.deepEqual(h, {
+    tag: "#CAP-12",
+    name: "Swedish electricity prices",
+    text: "#CAP-12 · Swedish electricity prices",
+  });
+  // No id (an unsaved row) still reads as a title rather than " · name".
+  assert.equal(captureHeadline({ name: "Draft" }).text, "Draft");
+});
+
+// ---- shortSha --------------------------------------------------------------
+
+test("shortSha shortens a real sha and drops anything that is not one", () => {
+  assert.equal(shortSha("4f2a1c9d3b8e7a6f5c4d3b2a1908070605040302"), "4f2a1c9");
+  assert.equal(shortSha("4F2A1C9D3B8E"), "4f2a1c9");
+  // A branch name or a "dirty" marker in the column is NOT provenance: a chip
+  // there claims "check this out and you get this clip", which would be a lie.
+  assert.equal(shortSha("main"), "");
+  assert.equal(shortSha("4f2a1c9-dirty"), "");
+  assert.equal(shortSha(null), "");
+  assert.equal(shortSha(""), "");
+});
+
+// ---- versions --------------------------------------------------------------
+
+const VERSIONED = {
+  id: 7,
+  versions: [
+    { version: 1, created_at: Date.UTC(2026, 7, 3), commit_sha: "aaaaaaa1111111" },
+    { version: 3, created_at: Date.UTC(2026, 7, 11), commit_sha: "ccccccc3333333", is_current: true },
+    { version: 2, created_at: Date.UTC(2026, 7, 7) },
+  ],
+};
+
+test("captureVersions orders newest first and fills in the media URLs", () => {
+  const list = captureVersions(VERSIONED);
+  assert.deepEqual(list.map((v) => v.version), [3, 2, 1]);
+  assert.equal(list[1].video_url, "/api/admin/captures/7/versions/2/video");
+  assert.equal(list[1].poster_url, "/api/admin/captures/7/versions/2/poster");
+  // A URL the server did send is kept — the client never overrides the server.
+  const kept = captureVersions({ id: 7, versions: [{ version: 1, video_url: "/x.mp4" }] });
+  assert.equal(kept[0].video_url, "/x.mp4");
+});
+
+test("captureVersions marks exactly one current, defaulting to the newest", () => {
+  assert.equal(captureVersions(VERSIONED).filter((v) => v.is_current).length, 1);
+  const noFlag = captureVersions({ id: 7, versions: [{ version: 1 }, { version: 2 }] });
+  assert.equal(noFlag[0].version, 2);
+  assert.equal(noFlag[0].is_current, true);
+});
+
+test("captureVersions drops rows it could not play or name", () => {
+  // A version with no number has no API path and no label — offering a button
+  // for it would be a control that cannot work (UX-18).
+  const list = captureVersions({ id: 7, versions: [{ version: 2 }, {}, { version: "x" }, null, { version: 2 }] });
+  assert.deepEqual(list.map((v) => v.version), [2]);
+});
+
+test("captureVersions is empty for a server that has no version list yet", () => {
+  // The whole point of the fallback: the deck must render exactly as before
+  // against a Worker that predates versions.
+  assert.deepEqual(captureVersions({ id: 1 }), []);
+  assert.deepEqual(captureVersions({ id: 1, versions: "nope" }), []);
+  assert.deepEqual(captureVersions(null), []);
+  assert.equal(hasVersionHistory({ id: 1 }), false);
+  assert.equal(activeVersion({ id: 1 }), null);
+});
+
+test("hasVersionHistory needs TWO versions — one version is just the video", () => {
+  assert.equal(hasVersionHistory({ id: 7, versions: [{ version: 1 }] }), false);
+  assert.equal(hasVersionHistory(VERSIONED), true);
+});
+
+test("activeVersion plays the current cut, else the newest", () => {
+  assert.equal(activeVersion(VERSIONED).version, 3);
+  assert.equal(activeVersion({ id: 7, versions: [{ version: 1 }, { version: 4 }] }).version, 4);
+});
+
+test("versionMedia refuses to build a URL it cannot address", () => {
+  assert.deepEqual(versionMedia("", 2), { video: "", poster: "" });
+  assert.deepEqual(versionMedia(7, 0), { video: "", poster: "" });
+});
+
+test("versionLabel names the cut and dates the older ones", () => {
+  const [v3, v2] = captureVersions(VERSIONED);
+  assert.equal(versionLabel(v3), "v3 · current");
+  assert.equal(versionLabel(v2), "v2 · 7 Aug 2026");
+  assert.equal(versionLabel(null), "");
+});
+
+test("playbackSource falls back to the capture's own URLs when there is no version", () => {
+  // The four captures recorded before versions existed keep their bytes at the
+  // unversioned key; "no version" is a supported input, not a bug.
+  assert.deepEqual(playbackSource({ video_url: "/v.mp4", poster_url: "/p.jpg", has_poster: true }), {
+    video_url: "/v.mp4",
+    poster_url: "/p.jpg",
+    has_video: true,
+  });
+  assert.equal(playbackSource({ has_video: false, video_url: "/v.mp4" }).has_video, false);
+  // The capture-level poster_url is derived from the id, so it is a string
+  // even when nothing was uploaded — `has_poster` is what decides.
+  assert.equal(playbackSource({ video_url: "/v.mp4", poster_url: "/p.jpg" }).poster_url, "");
+  assert.equal(playbackSource({}).has_video, false);
+  const v = captureVersions(VERSIONED)[0];
+  assert.equal(playbackSource(VERSIONED, v).video_url, "/api/admin/captures/7/versions/3/video");
+});
+
+test("formatDay is UTC so the tests do not depend on the runner's timezone", () => {
+  assert.equal(formatDay(Date.UTC(2026, 7, 11, 12)), "11 Aug 2026");
+  assert.equal(formatDay("2026-08-11T12:00:00.000Z"), "11 Aug 2026");
+  assert.equal(formatDay(null), "");
+  assert.equal(formatDay("not a date"), "");
+});
+
+// ---- the feedback thread ---------------------------------------------------
+
+test("captureThread keeps the notes in the order they were written", () => {
+  const t = captureThread({
+    reviews: [
+      { verdict: "feedback", note: "the cut swallows the first search", created_at: Date.UTC(2026, 7, 3) },
+      { verdict: "like", created_at: Date.UTC(2026, 7, 9) },
+    ],
+  });
+  assert.equal(t.length, 2);
+  assert.deepEqual(t[0], {
+    verdict: "feedback",
+    note: "the cut swallows the first search",
+    day: "3 Aug 2026",
+    mark: "✍️",
+  });
+  assert.equal(t[1].mark, "👍");
+});
+
+test("captureThread is empty when there is nothing to show", () => {
+  assert.deepEqual(captureThread({ reviews: [] }), []);
+  assert.deepEqual(captureThread({}), []);
+  assert.deepEqual(captureThread(null), []);
+});
+
+// ---- queue health ----------------------------------------------------------
+
+test("queueUnanswered reads either endpoint's answer", () => {
+  assert.equal(queueUnanswered({ target: 20, unanswered: 14 }), 14);
+  assert.equal(queueUnanswered({ captures: [{ id: 1 }, { id: 2 }], count: 2 }), 2);
+  assert.equal(queueUnanswered({ count: 5 }), 5);
+  assert.equal(queueUnanswered({ unanswered: 0 }), 0);
+});
+
+test("queueUnanswered says 'I do not know' rather than zero", () => {
+  // null and 0 are DIFFERENT facts: an empty queue is worth reporting, an
+  // unreadable one is not — and reporting "0 of 20" to a non-admin whose probe
+  // 403'd would be a confident lie.
+  assert.equal(queueUnanswered(null), null);
+  assert.equal(queueUnanswered({ __error: "HTTP 403" }), null);
+  assert.equal(queueUnanswered({}), null);
+  assert.equal(queueUnanswered("nope"), null);
+});
+
+test("queueTarget follows the server, so the number can move without a release", () => {
+  assert.equal(queueTarget({ target: 30 }), 30);
+  assert.equal(queueTarget({}), QUEUE_TARGET);
+  assert.equal(queueTarget(null), QUEUE_TARGET);
+  assert.equal(QUEUE_TARGET, 20);
+});
+
+test("queueHealthLine states the queue against its target", () => {
+  assert.equal(queueHealthLine(14), "14 of 20 unanswered");
+  assert.equal(queueHealthLine(14, 30), "14 of 30 unanswered");
+  assert.equal(queueHealthLine(0), "0 of 20 unanswered");
+});
+
+test("queueHealthLine stays silent when the count is unknown", () => {
+  assert.equal(queueHealthLine(null), "");
+  assert.equal(queueHealthLine(undefined), "");
+  assert.equal(queueHealthLine(-1), "");
+});
+
+// ---- the header launcher's badge -------------------------------------------
+
+test("badgeText hides an empty queue and caps a full one", () => {
+  // An empty queue is good news, not a notification: the caller hides the pill
+  // when this is "".
+  assert.equal(badgeText(0), "");
+  assert.equal(badgeText(null), "");
+  assert.equal(badgeText(7), "7");
+  assert.equal(badgeText(99), "99");
+  assert.equal(badgeText(100), "99+");
+  assert.equal(badgeText(4000), "99+");
+});
+
+test("DECK_FILTERS are the owner's four lists, in the owner's words", () => {
+  assert.deepEqual(DECK_FILTERS.map((f) => f.label), ["To review", "Appreciated", "Needs work", "All"]);
+});
+
+test("statusLabel says a status in the same words as its list", () => {
+  // A badge reading "liked" beside a filter reading "Appreciated" makes the
+  // reader work out whether they are the same state. They are.
+  assert.equal(statusLabel("liked"), "appreciated");
+  assert.equal(statusLabel("new"), "to review");
+  assert.equal(statusLabel("needs_work"), "needs work");
+  // A status the deck does not know is passed through, never hidden.
+  assert.equal(statusLabel("archived"), "archived");
+  assert.equal(statusLabel(""), "");
+  assert.equal(statusLabel(null), "");
 });

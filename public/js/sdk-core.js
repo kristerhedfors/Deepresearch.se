@@ -343,9 +343,13 @@ export function buildNeedsAppKit(files) {
 export const APP_KIT_NOTE =
   "THE API-KEY INPUT IS STANDARDISED — never hand-roll one. If the app you build takes an API key (nearly every agent does), it MUST use this site's app kit, which is added to your build automatically:\n" +
   `  1. Load it first: <script src="${APP_KIT_PATH}"></script> — do NOT write this file yourself, do NOT inline a copy of it, and do not reference it if the app needs no key. Referencing it is what makes the server add it.\n` +
-  "  2. Give it a key <input> and a model <select> (plus optional status/provider/base-URL elements) and let it wire them:\n" +
+  '  2. Give it a key <input type="password" autocomplete="off" spellcheck="false"> and a model <select> (plus optional status/provider/base-URL elements) and let it wire them:\n' +
   "       const picker = DRKit.mountModelPicker({ keyInput, modelSelect, status, lang: 'en' });\n" +
   "  3. Send with the picker's state: DRKit.chat(picker.state(), messages, { maxTokens: 1024 }) for a whole reply, or DRKit.chatStream(picker.state(), messages, onDelta) to stream one. `messages` is the OpenAI shape ([{role:'system'|'user'|'assistant', content:'…'}]); the kit adapts Anthropic's wire itself.\n" +
+  "NEVER REVEAL THE KEY — a pasted key is a live credential, and a revealed one is a credential shown to whoever is looking at the screen, or watching a recording of it:\n" +
+  '  - the key <input> MUST be type="password", with autocomplete="off" and spellcheck="false" (the kit sets these on the input it is handed too, but write them in your markup — the field has to be masked before anything is typed into it);\n' +
+  "  - do NOT echo the key anywhere in the page: not into a heading, a status line, another element's title or value, a debug/log pane, or the URL;\n" +
+  "  - do NOT write the key to localStorage, sessionStorage or a cookie — the kit keeps it in a variable on the page for the lifetime of the tab, and your app must not undo that.\n" +
   "WHAT THAT BUYS THE USER: pasting a key auto-detects the provider, auto-loads the models that key can actually reach (live from the provider, with a static fallback), and renders the DeepResearch.se standard dropdown — each model prefixed with the flag of the country the conversation is processed in. The kit supports the same providers this site does: OpenAI, Anthropic, Groq, Hugging Face, Berget, and any OpenAI-compatible endpoint. Do not narrow that list, hardcode a model id, or invent your own provider table.\n" +
   "The key stays in the page, is sent only to the provider, and never reaches this site's server — say so in the app's own UI (picker.note() returns that sentence for the active provider).";
 
@@ -551,7 +555,7 @@ export const BUILD_TOOLS = [
   {
     name: "write_file",
     description:
-      "Stage one file of the app you are building. Give a relative path (e.g. index.html, css/app.css, js/app.js) and the file's FULL content. Re-writing a path replaces it. The collection is published as a static site, so make it self-contained (no external CDNs) and include an index.html entry point.",
+      "Stage one file of the app you are building. Give a relative path (e.g. index.html, css/app.css, js/app.js) and the file's FULL content. Re-writing a path replaces it. The collection is published as a static site, so make it self-contained (no external CDNs) and include an index.html entry point. NEVER use a module script (type=module) or an ES `import` in the published app: a module script is fetched in CORS mode, and the app is served into an OPAQUE ORIGIN, so the browser blocks it SILENTLY — the page renders, throws no error, and does nothing, because none of your handlers ever ran. Use classic script tags with src=… (and plain function/var scope) instead. This is not theoretical: a published agent was inert for exactly this reason.",
     input_schema: {
       type: "object",
       properties: {
@@ -931,7 +935,7 @@ export function buildSdkContextBlock(manifest, opts = {}) {
       "```html",
       "…the complete file content…",
       "```",
-      "One FILE line + one fenced block per file; relative paths; always include index.html. The build runs in a sandboxed opaque origin (no cookies/storage-with-origin/credentialed requests) — use in-memory state. The server collects the blocks, publishes them, and shares the live URL.",
+      "One FILE line + one fenced block per file; relative paths; always include index.html. The build runs in a sandboxed opaque origin (no cookies/storage-with-origin/credentialed requests) — use in-memory state. NEVER use a module script (type=module) or an ES `import` in the published app: a module script is fetched in CORS mode, and the app is served into an OPAQUE ORIGIN, so the browser blocks it SILENTLY — the page renders, throws no error, and does nothing, because none of your handlers ever ran. Use classic script tags with src=… (and plain function/var scope) instead. This is not theoretical: a published agent was inert for exactly this reason. The server collects the blocks, publishes them, and shares the live URL.",
     );
   }
   return parts.join("\n");

@@ -12,6 +12,18 @@
 // `hidden` unhide, the count-badge callback, and the keyboard handler's
 // "is this fold open?" guard (there is no fold on a dedicated page).
 //
+// Extended on 2026-08-11 (the same owner directive that replaced the chat
+// interface's try-it launcher with a link here): a card now leads with its
+// REFERENCE NUMBER and short name — "#CAP-12 · Swedish electricity prices" —
+// because that number is how the owner asks for one ("produce a review of
+// #12"); it carries the commit it was recorded at as provenance; a capture
+// that has been re-recorded shows its version history rather than only its
+// newest cut; the four lists are the owner's words (To review / Appreciated /
+// Needs work / All), the needs-work list showing the feedback thread that the
+// next version has to answer; and the queue's health ("14 of 20 unanswered")
+// is stated once, calmly, under the filters. The gesture math, the fly-out,
+// the feedback field and the fail-soft posture are untouched.
+//
 // The left swipe does NOT post. It reveals a feedback field in the card's
 // place, because the server REQUIRES a note on a `feedback` verdict — a left
 // swipe with no words is a shrug, not a review, and the reviewer would only
@@ -27,15 +39,28 @@ import {
   DECK_FILTERS,
   KEY_VERDICTS,
   NOTE_MAX,
+  QUEUE_TARGET,
+  activeVersion,
   captureFacts,
-  captureTitle,
+  captureHeadline,
+  captureThread,
+  captureVersions,
   cardStyle,
   flingVerdict,
+  formatDay,
+  hasVersionHistory,
   nextDeck,
+  playbackSource,
+  queueHealthLine,
+  queueTarget,
+  queueUnanswered,
   reviewSummary,
+  shortSha,
+  statusLabel,
   swipeHint,
   swipeVerdict,
   validateNote,
+  versionLabel,
 } from "./captures-core.js";
 
 const API = "/api/admin/captures";
@@ -44,8 +69,10 @@ const DECK_ID = "captures";
 const COUNT_ID = "cap-count";
 
 /**
- * @typedef {{ id: number|string, label?: string, agent?: string, model?: string,
- *   starter?: string, mode?: string, lang?: string, prompt?: string, status?: string,
+ * @typedef {{ id: number|string, tag?: string, name?: string, label?: string,
+ *   agent?: string, model?: string, starter?: string, mode?: string, lang?: string,
+ *   prompt?: string, status?: string, commit_sha?: string|null, version?: number,
+ *   answered?: boolean, answered_at?: number|null, versions?: any[],
  *   has_video?: boolean, has_poster?: boolean, video_url?: string, poster_url?: string,
  *   reviews?: any[] }} Capture
  */
@@ -69,6 +96,15 @@ const state = {
   busy: false,
   /** @type {boolean} true while the feedback field is open (arrow keys must not file) */
   composing: false,
+  /** @type {number|null} unanswered captures per the queue-status probe. null =
+   * not known (an older Worker has no probe), which renders as no health line
+   * rather than as a guessed one. */
+  unanswered: null,
+  /** @type {number} the queue's target size — the health line's denominator */
+  target: QUEUE_TARGET,
+  /** @type {Set<string>} ids whose full record (with `versions`) has been
+   * merged in. Guards the lazy hydration against re-asking on every render. */
+  hydrated: new Set(),
 };
 
 // ---- tiny DOM helpers ------------------------------------------------------
@@ -170,10 +206,45 @@ async function refresh(box) {
   const data = await api(`${API}?${qs}`);
   if (!data || data.__error) {
     render(box, data?.__error ? String(data.__error) : null);
-    return;
+  } else {
+    state.rows = Array.isArray(data.captures) ? data.captures : [];
+    render(box, null);
   }
-  state.rows = Array.isArray(data.captures) ? data.captures : [];
-  render(box, null);
+  // The queue's HEALTH is a separate probe, deliberately not awaited by the
+  // render: it is one calm line, and the deck must not wait on (or break for) a
+  // Worker that predates the endpoint. It repaints in place when it lands.
+  refreshHealth(box);
+}
+
+/**
+ * Fill in the "N of 20 unanswered" line. Fail-soft in the strongest sense —
+ * every failure path leaves the line as it was, because the honest answer to
+ * "how is the queue doing" when the probe 404s is silence, not "0 of 20".
+ *
+ * @param {HTMLElement} box
+ */
+async function refreshHealth(box) {
+  const data = await api(`${API}/queue-status`);
+  const n = queueUnanswered(data);
+  if (n === null) return;
+  state.unanswered = n;
+  state.target = queueTarget(data);
+  paintHealth(box);
+}
+
+/**
+ * @param {HTMLElement} box
+ */
+function paintHealth(box) {
+  const line = box.querySelector(".cap-health");
+  if (!(line instanceof HTMLElement)) return;
+  // Until the probe answers, the queue length we already fetched is a true (if
+  // narrower) statement of the same thing, so the line is never empty for an
+  // owner whose Worker is simply older than the endpoint.
+  const n = state.unanswered !== null ? state.unanswered : state.queueCount || null;
+  const text = queueHealthLine(n, state.target);
+  line.textContent = text;
+  line.hidden = !text;
 }
 
 // ---- rendering -------------------------------------------------------------
@@ -185,6 +256,14 @@ async function refresh(box) {
 function render(box, error) {
   box.innerHTML = "";
   box.appendChild(filterRow(box));
+  // The health line sits with the filters and reports the REVIEW QUEUE on
+  // every list, because "how much is waiting" is the same question whichever
+  // list is open. It is created empty and filled by paintHealth so a slow
+  // probe cannot reorder the page under the reader.
+  const health = el("p", "cap-health muted");
+  health.hidden = true;
+  box.appendChild(health);
+  paintHealth(box);
 
   if (error) {
     box.appendChild(el("p", "muted", error));
@@ -203,6 +282,8 @@ function render(box, error) {
   state.total = state.rows.length;
   state.queueCount = deck.length;
   showCount(deck.length);
+  // Now that the queue length is known it can stand in for the probe.
+  paintHealth(box);
 
   if (!deck.length) {
     box.appendChild(emptyState());
@@ -228,6 +309,43 @@ function render(box, error) {
   box.appendChild(el("p", "cap-hintline muted", "Swipe right to keep it, left to send it back — or use ← / → and the buttons."));
 
   wireDrag(/** @type {HTMLElement} */ (stack.firstElementChild), deck[0], box);
+  hydrateTop(box, deck[0]);
+}
+
+/**
+ * Pull the TOP card's full record, which is the only place the version list
+ * lives: `GET /api/admin/captures` leaves `versions` off (fifty captures ×
+ * their whole history is a lot of rows for a deck that shows one card), while
+ * `GET /api/admin/captures/:id` attaches it. So the deck asks for the one card
+ * it is actually showing, and only once per capture.
+ *
+ * Silent on every failure — an older Worker answers without `versions`, and
+ * the card it already rendered is correct without them. It re-renders ONLY
+ * when there is a history to show, so a capture with a single version never
+ * flickers.
+ *
+ * @param {HTMLElement} box
+ * @param {Capture} capture
+ */
+async function hydrateTop(box, capture) {
+  if (!capture || capture.id == null) return;
+  const id = String(capture.id);
+  // Marked before the fetch, not after: render() runs again when the answer
+  // lands and would otherwise ask for the same card forever.
+  if (state.hydrated.has(id)) return;
+  state.hydrated.add(id);
+  const data = await api(`${API}/${encodeURIComponent(id)}`);
+  const full = data && !data.__error ? data.capture : null;
+  if (!full || !hasVersionHistory(full)) return;
+  const i = state.rows.findIndex((r) => r && String(r.id) === id);
+  if (i < 0) return;
+  state.rows[i] = { ...state.rows[i], ...full };
+  // Still the top card? A verdict may have landed while the fetch was in
+  // flight, and re-rendering then would throw away the card the reviewer is
+  // now looking at.
+  const top = nextDeck(state.rows, { reviewedIds: state.reviewed })[0];
+  if (!top || String(top.id) !== id) return;
+  render(box, null);
 }
 
 /**
@@ -278,38 +396,21 @@ function buildCard(c, top) {
   card.appendChild(el("div", "cap-hint like", "👍 Like"));
   card.appendChild(el("div", "cap-hint feedback", "✍️ Feedback"));
 
-  if (c.has_video !== false && c.video_url) {
-    const v = document.createElement("video");
-    v.src = String(c.video_url);
-    if (c.has_poster && c.poster_url) v.poster = String(c.poster_url);
-    v.controls = true;
-    v.muted = true;
-    v.loop = true;
-    v.playsInline = true;
-    // metadata only: a deck of 50 clips must not pull 50 MP4s on panel open.
-    v.preload = "metadata";
-    // A clip the browser cannot decode otherwise renders as a silent black box
-    // with a dead scrubber, and the reviewer has no way to tell that from "the
-    // recording is broken" — so say which it is. This is not hypothetical: the
-    // clips are H.264 (the one codec LinkedIn and every phone want), and
-    // Playwright's bundled Chromium ships WITHOUT proprietary codecs, so it
-    // fails exactly here. A real browser plays them; a stripped build says so.
-    v.addEventListener("error", () => {
-      if (v.parentElement !== card) return;
-      const note = el("p", "muted", "This browser could not play the clip (it is H.264/MP4). The file itself is fine — open it directly: ");
-      const a = document.createElement("a");
-      a.textContent = "download the MP4";
-      a.href = String(c.video_url);
-      note.appendChild(a);
-      card.replaceChild(note, v);
-    });
-    card.appendChild(v);
-  } else {
-    card.appendChild(el("p", "muted", "No video uploaded for this capture yet."));
-  }
+  // The player, plus — when this capture has been re-recorded — the version
+  // strip that plays an older cut. The newest plays by default; the older ones
+  // are kept deliberately (a feedback thread is answered by a NEW version, and
+  // the previous one is the thing the new one has to beat), so they are shown
+  // rather than filed away where only the API can reach them.
+  const stage = el("div", "cap-stage");
+  const player = el("div", "cap-player");
+  stage.appendChild(player);
+  const versions = captureVersions(c);
+  playVersion(player, c, activeVersion(c));
+  if (hasVersionHistory(c)) stage.appendChild(versionStrip(c, versions, player));
+  card.appendChild(stage);
 
   const body = el("div", "cap-body");
-  body.appendChild(el("h3", "cap-title", captureTitle(c)));
+  body.appendChild(headline(c));
 
   const chips = el("div", "cap-chips");
   for (const [k, v] of [["agent", c.agent], ["model", c.model], ["starter", c.starter], ["lang", c.lang]]) {
@@ -321,14 +422,173 @@ function buildCard(c, top) {
     body.appendChild(el("p", "cap-prompt", c.prompt.trim()));
   }
 
-  const facts = captureFacts(c);
-  if (facts.length) body.appendChild(el("p", "cap-facts muted", facts.join(" · ")));
+  const facts = factsRow(c);
+  if (facts) body.appendChild(facts);
 
   const summary = reviewSummary(c);
   if (summary) body.appendChild(el("p", "cap-review", summary));
 
   card.appendChild(body);
   return card;
+}
+
+/**
+ * The card's headline: THE NUMBER first, then the short name. The number is
+ * how the owner refers to a capture out loud ("produce a review of #12"), so
+ * it leads and it is selectable (the card sets `user-select: none` for the
+ * drag; the stylesheet gives this line back).
+ *
+ * @param {Capture} c
+ * @returns {HTMLElement}
+ */
+function headline(c) {
+  return headlineInto(el("h3", "cap-title"), c);
+}
+
+/**
+ * Fill a node with "#CAP-12 · the name". Shared by the card's <h3> and the
+ * list row's <b> so the two can never disagree about how a capture is named.
+ *
+ * @param {HTMLElement} node
+ * @param {Capture} c
+ * @returns {HTMLElement} the same node
+ */
+function headlineInto(node, c) {
+  const { tag, name, text } = captureHeadline(c);
+  node.title = text;
+  if (tag) {
+    node.appendChild(el("span", "cap-tag", tag));
+    if (name) node.appendChild(el("span", "cap-sep", " · "));
+  }
+  if (name) node.appendChild(el("span", "cap-name", name));
+  return node;
+}
+
+/**
+ * The facts row, plus the COMMIT the recording was made at. The commit is
+ * provenance — it is what makes a clip reproducible — so it rides in the facts
+ * row as a quiet monospace chip rather than as a headline fact.
+ *
+ * @param {Capture} c
+ * @returns {HTMLElement|null} null when there is nothing to say
+ */
+function factsRow(c) {
+  const facts = captureFacts(c);
+  const sha = shortSha(c.commit_sha);
+  if (!facts.length && !sha) return null;
+  const row = el("p", "cap-facts muted");
+  if (facts.length) row.append(facts.join(" · "));
+  if (sha) {
+    if (facts.length) row.append(" · ");
+    const chip = el("code", "cap-sha", sha);
+    chip.title = "the commit this recording was made at";
+    row.appendChild(chip);
+  }
+  return row;
+}
+
+/**
+ * Load one version into the player. Called once per card, and again for every
+ * tap on the version strip — one path, so an older cut renders exactly like
+ * the newest one.
+ *
+ * @param {HTMLElement} player the stable container the <video> lives in
+ * @param {Capture} c
+ * @param {any} version a normalised version, or null for a capture with none
+ */
+function playVersion(player, c, version) {
+  player.innerHTML = "";
+  const src = playbackSource(c, version);
+  if (!src.has_video) {
+    player.appendChild(el("p", "muted", "No video uploaded for this capture yet."));
+    return;
+  }
+  const v = document.createElement("video");
+  v.src = src.video_url;
+  if (src.poster_url) v.poster = src.poster_url;
+  v.controls = true;
+  v.muted = true;
+  v.loop = true;
+  v.playsInline = true;
+  // metadata only: a deck of 50 clips must not pull 50 MP4s on page open.
+  v.preload = "metadata";
+  // A clip the browser cannot decode otherwise renders as a silent black box
+  // with a dead scrubber, and the reviewer has no way to tell that from "the
+  // recording is broken" — so say which it is. This is not hypothetical: the
+  // clips are H.264 (the one codec LinkedIn and every phone want), and
+  // Playwright's bundled Chromium ships WITHOUT proprietary codecs, so it
+  // fails exactly here. A real browser plays them; a stripped build says so.
+  v.addEventListener("error", () => {
+    if (v.parentElement !== player) return;
+    const note = el("p", "muted", "This browser could not play the clip (it is H.264/MP4). The file itself is fine — open it directly: ");
+    const a = document.createElement("a");
+    a.textContent = "download the MP4";
+    a.href = src.video_url;
+    note.appendChild(a);
+    player.replaceChild(note, v);
+  });
+  player.appendChild(v);
+
+  // Which cut is on screen, said in words — but ONLY for an older one. On the
+  // default (newest) version the line would be noise on every card.
+  if (version && version.is_current === false) {
+    const line = el("p", "cap-playing muted", `playing v${version.version}`);
+    const sha = shortSha(version.commit_sha);
+    if (sha) {
+      line.append(" · ");
+      const chip = el("code", "cap-sha", sha);
+      chip.title = "the commit this version was recorded at";
+      line.appendChild(chip);
+    }
+    player.appendChild(line);
+  }
+}
+
+/**
+ * The version history strip. It exists because older versions are RETAINED on
+ * purpose: feedback on a clip is answered by re-recording it, and the previous
+ * cut is what the new one has to beat. Hiding them would make the retention
+ * pointless from the only surface that reviews them.
+ *
+ * @param {Capture} c
+ * @param {any[]} versions newest first (from captureVersions)
+ * @param {HTMLElement} player
+ * @returns {HTMLElement}
+ */
+function versionStrip(c, versions, player) {
+  const wrap = el("div", "cap-versions");
+  wrap.appendChild(el("span", "cap-versions-lead muted", `${versions.length} versions`));
+  const active = activeVersion(c);
+  /** @type {HTMLElement[]} */
+  const buttons = [];
+  for (const v of versions) {
+    const b = el("button", "cap-version secondary", versionLabel(v));
+    // The buttons are inside the draggable card; the drag handler already
+    // ignores gestures that start on a <button>, so a tap here cannot file the
+    // capture by accident.
+    const bits = [versionLabel(v)];
+    const day = formatDayTitle(v);
+    if (day) bits.push(day);
+    const sha = shortSha(v.commit_sha);
+    if (sha) bits.push(`commit ${sha}`);
+    b.title = bits.join(" · ");
+    if (active && v.version === active.version) b.classList.add("is-on");
+    b.addEventListener("click", () => {
+      for (const other of buttons) other.classList.toggle("is-on", other === b);
+      playVersion(player, c, v);
+    });
+    buttons.push(b);
+    wrap.appendChild(b);
+  }
+  return wrap;
+}
+
+/**
+ * @param {any} v
+ * @returns {string} the version's recording day, or ""
+ */
+function formatDayTitle(v) {
+  return v && typeof v === "object" ? formatDay(v.created_at ?? v.time) : "";
 }
 
 /**
@@ -351,7 +611,7 @@ function actionRow(box, capture) {
 }
 
 /**
- * Read-only rendering for the liked / needs-work / all filters.
+ * Read-only rendering for the appreciated / needs-work / all filters.
  * @param {HTMLElement} box
  */
 function renderList(box) {
@@ -364,14 +624,31 @@ function renderList(box) {
   for (const c of state.rows) {
     const row = el("div", "rowitem cap-row");
     const head = el("div", "head");
-    head.appendChild(el("b", "", captureTitle(c)));
-    if (typeof c.status === "string") head.appendChild(el("span", `badge ${c.status === "liked" ? "shipped" : ""}`.trim(), c.status));
+    head.appendChild(headlineInto(el("b", ""), c));
+    // The badge says the status in the list's own words ("appreciated", not
+    // "liked") — two names for one state reads as two states.
+    const label = statusLabel(c.status);
+    if (label) head.appendChild(el("span", `badge ${c.status === "liked" ? "shipped" : ""}`.trim(), label));
     head.appendChild(el("span", "spacer"));
     row.appendChild(head);
-    const facts = captureFacts(c);
-    if (facts.length) row.appendChild(el("p", "cap-facts muted", facts.join(" · ")));
-    const summary = reviewSummary(c);
-    if (summary) row.appendChild(el("p", "cap-review", summary));
+    // agent · model — the list has no chips row, and a list of clips that all
+    // read alike is unusable for finding one again.
+    const who = [c.agent, c.model].filter((v) => typeof v === "string" && v.trim()).join(" · ");
+    if (who) row.appendChild(el("p", "cap-sub muted", who));
+    const versions = captureVersions(c);
+    if (versions.length > 1) row.appendChild(el("p", "cap-sub muted", `${versions.length} versions — newest is v${versions[0].version}`));
+    const facts = factsRow(c);
+    if (facts) row.appendChild(facts);
+    // On "Needs work" the point of the row IS the conversation: what was asked
+    // for, in the order it was asked, so the next cut can answer it. Elsewhere
+    // the one-line summary is enough.
+    if (state.filter === "needs_work") {
+      const thread = threadBlock(c);
+      if (thread) row.appendChild(thread);
+    } else {
+      const summary = reviewSummary(c);
+      if (summary) row.appendChild(el("p", "cap-review", summary));
+    }
     if (c.video_url) {
       const a = el("a", "cap-link", "Open the clip");
       /** @type {HTMLAnchorElement} */ (a).href = String(c.video_url);
@@ -386,6 +663,30 @@ function renderList(box) {
   // heading reading "12" while the owner browses likes would be reporting the
   // wrong number entirely.
   showCount(state.queueCount);
+}
+
+/**
+ * The feedback THREAD on a needs-work capture: every review note, oldest
+ * first. A "thread" here is exactly that — the record of what was asked for,
+ * which is what the re-recording answers and what the next version is judged
+ * against.
+ *
+ * @param {Capture} c
+ * @returns {HTMLElement|null} null when the capture has no reviews
+ */
+function threadBlock(c) {
+  const entries = captureThread(c);
+  if (!entries.length) return null;
+  const wrap = el("div", "cap-thread");
+  for (const e of entries) {
+    const p = el("p", `cap-msg ${e.verdict}`);
+    const who = el("strong", "", e.day ? `${e.mark} ${e.day}` : e.mark);
+    p.appendChild(who);
+    // textContent, never innerHTML: a note is text somebody typed.
+    p.append(" ", e.note || (e.verdict === "like" ? "liked" : "(no note)"));
+    wrap.appendChild(p);
+  }
+  return wrap;
 }
 
 /**
@@ -579,7 +880,10 @@ function openFeedback(capture, box, card) {
   }
   const form = el("div", "cap-feedback");
   form.appendChild(el("p", "cap-feedback-lead muted", "What is wrong with this clip?"));
-  form.appendChild(el("h4", "cap-feedback-title", captureTitle(capture)));
+  // The NUMBER goes on the feedback form too: the card has just flown off
+  // screen, and a note the owner will later discuss as "#12" should be written
+  // with #12 in front of them.
+  form.appendChild(el("h4", "cap-feedback-title", captureHeadline(capture).text));
 
   const ta = document.createElement("textarea");
   ta.className = "cap-feedback-note";

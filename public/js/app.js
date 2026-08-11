@@ -70,7 +70,7 @@ import {
 } from "./stream.js";
 import { BUDGET_MAX_S, BUDGET_MIN_S, budgetTier, fmtBudget, posToSeconds, secondsToPos } from "./timescale.js";
 import { clearChatDom, EMPTY_TEXT, initTurns } from "./turns.js";
-import { initTestpoints } from "./testpoints.js";
+import { badgeText, queueUnanswered } from "./captures-core.js";
 import { initStarters } from "./starters.js";
 import { parseComposerDeepLink } from "./deeplink-core.js";
 import { mountSlashMenu } from "./slash-menu.js";
@@ -1041,7 +1041,7 @@ input.addEventListener("keydown", (e) => {
 // every module was current. If the marker doesn't match, fetch the
 // stylesheet with cache:"reload" (bypasses AND overwrites the cached
 // entry) and swap the link so the fresh rules apply without a reload.
-const CSS_VERSION = "h54";
+const CSS_VERSION = "h55";
 try {
   const seen = getComputedStyle(document.documentElement).getPropertyValue("--css-version").trim();
   if (seen !== CSS_VERSION) {
@@ -1074,6 +1074,19 @@ try {
 // pays nothing for it on every later visit).
 (() => {
   try {
+    // `?anim=0` is the mirror image of the `?anim=1` replay override: where
+    // that forces the intro THROUGH every suppression gate, this forces it OFF
+    // through all of them — including the never-been-here case that would
+    // otherwise play it — so a screen recording of the product does not open
+    // on an animation (docs/INTRO-BASELINE.md §3). One return covers both of
+    // this tier's first-visit layers, the balloon intro and the balloon
+    // greeter chained onto its onDone. EXACTLY the value `0` counts; no other
+    // value is silently read as "off". It writes NO seen key — suppressing an
+    // intro is not the same as consuming the visitor's one first visit, so a
+    // recording must not burn the intro for a real person using this browser
+    // afterwards. (An unreadable location lands in the outer catch, which is
+    // already the fail-soft path.)
+    if (/[?&]anim=0(?:&|$)/.test(location.search)) return;
     const rev = /[?&]anim=rev\b/.test(location.search);
     const force = rev || /[?&]anim=1\b/.test(location.search);
     const SEEN_KEY = "dr_rver_intro_seen";
@@ -1125,39 +1138,60 @@ try {
   }
 })();
 
-// Testable interaction points (public/js/testpoints.js): the try-it queue.
-// On landing with ?try=<id> (a shared /try link) this opens the banner and
-// runs the point's declared ACTIONS to set the scene; the header launcher
-// opens the queue. Admin-only end to end — the fetches 403 for everyone
-// else, so nothing renders. The hooks are the app-specific side effects an
-// action triggers, so testpoints.js never reaches into this file's internals.
-initTestpoints({
-  hooks: {
-    openAccountView: (view) => account.open(view),
-    // The left drawer holds both chat history and the projects list.
-    openHistory: () => document.getElementById("historybtn")?.click(),
-    openProjects: () => document.getElementById("historybtn")?.click(),
-    newChat: () => newChat(),
-    compose: (text, sendNow) => {
-      input.value = text;
-      autogrow();
-      if (sendNow) form.requestSubmit();
-      else input.focus();
-    },
-    setSearch: (on) => {
-      webSearchBox.checked = !!on;
-      persistKnobs();
-    },
-    setBudget: (sec) => {
-      if (!Number.isFinite(sec)) return;
-      budgetS = Math.min(Math.max(sec, BUDGET_MIN_S), BUDGET_MAX_S);
-      budgetSlider.value = secondsToPos(budgetS);
-      updateBudgetVal();
-      persistKnobs();
-    },
-    selectModel: (m) => selectModel(m),
-  },
-});
+// CAPTURE REVIEWS — the header launcher (#capreviewbtn → /captures/).
+//
+// It replaced the try-it queue launcher that stood in this slot (owner
+// directive, 2026-08-11): that loop handed the owner prompts to run and wait
+// on, this one hands them a recorded run to watch and file, and the owner
+// prefers the second. `public/js/testpoints.js` is no longer wired into the
+// composer page as a result — the server side of the try-it queue
+// (src/testpoints.js, /try/:id, the D1 tables, scripts/testpoints) is left
+// standing, because it backs a documented standing loop.
+//
+// Admin-only end to end, exactly as the launcher it replaced: the probe 403s
+// for everyone else and the button stays hidden. Nothing here can throw into
+// the boot path — a launcher is never worth a broken app.
+(async () => {
+  const btn = document.getElementById("capreviewbtn");
+  if (!btn) return;
+  // Wired BEFORE the probe, and the button is revealed only once the probe
+  // answers (UX-18: decide at reveal time — a visible control always acts).
+  btn.addEventListener("click", () => {
+    location.href = "/captures/";
+  });
+  const n = await captureQueueCount();
+  if (n === null) return; // not an admin, no D1, no network — stay silent
+  btn.hidden = false;
+  const badge = document.getElementById("capreview-badge");
+  if (badge) {
+    const text = badgeText(n);
+    badge.textContent = text;
+    // An empty queue is good news, not a notification: no pill at all.
+    badge.hidden = !text;
+  }
+})();
+
+/**
+ * How many captures are waiting for a verdict, or null when that cannot be
+ * known here.
+ *
+ * Two endpoints, in cost order. `queue-status` is the cheap counts probe but
+ * is newer than the deck, so a Worker that predates it answers 404 — and only
+ * a 404 is worth a second request. A 401/403 (not an admin) ends it here:
+ * every signed-in non-admin loads this file, and making them pay for two
+ * doomed requests on every visit is the kind of small waste that never gets
+ * noticed and never gets fixed.
+ *
+ * @returns {Promise<number|null>}
+ */
+async function captureQueueCount() {
+  const probe = await fetch("/api/admin/captures/queue-status").catch(() => null);
+  if (probe && probe.ok) return queueUnanswered(await probe.json().catch(() => null));
+  if (!probe || probe.status !== 404) return null;
+  const list = await fetch("/api/admin/captures?queue=1&limit=200").catch(() => null);
+  if (!list || !list.ok) return null;
+  return queueUnanswered(await list.json().catch(() => null));
+}
 
 // Starter prompts (public/js/starters.js): the four example questions offered
 // on an empty chat, drawn from the active mode's agent queue and rotated so a

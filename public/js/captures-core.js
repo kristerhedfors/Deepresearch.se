@@ -118,14 +118,39 @@ const FALLBACK_WIDTH = 320;
 /** @type {Record<string, Verdict>} */
 export const KEY_VERDICTS = { ArrowRight: "like", ArrowLeft: "feedback" };
 
-// The deck filters offered above the stack. "new" is the review queue; the
-// rest exist so a clip that was already filed can be found again.
+// The deck filters offered above the stack — the owner's four lists, in the
+// owner's words (2026-08-11). "new" is the review queue; the rest exist so a
+// clip that was already filed can be found again. "Appreciated" rather than
+// "Liked": it is what the owner calls a clip that was kept and filed, and the
+// list is read far more often than the button that fills it.
 export const DECK_FILTERS = [
   { id: "new", label: "To review" },
-  { id: "liked", label: "Liked" },
+  { id: "liked", label: "Appreciated" },
   { id: "needs_work", label: "Needs work" },
   { id: "", label: "All" },
 ];
+
+/**
+ * A row's status in the SAME words as the list it belongs to. A badge reading
+ * "liked" next to a filter reading "Appreciated" makes the reader stop and
+ * work out whether they are the same thing; they are, so they are said the
+ * same way. An unknown status (a future one) is passed through rather than
+ * hidden — the deck must not silently mislabel a state it does not know.
+ *
+ * @param {unknown} status
+ * @returns {string}
+ */
+export function statusLabel(status) {
+  const s = typeof status === "string" ? status.trim() : "";
+  if (!s) return "";
+  const f = DECK_FILTERS.find((x) => x.id && x.id === s);
+  return f ? f.label.toLowerCase() : s.replace(/_/g, " ");
+}
+
+// How many unanswered captures the queue is meant to hold. The recorder tops
+// the queue back up to this number as verdicts land, so the health line reads
+// "N of 20 unanswered" — a denominator, not a cap on the table.
+export const QUEUE_TARGET = 20;
 
 // Server-side cap on a feedback note. Mirrored here so the UI refuses a
 // doomed request instead of posting it and rendering the 400 as a mystery.
@@ -447,4 +472,383 @@ export function reviewSummary(capture) {
   if (capture.status === "liked") return "👍 liked";
   if (capture.status === "needs_work") return "✍️ feedback (no note)";
   return "";
+}
+
+// ---- identity: the number and the short name -------------------------------
+// A capture is REFERRED TO by its number — "produce a review of #12" — so the
+// number is the card's first fact, not a subtitle. `captures.id` is the
+// increasing series; `#CAP-<id>` is its written form, matching the repo's
+// existing `#UC-<id>` convention.
+
+/**
+ * The public reference tag for a capture id. Empty string for a row with no
+ * usable id (a half-written fixture), because "#CAP-undefined" as a heading is
+ * worse than no heading at all.
+ *
+ * @param {unknown} id
+ * @returns {string} e.g. "#CAP-12", or ""
+ */
+export function captureTag(id) {
+  if (typeof id === "number") return Number.isFinite(id) ? `#CAP-${Math.trunc(id)}` : "";
+  const s = typeof id === "string" ? id.trim() : "";
+  if (!s) return "";
+  // A string id is used verbatim rather than parsed: the series is the D1
+  // rowid today, and coercing an unexpected id shape to a number would print a
+  // confident wrong number.
+  return `#CAP-${s}`;
+}
+
+/**
+ * The tag the SERVER sent (contract §5 `tag`), falling back to one derived
+ * from the id. The server value wins so a future renumbering does not need a
+ * client release.
+ *
+ * @param {any} c
+ * @returns {string}
+ */
+export function captureRef(c) {
+  if (!c || typeof c !== "object") return "";
+  const tag = typeof c.tag === "string" ? c.tag.trim() : "";
+  return tag || captureTag(c.id);
+}
+
+// Words that carry no meaning in a starter id: the agent prefix and the
+// language marker. Stripping them is what turns "res-sv-elpris" into
+// "Elpris" rather than "Res Sv Elpris".
+// Every prefix the shipped registry actually uses (checked against
+// starters-data.js rather than guessed: "mdl" and "agb" were missing and
+// produced "Mdl Cheapest Vision" / "Agb Minimal"), plus the two language
+// markers. "sdk"/"mod"/"sci" are kept as historical spellings — a retired
+// prefix in an old capture should still resolve to a clean name.
+const STARTER_NOISE = new Set([
+  "res", "sch", "int", "orc", "out", "mdl", "agb", "pal", "sec", "unc",
+  "sdk", "mod", "sci",
+  "en", "sv",
+]);
+
+/**
+ * A short name derived from a starter id, per the shared contract §6: dashes
+ * to spaces, title case, at most four words. Deterministic and offline — a
+ * recording must never wait on a model to be named.
+ *
+ * @param {unknown} starter
+ * @returns {string} "" when there is nothing to derive from
+ */
+export function starterName(starter) {
+  const raw = typeof starter === "string" ? starter.trim() : "";
+  if (!raw) return "";
+  const words = raw
+    .split(/[-_\s]+/)
+    .filter((w) => w && !STARTER_NOISE.has(w.toLowerCase()))
+    .slice(0, 4)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1));
+  return words.join(" ");
+}
+
+/**
+ * The capture's SHORT name — a few words a human can say out loud. The
+ * server's `name` wins; then the author's `label`; then a name derived from
+ * the starter id; and only then a truncated prompt, which is a last resort
+ * because a sentence is not a name.
+ *
+ * @param {any} c
+ * @returns {string}
+ */
+export function captureName(c) {
+  if (!c || typeof c !== "object") return "Untitled capture";
+  const name = typeof c.name === "string" ? c.name.trim() : "";
+  if (name) return name;
+  const label = typeof c.label === "string" ? c.label.trim() : "";
+  if (label) return label;
+  const derived = starterName(c.starter);
+  if (derived) return derived;
+  const prompt = truncate(c.prompt, 48);
+  return prompt || "Untitled capture";
+}
+
+/**
+ * The card's headline, split so the two halves can be rendered as separate
+ * nodes (the number wants its own emphasis) and joined for a copyable title.
+ *
+ * @param {any} c
+ * @returns {{ tag: string, name: string, text: string }}
+ */
+export function captureHeadline(c) {
+  const tag = captureRef(c);
+  const name = captureName(c);
+  return { tag, name, text: tag ? `${tag} · ${name}` : name };
+}
+
+/**
+ * The commit a recording was made at, shortened for a chip. Provenance, not
+ * decoration: it is what makes a run reproducible.
+ *
+ * Only hex is accepted. A `commit_sha` that is not a sha (a branch name, a
+ * "dirty" marker a harness once wrote there) is dropped rather than rendered,
+ * because a chip in that slot claims "check this out and you get this clip".
+ *
+ * @param {unknown} sha
+ * @param {number} [len]
+ * @returns {string} "" when absent or not a sha
+ */
+export function shortSha(sha, len = 7) {
+  const s = typeof sha === "string" ? sha.trim().toLowerCase() : "";
+  if (!/^[0-9a-f]{7,64}$/.test(s)) return "";
+  return s.slice(0, Math.max(4, Math.min(len, s.length)));
+}
+
+// ---- versions --------------------------------------------------------------
+// Feedback on a clip is answered by RE-RECORDING it, and the older cut is kept
+// on purpose. So a capture with more than one version has a history, and the
+// history is shown rather than hidden: the newest plays, any older one is one
+// tap away. A server that has not grown the `versions` array yet simply has no
+// history — everything below returns empty and the card renders as before.
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/**
+ * A calendar day in UTC — "11 Aug 2026". UTC rather than local time on
+ * purpose: this core is clock-free and Node-tested, and a local-time format
+ * would make the tests pass or fail by the runner's timezone.
+ *
+ * @param {unknown} when epoch ms, or an ISO string (`time`)
+ * @returns {string} "" when absent/unparseable
+ */
+export function formatDay(when) {
+  let ms = field(when);
+  if (ms === null && typeof when === "string" && when.trim()) {
+    const parsed = Date.parse(when);
+    ms = Number.isFinite(parsed) ? parsed : null;
+  }
+  if (ms === null) return "";
+  const d = new Date(ms);
+  const y = d.getUTCFullYear();
+  if (!Number.isFinite(y)) return "";
+  return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${y}`;
+}
+
+/**
+ * Where a specific version's bytes live. Derived rather than required, so a
+ * server that sends versions without URLs still plays them.
+ *
+ * @param {unknown} captureId
+ * @param {unknown} version
+ * @returns {{ video: string, poster: string }} empty strings when either id is unusable
+ */
+export function versionMedia(captureId, version) {
+  const id = captureId == null ? "" : String(captureId).trim();
+  const v = field(version);
+  if (!id || v === null || v < 1) return { video: "", poster: "" };
+  const base = `/api/admin/captures/${encodeURIComponent(id)}/versions/${Math.trunc(v)}`;
+  return { video: `${base}/video`, poster: `${base}/poster` };
+}
+
+/**
+ * The capture's versions, NEWEST FIRST, normalised: a whole number, media
+ * URLs, and exactly one `is_current`. Rows without a usable version number are
+ * dropped — an unnumbered version cannot be named in the UI or fetched from
+ * the API, so showing it would offer a button that cannot work (UX-18).
+ *
+ * @param {any} c
+ * @returns {any[]} [] when the capture has no version list at all
+ */
+export function captureVersions(c) {
+  if (!c || typeof c !== "object" || !Array.isArray(c.versions)) return [];
+  /** @type {Set<number>} */
+  const seen = new Set();
+  /** @type {any[]} */
+  const out = [];
+  for (const v of c.versions) {
+    if (!v || typeof v !== "object") continue;
+    const n = field(v.version);
+    if (n === null || n < 1) continue;
+    const num = Math.trunc(n);
+    if (seen.has(num)) continue; // a duplicate from the server: first wins
+    seen.add(num);
+    const media = versionMedia(c.id, num);
+    const url = (/** @type {unknown} */ x, /** @type {string} */ fallback) =>
+      typeof x === "string" && x.trim() ? x.trim() : fallback;
+    out.push({
+      ...v,
+      version: num,
+      commit_sha: typeof v.commit_sha === "string" ? v.commit_sha : null,
+      video_url: url(v.video_url, media.video),
+      poster_url: url(v.poster_url, media.poster),
+      has_video: v.has_video !== false,
+      is_current: v.is_current === true,
+    });
+  }
+  out.sort((a, b) => b.version - a.version);
+  // A list where nothing claims to be current still has to play something, and
+  // "newest" is the only defensible choice — that is the cut the feedback loop
+  // produced last.
+  if (out.length && !out.some((v) => v.is_current)) out[0].is_current = true;
+  return out;
+}
+
+/**
+ * True when there is a history worth rendering. One version is just "the
+ * video"; the control only earns its space at two.
+ *
+ * @param {any} c
+ */
+export function hasVersionHistory(c) {
+  return captureVersions(c).length > 1;
+}
+
+/**
+ * The version that plays by default: the current one, else the newest.
+ *
+ * @param {any} c
+ * @returns {any|null} null when the capture has no version list
+ */
+export function activeVersion(c) {
+  const list = captureVersions(c);
+  return list.find((v) => v.is_current) || list[0] || null;
+}
+
+/**
+ * What the player should load for a capture: a specific version when one is
+ * being played, otherwise the capture's own current-version URLs.
+ *
+ * Split out of the DOM half because the fallback is the part that matters and
+ * the part that is easy to get wrong: FOUR captures were recorded before
+ * versions existed and their bytes sit at the unversioned key. A server that
+ * has not grown a `versions` array yet must keep playing them, so "no version"
+ * is a supported input here, not a bug to guard against.
+ *
+ * @param {any} c
+ * @param {any} [version] one entry from captureVersions
+ * @returns {{ video_url: string, poster_url: string, has_video: boolean }}
+ */
+export function playbackSource(c, version) {
+  const str = (/** @type {unknown} */ v) => (typeof v === "string" && v.trim() ? v.trim() : "");
+  if (version && typeof version === "object") {
+    const video = str(version.video_url);
+    return {
+      video_url: video,
+      poster_url: str(version.poster_url),
+      has_video: version.has_video !== false && !!video,
+    };
+  }
+  if (!c || typeof c !== "object") return { video_url: "", poster_url: "", has_video: false };
+  const video = str(c.video_url);
+  return {
+    video_url: video,
+    // `has_poster` gates the poster, not the URL's presence: the capture-level
+    // poster_url is DERIVED from the id and so is always a string, even when no
+    // poster was ever uploaded. Trusting it would point every posterless card
+    // at a 404.
+    poster_url: c.has_poster ? str(c.poster_url) : "",
+    has_video: c.has_video !== false && !!video,
+  };
+}
+
+/**
+ * The label on a version button — "v3 · current", "v1 · 11 Aug 2026".
+ *
+ * @param {any} v a normalised version (from captureVersions)
+ * @returns {string}
+ */
+export function versionLabel(v) {
+  if (!v || typeof v !== "object") return "";
+  const parts = [`v${field(v.version) ?? "?"}`];
+  if (v.is_current) parts.push("current");
+  else {
+    const day = formatDay(v.created_at ?? v.time);
+    if (day) parts.push(day);
+  }
+  return parts.join(" · ");
+}
+
+// ---- the feedback thread ---------------------------------------------------
+
+/**
+ * A capture's reviews as a THREAD — oldest first, each entry ready to render.
+ * This is what "thread" means here: the notes that asked for a re-cut, in the
+ * order they were written, so the next version can be judged against them.
+ *
+ * @param {any} c
+ * @returns {{ verdict: string, note: string, day: string, mark: string }[]}
+ */
+export function captureThread(c) {
+  if (!c || typeof c !== "object" || !Array.isArray(c.reviews)) return [];
+  return (/** @type {any[]} */ (c.reviews))
+    .filter((/** @type {any} */ r) => r && typeof r === "object")
+    .map((/** @type {any} */ r) => {
+      const verdict = r.verdict === "like" ? "like" : "feedback";
+      return {
+        verdict,
+        note: typeof r.note === "string" ? r.note.trim() : "",
+        day: formatDay(r.created_at ?? r.time),
+        mark: verdict === "like" ? "👍" : "✍️",
+      };
+    });
+}
+
+// ---- queue health ----------------------------------------------------------
+
+/**
+ * How many captures are waiting for a verdict, from whichever endpoint
+ * answered: the counts probe (`unanswered`), or the list itself.
+ *
+ * Returns null — NOT 0 — when the answer cannot be read (a non-admin's 403, a
+ * Worker too old to have the probe, a malformed body). The two are different
+ * facts: 0 means "the queue is empty", null means "we do not know", and only
+ * the first is worth telling the owner.
+ *
+ * @param {any} data a parsed JSON body, or null
+ * @returns {number|null}
+ */
+export function queueUnanswered(data) {
+  if (!data || typeof data !== "object" || data.__error) return null;
+  const direct = field(data.unanswered);
+  if (direct !== null && direct >= 0) return Math.trunc(direct);
+  if (Array.isArray(data.captures)) return data.captures.length;
+  const count = field(data.count);
+  if (count !== null && count >= 0) return Math.trunc(count);
+  return null;
+}
+
+/**
+ * The queue's target size, as the server reports it (so the number can move
+ * without a client release), falling back to the shared constant.
+ *
+ * @param {any} data
+ * @returns {number}
+ */
+export function queueTarget(data) {
+  const t = data && typeof data === "object" ? field(data.target) : null;
+  return t !== null && t > 0 ? Math.trunc(t) : QUEUE_TARGET;
+}
+
+/**
+ * The calm one-liner about the queue's health — "14 of 20 unanswered".
+ * Empty when the count is unknown: a health line that guesses is worse than no
+ * health line.
+ *
+ * @param {number|null} unanswered
+ * @param {number} [target]
+ * @returns {string}
+ */
+export function queueHealthLine(unanswered, target = QUEUE_TARGET) {
+  if (unanswered === null || unanswered === undefined) return "";
+  const n = field(unanswered);
+  if (n === null || n < 0) return "";
+  const t = field(target);
+  return `${Math.trunc(n)} of ${t !== null && t > 0 ? Math.trunc(t) : QUEUE_TARGET} unanswered`;
+}
+
+/**
+ * The text on the header launcher's badge. Zero renders as "" so the caller
+ * can hide the pill entirely — a badge reading "0" claims attention for
+ * nothing. Capped at "99+" because the badge is ~18px wide.
+ *
+ * @param {unknown} n
+ * @returns {string}
+ */
+export function badgeText(n) {
+  const v = field(n);
+  if (v === null || v <= 0) return "";
+  return v > 99 ? "99+" : String(Math.trunc(v));
 }

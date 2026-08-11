@@ -612,7 +612,8 @@
 
 <!-- ---- first-visit onboarding: the what-it-does/doesn't pane, then the
      ghost mascot dancing in to point at the ghost button. Replayable with
-     ?anim=1; skipped entirely once seen (localStorage dr_welcome_seen). ---- -->
+     ?anim=1; suppressed outright by ?anim=0; skipped entirely once seen
+     (localStorage dr_welcome_seen). ---- -->
 <div id="wintro" hidden>
   <div class="wcard">
     <div class="wlogo">
@@ -679,7 +680,16 @@
   "use strict";
   var reduced = false;
   try { reduced = matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (e) {}
-  var force = /[?&]anim=1\b/.test(location.search);
+  // `?anim=1` forces the intro through every suppression gate; `?anim=0` is
+  // its mirror image — it forces the intro OFF through all of them, including
+  // the never-been-here case that would otherwise play it. It exists so a
+  // screen recording of the product does not open on an animation
+  // (docs/INTRO-BASELINE.md §3). Exactly the value `0` counts: no other value
+  // is read as "off". `location.search` is read defensively so a malformed
+  // URL degrades to the normal visit rather than throwing.
+  var off = false;
+  try { off = /[?&]anim=0(?:&|$)/.test(location.search); } catch (e) {}
+  var force = !off && /[?&]anim=1\b/.test(location.search);
   var seen = false;
   try { seen = localStorage.getItem("dr_welcome_seen") === "1"; } catch (e) {}
 
@@ -691,6 +701,12 @@
     location.assign("/login");
   });
 
+  // Both first-visit layers of this page — the #wintro overlay and the mascot
+  // beat that follows it — are behind this one return. Nothing writes
+  // dr_welcome_seen on the way out: suppressing an intro is not the same as
+  // consuming the visitor's one first visit, so a recording must not burn the
+  // intro for a real person who uses this browser afterwards.
+  if (off) return;
   if (seen && !force) return;
 
   function startMascot() {

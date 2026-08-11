@@ -19,11 +19,16 @@ import {
   MARKER_LABELS,
   buildMeta,
   buildTimeline,
+  captureName,
+  captureUrl,
+  commitForBase,
+  headCommit,
   contentSignature,
   formatSummary,
   isLoopback,
   launchOptions,
   parseArgs,
+  publishedAppUrl,
   resolveAuth,
   runPaths,
   validateOptions,
@@ -267,9 +272,21 @@ test("meta.json carries the run's identity, the shape it was recorded at, and it
     starter: "res-sv-elpris",
     xp: 3,
     lang: "sv",
+    // The short human name the deck refers to a capture by, beside its
+    // #CAP-<id> number. Derived from the starter id, so it needs no network.
+    name: "Elpris",
     shape: "portrait",
     viewport: { width: 720, height: 900 },
     base: "https://deepresearch.se",
+    // Null in a unit test: parseArgs is pure and leaves this for runBatch,
+    // which is the only place allowed to shell out to git.
+    commit_sha: null,
+    // What the SITE served, when it could be read. Null in a unit test, and
+    // the reason `commit_sha` being wrong is DETECTABLE rather than believed:
+    // the first twenty captures were stamped with a local HEAD the deployed
+    // site had never run.
+    deployed_digest: null,
+    intro: false,
     budget_s: 60,
     search: true,
     started_at: 1_760_000_000_000,
@@ -277,7 +294,50 @@ test("meta.json carries the run's identity, the shape it was recorded at, and it
     durationMs: 32_000,
     ok: true,
     error: null,
+    // Null for every agent but Agent Studio, whose captures carry the verdict
+    // on the app they built — and are not published when it failed.
+    app_e2e: null,
   });
+});
+
+// ---------------------------------------------------------------------------
+// The intro switch and the capture's human name
+// ---------------------------------------------------------------------------
+
+test("a recording suppresses the intro with ?anim=0 unless --intro asks for it", () => {
+  // The default. A clip is about the research run; an intro at the head is
+  // seconds of every one of twenty clips spent on the same animation.
+  assert.equal(captureUrl({ base: "https://deepresearch.se" }), "https://deepresearch.se/?anim=0");
+  assert.equal(captureUrl({ base: "https://deepresearch.se", intro: true }), "https://deepresearch.se");
+});
+
+test("?anim=0 is appended without trampling a base that already carries a query", () => {
+  assert.equal(captureUrl({ base: "http://127.0.0.1:8788/?x=1" }), "http://127.0.0.1:8788/?x=1&anim=0");
+  // An explicit anim= the caller typed wins — including ?anim=1, which is the
+  // supported way to record the intro deliberately.
+  assert.equal(captureUrl({ base: "https://deepresearch.se/?anim=1" }), "https://deepresearch.se/?anim=1");
+});
+
+test("a capture's name is derived from the starter id, not the prompt", () => {
+  // The starter id is already a hand-written slug of the subject, so this
+  // needs no model call — which is what lets the queue top itself up
+  // unattended.
+  assert.equal(captureName({ starter: "res-sv-elpris" }), "Elpris");
+  assert.equal(captureName({ starter: "sch-vitamin-d" }), "Vitamin D");
+  assert.equal(captureName({ starter: "int-pipeline" }), "Pipeline");
+});
+
+test("a run with no usable starter id still gets a name rather than an empty card", () => {
+  assert.equal(captureName({ prompt: "  Why do   electricity prices differ so much ?" }), "Why do electricity prices");
+  assert.equal(captureName({}), "Untitled capture");
+});
+
+test("the commit is left for runBatch — parseArgs stays pure", () => {
+  // parseArgs must not shell out to git: it is unit-tested with an injected
+  // clock and environment, and a test that forks a process per call is a test
+  // nobody runs.
+  assert.equal(ARGS([]).commit, null);
+  assert.equal(ARGS(["--commit", "abc123"]).commit, "abc123");
 });
 
 test("a failed run still writes meta, with the reason", () => {
@@ -348,4 +408,36 @@ test("the summary names each run's verdict and counts the batch", () => {
   assert.match(text, /no answer within 300s/);
   assert.match(text, /1\/2 captured\./);
   assert.equal(formatSummary([]), "No runs.\n");
+});
+
+test("a remote base is stamped with the DEPLOYED commit, not the working tree's", () => {
+  // Local HEAD names a commit the deployed site has very likely never run.
+  // Stamping it is confident wrong provenance — worse than none, because it
+  // invites someone to check out that commit to explain a clip. This is not
+  // hypothetical: the first twenty captures were stamped that way and had to
+  // be corrected by hand.
+  const local = headCommit();
+  const mainSha = headCommit("origin/main");
+  if (!local || !mainSha || local === mainSha) return; // nothing to prove here
+  assert.equal(commitForBase("https://deepresearch.se"), mainSha, "remote → what production serves");
+  assert.equal(commitForBase("http://127.0.0.1:8788"), local, "loopback → this working tree really is what runs");
+});
+
+// ---------------------------------------------------------------------------
+// Agent Studio: the published app's URL
+// ---------------------------------------------------------------------------
+
+test("the published app URL is read off the build chip, and only when there is one", () => {
+  const base = "https://deepresearch.se";
+  assert.equal(publishedAppUrl("/app/my-agent-ab12/", base), "https://deepresearch.se/app/my-agent-ab12/");
+  assert.equal(publishedAppUrl("/app/my-agent-ab12", base), "https://deepresearch.se/app/my-agent-ab12/");
+  // The chip's resting state. Telling this apart from a broken app matters:
+  // "the build never published" and "the app published and is broken" are
+  // different verdicts and only one of them is the build model's fault.
+  assert.equal(publishedAppUrl("#", base), null);
+  assert.equal(publishedAppUrl("", base), null);
+  assert.equal(publishedAppUrl(null, base), null);
+  // Anything that is not an /app/ link is refused rather than guessed at.
+  assert.equal(publishedAppUrl("/rver", base), null);
+  assert.equal(publishedAppUrl("https://evil.example/app/x/", base), "https://deepresearch.se/app/x/");
 });

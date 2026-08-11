@@ -33,6 +33,9 @@
 //   --sample <ms>       activity sampling interval (default 250)
 //   --timeout <ms>      per-run ceiling waiting for the turn to finish (default 300000)
 //   --limit <n>         stop after n runs (a smoke run)
+//   --intro             KEEP the intro animation (default: suppressed with
+//                       ?anim=0 — a recording is about the research run)
+//   --commit <sha>      override the recorded commit (default: git HEAD)
 //   --headed            run headful, to watch it happen
 //   --dry-run           print the expanded matrix and exit; no browser
 //
@@ -51,10 +54,12 @@
 // tick is caught: a sample lost to a navigation is a missing row, never a dead
 // run.
 
+import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { starterName } from "../public/js/captures-core.js";
 import {
   CAPTURABLE_AGENTS,
   DEFAULT_SHAPE,
@@ -69,6 +74,70 @@ const ROOT = resolve(HERE, "..");
 
 /** Where this repo's dev containers pre-install Chromium. Absent on CI. */
 export const PREINSTALLED_CHROMIUM = "/opt/pw-browsers/chromium";
+
+/**
+ * The commit the working tree is at, recorded onto every capture so a clip is
+ * traceable back to the code that produced it. The deck outlives the code, and
+ * six merges later "why does this video not match the app" has no answer
+ * without it.
+ *
+ * Fail-soft to null — no git, a tarball checkout, or a detached worktree must
+ * cost a metadata field, never a recording. A null is honest; a guess is not.
+ * @returns {string | null}
+ */
+export function headCommit(ref = "HEAD") {
+  try {
+    return execFileSync("git", ["rev-parse", ref], { cwd: ROOT, encoding: "utf8" }).trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The commit to STAMP ON A CAPTURE, which is not always the working tree's.
+ *
+ * A recording is made against whatever the BASE is serving. For a loopback
+ * base that is this working tree, so local HEAD is exactly right. For a REMOTE
+ * base it is not: local HEAD names a commit the site has very likely never
+ * run, and stamping it produces confident wrong provenance — which is worse
+ * than none, because it invites someone to check out that commit to explain a
+ * clip. The first twenty captures were stamped this way and had to be
+ * corrected by hand.
+ *
+ * `origin/main` is the best available answer for a remote base: this repo
+ * deploys main. It is still only a best answer — a branch build also deploys
+ * here — which is why `deployedDigest` records what the site ACTUALLY served,
+ * so a mismatch is detectable rather than assumed away.
+ * @param {string} base
+ * @returns {string | null}
+ */
+export function commitForBase(base) {
+  if (isLoopback(base)) return headCommit();
+  return headCommit("origin/main") || headCommit();
+}
+
+/**
+ * A fingerprint of the source the site is ACTUALLY serving: the digest at the
+ * head of the committed introspection snapshot, which every deploy rebuilds.
+ * Read with a Range request, so it costs 300 bytes rather than 18 MB.
+ *
+ * Fail-soft to null: provenance is worth a request, never a recording.
+ * @param {string} base
+ * @param {Record<string, string>} headers
+ * @returns {Promise<string | null>}
+ */
+export async function deployedDigest(base, headers) {
+  try {
+    const res = await fetch(`${base}/introspect/source-snapshot.json`, {
+      headers: { ...headers, Range: "bytes=0-300" },
+    });
+    if (!res.ok && res.status !== 206) return null;
+    const head = await res.text();
+    return (head.match(/"digest"\s*:\s*"([0-9a-f]{16,64})"/) || [])[1] || null;
+  } catch {
+    return null;
+  }
+}
 
 // Local-mode Basic Auth. Not secrets: the [vars] of wrangler.dev.toml, accepted
 // only by a Worker running on this machine. Kept in step with
@@ -89,7 +158,7 @@ export const DEFAULTS = {
 };
 
 /** Flags that take no value. */
-export const BOOLEAN_FLAGS = new Set(["dry-run", "headed", "help"]);
+export const BOOLEAN_FLAGS = new Set(["dry-run", "headed", "help", "intro"]);
 
 /** Languages the starter registry is written in (invariant 6). */
 export const LANGS = ["en", "sv"];
@@ -165,6 +234,14 @@ export function parseArgs(argv, ctx = {}) {
     timeout: int(raw.timeout, DEFAULTS.timeout),
     limit: raw.limit == null ? null : int(raw.limit, 0),
     headed: raw.headed === true,
+    // Intro OFF by default (owner directive): the long list of recorded
+    // prompts is recorded without it. --intro opts back in for the one
+    // combined cut that wants an intro beat.
+    intro: raw.intro === true,
+    // Left NULL here on purpose: parseArgs is pure (the clock and the env are
+    // injected so it is testable), and resolving this means shelling out to
+    // git. runBatch fills it in.
+    commit: typeof raw.commit === "string" && raw.commit ? raw.commit : null,
     dryRun: raw["dry-run"] === true,
     help: raw.help === true,
   };
@@ -331,6 +408,8 @@ export function runPaths(outRoot, slug) {
 
 /** Human labels for the markers, used as chapter titles by the editor. */
 export const MARKER_LABELS = {
+  app_open: "opened the built app",
+  app_done: "finished using the built app",
   open: "app opened",
   send: "prompt sent",
   first_token: "first token",
@@ -369,6 +448,56 @@ export function buildTimeline(input = {}) {
 }
 
 /**
+ * The URL a capture opens.
+ *
+ * `?anim=0` is the documented off-switch for the intro phase — the inverse of
+ * the `?anim=1` that forces it on (docs/INTRO-BASELINE.md §3). A recording is
+ * about the research run, so the intro is suppressed unless `--intro` asks for
+ * it (which is how the one combined LinkedIn cut that DOES want an intro gets
+ * recorded).
+ *
+ * Built by hand rather than with `new URL(...).searchParams` so a base that
+ * already carries a query keeps it verbatim: these bases are typed by hand on
+ * the command line and a silently re-encoded one is a confusing way to lose a
+ * run.
+ * @param {{ base: string, intro?: boolean }} opts
+ * @returns {string}
+ */
+export function captureUrl(opts) {
+  const base = String(opts.base || "");
+  if (opts.intro) return base;
+  if (/[?&]anim=/.test(base)) return base; // an explicit anim= wins
+  if (base.includes("?")) return base + "&anim=0";
+  // A bare origin needs its path back before a query: "https://host?x" is legal
+  // but "https://host/?x" is what every other URL in this repo looks like, and
+  // the difference shows up in logs and in the cookie/origin comparisons.
+  return base + (/^https?:\/\/[^/]+$/.test(base) ? "/" : "") + "?anim=0";
+}
+
+/**
+ * The short, human, few-word name a capture is referred to by, next to its
+ * `#CAP-<id>` number ("produce a review of #12, the electricity one").
+ *
+ * Derived from the STARTER ID rather than the prompt: the id is already a
+ * hand-written slug of what the prompt is about (`res-sv-elpris` → "Elpris",
+ * `sch-vitamin-d` → "Vitamin D"), so stripping the prefix and title-casing gives a
+ * usable name with no model call, no network, and no per-prompt maintenance —
+ * which matters because the queue tops itself up unattended. It is a DEFAULT:
+ * `scripts/captures --name <id> "…"` improves any one of them by hand.
+ * @param {{ agent?: string, starter?: string, prompt?: string }} run
+ * @returns {string}
+ */
+export function captureName(run) {
+  const derived = starterName(run?.starter);
+  if (derived) return derived;
+  // No usable starter id (a hand-driven run): fall back to the prompt's first
+  // few words, which is worse but never empty — an unnamed card in a deck of
+  // twenty is the one nobody can refer to.
+  const fromPrompt = String(run?.prompt || "").replace(/\s+/g, " ").trim().split(" ").slice(0, 4).join(" ");
+  return fromPrompt || "Untitled capture";
+}
+
+/**
  * The `meta.json` shape — read by the editor (for the header line and the
  * default shape) and by the admin uploader.
  * @param {import("../scripts/capture-core.mjs").CaptureRun} run
@@ -386,9 +515,18 @@ export function buildMeta(run, opts, timing) {
     starter: run.starter,
     xp: run.xp == null ? null : run.xp,
     lang: run.lang,
+    name: captureName(run),
     shape: shape.id,
     viewport: { ...shape.viewport },
     base: opts.base,
+    // The COMMIT the site was serving when this was recorded. Without it a
+    // clip is un-reproducible: the deck outlives the code, and "why does the
+    // video not match the app" has no answer six merges later. Resolved once
+    // per batch (see `headCommit`) and null when git is unavailable, which is
+    // honest rather than a guess.
+    commit_sha: opts.commit || null,
+    deployed_digest: opts.deployedDigest || null,
+    intro: !!opts.intro,
     budget_s: opts.budget,
     search: !!opts.search,
     started_at: timing.startedAt,
@@ -396,6 +534,11 @@ export function buildMeta(run, opts, timing) {
     durationMs: Math.max(0, timing.endedAt - timing.startedAt),
     ok: !!timing.ok,
     error: timing.error || null,
+    // The Agent Studio verdict, when there was one: what the built app scored
+    // when the capture walked to it and used it. Null for every other agent.
+    // The publish step reads `app_e2e.pass` and skips a capture that failed —
+    // a clip of a build that does not work is worse than no clip.
+    app_e2e: timing.appE2E || null,
   };
 }
 
@@ -564,6 +707,8 @@ export async function captureRun(browser, run, opts, net) {
   let context = null;
   let page = null;
   let stopSampler = () => {};
+  /** @type {any} */
+  let appE2E = null;
 
   const mark = (/** @type {string} */ id) => markers.push({ t: Date.now() - t0, id });
 
@@ -577,6 +722,21 @@ export async function captureRun(browser, run, opts, net) {
       recordVideo: { dir: paths.videoTmp, size: shape.viewport },
       extraHTTPHeaders: net.headers,
       ignoreHTTPSErrors: net.ignoreHTTPSErrors,
+      // NO INTRO in a recording (owner directive, 2026-08-11). A capture is
+      // about the RESEARCH RUN; an intro animation at the head is seconds of
+      // every clip spent on something the viewer did not come for, and it is
+      // identical across all twenty.
+      //
+      // Belt AND braces, because these are two independent mechanisms and the
+      // recording is expensive to redo:
+      //   - `reducedMotion: "reduce"` is one of the three suppression gates
+      //     docs/INTRO-BASELINE.md §3 already documents for all three intro
+      //     tiers, and it works on any deploy including ones that predate the
+      //     parameter below.
+      //   - `?anim=0` (added to the URL in `captureUrl`) is the explicit,
+      //     documented switch the owner asked for, and unlike the media query
+      //     it says what it means.
+      reducedMotion: opts.intro ? "no-preference" : "reduce",
     });
     await stripCrossOriginAuth(context, opts.base);
     await context.addCookies([{ name: "dr_privacy_ack", value: "1", url: opts.base }]);
@@ -600,7 +760,7 @@ export async function captureRun(browser, run, opts, net) {
     // a frozen screen for the whole timeout.
     page.on("dialog", (/** @type {any} */ d) => d.accept().catch(() => {}));
 
-    await page.goto(opts.base, { waitUntil: "domcontentloaded", timeout: 60_000 });
+    await page.goto(captureUrl(opts), { waitUntil: "domcontentloaded", timeout: 60_000 });
     await page.waitForSelector("#form", { state: "visible", timeout: 60_000 });
 
     // The chat mode is read in TWO places — the `dr_chat_mode` cache pinned
@@ -657,6 +817,17 @@ export async function captureRun(browser, run, opts, net) {
     // Let the last paint settle so the final frame is not mid-render — a clip
     // that ends on a half-drawn answer reads as a crash.
     await sleep(1500);
+
+    // AGENT STUDIO: a build is only worth showing if the thing it built works.
+    // So the capture does not stop at the transcript — it walks to the
+    // published app and uses it, ON CAMERA, and the verdict decides whether
+    // this clip is published at all (owner directive, 2026-08-11).
+    if (finished && run.mode === "sdk") {
+      appE2E = await checkBuiltApp(page, opts, mark);
+      if (appE2E && !appE2E.pass) {
+        error = `the built app failed its end-to-end test: ${appE2E.failures.join("; ")}`;
+      }
+    }
   } catch (e) {
     error = e instanceof Error ? e.message : String(e);
     mark("error");
@@ -679,10 +850,81 @@ export async function captureRun(browser, run, opts, net) {
     paths.timeline,
     JSON.stringify(buildTimeline({ samples, markers, durationMs, sampleMs: opts.sample }), null, 2),
   );
-  const meta = buildMeta(run, opts, { startedAt, endedAt, ok: !error, error });
+  const meta = buildMeta(run, opts, { startedAt, endedAt, ok: !error, error, appE2E });
   writeFileSync(paths.meta, JSON.stringify(meta, null, 2));
 
-  return { slug: run.slug, agent: run.agent, model: run.model, starter: run.starter, ok: !error, durationMs, error };
+  return { slug: run.slug, agent: run.agent, model: run.model, starter: run.starter, ok: !error, durationMs, error, appE2E };
+}
+
+/**
+ * The published app's URL, from the SDK build chip's href.
+ *
+ * Pure so the "did this build actually publish anything" decision is testable
+ * without a browser. Returns null for the chip's empty/`#` resting state,
+ * which is how "the build never finished" is told apart from "it finished and
+ * the app is broken" — two different verdicts.
+ * @param {string | null | undefined} href
+ * @param {string} base
+ * @returns {string | null}
+ */
+export function publishedAppUrl(href, base) {
+  const raw = typeof href === "string" ? href.trim() : "";
+  if (!raw || raw === "#") return null;
+  const m = raw.match(/\/app\/([a-z0-9][a-z0-9-]*)\/?$/i);
+  if (!m) return null;
+  return `${String(base).replace(/\/+$/, "")}/app/${m[1]}/`;
+}
+
+/**
+ * AGENT STUDIO's second half: walk to the app the build just published and USE
+ * it, while the recording is still running.
+ *
+ * Two things at once, both owner directives (2026-08-11). The clip gains the
+ * only part that proves the build was real — the app being used — and the run
+ * gains a VERDICT, because "only keep those videos that also pass an
+ * end-to-end test of the generated app" needs something to pass.
+ *
+ * Fail-soft in one direction only: anything that stops the check from running
+ * (no chip, no slug, a module that would not load) is reported as a failure
+ * rather than swallowed, because silently publishing an unchecked build is the
+ * outcome this exists to prevent. What it must never do is throw — that would
+ * cost the recording as well as the verdict.
+ * @param {any} page
+ * @param {CaptureOptions} opts
+ * @param {(id: string) => void} mark
+ * @returns {Promise<any | null>}
+ */
+async function checkBuiltApp(page, opts, mark) {
+  const fail = (/** @type {string} */ reason) => ({ pass: false, url: null, checks: [], failures: [reason] });
+  let href = null;
+  try {
+    // The chip is populated when the build publishes; give it a moment, since
+    // the publish lands just after the stats do.
+    await page.waitForFunction(
+      () => {
+        const a = document.getElementById("sdkbuildlink");
+        return !!(a && !a.hidden && a.getAttribute("href") && a.getAttribute("href") !== "#");
+      },
+      { timeout: 20_000 },
+    );
+    href = await page.getAttribute("#sdkbuildlink", "href");
+  } catch {
+    return fail("the build published no app (the /app/ link never appeared)");
+  }
+  const url = publishedAppUrl(href, opts.base);
+  if (!url) return fail(`the build chip's link is not an /app/ URL (${href})`);
+
+  mark("app_open");
+  try {
+    const { exerciseApp, gradeApp } = await import("./app-e2e.mjs");
+    const observations = await exerciseApp(page, url, { timeout: 45_000 });
+    const graded = gradeApp(observations);
+    mark("app_done");
+    return { ...graded, url, slug: url.replace(/\/$/, "").split("/").pop() };
+  } catch (e) {
+    mark("app_done");
+    return fail(`the end-to-end check could not run: ${e instanceof Error ? e.message : String(e)}`);
+  }
 }
 
 /**
@@ -703,10 +945,43 @@ async function selectMode(page, mode) {
   const current = await page.$eval("#modesel", (/** @type {any} */ el) => el.value);
   // Already there (the localStorage pin took): selecting again would fire a
   // change event and replay the mode's entry animation mid-recording.
-  if (current === mode) return;
-  await page.selectOption("#modesel", mode, { force: true, timeout: 15_000 });
-  // The mode swap re-themes the composer and can rebuild the model list.
-  await sleep(500);
+  if (current !== mode) {
+    await page.selectOption("#modesel", mode, { force: true, timeout: 15_000 });
+    // The mode swap re-themes the composer and can rebuild the model list.
+    await sleep(500);
+  }
+
+  // AND THEN HOLD IT. The mode is read in two places, and the second one
+  // arrives late: app.js adopts the server's `chat_mode` from /api/settings
+  // whenever that resolves, which can be seconds after the dropdown was set.
+  // The early return above made this worse rather than better — the
+  // `dr_chat_mode` pin means the dropdown ALREADY reads the wanted mode, so
+  // selectMode returned satisfied, and then settings landed and knocked it
+  // back to `normal`.
+  //
+  // That is not a cosmetic race. It silently records THE WRONG AGENT: an
+  // Agent Studio capture that reverted to Deep Research answers by printing
+  // code as prose and never builds anything, and the clip looks fine unless
+  // you read the composer. Observed on 2026-08-11, twice in one batch.
+  //
+  // So: watch the value for a window, re-apply if it drifts, and fail the run
+  // if it will not hold — the same posture as an unavailable mode, for the
+  // same reason.
+  const deadline = Date.now() + 8_000;
+  let reapplied = 0;
+  for (;;) {
+    await sleep(500);
+    const now = await page.$eval("#modesel", (/** @type {any} */ el) => el.value).catch(() => null);
+    if (now !== mode) {
+      if (++reapplied > 3) {
+        throw new Error(`chat mode “${mode}” will not stick (the composer keeps reverting to “${now}”)`);
+      }
+      await page.selectOption("#modesel", mode, { force: true, timeout: 15_000 });
+      await sleep(500);
+      continue;
+    }
+    if (Date.now() >= deadline) return;
+  }
 }
 
 /**
@@ -829,6 +1104,11 @@ export async function runBatch(opts) {
     return 1;
   }
 
+  // Resolved HERE rather than in parseArgs, which is pure and unit-tested:
+  // this shells out to git. One resolution per batch, so every clip in a batch
+  // carries the same commit even if the tree moves under a long run.
+  if (!opts.commit) opts.commit = commitForBase(opts.base);
+
   const auth = resolveAuth(opts.base);
   // A dry run that already names its models touches nothing: no credentials, no
   // network, no browser. Printing the matrix is how a batch is argued about
@@ -838,6 +1118,12 @@ export async function runBatch(opts) {
   if (needsSite && !auth.headers) {
     console.error(`✗ ${auth.reason}`);
     return 1;
+  }
+
+  // What the SITE is actually serving, so a wrong `commit_sha` is detectable
+  // rather than believed. One request per batch, and null is fine.
+  if (needsSite && auth.headers && !opts.dryRun) {
+    opts.deployedDigest = await deployedDigest(opts.base, auth.headers);
   }
 
   let models = opts.models;
