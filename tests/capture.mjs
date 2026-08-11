@@ -33,6 +33,9 @@
 //   --sample <ms>       activity sampling interval (default 250)
 //   --timeout <ms>      per-run ceiling waiting for the turn to finish (default 300000)
 //   --limit <n>         stop after n runs (a smoke run)
+//   --intro             KEEP the intro animation (default: suppressed with
+//                       ?anim=0 — a recording is about the research run)
+//   --commit <sha>      override the recorded commit (default: git HEAD)
 //   --headed            run headful, to watch it happen
 //   --dry-run           print the expanded matrix and exit; no browser
 //
@@ -51,6 +54,7 @@
 // tick is caught: a sample lost to a navigation is a missing row, never a dead
 // run.
 
+import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -69,6 +73,25 @@ const ROOT = resolve(HERE, "..");
 
 /** Where this repo's dev containers pre-install Chromium. Absent on CI. */
 export const PREINSTALLED_CHROMIUM = "/opt/pw-browsers/chromium";
+
+/**
+ * The commit the working tree is at, recorded onto every capture so a clip is
+ * traceable back to the code that produced it. The deck outlives the code, and
+ * six merges later "why does this video not match the app" has no answer
+ * without it.
+ *
+ * Fail-soft to null — no git, a tarball checkout, or a detached worktree must
+ * cost a metadata field, never a recording. A null is honest; a guess is not.
+ * @returns {string | null}
+ */
+export function headCommit() {
+  try {
+    // eslint-disable-next-line no-undef
+    return execFileSync("git", ["rev-parse", "HEAD"], { cwd: ROOT, encoding: "utf8" }).trim() || null;
+  } catch {
+    return null;
+  }
+}
 
 // Local-mode Basic Auth. Not secrets: the [vars] of wrangler.dev.toml, accepted
 // only by a Worker running on this machine. Kept in step with
@@ -89,7 +112,7 @@ export const DEFAULTS = {
 };
 
 /** Flags that take no value. */
-export const BOOLEAN_FLAGS = new Set(["dry-run", "headed", "help"]);
+export const BOOLEAN_FLAGS = new Set(["dry-run", "headed", "help", "intro"]);
 
 /** Languages the starter registry is written in (invariant 6). */
 export const LANGS = ["en", "sv"];
@@ -165,6 +188,14 @@ export function parseArgs(argv, ctx = {}) {
     timeout: int(raw.timeout, DEFAULTS.timeout),
     limit: raw.limit == null ? null : int(raw.limit, 0),
     headed: raw.headed === true,
+    // Intro OFF by default (owner directive): the long list of recorded
+    // prompts is recorded without it. --intro opts back in for the one
+    // combined cut that wants an intro beat.
+    intro: raw.intro === true,
+    // Left NULL here on purpose: parseArgs is pure (the clock and the env are
+    // injected so it is testable), and resolving this means shelling out to
+    // git. runBatch fills it in.
+    commit: typeof raw.commit === "string" && raw.commit ? raw.commit : null,
     dryRun: raw["dry-run"] === true,
     help: raw.help === true,
   };
@@ -369,6 +400,65 @@ export function buildTimeline(input = {}) {
 }
 
 /**
+ * The URL a capture opens.
+ *
+ * `?anim=0` is the documented off-switch for the intro phase — the inverse of
+ * the `?anim=1` that forces it on (docs/INTRO-BASELINE.md §3). A recording is
+ * about the research run, so the intro is suppressed unless `--intro` asks for
+ * it (which is how the one combined LinkedIn cut that DOES want an intro gets
+ * recorded).
+ *
+ * Built by hand rather than with `new URL(...).searchParams` so a base that
+ * already carries a query keeps it verbatim: these bases are typed by hand on
+ * the command line and a silently re-encoded one is a confusing way to lose a
+ * run.
+ * @param {{ base: string, intro?: boolean }} opts
+ * @returns {string}
+ */
+export function captureUrl(opts) {
+  const base = String(opts.base || "");
+  if (opts.intro) return base;
+  if (/[?&]anim=/.test(base)) return base; // an explicit anim= wins
+  if (base.includes("?")) return base + "&anim=0";
+  // A bare origin needs its path back before a query: "https://host?x" is legal
+  // but "https://host/?x" is what every other URL in this repo looks like, and
+  // the difference shows up in logs and in the cookie/origin comparisons.
+  return base + (/^https?:\/\/[^/]+$/.test(base) ? "/" : "") + "?anim=0";
+}
+
+/**
+ * The short, human, few-word name a capture is referred to by, next to its
+ * `#CAP-<id>` number ("produce a review of #12, the electricity one").
+ *
+ * Derived from the STARTER ID rather than the prompt: the id is already a
+ * hand-written slug of what the prompt is about (`res-sv-elpris`,
+ * `sch-vitamin-d`), so stripping the agent prefix and title-casing gives a
+ * usable name with no model call, no network, and no per-prompt maintenance —
+ * which matters because the queue tops itself up unattended. It is a DEFAULT:
+ * `scripts/captures --name <id> "…"` improves any one of them by hand.
+ * @param {{ agent?: string, starter?: string, prompt?: string }} run
+ * @returns {string}
+ */
+export function captureName(run) {
+  const starter = String(run?.starter || "").trim();
+  const words = starter
+    .split("-")
+    .slice(1) // the agent prefix: res- / sch- / int- / orc- …
+    .filter(Boolean);
+  if (words.length) {
+    return words
+      .slice(0, 4)
+      .map((w) => (w.length <= 2 ? w.toUpperCase() : w[0].toUpperCase() + w.slice(1)))
+      .join(" ");
+  }
+  // No usable starter id (a hand-driven run): fall back to the prompt's first
+  // few words, which is worse but never empty — an unnamed card in a deck of
+  // twenty is the one nobody can refer to.
+  const fromPrompt = String(run?.prompt || "").replace(/\s+/g, " ").trim().split(" ").slice(0, 4).join(" ");
+  return fromPrompt || "Untitled capture";
+}
+
+/**
  * The `meta.json` shape — read by the editor (for the header line and the
  * default shape) and by the admin uploader.
  * @param {import("../scripts/capture-core.mjs").CaptureRun} run
@@ -386,9 +476,17 @@ export function buildMeta(run, opts, timing) {
     starter: run.starter,
     xp: run.xp == null ? null : run.xp,
     lang: run.lang,
+    name: captureName(run),
     shape: shape.id,
     viewport: { ...shape.viewport },
     base: opts.base,
+    // The COMMIT the site was serving when this was recorded. Without it a
+    // clip is un-reproducible: the deck outlives the code, and "why does the
+    // video not match the app" has no answer six merges later. Resolved once
+    // per batch (see `headCommit`) and null when git is unavailable, which is
+    // honest rather than a guess.
+    commit_sha: opts.commit || null,
+    intro: !!opts.intro,
     budget_s: opts.budget,
     search: !!opts.search,
     started_at: timing.startedAt,
@@ -577,6 +675,21 @@ export async function captureRun(browser, run, opts, net) {
       recordVideo: { dir: paths.videoTmp, size: shape.viewport },
       extraHTTPHeaders: net.headers,
       ignoreHTTPSErrors: net.ignoreHTTPSErrors,
+      // NO INTRO in a recording (owner directive, 2026-08-11). A capture is
+      // about the RESEARCH RUN; an intro animation at the head is seconds of
+      // every clip spent on something the viewer did not come for, and it is
+      // identical across all twenty.
+      //
+      // Belt AND braces, because these are two independent mechanisms and the
+      // recording is expensive to redo:
+      //   - `reducedMotion: "reduce"` is one of the three suppression gates
+      //     docs/INTRO-BASELINE.md §3 already documents for all three intro
+      //     tiers, and it works on any deploy including ones that predate the
+      //     parameter below.
+      //   - `?anim=0` (added to the URL in `captureUrl`) is the explicit,
+      //     documented switch the owner asked for, and unlike the media query
+      //     it says what it means.
+      reducedMotion: opts.intro ? "no-preference" : "reduce",
     });
     await stripCrossOriginAuth(context, opts.base);
     await context.addCookies([{ name: "dr_privacy_ack", value: "1", url: opts.base }]);
@@ -600,7 +713,7 @@ export async function captureRun(browser, run, opts, net) {
     // a frozen screen for the whole timeout.
     page.on("dialog", (/** @type {any} */ d) => d.accept().catch(() => {}));
 
-    await page.goto(opts.base, { waitUntil: "domcontentloaded", timeout: 60_000 });
+    await page.goto(captureUrl(opts), { waitUntil: "domcontentloaded", timeout: 60_000 });
     await page.waitForSelector("#form", { state: "visible", timeout: 60_000 });
 
     // The chat mode is read in TWO places — the `dr_chat_mode` cache pinned
@@ -828,6 +941,11 @@ export async function runBatch(opts) {
     for (const e of errors) console.error(`✗ ${e}`);
     return 1;
   }
+
+  // Resolved HERE rather than in parseArgs, which is pure and unit-tested:
+  // this shells out to git. One resolution per batch, so every clip in a batch
+  // carries the same commit even if the tree moves under a long run.
+  if (!opts.commit) opts.commit = headCommit();
 
   const auth = resolveAuth(opts.base);
   // A dry run that already names its models touches nothing: no credentials, no

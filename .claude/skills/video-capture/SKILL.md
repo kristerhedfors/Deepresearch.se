@@ -74,6 +74,16 @@ The matrix is **agent-major**: all of one agent's runs, then the next. An
 interrupted batch therefore covers whole agents instead of leaving every agent
 half-captured.
 
+**No intro, and a commit stamp.** Every recording opens the site with
+`?anim=0` (the documented inverse of `?anim=1`, which forces the intro on) AND
+with `prefers-reduced-motion` set — two independent gates, because a recording
+is expensive to redo and the media query works against deploys that predate
+the parameter. `--intro` opts back in for the one combined cut that wants an
+intro beat. Every capture also carries the **git HEAD it was recorded at**, so
+a clip stays traceable to the code that produced it once the deck outlives the
+commit, plus a short derived **name** (`res-sv-elpris` → "SV Elpris") that the
+deck shows beside its `#CAP-<id>` number.
+
 **Shapes.** `--shape portrait|square|landscape|raw` sets the CSS viewport AND
 the delivery frame together. Portrait (720×900 recorded → 1080×1350 delivered)
 is the default because 4:5 is the tallest ratio LinkedIn renders at full width

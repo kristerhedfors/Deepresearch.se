@@ -117,13 +117,37 @@ Markers (`open`, `send`, `first_token`, `done`, `timeout`) are for chapters
 and trimming — never for cutting.
 
 **`meta.json`** — what was run: `slug`, `agent`, `mode`, `model`, `prompt`,
-`starter`, `xp`, `lang`, `shape`, `viewport`, `base`, `budget_s`, `search`,
-`started_at`, `ended_at`, `durationMs`, `ok`, `error`.
+`starter`, `xp`, `lang`, `name`, `shape`, `viewport`, `base`, `commit_sha`,
+`intro`, `budget_s`, `search`, `started_at`, `ended_at`, `durationMs`, `ok`,
+`error`.
+
+Two of those exist for the review queue rather than for the edit:
+
+- **`commit_sha`** is the git HEAD the recording was made at, resolved once per
+  batch. Without it a clip is un-reproducible — the deck outlives the code, and
+  six merges later "why does this video not match the app" has no answer. It is
+  `null` rather than a guess when git is unavailable.
+- **`name`** is the short human name the deck shows beside the capture's
+  `#CAP-<id>` number, derived from the starter id (`res-sv-elpris` → "SV
+  Elpris") so it needs no model call and never blocks an unattended top-up. It
+  is a default: `scripts/captures --name <id> "…"` improves any one by hand.
 
 A batch also writes `batch.json` at the root: the options used plus one row
 per run.
 
-### 3.4 Failure posture
+### 3.4 No intro in a recording
+
+A capture is about the research run, so the harness opens the site with
+**`?anim=0`** — the documented inverse of the `?anim=1` that forces the intro
+on (`docs/INTRO-BASELINE.md` §3) — and additionally sets the browser's
+`prefers-reduced-motion`, which §3 already lists as a suppression gate for all
+three intro tiers. Belt and braces on purpose: the two are independent
+mechanisms, the media query works against deploys that predate the parameter,
+and a recording is expensive to redo.
+
+`--intro` opts back in, for the one combined cut that wants an intro beat.
+
+### 3.5 Failure posture
 
 One failing run never aborts a batch (invariant 2's posture, applied to a
 harness). A run that times out keeps its video and timeline — a stalled run is

@@ -19,6 +19,8 @@ import {
   MARKER_LABELS,
   buildMeta,
   buildTimeline,
+  captureName,
+  captureUrl,
   contentSignature,
   formatSummary,
   isLoopback,
@@ -267,9 +269,16 @@ test("meta.json carries the run's identity, the shape it was recorded at, and it
     starter: "res-sv-elpris",
     xp: 3,
     lang: "sv",
+    // The short human name the deck refers to a capture by, beside its
+    // #CAP-<id> number. Derived from the starter id, so it needs no network.
+    name: "SV Elpris",
     shape: "portrait",
     viewport: { width: 720, height: 900 },
     base: "https://deepresearch.se",
+    // Null in a unit test: parseArgs is pure and leaves this for runBatch,
+    // which is the only place allowed to shell out to git.
+    commit_sha: null,
+    intro: false,
     budget_s: 60,
     search: true,
     started_at: 1_760_000_000_000,
@@ -278,6 +287,46 @@ test("meta.json carries the run's identity, the shape it was recorded at, and it
     ok: true,
     error: null,
   });
+});
+
+// ---------------------------------------------------------------------------
+// The intro switch and the capture's human name
+// ---------------------------------------------------------------------------
+
+test("a recording suppresses the intro with ?anim=0 unless --intro asks for it", () => {
+  // The default. A clip is about the research run; an intro at the head is
+  // seconds of every one of twenty clips spent on the same animation.
+  assert.equal(captureUrl({ base: "https://deepresearch.se" }), "https://deepresearch.se/?anim=0");
+  assert.equal(captureUrl({ base: "https://deepresearch.se", intro: true }), "https://deepresearch.se");
+});
+
+test("?anim=0 is appended without trampling a base that already carries a query", () => {
+  assert.equal(captureUrl({ base: "http://127.0.0.1:8788/?x=1" }), "http://127.0.0.1:8788/?x=1&anim=0");
+  // An explicit anim= the caller typed wins — including ?anim=1, which is the
+  // supported way to record the intro deliberately.
+  assert.equal(captureUrl({ base: "https://deepresearch.se/?anim=1" }), "https://deepresearch.se/?anim=1");
+});
+
+test("a capture's name is derived from the starter id, not the prompt", () => {
+  // The starter id is already a hand-written slug of the subject, so this
+  // needs no model call — which is what lets the queue top itself up
+  // unattended.
+  assert.equal(captureName({ starter: "res-sv-elpris" }), "SV Elpris");
+  assert.equal(captureName({ starter: "sch-vitamin-d" }), "Vitamin D");
+  assert.equal(captureName({ starter: "int-pipeline" }), "Pipeline");
+});
+
+test("a run with no usable starter id still gets a name rather than an empty card", () => {
+  assert.equal(captureName({ prompt: "  Why do   electricity prices differ so much ?" }), "Why do electricity prices");
+  assert.equal(captureName({}), "Untitled capture");
+});
+
+test("the commit is left for runBatch — parseArgs stays pure", () => {
+  // parseArgs must not shell out to git: it is unit-tested with an injected
+  // clock and environment, and a test that forks a process per call is a test
+  // nobody runs.
+  assert.equal(ARGS([]).commit, null);
+  assert.equal(ARGS(["--commit", "abc123"]).commit, "abc123");
 });
 
 test("a failed run still writes meta, with the reason", () => {
