@@ -121,8 +121,9 @@ and trimming — never for cutting.
 
 **`meta.json`** — what was run: `slug`, `agent`, `mode`, `model`, `prompt`,
 `starter`, `xp`, `lang`, `name`, `shape`, `viewport`, `base`, `commit_sha`,
-`deployed_digest`, `intro`, `budget_s`, `search`, `started_at`, `ended_at`, `durationMs`, `ok`,
-`error`.
+`deployed_digest`, `intro`, `budget_s`, `search`, `started_at`, `ended_at`,
+`durationMs`, `ok`, `error`, and — for an Agent Studio run only — `app_e2e`
+(§3.5).
 
 Three of those exist for the review queue rather than for the edit:
 
@@ -165,7 +166,57 @@ and a recording is expensive to redo.
 
 `--intro` opts back in, for the one combined cut that wants an intro beat.
 
-### 3.5 Failure posture
+### 3.5 Agent Studio: the capture must prove the app works
+
+An `agent-builder` capture does not stop when the build finishes. It reads the
+published `/app/<slug>/` off the build chip, **walks there and uses it while
+still recording**, and grades what happens (`tests/app-e2e.mjs`). The clip
+therefore shows the thing that was built actually working — and a capture whose
+app FAILS is never published: it stays on disk with its verdict, because a
+video of a build that does not work is a demo of a broken thing filed as if it
+were a demo of a working one (owner directive, 2026-08-11).
+
+Six checks, each with a stable id:
+
+| id | passes when |
+|---|---|
+| `app_loads` | the page loaded, has content, **and every file the build shipped arrived** |
+| `no_page_errors` | nothing the app itself threw (provider/network noise filtered) |
+| `key_field_masked` | every key field is masked **at every sample**. No key field at all is a pass |
+| `key_not_revealed` | the sentinel is in no visible text and no attribute |
+| `key_not_persisted` | the sentinel is in no storage, cookie or URL |
+| `app_interactive` | there is something to type into and press, and pressing it did not throw |
+
+**The sentinel rule.** The key typed is `sk-FAKE-CAPTURE-SENTINEL`, never a real
+one, for two reasons: it is typed WHILE RECORDING, so an unmasked field would
+put it in the video — which is exactly the failure being tested for — and it is
+sent to a real provider, which 401s. That 401 is expected and filtered. The
+constant is deliberately 21 characters after `sk-`, because `scripts/scan-secrets`
+blocks `sk-[A-Za-z0-9_-]{24,}` and a longer one stops the commit.
+
+**Three traps, all paid for on the first live run:**
+
+- **A module script never loads.** `<script type="module">` is fetched in CORS
+  mode and `/app/<slug>/` is served into an opaque origin, so the browser
+  blocks it SILENTLY: the page renders, throws nothing, and does nothing. One
+  published app was inert for exactly this reason, and `app_interactive` still
+  passed for it — typing and clicking "work", nothing happens — which is why
+  the ASSET half of `app_loads` is the check with teeth. The build
+  instructions now forbid module scripts, since a model cannot discover this
+  from a failure that does not exist.
+- **The checker's own probe looked like an app error.** Reading storage in an
+  opaque origin throws a `SecurityError`, and `key_not_persisted`'s probe
+  provokes it; Chromium reports it on the page-error channel as well, where it
+  failed every app. Filtered narrowly — that one denial, not SecurityErrors in
+  general.
+- **The chat mode did not stick.** The `dr_chat_mode` pin makes the dropdown
+  already read the wanted mode, so the harness returned satisfied and
+  `/api/settings` then reverted it. That records the WRONG AGENT: an Agent
+  Studio run that fell back to Deep Research prints code as prose and builds
+  nothing, and the clip looks fine unless you read the composer. `selectMode`
+  now holds the value and fails the run rather than recording the wrong thing.
+
+### 3.6 Failure posture
 
 One failing run never aborts a batch (invariant 2's posture, applied to a
 harness). A run that times out keeps its video and timeline — a stalled run is
