@@ -37,6 +37,10 @@
 //   --poster end|mid     end (default) = the frozen finished answer; mid = 60% in
 //   --out <file>         write the video somewhere other than <dir>/final.mp4
 //   --dry-run            print the plan and the exact ffmpeg argv; encode nothing
+//   --force              encode even when the recorded run FAILED verification
+//                        (meta.json's verdict). Without it such a run is not
+//                        encoded at all, so no final.mp4 exists to be uploaded
+//                        by a later step that never read the verdict.
 //
 // ffmpeg and ffprobe must be on PATH (`apt-get install ffmpeg`,
 // `brew install ffmpeg`). Without them --dry-run still works, which is how the
@@ -73,7 +77,7 @@ export function parseArgs(argv) {
       continue;
     }
     const key = a.slice(2);
-    if (key === "dry-run" || key === "all" || key === "help") {
+    if (key === "dry-run" || key === "all" || key === "help" || key === "force") {
       opts[key] = true;
       continue;
     }
@@ -194,6 +198,39 @@ export function editCapture(dir, opts) {
   const tailCheck = checkDelivery({ content: planContent(plan) });
   for (const p of tailCheck.problems) console.log(`   ✗ ${p}`);
   for (const w of tailCheck.warnings) console.log(`   ! ${w}`);
+
+  // THE VERDICT IS ENFORCED HERE, and this is the only place it can be. The
+  // driver grades every run and writes the verdict into meta.json, but grading
+  // a run and refusing to ship it are two different things: #CAP-21 and #CAP-22
+  // were both recorded, encoded, uploaded and put in front of the owner with
+  // their failure sitting in the last frame. "A capture whose app fails is not
+  // published" was a convention, and a convention is not a mechanism.
+  //
+  // Refusing at the EDIT stage rather than at upload is deliberate: it costs
+  // the encode too, and it means no final.mp4 exists to be uploaded by hand or
+  // by a later loop that never saw the verdict. The clip and its endframe.png
+  // stay on disk with their reasons, exactly as a failed Agent Studio app does.
+  //
+  // --force is the override, and it prints what it is overriding — a batch that
+  // deliberately ships a known-bad clip (to show the failure, say) can, but
+  // nobody does it by accident.
+  const verdict = meta.verdict;
+  if (verdict && verdict.ok === false) {
+    const reasons = Array.isArray(verdict.reasons) ? verdict.reasons : [];
+    const lines = reasons.map((r) => `     · ${r?.detail || r?.id || String(r)}`).join("\n");
+    console.log(`   ✗ the recorded run FAILED verification\n${lines}`);
+    console.log(`     endframe: ${join(dir, "endframe.png")}`);
+    // A dry run still prints its plan: inspecting a failed run is exactly when
+    // you want to see one, and nothing is produced by looking.
+    if (!opts["dry-run"] && !opts.force) {
+      return {
+        ok: false,
+        dir,
+        reason: "the recorded run FAILED verification — not encoding it; re-record, or --force",
+      };
+    }
+    if (opts.force) console.log("   ! --force: encoding it anyway");
+  }
 
   if (opts["dry-run"]) {
     console.log(`ffmpeg ${encodeArgs.join(" ")}\n`);

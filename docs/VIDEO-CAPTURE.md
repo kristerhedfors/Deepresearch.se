@@ -236,6 +236,14 @@ the missing assertion: after send, the page must GAIN text (the prompt itself
 subtracted — an app that echoes the question and answers nothing has "grown"),
 and that text must not be error-shaped in either language.
 
+One consequence is intended and worth stating plainly: **a build in
+bring-your-own-key mode fails `app_answered`**, because the key it is handed is
+the sentinel and the sentinel cannot buy an answer. That is not a false
+positive. It is the reason hosted mode is the default the build prompts teach
+(PR #426): an app that needs a key nobody has is an app whose capture shows an
+error on camera, which is the clip the owner rejected. The fix is to build
+hosted, not to soften the check.
+
 **The narrowed noise filter.** `isProviderNoise` is deliberately generous,
 because the sentinel is fake and its rejection fires on every run — but
 "rejected" and "never arrived" are different facts. OpenAI says *"Incorrect API

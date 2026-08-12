@@ -1292,6 +1292,15 @@ export function gradeApp(observations) {
   // already fails), or the page's text could not be read (a missing
   // measurement, recorded in `errors`, is not evidence of a broken app). Every
   // real exercise that presses send produces one.
+  //
+  // KNOWN AND INTENDED CONSEQUENCE: a build in BRING-YOUR-OWN-KEY mode fails
+  // this check, because the key it is given is the sentinel and the sentinel
+  // cannot buy an answer. That is not a false positive — it is the reason
+  // hosted mode is the default the build prompts teach (PR #426): an app that
+  // needs a key nobody has is an app whose capture shows an error on camera,
+  // and the owner rejected exactly such a clip. The remedy is to build hosted,
+  // not to soften this check; a genuinely never-cloud Se/cure flavour can be
+  // captured, it just cannot be captured USING it.
   const reply = o.reply == null ? null : obj(o.reply);
   const replyAdded = reply ? text(reply.added) || text(reply.text) : "";
   const answered = replyBody(replyAdded, reply ? reply.prompt : "");
