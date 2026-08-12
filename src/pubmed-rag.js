@@ -107,6 +107,44 @@ export async function pubmedRerank(env, log, query, matches) {
 }
 
 /**
+ * One Vectorize match → the RECORD behind the item: the same stored fields,
+ * unformatted, so a caller that has to JUDGE a paper rather than cite it can
+ * see the journal, the year and the author list separately.
+ *
+ * It exists for src/scholar.js. The Deep Science agent admits a source only on
+ * positive evidence of peer review (that module's PART 3), and the evidence it
+ * can read off this corpus is the journal title — which `pubmedRagItem` has
+ * already folded into one display string by the time it returns. The verdict
+ * itself is NOT made here: which journals count is the peer-review doctrine,
+ * and that lives in one place, in the module whose promise it is.
+ *
+ * @param {any} match
+ * @returns {{ pmid: string, url: string, title: string, journal: string, date: string, year: number|null, authors: string[], abstract: string } | null}
+ */
+export function pubmedRagRecord(match) {
+  const m = match?.metadata;
+  if (!m) return null;
+  const pmid = pubmedPmid(match.id);
+  const title = String(m.t || "").trim();
+  if (!pmid || !title) return null;
+  const date = String(m.d || "").slice(0, 10);
+  const year = Number(date.slice(0, 4)) || null;
+  return {
+    pmid,
+    url: `https://pubmed.ncbi.nlm.nih.gov/${pmid}/`,
+    title,
+    journal: String(m.j || "").trim(),
+    date,
+    year,
+    authors: String(m.au || "")
+      .split(";")
+      .map((a) => a.trim())
+      .filter(Boolean),
+    abstract: String(m.a || "").trim(),
+  };
+}
+
+/**
  * Search the hosted index.
  *
  * Returns null when the tier is unavailable or the lookup fails, and an empty
@@ -134,6 +172,32 @@ export async function pubmedRagSearch(env, log, query, { limit = 5, spend = null
   return denseSearch(env, log, query, {
     index: env.PUBMED_INDEX,
     itemOf: pubmedRagItem,
+    docOf: pubmedRerankDoc,
+    tag: "pubmed_rag",
+    limit,
+    spend,
+  });
+}
+
+/**
+ * The same search, mapped to RECORDS instead of citable items.
+ *
+ * Identical retrieval — the same embedding, the same cross-encoder, the same
+ * relevance floor — differing only in `itemOf`, so a caller cannot get a
+ * different corpus by asking for a different shape. Null and [] mean exactly
+ * what they mean above.
+ *
+ * @param {any} env
+ * @param {import('./types.js').Logger} log
+ * @param {string} query the natural question, not keyword-AND terms
+ * @param {{ limit?: number, spend?: import('./dense-rag.js').RetrievalSpend | null }} [opts]
+ * @returns {Promise<Array<NonNullable<ReturnType<typeof pubmedRagRecord>>> | null>}
+ */
+export async function pubmedRagRecords(env, log, query, { limit = 5, spend = null } = {}) {
+  if (!pubmedRagAvailable(env)) return null;
+  return denseSearch(env, log, query, {
+    index: env.PUBMED_INDEX,
+    itemOf: pubmedRagRecord,
     docOf: pubmedRerankDoc,
     tag: "pubmed_rag",
     limit,

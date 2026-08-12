@@ -14,8 +14,19 @@
 //     is on camera: it opens the published /app/<slug>/, types a fake key into
 //     every key-ish field, asks the app something and presses send.
 //
-//   gradeApp(observations) -> { pass, checks, failures }   PURE. Six checks
+//   gradeApp(observations) -> { pass, checks, failures }   PURE. Seven checks
 //     with stable ids, unit-tested. This is what the gate reads.
+//
+// THE SEVENTH CHECK, AND WHY IT EXISTS (owner directive, 2026-08-12, capture
+// #CAP-22). The first six certified a dead app as working. #CAP-22's stored
+// verdict is `pass: true` with all six green — including
+// `app_interactive: "typed into textarea#input and pressed button#send"` —
+// while the clip's own final frame shows the published app answering its
+// visitor "Error: could not get a response." `app_interactive` typed and
+// clicked and NEVER ASKED WHETHER A REPLY CAME BACK, so pressing a button that
+// leads nowhere was a pass. `app_answered` is that missing assertion: after
+// send, the page must actually GAIN a reply, and that reply must not be an
+// error message.
 //
 // WHY THE HALVES ARE SPLIT. The interesting judgements ("is that field masked",
 // "is a 401 a failure") are decisions, not browser work, and a decision that
@@ -69,7 +80,7 @@
 // the hook will stop you; shorten or rename it instead of passing --no-verify.
 export const SENTINEL_KEY = "sk-FAKE-CAPTURE-SENTINEL";
 
-/** The six checks, in the order they are reported. Stable ids — a gate keys on them. */
+/** The seven checks, in the order they are reported. Stable ids — a gate keys on them. */
 export const CHECK_IDS = [
   "app_loads",
   "no_page_errors",
@@ -77,7 +88,112 @@ export const CHECK_IDS = [
   "key_not_revealed",
   "key_not_persisted",
   "app_interactive",
+  "app_answered",
 ];
+
+/**
+ * How much NEW text (with the prompt we typed subtracted) counts as the app
+ * having replied. Low on purpose: a one-line answer is still an answer, and the
+ * sharp half of `app_answered` is the error-string test below, not this.
+ */
+export const MIN_REPLY_CHARS = 20;
+
+/**
+ * Error-shaped things a generated app writes where its answer should be.
+ *
+ * DUPLICATED, deliberately and narrowly. The full bilingual registry is
+ * `scripts/capture-guard.mjs`'s FAILURE_SIGNS, and this module may not import
+ * it: app-e2e.mjs is contractually import-free so the root `npm test` can load
+ * it on a checkout where `cd tests && npm install` never happened. So the four
+ * shapes actually observed in published apps live here too, and
+ * `scripts/capture-guard.test.mjs` cross-checks the two lists against the same
+ * verbatim strings so they cannot drift apart in silence.
+ *
+ * EN and SV in matched pairs (CLAUDE.md invariant 6). The Swedish patterns
+ * avoid `\b`, which treats å/ä/ö as non-word characters.
+ */
+export const REPLY_ERROR_PATTERNS = [
+  // "Error: could not get a response." — #CAP-22's final frame, verbatim.
+  { id: "error_prefix", lang: "en", re: /^[\s*_#>`-]*error\b\s*[:!,—–-]/im },
+  { id: "error_prefix", lang: "sv", re: /^[\s*_#>`-]*fel\s*[:!,—–-]/im },
+  {
+    id: "no_response_produced",
+    lang: "en",
+    re: /(?:could|can|would)\s*n(?:o|')?t\s+(?:get|give|generate|produce|provide|return|fetch|receive)[^.\n]{0,32}(?:response|answer|reply)|unable to (?:get|give|generate|produce|provide|return)[^.\n]{0,32}(?:response|answer|reply)/i,
+  },
+  {
+    id: "no_response_produced",
+    lang: "sv",
+    re: /kunde inte (?:få|hämta|ge|generera|producera|leverera|lämna|returnera)[^.\n]{0,32}svar/i,
+  },
+  // "401 — You didn't provide an API key…" — #CAP-21's final frame, on an app
+  // whose key field was visibly filled.
+  {
+    id: "api_key_missing",
+    lang: "en",
+    re: /(?:did\s*n(?:o|')?t|does\s*n(?:o|')?t|have\s*n(?:o|')?t|never)\s+provide[sd]?\s+(?:an?\s+|your\s+)?api[\s_-]?key|api[\s_-]?key\s+(?:is\s+)?(?:missing|required|not (?:set|provided|configured|stored|found))/i,
+  },
+  {
+    id: "api_key_missing",
+    lang: "sv",
+    re: /(?:angav|gav|skickade)\s+(?:ingen|inte någon)\s+api[\s_-]?nyckel|api[\s_-]?nyckel(?:n|en)?\s+(?:saknas|krävs)/i,
+  },
+  // The app kit's own hosted-mode failure states.
+  {
+    id: "hosted_access_unavailable",
+    lang: "en",
+    re: /hosted model access is unavailable|published without a live grant|hosted allowance is used up/i,
+  },
+  {
+    id: "hosted_access_unavailable",
+    lang: "sv",
+    re: /värdbaserade modellåtkomst är inte tillgänglig|publicerades utan ett aktivt tillstånd|värdbaserade kvot är slut/i,
+  },
+];
+
+/**
+ * Does this look like an error where the app's reply should be? Returns the
+ * matching sign's id, or null. PURE.
+ * @param {any} value
+ * @returns {string | null}
+ */
+export function replyLooksBroken(value) {
+  const s = text(value);
+  if (!s.trim()) return null;
+  for (const sign of REPLY_ERROR_PATTERNS) {
+    if (sign.re.test(s)) return sign.id;
+  }
+  return null;
+}
+
+/**
+ * The text a send ADDED to the page: the tail after the part that was already
+ * there, or the whole thing when the app re-rendered instead of appending.
+ * @param {any} before
+ * @param {any} after
+ * @returns {string}
+ */
+export function addedText(before, after) {
+  const b = text(before);
+  const a = text(after);
+  if (b && a.startsWith(b)) return a.slice(b.length);
+  return a;
+}
+
+/**
+ * What is left of a reply once the question we typed into the app is taken back
+ * out. An app that echoes the prompt into its transcript and then answers
+ * nothing has "grown" by the length of the prompt, which is not a reply.
+ * @param {any} added
+ * @param {any} prompt
+ * @returns {string}
+ */
+export function replyBody(added, prompt) {
+  const p = text(prompt).trim();
+  let s = text(added);
+  if (p) s = s.split(p).join(" ");
+  return s.replace(/\s+/g, " ").trim();
+}
 
 /** What exerciseApp asks the app, when it finds something to type into. */
 export const DEFAULT_PROMPT = "Hello! Give me one short sentence about the sea.";

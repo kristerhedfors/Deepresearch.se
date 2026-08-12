@@ -9,19 +9,26 @@ import {
   SHAPES,
   bitrateCapKbps,
   buildFilterGraph,
+  HEAD_FLASH,
   captureSlug,
   checkDelivery,
+  contentEnd,
+  headTrim,
   examplePrompts,
   expandMatrix,
   ffmpegArgs,
   formatPlan,
+  lastContentSample,
   mergeIntervals,
   mergeSegments,
   modeForAgent,
   parseProbe,
+  parseSignature,
   pickPrompts,
+  planContent,
   planEdit,
   posterArgs,
+  posterAtMs,
   resolveShape,
   secs,
   stillSpans,
@@ -256,15 +263,20 @@ test("waitMode 'speed' keeps the wait on screen instead of cutting it", () => {
 test("waitMode 'keep' is the unedited run at the chosen speed", () => {
   const plan = planEdit({ sourceMs: 32000, samples: RUN, waitMode: "keep", speed: 2 });
   assert.equal(plan.cutMs, 0);
-  assert.equal(plan.keptMs, 32000);
-  assert.ok(Math.abs(plan.outMs - 16000) < 1);
+  // 31750, not 32000: "keep" is about dead AIR. The clip still ends on the last
+  // frame the timeline proves carried content, never on unsampled teardown.
+  assert.equal(plan.keptMs, 31750);
+  assert.ok(Math.abs(plan.segmentsMs - 31750 / 2) < 1);
 });
 
 test("the chosen speed applies to the parts where something happens", () => {
   const at1 = planEdit({ sourceMs: 32000, samples: RUN, speed: 1 });
   const at2 = planEdit({ sourceMs: 32000, samples: RUN, speed: 2 });
-  assert.ok(Math.abs(at1.outMs / 2 - at2.outMs) < 1);
+  // segmentsMs, not outMs: the end hold is a fixed freeze, not something the
+  // playback multiplier touches.
+  assert.ok(Math.abs(at1.segmentsMs / 2 - at2.segmentsMs) < 1);
   assert.equal(at2.keptMs, at1.keptMs, "speed changes playback, not what is kept");
+  assert.equal(at1.outMs - at1.segmentsMs, at1.endHoldMs);
 });
 
 test("trims drop the head and tail of the recording", () => {
@@ -275,9 +287,13 @@ test("trims drop the head and tail of the recording", () => {
 
 test("a recording with no timeline at all still produces one playable segment", () => {
   const plan = planEdit({ sourceMs: 12000, samples: [] });
-  assert.deepEqual(plan.segments, [{ start: 0, end: 12000, kind: "action", speed: 1 }]);
+  // The head flash is dropped on the assumed default; nothing else is known,
+  // so the rest of the file is one segment.
+  assert.deepEqual(plan.segments, [{ start: HEAD_FLASH.fallbackMs, end: 12000, kind: "action", speed: 1 }]);
+  assert.equal(plan.headTrimSource, "assumed");
   assert.equal(plan.cutMs, 0);
   assert.equal(plan.waitMs, 0);
+  assert.equal(plan.contentStatus, "unknown", "nothing to locate the last content frame with");
 });
 
 test("a run that is entirely dead air keeps the hold rather than encoding nothing", () => {
@@ -308,6 +324,200 @@ test("contiguous same-speed segments fuse into one trim", () => {
 });
 
 // ---------------------------------------------------------------------------
+// The head flash and the last frame with content
+// ---------------------------------------------------------------------------
+//
+// The driver's real signature grammar (tests/capture.mjs contentSignature):
+// msgs|steps|finished|answerLen|step|stats. A torn-down or navigated-away page
+// reads 0|0|0|0||0.
+
+const SIG = (msgs, steps, finished, answerLen, step = "", stats = 0) =>
+  `${msgs}|${steps}|${finished}|${answerLen}|${step}|${stats}`;
+const BLANK = SIG(0, 0, 0, 0);
+
+test("a content signature is read, and an unknown format is treated as content", () => {
+  const answering = parseSignature(SIG(3, 7, 5, 1842, "Writing report…", 1));
+  assert.equal(answering.known, true);
+  assert.equal(answering.answerLen, 1842);
+  assert.equal(answering.stats, true);
+  assert.equal(answering.content, true);
+
+  const torndown = parseSignature(BLANK);
+  assert.equal(torndown.known, true);
+  assert.equal(torndown.content, false, "a blank page is the whole point of the check");
+
+  // An empty composer before the prompt goes in is also "no content" — nothing
+  // of the run is on screen yet.
+  assert.equal(parseSignature(SIG(0, 0, 0, 0, "", 0)).content, false);
+
+  // Anything this module cannot parse counts as content: footage is never
+  // deleted on the strength of a format guess.
+  assert.equal(parseSignature("s17").known, false);
+  assert.equal(parseSignature("s17").content, true);
+  assert.equal(parseSignature("").content, false);
+  assert.equal(parseSignature(null).content, false);
+});
+
+test("the last frame with content is found past a blank tail", () => {
+  const samples = [
+    { t: 0, sig: BLANK },
+    { t: 250, sig: SIG(2, 3, 1, 40) },
+    { t: 500, sig: SIG(2, 5, 5, 900, "", 1) },
+    { t: 750, sig: BLANK }, // navigated away / torn down
+    { t: 1000, sig: BLANK },
+  ];
+  const last = lastContentSample(samples);
+  assert.equal(last?.t, 500);
+  assert.equal(contentEnd({ samples }).ms, 500);
+  assert.equal(contentEnd({ samples }).status, "found");
+  assert.equal(contentEnd({ samples }).source, "sample");
+});
+
+test("a marker raises the content end — an Agent Studio run's app page has no chat DOM", () => {
+  const samples = [
+    { t: 0, sig: SIG(2, 5, 5, 900, "", 1) },
+    { t: 250, sig: BLANK }, // walked to /app/<slug>/ — still the best footage in the clip
+    { t: 500, sig: BLANK },
+  ];
+  const end = contentEnd({ samples, markers: [{ t: 480, id: "app_done" }] });
+  assert.equal(end.ms, 480);
+  assert.equal(end.source, "marker");
+});
+
+test("a blank recording and a missing timeline are told apart", () => {
+  assert.deepEqual(contentEnd({ samples: [{ t: 0, sig: BLANK }] }), { ms: null, status: "blank", source: null });
+  assert.deepEqual(contentEnd({}), { ms: null, status: "unknown", source: null });
+});
+
+test("the cut ends on the last content frame, not at end-of-file", () => {
+  // The recording outlives the run: the sampler stops, then Playwright tears
+  // the context down, and those last seconds are nobody's choice.
+  const samples = [
+    { t: 2000, sig: SIG(1, 0, 0, 0) },
+    { t: 2250, sig: SIG(2, 4, 4, 700, "", 1) },
+  ];
+  const plan = planEdit({ sourceMs: 9000, samples, waitMode: "keep" });
+  const last = plan.segments[plan.segments.length - 1];
+  assert.equal(last.end, 2250, "the 6.75 s of teardown after the last sample is not the ending");
+  assert.equal(plan.contentEndMs, 2250);
+  assert.equal(plan.contentStatus, "found");
+  assert.equal(plan.tailMs, 0);
+
+  // …and the raw tail can be asked for back.
+  const raw = planEdit({ sourceMs: 9000, samples, waitMode: "keep", endAtContent: false });
+  assert.equal(raw.segments[raw.segments.length - 1].end, 9000);
+  assert.ok(raw.tailMs > 6000, "which is exactly what the delivery check then flags");
+});
+
+test("--trim-end can only shorten the clip further, never extend it", () => {
+  const samples = [
+    { t: 1000, sig: SIG(1, 1, 0, 10) },
+    { t: 5000, sig: SIG(2, 4, 4, 700, "", 1) },
+  ];
+  const plan = planEdit({ sourceMs: 9000, samples, waitMode: "keep", trimEndMs: 5500 });
+  assert.equal(plan.segments[plan.segments.length - 1].end, 3500);
+});
+
+test("the page-load flash is trimmed off the head, measured from the timeline", () => {
+  // The sampler starts once the app is up, so the first sample is evidence of
+  // when there was something to look at. The white flash lives before it.
+  assert.deepEqual(headTrim({ samples: [{ t: 3200, sig: BLANK }] }), { ms: HEAD_FLASH.maxMs, status: "measured" });
+  assert.deepEqual(headTrim({ samples: [{ t: 900, sig: BLANK }] }), { ms: 900, status: "measured" });
+  // A fast first sample must not leave a residual flash (measured at ~650 ms).
+  assert.deepEqual(headTrim({ samples: [{ t: 200, sig: BLANK }] }), { ms: HEAD_FLASH.fallbackMs, status: "measured" });
+  // A timeline covering frame zero has measured the head instead of guessing.
+  assert.deepEqual(headTrim({ samples: [{ t: 0, sig: BLANK }] }), { ms: 0, status: "measured" });
+  // Nothing to measure: assume the flash is there, because it always is.
+  assert.deepEqual(headTrim({}), { ms: HEAD_FLASH.fallbackMs, status: "assumed" });
+  assert.ok(HEAD_FLASH.fallbackMs > 650, "the flash was measured at ~0.65 s (CAP-20/21/22, 2026-08-12)");
+});
+
+test("an explicit --trim-start wins over the measured head, including 0", () => {
+  const samples = [{ t: 2000, sig: SIG(1, 1, 0, 10) }, { t: 4000, sig: SIG(2, 4, 4, 700, "", 1) }];
+  const auto = planEdit({ sourceMs: 9000, samples, waitMode: "keep" });
+  assert.equal(auto.headTrimMs, HEAD_FLASH.maxMs);
+  assert.equal(auto.headTrimSource, "measured");
+  assert.equal(auto.segments[0].start, HEAD_FLASH.maxMs);
+
+  const kept = planEdit({ sourceMs: 9000, samples, waitMode: "keep", trimStartMs: 0 });
+  assert.equal(kept.headTrimMs, 0);
+  assert.equal(kept.headTrimSource, "explicit");
+  assert.equal(kept.segments[0].start, 0);
+});
+
+test("the end hold freezes the finished state and is counted as output time", () => {
+  const plan = planEdit({ sourceMs: 32000, samples: RUN });
+  assert.equal(plan.endHoldMs, PLAN_DEFAULTS.endHoldMs);
+  assert.ok(plan.endHoldMs >= 1000, "a feed reader needs a beat to read the answer");
+  assert.equal(plan.outMs, plan.segmentsMs + plan.endHoldMs, "the bitrate cap and the duration check read outMs");
+
+  const none = planEdit({ sourceMs: 32000, samples: RUN, endHoldMs: 0 });
+  assert.equal(none.endHoldMs, 0);
+  assert.equal(none.outMs, none.segmentsMs);
+});
+
+test("the end hold is a tpad clone AFTER the frame rate is normalised", () => {
+  const plan = planEdit({ sourceMs: 32000, samples: RUN, endHoldMs: 1200 });
+  const graph = buildFilterGraph(plan, { shape: "portrait" });
+  assert.ok(graph.includes("tpad=stop_mode=clone:stop_duration=1.200"));
+  assert.ok(
+    graph.indexOf("fps=30") < graph.indexOf("tpad="),
+    "a Playwright webm is variable-rate; cloning before fps= can hold one very long frame",
+  );
+  assert.ok(graph.endsWith("format=yuv420p[v]"));
+  assert.ok(!buildFilterGraph(planEdit({ sourceMs: 32000, samples: RUN, endHoldMs: 0 })).includes("tpad="));
+});
+
+test("the poster is the frozen end state by default, so the deck card is diagnostic", () => {
+  const plan = planEdit({ sourceMs: 32000, samples: RUN, endHoldMs: 1200 });
+  const at = posterAtMs(plan);
+  assert.ok(at > plan.segmentsMs, "inside the hold: the finished answer, not a mid-stream frame");
+  assert.ok(at <= plan.outMs - 60, "and far enough inside that the seek still lands on a frame");
+  // The old behaviour is still reachable, and an explicit offset still wins.
+  assert.ok(Math.abs(posterAtMs(plan, { mode: "mid" }) - plan.outMs * 0.6) < 1);
+  assert.equal(posterAtMs(plan, { atMs: 2500 }), 2500);
+  // With no hold the poster is still the end, not the middle.
+  const flat = planEdit({ sourceMs: 32000, samples: RUN, endHoldMs: 0 });
+  assert.ok(posterAtMs(flat) > flat.outMs * 0.9);
+  assert.ok(posterAtMs(flat) <= flat.outMs - 60);
+});
+
+test("the delivery check reports a clip whose ending cannot be trusted", () => {
+  // A blank recording is a broken capture, not a judgement call.
+  const blank = checkDelivery({ content: planContent(planEdit({ sourceMs: 9000, samples: [{ t: 500, sig: BLANK }] })) });
+  assert.equal(blank.ok, false);
+  assert.match(blank.problems.join(" "), /blank/i);
+
+  // No timeline: it may be fine, but nobody checked.
+  const unknown = checkDelivery({ content: planContent(planEdit({ sourceMs: 9000, samples: [] })) });
+  assert.equal(unknown.ok, true);
+  assert.match(unknown.warnings.join(" "), /could not be located/);
+
+  // A kept tail past the last content frame is called out by length.
+  const raw = planEdit({
+    sourceMs: 9000,
+    samples: [{ t: 1000, sig: SIG(2, 4, 4, 700, "", 1) }],
+    waitMode: "keep",
+    endAtContent: false,
+  });
+  assert.match(checkDelivery({ content: planContent(raw) }).warnings.join(" "), /after the last frame with content/);
+
+  // A clip that opens on the flash is called out too — that frame is what a
+  // looping player shows the instant the clip ends.
+  assert.match(
+    checkDelivery({ content: { status: "found", tailMs: 0, endHoldMs: 1200, headTrimMs: 0 } }).warnings.join(" "),
+    /page-load flash/,
+  );
+
+  // A good plan says nothing at all.
+  const good = checkDelivery({ content: planContent(planEdit({ sourceMs: 32000, samples: RUN, trimStartMs: 750 })) });
+  assert.deepEqual([...good.problems, ...good.warnings], []);
+
+  // And a caller that passes no content block is unchanged (shapes, aspect).
+  assert.deepEqual(checkDelivery({ width: 1080, height: 1350 }), { ok: true, problems: [], warnings: [] });
+});
+
+// ---------------------------------------------------------------------------
 // ffmpeg
 // ---------------------------------------------------------------------------
 
@@ -330,7 +540,8 @@ test("the raw shape resamples nothing", () => {
   const plan = planEdit({ sourceMs: 5000, samples: [] });
   const graph = buildFilterGraph(plan, { shape: "raw" });
   assert.ok(!graph.includes("scale="));
-  assert.ok(!graph.includes("pad="));
+  // ",pad=" rather than "pad=": the end hold's `tpad=` contains that substring.
+  assert.ok(!graph.includes(",pad="));
   assert.ok(graph.includes("fps=30"));
 });
 

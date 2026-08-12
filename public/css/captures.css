@@ -191,6 +191,12 @@ input, select, textarea {
 .cap-version.is-on { background: var(--accent); color: #fff; border: 1px solid var(--accent); }
 /* Which cut is on screen — shown only while an OLDER version is playing. */
 .cap-playing { margin: .35rem 0 0; }
+/* Replay. The clip deliberately does NOT loop (the last frame is the run's
+   verdict and a loop wraps straight to the page-load white flash), so the one
+   affordance looping used to provide is given back explicitly. Appears only
+   once the clip has ended. */
+.cap-replay { margin-top: .35rem; padding: .22rem .55rem; font-size: .74rem; }
+.cap-replay[hidden] { display: none; }
 
 .cap-body { padding-top: .5rem; }
 .cap-title { margin: 0 0 .35rem; font-size: .9rem; overflow-wrap: anywhere; }

@@ -508,7 +508,15 @@ function playVersion(player, c, version) {
   if (src.poster_url) v.poster = src.poster_url;
   v.controls = true;
   v.muted = true;
-  v.loop = true;
+  // NOT looping, deliberately (2026-08-12, owner review of #CAP-20/21/22). The
+  // last frame of a capture is the run's VERDICT — it shows the finished answer,
+  // or the error the run died on. A looping <video> wraps to t=0 the instant it
+  // ends, and t=0 is the page-load white flash before the site paints, so the
+  // reviewer's eye lands on a blank frame and the evidence is never on screen.
+  // Three reviews in a row reported that blank as if the encode were broken; it
+  // was this flag. Ending on the final frame is what makes "look at the last
+  // frame to see whether it went wrong" possible at all.
+  v.loop = false;
   v.playsInline = true;
   // metadata only: a deck of 50 clips must not pull 50 MP4s on page open.
   v.preload = "metadata";
@@ -528,6 +536,23 @@ function playVersion(player, c, version) {
     player.replaceChild(note, v);
   });
   player.appendChild(v);
+
+  // Replay has to be one click, because not looping costs the one thing looping
+  // was good for. The scrubber can do it, but a reviewer swiping through a deck
+  // should not have to aim at a 4-pixel track to watch a 40-second clip twice.
+  // The button only exists once the clip has ended, so it never covers a frame
+  // anyone is still looking at.
+  const replay = el("button", "cap-replay", "↺ Replay");
+  replay.type = "button";
+  replay.hidden = true;
+  replay.addEventListener("click", () => {
+    replay.hidden = true;
+    v.currentTime = 0;
+    v.play().catch(() => {});
+  });
+  v.addEventListener("ended", () => { replay.hidden = false; });
+  v.addEventListener("play", () => { replay.hidden = true; });
+  player.appendChild(replay);
 
   // Which cut is on screen, said in words — but ONLY for an older one. On the
   // default (newest) version the line would be noise on every card.
