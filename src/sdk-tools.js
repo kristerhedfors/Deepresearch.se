@@ -11,6 +11,7 @@
 // reintroduce a copy.
 
 export {
+  APP_CONFIG_PATH,
   APP_KIT_ASSET_PATH,
   APP_KIT_NOTE,
   APP_KIT_PATH,
@@ -25,6 +26,7 @@ export {
   SDK_TOOL_NAMES,
   buildFilesSummary,
   buildNeedsAppKit,
+  buildNeedsHostedLlm,
   buildSdkContextBlock,
   buildSecureSourceDigest,
   buildTargetFor,

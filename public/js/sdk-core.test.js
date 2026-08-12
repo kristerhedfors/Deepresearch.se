@@ -7,6 +7,7 @@
 import test, { describe } from "node:test";
 import assert from "node:assert/strict";
 import {
+  APP_CONFIG_PATH,
   APP_KIT_NOTE,
   APP_KIT_PATH,
   BUILD_TOOLS,
@@ -17,6 +18,7 @@ import {
   SECURE_DIGEST_BUDGET,
   buildFilesSummary,
   buildNeedsAppKit,
+  buildNeedsHostedLlm,
   buildSdkContextBlock,
   buildSecureSourceDigest,
   buildTargetFor,
@@ -422,13 +424,44 @@ describe("buildNeedsAppKit", () => {
     assert.equal(buildNeedsAppKit(new Map([["js/app.js", "DRKit.chat(...)"]])), true);
     assert.equal(buildNeedsAppKit(new Map([["index.html", "<h1>hi</h1>"]])), false);
   });
+
+  test("a hosted build asks for the kit too — DRKit.hosted contains the global", () => {
+    // The two injections are independent, but hosted mode is USED through the
+    // kit: a build that referenced only the hosted entry point and got no kit
+    // would be a page calling an undefined global.
+    assert.equal(buildNeedsAppKit([{ path: "js/app.js", content: "const llm = DRKit.hosted({});" }]), true);
+  });
+});
+
+describe("buildNeedsHostedLlm", () => {
+  test("the config script, the entry point or the global is the trigger", () => {
+    assert.equal(
+      buildNeedsHostedLlm([{ path: "index.html", content: `<script src="${APP_CONFIG_PATH}"></script>` }]),
+      true,
+    );
+    assert.equal(buildNeedsHostedLlm([{ path: "js/app.js", content: "DRKit.hosted({ status })" }]), true);
+    assert.equal(buildNeedsHostedLlm([{ path: "js/app.js", content: "window.DR_APP_CONFIG.model" }]), true);
+    // Reserved path: a file the model wrote there is about to be replaced.
+    assert.equal(buildNeedsHostedLlm([{ path: APP_CONFIG_PATH, content: "…" }]), true);
+  });
+
+  test("a bring-your-own-key build mints nothing", () => {
+    assert.equal(buildNeedsHostedLlm([{ path: "js/app.js", content: "DRKit.mountModelPicker({ keyInput })" }]), false);
+    assert.equal(buildNeedsHostedLlm([]), false);
+    assert.equal(buildNeedsHostedLlm(null), false);
+  });
+
+  test("reads a staging Map as readily as a file list", () => {
+    assert.equal(buildNeedsHostedLlm(new Map([["js/app.js", "DRKit.hosted()"]])), true);
+    assert.equal(buildNeedsHostedLlm(new Map([["index.html", "<h1>hi</h1>"]])), false);
+  });
 });
 
 test("APP_KIT_NOTE names the exact API a build has to call", () => {
   // The note is what the model reads; if it drifts from the shipped kit, the
   // build loads a kit it then calls wrongly.
   assert.match(APP_KIT_NOTE, new RegExp(APP_KIT_PATH.replace(/[.]/g, "\\.")));
-  for (const fn of ["mountModelPicker", "DRKit.chat", "DRKit.chatStream", "picker.state()"]) {
+  for (const fn of ["mountModelPicker", "DRKit.chat", "DRKit.chatStream", "llm.state()"]) {
     assert.ok(APP_KIT_NOTE.includes(fn), `${fn} is documented for the model`);
   }
   // The point of the feedback: same providers, flags, no hardcoded model id.
@@ -436,7 +469,29 @@ test("APP_KIT_NOTE names the exact API a build has to call", () => {
     assert.ok(APP_KIT_NOTE.includes(provider), `${provider} is named`);
   }
   assert.match(APP_KIT_NOTE, /flag/i);
-  assert.match(APP_KIT_NOTE, /never write this file yourself|do NOT write this file yourself/);
+  assert.match(APP_KIT_NOTE, /(never|do not) write th(is|ese) files? yourself/i);
+});
+
+test("APP_KIT_NOTE makes HOSTED mode the default and a chat window optional", () => {
+  // Capture #CAP-22 (2026-08-12): the built agent opened with "Error: you
+  // didn't provide an api key", because every build put a key field and a model
+  // dropdown in front of its first visitor. The owner's ask was two things at
+  // once — run on the key the site already has, pinned to a model, AND stop
+  // assuming every LLM app is a chat window. Both are prompt-visible or they do
+  // not happen, so pin the substance here.
+  assert.ok(APP_KIT_NOTE.includes(APP_CONFIG_PATH), "the generated config file is named");
+  assert.ok(APP_KIT_NOTE.includes("DRKit.hosted"), "the hosted entry point is documented");
+  assert.match(APP_KIT_NOTE, /THE DEFAULT/, "hosted is stated as the default, not an option");
+  assert.match(APP_KIT_NOTE, /llm\.note\(\)/, "the app is told to disclose the hosted posture");
+  assert.match(APP_KIT_NOTE, /llm\.available\(\)/, "and to handle a grant that is not there");
+
+  // The interface rule: a chat window is one option, not the shape of every app.
+  const ui = APP_KIT_NOTE.split("\n").find((l) => /chat window/i.test(l));
+  assert.ok(ui, "the note says an app need not be a chat window");
+  assert.match(ui, /button|form|not a requirement/i);
+
+  // The bring-your-own-key path survives — a Se/cure-style flavour needs it.
+  assert.match(APP_KIT_NOTE, /BRING-YOUR-OWN-KEY/);
 });
 
 test("APP_KIT_NOTE makes an unmasked or leaked key a stated failure", () => {

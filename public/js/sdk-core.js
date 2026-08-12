@@ -316,6 +316,16 @@ export const APP_KIT_PATH = "js/dr-provider-kit.js";
 export const APP_KIT_ASSET_PATH = "/app-kit/dr-provider-kit.js";
 
 /**
+ * Where the HOSTED-mode config lands inside a published build. Generated at
+ * publish time (src/app-token.js), not written by the model: it carries the
+ * app's own Se/rver-token grant and the model pinned to it, so an app can run
+ * on the site's model access with no API key typed into it at all (capture
+ * #CAP-22, 2026-08-12). RESERVED like the kit's own path — a file the model
+ * wrote here is replaced.
+ */
+export const APP_CONFIG_PATH = "js/dr-app-config.js";
+
+/**
  * Does this build reference the app kit — i.e. should the publish layer inject
  * it? True when any staged file mentions the kit's path or its one global,
  * which covers both the `<script src>` tag and the `DRKit.` call sites. A file
@@ -335,23 +345,60 @@ export function buildNeedsAppKit(files) {
 }
 
 /**
+ * Does this build want HOSTED model access — i.e. should the publish layer mint
+ * its grant and inject the config file? True when any staged file references
+ * the config's path, the hosted entry point, or the global it defines. Same
+ * shape and same reasoning as `buildNeedsAppKit`: the model asks for it by
+ * using it, and a file written AT the reserved path counts (it is about to be
+ * replaced by the generated one).
+ * @param {Array<{ path?: string, content?: string }> | Map<string, string>} files
+ * @returns {boolean}
+ */
+export function buildNeedsHostedLlm(files) {
+  const entries = files instanceof Map
+    ? [...files].map(([path, content]) => ({ path, content }))
+    : Array.isArray(files) ? files : [];
+  return entries.some(({ path, content }) =>
+    path === APP_CONFIG_PATH ||
+    (typeof content === "string" &&
+      (content.includes(APP_CONFIG_PATH) || content.includes("DRKit.hosted") || content.includes("DR_APP_CONFIG"))),
+  );
+}
+
+/**
  * The kit briefing every build prompt and the SDK context block carry. ONE
  * definition, because the model has to call the kit's API exactly — a note
  * that drifts from the shipped file produces an app that loads a kit it then
  * calls wrongly. Re-exported to the Worker through src/sdk-tools.js.
+ *
+ * HOSTED IS THE DEFAULT (capture #CAP-22, 2026-08-12). Every build was ending
+ * up behind a key field and a model dropdown, so the first thing anyone handed
+ * the app met was "Error: you didn't provide an api key" — an agent nobody but
+ * its builder could use. The owner's correction: build agents that run on the
+ * key the site already has, pinned to a model, so the interface is only what
+ * the agent itself needs. The bring-your-own-key picker stays, for the flavours
+ * that genuinely want Se/cure's never-cloud posture.
  */
 export const APP_KIT_NOTE =
-  "THE API-KEY INPUT IS STANDARDISED — never hand-roll one. If the app you build takes an API key (nearly every agent does), it MUST use this site's app kit, which is added to your build automatically:\n" +
-  `  1. Load it first: <script src="${APP_KIT_PATH}"></script> — do NOT write this file yourself, do NOT inline a copy of it, and do not reference it if the app needs no key. Referencing it is what makes the server add it.\n` +
-  '  2. Give it a key <input type="password" autocomplete="off" spellcheck="false"> and a model <select> (plus optional status/provider/base-URL elements) and let it wire them:\n' +
-  "       const picker = DRKit.mountModelPicker({ keyInput, modelSelect, status, lang: 'en' });\n" +
-  "  3. Send with the picker's state: DRKit.chat(picker.state(), messages, { maxTokens: 1024 }) for a whole reply, or DRKit.chatStream(picker.state(), messages, onDelta) to stream one. `messages` is the OpenAI shape ([{role:'system'|'user'|'assistant', content:'…'}]); the kit adapts Anthropic's wire itself.\n" +
-  "NEVER REVEAL THE KEY — a pasted key is a live credential, and a revealed one is a credential shown to whoever is looking at the screen, or watching a recording of it:\n" +
+  "MODEL ACCESS IS STANDARDISED — never hand-roll a key field, a provider table or a hardcoded model id. This site's app kit is added to your build automatically; load it first, before your own scripts:\n" +
+  `     <script src="${APP_CONFIG_PATH}"></script>   (hosted mode only — see A)\n` +
+  `     <script src="${APP_KIT_PATH}"></script>\n` +
+  "  Do NOT write these files yourself and do NOT inline a copy of either: referencing them is what makes the server add them.\n" +
+  "A. HOSTED MODE — THE DEFAULT. The app runs on DeepResearch.se's own model access, pinned to a model chosen at publish time, so the visitor types NOTHING to get started:\n" +
+  `       <script src="${APP_CONFIG_PATH}"></script> then\n` +
+  "       const llm = DRKit.hosted({ status, lang: 'en' });   // no key input, no model dropdown\n" +
+  "  `llm` has the same shape as the picker below (state / ready / note), so sending is identical. Build this unless the user asked for something else — an agent someone can open and immediately use is the whole point, and a key field is what stops that.\n" +
+  "  Disclose it honestly in the app's UI: llm.note() returns the sentence (hosted conversations DO go through this site's server to its model provider, metered against the app's allowance). Show llm.note() somewhere visible, and when llm.available() is false say so rather than failing silently.\n" +
+  "  Optional: pass a `modelSelect` element and call llm.refresh() if the app should let the visitor pick another hosted model; the pinned one leads the list. Most apps want no picker at all.\n" +
+  "B. BRING-YOUR-OWN-KEY MODE — when the user ASKS for it, or when the flavour is a Se/cure-style never-cloud client whose whole point is that no server sees the conversation:\n" +
+  '       const picker = DRKit.mountModelPicker({ keyInput, modelSelect, status, lang: \'en\' });\n' +
+  '  with a key <input type="password" autocomplete="off" spellcheck="false"> and a model <select>. Pasting a key auto-detects the provider, auto-loads the models that key can actually reach, and renders this site\'s standard dropdown — each model prefixed with the flag of the country the conversation is processed in, over the same providers Se/cure supports (OpenAI, Anthropic, Groq, Hugging Face, Berget, any OpenAI-compatible endpoint). Do not narrow that list or invent your own provider table. The key stays in the page and never reaches this site\'s server — say so with picker.note().\n' +
+  "SENDING (identical in both modes): DRKit.chat(llm.state(), messages, { maxTokens: 1024 }) for a whole reply, or DRKit.chatStream(llm.state(), messages, onDelta) to stream one. `messages` is the OpenAI shape ([{role:'system'|'user'|'assistant', content:'…'}]); the kit adapts Anthropic's wire itself.\n" +
+  "NEVER REVEAL A KEY in mode B — a pasted key is a live credential, and a revealed one is shown to whoever is looking at the screen, or watching a recording of it:\n" +
   '  - the key <input> MUST be type="password", with autocomplete="off" and spellcheck="false" (the kit sets these on the input it is handed too, but write them in your markup — the field has to be masked before anything is typed into it);\n' +
   "  - do NOT echo the key anywhere in the page: not into a heading, a status line, another element's title or value, a debug/log pane, or the URL;\n" +
   "  - do NOT write the key to localStorage, sessionStorage or a cookie — the kit keeps it in a variable on the page for the lifetime of the tab, and your app must not undo that.\n" +
-  "WHAT THAT BUYS THE USER: pasting a key auto-detects the provider, auto-loads the models that key can actually reach (live from the provider, with a static fallback), and renders the DeepResearch.se standard dropdown — each model prefixed with the flag of the country the conversation is processed in. The kit supports the same providers this site does: OpenAI, Anthropic, Groq, Hugging Face, Berget, and any OpenAI-compatible endpoint. Do not narrow that list, hardcode a model id, or invent your own provider table.\n" +
-  "The key stays in the page, is sent only to the provider, and never reaches this site's server — say so in the app's own UI (picker.note() returns that sentence for the active provider).";
+  "THE INTERFACE IS WHATEVER THE AGENT NEEDS — a chat window is one option among many, not a requirement. A single button, a form, a grid of prompts, a canvas, a wizard: if the agent's job is better served without a message thread, build it without one. What every app should avoid is furniture the user never asked for: settings the agent does not use, a key field in hosted mode, a model dropdown nobody needs.";
 
 /**
  * Slug fragment from a title: lowercase words joined by hyphens, bounded.
