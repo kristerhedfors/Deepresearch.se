@@ -401,10 +401,19 @@ window, like only buttons as well"). So:
   complete agents. Both halves are pinned in `sdk-core.test.js` — the prompt is
   the only place this can be true.
 
-Owed (live-verify): a real Agent Studio build on the deployed site that asks for
-a chat agent, opened in a fresh browser with no key, answering. The unit suites
-cover the boundary and the kit; they cannot prove the preflight survives the
-edge.
+**Verified live (2026-08-12, deployed digest `46c1bd69`).** A real
+`--agents agent-builder` capture run on the deployed site built the same
+`agb-tutor` starter #CAP-22 had used. `openai/gpt-oss-120b` — a NON-tool model,
+so this went through the deterministic FILE-block path — shipped
+`<script src="js/dr-app-config.js">` + the kit, `DRKit.hosted({ status })`, one
+text input and one Send button. No key field, no model dropdown. The app-e2e
+gate passed all six checks, with `key_field_masked` reading *"no key field —
+this app does not ask for a key"*. The app's own embedded grant then answered a
+real completion through the proxy: `POST /api/server-token/llm/chat/completions`
+with `Origin: null` and the app's token → HTTP 200,
+`access-control-allow-origin: *`, a Mistral-Small reply. That is the whole chain
+— prompt, publish, mint, inject, CORS, completion — proven end to end, which the
+unit suites cannot do because the preflight only exists at the edge.
 
 ## The app kit — the standard key + model picker (feedback #66, 2026-08-10)
 
