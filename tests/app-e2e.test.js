@@ -164,6 +164,59 @@ test("THE SENTINEL 401 IS NOT A FAILURE — provider and network noise is filter
   assert.match(check(r, "no_page_errors").detail, /3 provider\/network messages ignored/);
 });
 
+// #CAP-22 v2, the hosted re-shoot. Its stored verdict passed 6/6 with
+// "5 provider/network messages ignored — the sentinel key is rejected on
+// purpose", on a run whose key_field_masked read "no key field — this app does
+// not ask for a key". No key was typed, so there was no fake rejection to
+// forgive: those five messages were the app failing, and the clip's last frame
+// shows it answering "Error: could not get a response."
+test("a HOSTED app gets no sentinel amnesty — provider errors count against it", () => {
+  const hosted = { keyFields: [], sentinelTyped: 0 };
+  const r = gradeApp(
+    passing({
+      ...hosted,
+      consoleErrors: [
+        { type: "error", text: "Failed to load resource: the server responded with a status of 401 ()", noise: true },
+        { type: "error", text: "POST https://deepresearch.se/api/server-token/llm/chat/completions 401", noise: true },
+      ],
+      pageErrors: [{ text: "TypeError: Failed to fetch", noise: true }],
+    }),
+  );
+  // The stale `noise: true` flags must NOT save it: they were stamped as the
+  // messages arrived, under a premise that never held for this run.
+  assert.equal(okOf(r, "no_page_errors"), false, JSON.stringify(r.failures));
+  assert.equal(r.pass, false);
+});
+
+test("a hosted app still forgives the checker's OWN sandbox probes", () => {
+  // The opaque-origin SecurityError is provoked by key_not_persisted itself, so
+  // it is noise whether or not a key was typed — otherwise narrowing the filter
+  // would fail every hosted app on an error this module causes.
+  const r = gradeApp(
+    passing({
+      keyFields: [],
+      sentinelTyped: 0,
+      pageErrors: [{ text: "SecurityError: Failed to read the 'localStorage' property: the document is sandboxed and lacks the 'allow-same-origin' flag" }],
+    }),
+  );
+  assert.equal(okOf(r, "no_page_errors"), true, JSON.stringify(r.failures));
+  assert.match(check(r, "no_page_errors").detail, /no key was typed, so provider errors are NOT forgiven/);
+});
+
+test("isProviderNoise defaults to the forgiving behaviour when nothing is said about the key", () => {
+  // The default matters: an unaware caller must keep BYOK amnesty, because the
+  // failure mode of losing it fires on every single run and gets a gate
+  // switched off. Only an explicit sentinelTyped:false narrows it.
+  assert.equal(isProviderNoise("Failed to load resource: status of 401"), true);
+  assert.equal(isProviderNoise("Failed to load resource: status of 401", {}), true);
+  assert.equal(isProviderNoise("Failed to load resource: status of 401", { sentinelTyped: true }), true);
+  assert.equal(isProviderNoise("Failed to load resource: status of 401", { sentinelTyped: false }), false);
+  // The key-never-sent 401 stays a failure under either premise.
+  const neverSent = "401 — You didn't provide an API key. You need to provide your API key in an Authorization header";
+  assert.equal(isProviderNoise(neverSent), false);
+  assert.equal(isProviderNoise(neverSent, { sentinelTyped: false }), false);
+});
+
 test("noise is re-judged from the text when the observation did not classify it", () => {
   // An observations file hand-written, or produced by an older exercise, has no
   // `noise` flag — the grade must not become stricter because of that.
