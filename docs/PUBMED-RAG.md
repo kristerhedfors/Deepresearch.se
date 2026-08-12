@@ -835,12 +835,31 @@ index whose coverage was never checked is a confident guess.
 3. **MeSH terms are harvested but unused.** 66.7% of records carry them and they
    are a controlled vocabulary — a natural lexical arm, or metadata filter, or
    query-expansion source. Not wired to anything yet.
-4. **`src/scholar.js` does not use this tier.** The Deep Science agent added
-   its own `europePmcPeerSearch` — a peer-reviewed-only slice that deliberately
-   excludes preprints — and it goes straight to the Europe PMC REST API. Wiring
-   the dense tier in behind it would need a peer-reviewed filter this index does
-   not currently carry (the `types` field is harvested but not stored in the
-   vector metadata), so it is a separate decision rather than an oversight.
+4. ~~**`src/scholar.js` does not use this tier.**~~ **WIRED 2026-08-12.** It now
+   does: `pubmedDenseSearch` is a fifth backend beside OpenAlex, Europe PMC,
+   Semantic Scholar and Crossref, running once per search over the prose query
+   while the ladder's rungs run over extracted terms.
+
+   The deferral above was not wrong about the obstacle — the index still stores
+   no `types` field — but it was wrong about the cost of leaving it. The Deep
+   Science agent narrows every request to the `scholar` source alone
+   (`state.auxOnly`), and this tier was reachable only through `src/europepmc.js`,
+   which that narrowing excludes. So the deferral did not mean "the agent uses
+   Europe PMC instead"; it meant the corpus was **unreachable from the one agent
+   whose subject it is**. Capture CAP-20 is what surfaced it: a Swedish question
+   about intermittent fasting and insulin sensitivity, twelve good peer-reviewed
+   citations, none of them ours (`chat_logs` #1703).
+
+   The peer-review filter the deferral was waiting for is reconstructed from the
+   one field that *is* stored. Every record here is a PubMed citation — Europe
+   PMC's `MED` source — so the only non-peer-reviewed members are the NIH
+   Preprint Pilot ones, and those name their server in `j` (bioRxiv is the
+   second most common journal in the corpus, §3). A journal title that is not a
+   preprint server, on a title that does not announce a retraction, is the
+   verdict; `docs/SCHOLAR.md` §2 records it as the weakest of the
+   evidence-bearing rows, and every citation's provenance line says which row it
+   rests on. Storing `types` at the next re-upsert would make it the strongest
+   instead, and is the obvious follow-up.
 5. **Withdrawn citations are handled at fill time, not continuously.** `--prune`
    removes any that were already pushed, but nothing re-runs it on a schedule; a
    long-lived index needs a refresh loop that pulls new update files, upserts the

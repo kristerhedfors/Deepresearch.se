@@ -2705,7 +2705,7 @@ async function runOneAuxSearch(ctx, plan) {
     // into the request's tally, which src/billing.js denseSpend prices once at
     // the end. Read generically off the result, like everything else in this
     // loop: the orchestrator never names a source. A source that reports none
-    // (every source but the two literature legs) leaves the tally untouched.
+    // (every source that has no hosted tier) leaves the tally untouched.
     mergeRetrievalSpend(ctx.state.denseTotals, r.spend);
     return { items: r.items || [], durationMs: r.durationMs || 0, usedKeys: r.usedKeys || [] };
   } catch (/** @type {any} */ err) {

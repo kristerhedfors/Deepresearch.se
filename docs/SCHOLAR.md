@@ -71,9 +71,25 @@ Three honest routes, and the agent runs whichever are configured:
    machine-readable venue type, work type and retraction status.
 3. **Crossref** — authoritative for "is this DOI a journal article", useless for
    discovery (§3).
+4. **This project's own hosted PubMed index** (`docs/PUBMED-RAG.md`) — a frozen
+   slice of PubMed embedded into Vectorize and searched by *meaning*. It takes
+   the prose question rather than the extracted keyword terms, and it sends no
+   outbound request at all: the query is embedded and matched inside this
+   account's own index. Gated on the `PUBMED_INDEX` binding; off when unbound.
 
 With no keys at all the agent still works: Europe PMC's peer-reviewed slice
 needs none.
+
+**Added 2026-08-12, and worth saying why it was missing.** The Deep Science
+agent narrows every request to this one source (`state.auxOnly`, set in
+`src/scholar-metrics.js`), and the hosted corpora were wired only into the two
+sources that narrowing excludes — `src/europepmc.js` for PubMed and
+`src/arxiv.js` for arXiv. The site's own knowledge base was therefore
+structurally unreachable from the agent whose whole subject it is. It surfaced
+in a video review: capture CAP-20 asked, in Swedish, what the peer-reviewed
+literature says about intermittent fasting and insulin sensitivity, got twelve
+good on-topic peer-reviewed citations, and not one of them came from the hosted
+corpus, because no code path existed to reach it (`chat_logs` #1703).
 
 ## 2. What counts as peer-reviewed
 
@@ -86,15 +102,30 @@ review. It never admits one for lack of evidence to the contrary.
 | Europe PMC | `source` ∈ {MED, PMC, AGR, CBA} — never `PPR`, which is bioRxiv/medRxiv — and a journal title is present |
 | Semantic Scholar | `publicationTypes` names JournalArticle or Review, plus a journal name and a DOI |
 | Crossref | `type` is `journal-article` and an ISSN is registered |
+| Hosted PubMed | a journal title is present, that journal is not one of the preprint servers PubMed itself indexes, and the title does not announce a retraction |
 | **Google Scholar** | **never on its own** |
 
 That last row is the load-bearing one. A Scholar result carries no peer-review
 signal at all — Scholar indexes preprints, theses, slide decks, working papers
 and predatory journals beside *Nature*, and its result JSON does not distinguish
 them. So a Scholar hit is admitted only by being **merged** onto a record from
-one of the four backends above, by DOI or normalized title. What it contributes
-is its ranking and its citation count; the verdict always comes from a source
-that publishes one.
+one of the evidence-bearing backends above, by DOI or normalized title. What it
+contributes is its ranking and its citation count; the verdict always comes from
+a source that publishes one.
+
+The hosted-PubMed row is the *weakest* of the evidence-bearing ones, and the
+provenance line on every citation says which row it rests on. The reason is that
+the index stores no publication-type field — `types` is parsed at harvest and
+dropped before the vector metadata (`docs/PUBMED-RAG.md` §8) — so Europe PMC's
+`MED`-not-`PPR` distinction has to be reconstructed from the journal name. Every
+record in the index is a PubMed citation, i.e. Europe PMC's `MED` source; the
+only PubMed records that are *not* the peer-reviewed record are the NIH Preprint
+Pilot ones, and those name their server in the journal field. That exclusion is
+not theoretical: bioRxiv is the second most common journal in the corpus, 18,880
+records. Retraction is handled the same way — no flag is stored, so a title
+written as a notice (`Retracted: …`, `Withdrawn: …`, `Expression of Concern: …`)
+is rejected, with the trailing colon distinguishing a notice from a paper *about*
+retraction.
 
 The consequence is worth stating plainly rather than hiding:
 
