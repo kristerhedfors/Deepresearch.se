@@ -462,6 +462,16 @@ export function renderSummary(me) {
       <button id="settingsbtn" type="button">Settings</button>
       ${me.email ? '<button id="sharewsbtn" type="button">Share a workspace</button>' : ""}
       ${me.email ? '<button id="knowledgebtn" type="button">Workspace knowledge</button>' : ""}
+      <!-- My apps (/apps/) — the web apps Agent Studio has published to
+           /app/&lt;slug&gt;/, with rename, file editing and delete. UNLIKE the
+           Capture reviews link below it this one is NOT admin-gated: every
+           signed-in account has its own apps, and the page shows each caller
+           only what they may manage (an admin can additionally ask for every
+           account's). The title/aria-label says what it is, because "My apps"
+           alone does not tell a first-time reader which apps are meant.
+           NOTE: no backticks in this comment — it lives inside a template
+           literal. -->
+      <a href="/apps/" target="_blank" rel="noopener" title="See and manage the web apps you have published from Agent Studio" aria-label="My apps — see and manage the web apps published from Agent Studio">My apps</a>
       <button id="gamesbtn" type="button">Games</button>
       <button id="docsbtn" type="button">Documentation</button>
       ${me.role === "admin" ? '<button id="articlesbtn" type="button">Article collection</button>' : ""}

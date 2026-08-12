@@ -98,6 +98,16 @@ namespacing, and the works-with-the-knob-OFF guarantee),
 asset-collision guard, `validatePublication`, the publish → public read
 → index → unpublish round-trip against a mocked R2, storage-missing
 503s),
+`apps.js` (the published-apps management surface against a mocked R2: a
+listing scoped to the caller with `?all=1` widening it for an admin and
+silently NOT for anyone else, `?q=`/`?sort=`/`?format=text` delegating to the
+core, a corrupt `meta` still listing — the case that decides whether a broken
+build can be deleted at all — `can_manage` reported as ownership rather than
+readability, a rename that leaves `createdAt`/`owner`/`files` alone, a file
+PUT that republishes in place with `createdAt` preserved and `updatedAt`
+bumped, `index.html` undeletable, a non-owner refused EVERY write with the app
+verified untouched afterwards, the slug-wide delete removing every object
+under it, and the unknown/bad/method/no-bucket edges),
 `agent-spec-core.js` (the AgentSpec pure core: the closed control
 vocabulary, spec/registry validation, control/theme/quota/example
 resolution, the composer renderer + `proveComposer`), plus its capability
@@ -797,6 +807,22 @@ back both by an independent reader and by the system `unzip`), plus the
 presentation cores `mode-theme.js`,
 `bar-tint.js`, `graph-backdrop.js`, `plant-spinner.js`, `boot-messages.js`,
 `umbrella-intro.js`, `ghostwalk.js`, `sandbox-mode.js` and `dev-mode.js`.
+`apps-core.js` covers the published-apps ruleset the `/apps/` page and
+`src/apps.js` share, and it is written as the behaviours the module's comments
+CLAIM rather than as a pass over its exports: that a malformed or absent `meta`
+still yields a usable row (the tolerance that lets the management page delete a
+broken build), that `updatedAt` falls back to `createdAt` so an app nobody has
+edited does not sort as epoch 0, that `canManageApp` refuses an ownerless app
+to everyone but an admin — the `Boolean(app.owner)` guard, without which
+`"" === ""` hands every orphaned build to every session with no id — that
+`appMatches` folds diacritics so `sokratisk` finds "Sökratisk handledare" and
+`cafe` finds "Café" (invariant 6), that the `name` sort collates under `sv`
+with the assertion pinned against the runner's default locale, which puts Ä
+first and disagrees, that both file planners refuse the states that would
+publish an app which 404s at its own URL (no `index.html`, or an empty
+collection) and measure the size caps in BYTES rather than characters, and that
+`formatWhen` takes `now` as a parameter — every relative-time assertion passes a
+fixed clock, since a boundary read off `Date.now()` is the worst kind of flake.
 
 The demo surface is the newest of these. `demo-core.js` covers the
 capability-demo registry — the deterministic EN+SV "show me X demo" gate and the

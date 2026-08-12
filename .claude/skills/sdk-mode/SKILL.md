@@ -291,7 +291,46 @@ to the right group in `SDK_SHOWCASE` — don't renumber existing ids.
   signed-in visitor even on the site's own hostname. `allow-same-origin` is
   DELIBERATELY absent — do not add it. Generated apps must therefore be
   self-contained and use in-memory state only (the prompts say so).
+- **Two consequences of the opaque origin that have already bitten, and that a
+  file editor makes easy to hit again:** `localStorage`/`sessionStorage`/IndexedDB
+  and `document.cookie` all THROW or silently fail in a null origin, and
+  `<script type="module">` does not load at all — module resolution is
+  origin-relative and the origin is opaque, so the script simply never runs and
+  the page looks dead with nothing in the console worth reading. Generated
+  bundles use classic `<script src>` tags for exactly this reason (which is
+  where the global-collision pitfall below comes from). Pasting a `type="module"`
+  script into a file at `/apps/` is a new way to reach the same dead page — if
+  an edited app stops working and nothing appears to be wrong, check for
+  `type="module"` and for storage access first.
 - Unpublish: admin-only `DELETE /api/build/<slug>`.
+
+## After it is published — the /apps/ management surface
+
+A published app used to have exactly one handle: the URL in the reply. Since
+`src/apps.js` + `public/apps/` there is a page at `/apps/` that LISTS what an
+account has published and lets its owner (or an admin) rename it, edit its
+files, and take it down. Nothing about the publish path changed — the same
+`publishBuild`, the same caps, the same CSP.
+
+- **Creation stays here, in the chat.** `/apps/` is READ/UPDATE/DELETE only and
+  its empty state points at Agent Studio. That is deliberate: a second builder
+  would be a second set of prompts, tools and caps to keep in step with this
+  one. If someone asks for a "new app" button on that page, the answer is the
+  mode dropdown.
+- **The two ways an app changes, and what each preserves.** Iterating in the
+  chat — a follow-up message in the same SDK-mode conversation — reuses the
+  `build_slug`, so the URL you already shared keeps working; ownership is
+  re-checked, and `publishBuild` stamps a fresh `createdAt`. Editing one file
+  at `/apps/` republishes the whole collection at the same slug (whole-collection
+  is publishBuild's contract — unsent files are pruned) but carries the ORIGINAL
+  `createdAt` through and stamps `updatedAt` instead, so an app does not appear
+  to have been built today because a typo was fixed in it.
+- **The gate is ownership, not role.** `canManageApp` in
+  `public/js/apps-core.js`, checked per app on both ends. The admin-only
+  `PUT|DELETE /api/build/:slug` are untouched — `scripts/publish-app` depends
+  on the PUT (see the **publish-app** skill).
+- A build whose `meta` will not parse still LISTS. It is the only surface that
+  can delete one, so hiding it would strand the R2 objects.
 
 ## The shared pure core — public/js/sdk-core.js
 

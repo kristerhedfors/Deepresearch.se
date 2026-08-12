@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <!-- Opened on a phone at least as often as on a desktop (the apps this page
+       manages are built from the chat, which is mostly used on a phone), so the
+       viewport, the icon and the bar tint match /captures/ and /admin rather
+       than falling back to a desktop-width default. -->
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Deepresearch.se — published apps</title>
+  <link rel="icon" href="/favicon.ico?v=4" sizes="48x48">
+  <meta name="theme-color" content="#6fc3fd">
+  <link rel="stylesheet" href="/css/apps.css">
+</head>
+<body>
+  <header>
+    <div class="title"><a href="/" title="Back to the app">←</a> Published apps</div>
+  </header>
+
+  <!-- The management surface for what Agent Studio has published to
+       /app/&lt;slug&gt;/. Until this page existed the published URL was the only
+       handle on a build: nothing listed what you had made, renamed one, or
+       removed one without an admin curl. Everything the page does is
+       READ/UPDATE/DELETE — the "C" of CRUD deliberately stays in the chat, and
+       the empty state's job is to say where.
+
+       It is NOT admin-gated: every signed-in account sees its own apps, and an
+       admin can additionally ask for everyone's. The rule is one function
+       (canManageApp in apps-core.js) so the page and the API cannot disagree. -->
+  <main>
+    <section>
+      <h2>Your apps <span class="count" id="apps-count"></span></h2>
+      <p class="lead">Web apps built in <b>Agent Studio</b> and published live at
+      <code>/app/&lt;slug&gt;/</code>. Open one, rename it, edit its files, or
+      delete it. A published app is a plain static bundle served from an opaque
+      origin — editing a file here republishes the whole app at the same URL.</p>
+      <div id="apps"></div>
+    </section>
+  </main>
+
+  <!-- An EXTERNAL module, never an inline script: src/security-headers.js pins
+       a sha256 hash per inline script in the CSP, so an inline bootstrap here
+       would be a hash to recompute on every edit of this file (and a silent CSP
+       break the day CSP_ENABLED flips on). apps.js starts itself when it finds
+       #apps. -->
+  <script type="module" src="/js/apps.js"></script>
+</body>
+</html>

@@ -5,9 +5,9 @@ description: >-
   the composer/header/floating chrome, the PDF report (report.js), document/image
   attachments and metadata extraction (exif.js, docs.js), the conversation
   embeds registry (embeds.js) and the time-budget slider scale (timescale.js),
-  the account panel / message center / privacy notice, or the /help/ /build/
-  /story/ /architecture/ /welcome/ static pages and the public (no-auth)
-  surface.
+  the account panel / message center / privacy notice, the /apps/ published-apps
+  page, or the /help/ /build/ /story/ /architecture/ /welcome/ static pages and
+  the public (no-auth) surface.
 ---
 
 # UI notes
@@ -258,6 +258,27 @@ description: >-
   directive; the sweep that enforced it covered /architecture/, /help/,
   /welcome/, and the /cure page + drc.js popovers — see CLAUDE.md's
   amended branding rule).
+- **"My apps"** at `/apps/` (signed-in standalone page — `public/apps/index.html`
+  + `css/apps.css` + `js/apps.js`, its own document rather than an account-panel
+  view, and its door is the **My apps** link in `account-views.js` next to the
+  admin-only "Capture reviews"): the management surface for the web apps Agent
+  Studio has published to `/app/<slug>/`. NOT admin-gated — every signed-in
+  account sees its own, and an admin can additionally ask for everyone's
+  (`?all=1`); the per-app gate is ownership, and the page does not offer a
+  control it already knows would 403 (UX-18). READ/UPDATE/DELETE only: rename,
+  edit a file, delete.
+  Apps are CREATED in the chat, in Agent Studio, and the EMPTY STATE's job is to
+  say so — do not grow a second builder here. Every rule and every format is
+  imported from the Node-tested pure `js/apps-core.js` (title cap, the four sort
+  orders, the diacritic-folding search, `canManageApp`, the two edit planners,
+  bytes and relative times) rather than restated, because a cap that means one
+  thing in the API and another in the UI is exactly the bug the split prevents;
+  the server half re-exports the same core (`src/apps.js`). Fail-soft in the
+  `captures.js` voice: somebody else's app, an app deleted in another tab, a
+  Worker that predates the endpoint — each ends in a calm inline sentence, never
+  a blank screen. Editing a file republishes the whole bundle at the same URL,
+  so the file editor inherits the published page's OPAQUE-ORIGIN limits (no
+  `type="module"`, no storage) — see the **sdk-mode** skill.
 - **Account panel** (`public/js/account.js`) is five views: the default
   view shows only the rolling 5-hour window (the one that actually gates
   the next message), plus navigation (Messages, Feedback, Full
