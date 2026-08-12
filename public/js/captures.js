@@ -542,7 +542,9 @@ function playVersion(player, c, version) {
   // should not have to aim at a 4-pixel track to watch a 40-second clip twice.
   // The button only exists once the clip has ended, so it never covers a frame
   // anyone is still looking at.
-  const replay = el("button", "cap-replay", "↺ Replay");
+  const replay = document.createElement("button");
+  replay.className = "cap-replay";
+  replay.textContent = "↺ Replay";
   replay.type = "button";
   replay.hidden = true;
   replay.addEventListener("click", () => {

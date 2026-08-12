@@ -648,7 +648,10 @@ export function planEdit(input) {
 
   // HEAD: an explicit `trimStartMs` (0 included) wins; otherwise the page-load
   // flash is trimmed off the front, measured from the timeline.
-  const head = input.trimStartMs == null ? headTrim({ samples: input.samples || [], markers: input.markers || [] }) : { ms: Math.max(0, Number(input.trimStartMs) || 0), status: /** @type {"explicit"} */ ("explicit") };
+  const head =
+    input.trimStartMs == null
+      ? headTrim({ samples: input.samples || [], markers: input.markers || [] })
+      : { ms: Math.max(0, Number(input.trimStartMs) || 0), status: /** @type {const} */ ("explicit") };
   const from = clamp(head.ms, 0, sourceMs);
   const trimmedTo = clamp(sourceMs - (input.trimEndMs || 0), from, sourceMs);
 

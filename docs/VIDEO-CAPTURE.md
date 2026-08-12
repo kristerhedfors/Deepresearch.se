@@ -245,15 +245,70 @@ signature never changed. Two decisions in it are load-bearing:
 | `waitMode` | `cut` | `cut` drops dead air, `speed` accelerates it, `keep` leaves it. |
 | `waitSpeed` | 8 | Multiplier for `waitMode: "speed"`. |
 | `minSegmentMs` | 200 | Below this a kept fragment reads as a glitch. |
-| `trimStartMs` / `trimEndMs` | 0 | Head and tail of the recording. |
+| `trimStartMs` | measured | Head of the recording. Left unset it is derived — see 4.1. |
+| `trimEndMs` | 0 | Extra tail to drop, on top of ending at the last content frame. |
+| `endHoldMs` | 1200 | The final content frame is frozen this long — see 4.2. |
+| `endAtContent` | true | End on the last frame proven to carry content, not at EOF. |
 
-The output carries `segments`, `keptMs`, `cutMs`, `outMs` and `waitMs`, which
-is what `--dry-run` renders and what `edit.json` records. Contiguous segments
-at the same speed are fused, so the encoder gets one trim instead of two.
+The output carries `segments`, `keptMs`, `cutMs`, `outMs`, `segmentsMs`,
+`waitMs`, `headTrimMs`, `endHoldMs`, `contentEndMs`, `contentStatus` and
+`tailMs`, which is what `--dry-run` renders and what `edit.json` records.
+`outMs` is the finished duration INCLUDING the end hold — the bitrate cap, the
+duration check and the poster offset all read it — and `segmentsMs` is the
+segments alone. Contiguous segments at the same speed are fused, so the
+encoder gets one trim instead of two.
 
 Degenerate inputs are handled rather than thrown on: no timeline at all yields
 one full-length segment; a recording that is entirely dead air still yields
 the hold, because an empty segment list would break the filter graph.
+
+### 4.1 The head flash — why the clip does not start at frame zero
+
+Recording starts at `page.goto`, so the first frames are a white viewport
+waiting for the site to paint. Measured 2026-08-12 with ffmpeg `signalstats`
+YAVG per frame across the three published clips (CAP-20/21/22): every
+near-white frame in all three sits between t=0 and ~0.65 s at YAVG 235–236,
+and every tail is a static content-rich frame. **The blank frame is at the
+head, not the tail.** What a reviewer reports as "the video ends blank" is the
+deck's player looping — it wraps to t=0, and t=0 is the flash.
+
+So `headTrim(timeline)` derives the head trim instead of hardcoding it. The
+sampler only starts once the app is up (composer visible, model dropdown
+filled), so the timeline's first entry is evidence of when there was something
+to look at:
+
+- first entry at `t > 0` → trim that offset, floored at `HEAD_FLASH.fallbackMs`
+  (750 ms, so a fast first sample cannot leave a residual flash) and capped at
+  `HEAD_FLASH.maxMs` (1500 ms, so a slow one cannot eat the opening beat —
+  whatever empty-app time is left is dead air the cut already handles);
+- first entry at `t = 0` → the head is measured, not guessed; trim nothing;
+- no timeline → assume the flash and drop `fallbackMs`.
+
+`--trim-start <ms>` overrides it, and `--trim-start 0` keeps the flash.
+
+### 4.2 Where the clip ends, and the end hold
+
+The recording outlives the run: the sampler stops, then Playwright closes the
+context and flushes the file, and nobody chose those frames. The plan
+therefore ends at the last frame that can be PROVEN to carry content
+(`contentEnd`), not at `sourceMs`. `--trim-end` still applies on top; it can
+only shorten. `--end-at eof` restores the raw tail.
+
+"Content" is read out of the same signature the cuts are read out of
+(`parseSignature`): a torn-down or navigated-away page reads `0|0|0|0||0`, and
+a signature that does not parse as that grammar counts as content, because
+footage is never dropped on the strength of a format guess. **Markers raise
+the floor**: an Agent Studio capture walks to the published app, which has
+none of the chat DOM the signature reads, so its samples look blank while
+being the most important footage in the clip — `app_done` (and
+`done`/`error`/`timeout`) keep the end from landing before it.
+
+The **end hold** (`--end-hold`, default 1200 ms) then freezes that final frame.
+Two reasons, both the owner's: a finished answer needs a beat to be read in a
+feed, and the extracted last frame is how a run is judged to have succeeded or
+failed, so it has to be unambiguous rather than a single frame flicking past.
+`contentStatus` records which of `found` / `blank` / `unknown` the ending
+rests on.
 
 ## 5. Stage 3 — the encode
 
@@ -263,8 +318,14 @@ One ffmpeg pass:
 [0:v]trim=start=…:end=…,setpts=(PTS-STARTPTS)/<speed>[cN]   (one per segment)
 [c0][c1]…concat=n=N:v=1:a=0[cv]
 [cv]scale=W:H:force_original_aspect_ratio=decrease:flags=lanczos,
-    pad=W:H:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,fps=30,format=yuv420p[v]
+    pad=W:H:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,fps=30,
+    tpad=stop_mode=clone:stop_duration=1.200,format=yuv420p[v]
 ```
+
+`tpad` is the end hold, and it comes **after** `fps`: it clones the last frame
+at the stream's frame rate, and a Playwright webm is variable-rate, so holding
+before normalisation can produce one very long frame instead of a second of
+video. It is omitted entirely at `--end-hold 0`.
 
 `setpts=(PTS-STARTPTS)/1` is not a no-op: `STARTPTS` must be rebased or
 `concat` cannot butt the segments together. Padding rather than cropping is
@@ -291,12 +352,34 @@ own targets (40 MB, 90 s). It is **advisory**: `capture-edit` prints problems
 and warnings and writes the file anyway, because "95 seconds against a 90
 second target" is a judgement, not an error.
 
+Passed a `content` block (`planContent(plan)`), it also judges the **ending**,
+which is the half a reviewer cannot see from the deck's card:
+
+| Verdict | Why |
+|---|---|
+| `blank` → problem | No sample ever showed content: the recording is broken, and its last frame proves nothing. |
+| `unknown` → warning | No timeline, so the last content frame could not be located. It may be fine; nobody checked. |
+| `tailMs` > 400 ms → warning | Source kept past the last content frame — the clip ends on teardown, not on the answer. |
+| `endHoldMs` = 0 → warning | The finished state is one frame long. |
+| `headTrimMs` = 0 → warning | The clip opens on the page-load flash, which is what a looping player shows the instant it ends. |
+
+These need no encoder, so `capture-edit` prints them **before** the ffmpeg
+pass and on `--dry-run` — the only view available on a machine with no ffmpeg,
+and the point is to catch a clip that ends on nothing before spending the
+encode.
+
 ### 5.3 Outputs
 
-`final.mp4`, `poster.jpg` (taken from the *edited* file, so its offset is
-output time — a frame from the raw recording usually lands inside a cut), and
-`edit.json`: the plan, the probe, the delivery verdict and the original
-`meta.json`, which is what the publish step reads.
+`final.mp4`, `poster.jpg` and `edit.json`: the plan, the probe, the delivery
+verdict and the original `meta.json`, which is what the publish step reads.
+
+The poster is taken from the *edited* file, so its offset is output time — a
+frame from the raw recording usually lands inside a cut. `posterAtMs` puts it
+in the **middle of the end hold** by default: the deck's card shows the poster,
+so the poster is the one image that says whether the run succeeded without
+pressing play. It used to be 60% in, which showed an answer mid-stream and
+looked identical whether the run finished, errored or hung (`--poster mid`
+restores that; `--poster-at <ms>` overrides both).
 
 ## 6. Stage 4 — the review surface
 
