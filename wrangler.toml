@@ -250,7 +250,10 @@ index_name = "deepresearch-se-arxiv"
 # arXiv rather than replacing it (docs/PUBMED-RAG.md). Searched by
 # src/pubmed-rag.js behind Europe PMC's existing intent gate; src/europepmc.js
 # falls back to the live API whenever this is absent, errors, or returns
-# nothing above the relevance floor.
+# nothing above the relevance floor. Since 2026-08-12 src/scholar.js reads it
+# too, as a fifth backend of the Deep Science agent — that agent narrows the
+# turn to the scholar source alone, so without its own tier the corpus was
+# unreachable from the one agent whose subject it is.
 #
 # Created 2026-07-31 and filled from the corpus the harvester had already
 # collected — every daily update file above the 2026 baseline, 1,639,403 unique

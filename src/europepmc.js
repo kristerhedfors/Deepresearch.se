@@ -250,10 +250,28 @@ const LIFE_SCIENCE_WORD = new RegExp(
     "|treatments?(?!\\s+of\\s+(?:personal\\s+)?(?:data|information))" +
     "|therap(?:y|ies|eutic)|drugs?|pharmaceutical|dosages?|dosing|doses" +
     "|side[-\\s]?effects?|adverse (?:effects?|events?|reactions?)|contraindicat" + LETTER +
-    "|toxicity|efficacy|supplements?|supplementation|vitamins?|nutrients?" +
+    "|toxicity|efficacy|supplements?|supplementation|vitamin" + LETTER + "|nutrients?" +
     "|nutrition(?:al)?|diet(?:ary)?|probiotics?|antioxidants?|inflammation" +
     "|cancers?|tumou?rs?|diabetes|obesity|cholesterol|blood pressure|cardiovascular" +
     "|cardiac|livers?|kidneys?|lungs?|omega[-\\s]?3|fatty acids?" +
+    // METABOLIC AND ENDOCRINE (added 2026-08-12). The gap this closes was
+    // measured, not guessed: "Vad säger den sakkunniggranskade forskningen om
+    // intermittent fasta och insulinkänslighet" (chat_logs #1703, the CAP-20
+    // capture) reached no life-science leg at all, and neither did its English
+    // twin — `diabetes` and `cholesterol` were here, `insulin`, `glucose`,
+    // `metabolism` and `fasting` were not, so an endocrinology question fell
+    // between them. The suffix wildcards are what make the Swedish compounds
+    // work (insulinkänslighet, insulinresistens, blodsockernivåer) at the same
+    // breadth as the English two-word forms.
+    "|insulin" + LETTER + "|glucose|glycemi" + LETTER + "|glycaemi" + LETTER +
+    "|blood sugar|hba1c|metabol" + LETTER + "|hormon" + LETTER + "|endocrin" + LETTER +
+    "|thyroid|lipids?|triglycerides?|adipose|fasting|infections?" +
+    "|glukos" + LETTER + "|glykemisk[at]?|blodsocker" + LETTER + "|ämnesomsättning(?:en)?" +
+    "|sköldkörtel" + LETTER + "|sköldkörteln|blodfett(?:er|erna|et)?|triglycerid" + LETTER +
+    // Swedish writes infections as compounds — luftvägsinfektion,
+    // urinvägsinfektion, virusinfektion — so the English `infections?` above
+    // needs a prefix wildcard here to have the same reach (invariant 6).
+    "|" + LETTER + "infektion(?:er|en|erna)?" +
     "|njur(?:e|ar|arna|en)|lung(?:a|or|orna|an)|levern" +
     "|tarmflora|fettsyr(?:a|or|orna)" +
     "|hälsoeffekt(?:er|erna|en)?|hälsofördel(?:ar|arna|en)?|hälsorisk(?:er|erna|en)?" +
@@ -343,7 +361,16 @@ const LIFE_SCIENCE_PHRASE = new RegExp(
     "|muskel(?:massa|styrka|tillväxt|cell|fibr|värk|protein|skada|uppbyggnad)" + LETTER +
     "|dna[-\\s]?sekvenser|gensekvenser" +
     "|patient(?:en)? med|virus(?:infektion|stam|variant|sjukdom)" + LETTER +
-    "|mineral(?:er|erna)? och vitaminer|vitaminer och mineral(?:er|erna)?)" +
+    "|mineral(?:er|erna)? och vitaminer|vitaminer och mineral(?:er|erna)?" +
+    // Swedish `fasta` is the ambiguous half of an EN/SV pair whose English side
+    // is not: "fasting" has no common non-dietary sense and sits in
+    // LIFE_SCIENCE_WORD, while `fasta` is also "fixed" (fasta kostnader, fasta
+    // priser) and the definite plural of `fast`. So it lives HERE, in the
+    // collocation tier, on exactly the rule this file already applies to hälsa
+    // and hjärta — the qualifier carries it, never the bare word.
+    "|(?:intermittent|periodisk|regelbunden|kortvarig|långvarig|utökad)\\s+fast(?:a|an)" +
+    "|fastande|faste(?:period|blodsocker|insulin|glukos|värde|dag|dygn)" + LETTER +
+    "|kalorirestriktion(?:en)?|tidsbegränsat ätande)" +
     E,
   "iu",
 );

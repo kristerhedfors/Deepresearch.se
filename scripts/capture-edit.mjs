@@ -24,14 +24,23 @@
 //   --wait-speed <n>     multiplier for --wait speed (default 8)
 //   --min-still <ms>     a pause must exceed this to count as dead (default 1500)
 //   --hold <ms>          head of each dead span kept, so the state reads (default 600)
-//   --trim-start <ms> / --trim-end <ms>
+//   --end-hold <ms>      freeze the final content frame this long (default 1200)
+//   --end-at eof         end at end-of-file instead of at the last content frame
+//   --trim-start <ms>    head to drop; default is measured from the timeline
+//                        (the page-load white flash). --trim-start 0 keeps it.
+//   --trim-end <ms>      tail to drop, on top of ending at the last content frame
 //   --crf <n>            quality target (lower is better; default 21)
 //   --preset <name>      x264 preset (default slow)
 //   --max-mb <n>         cap the file size by capping the bitrate
 //   --fps <n>            output frame rate (default 30)
 //   --poster-at <ms>     which output moment becomes the thumbnail
+//   --poster end|mid     end (default) = the frozen finished answer; mid = 60% in
 //   --out <file>         write the video somewhere other than <dir>/final.mp4
 //   --dry-run            print the plan and the exact ffmpeg argv; encode nothing
+//   --force              encode even when the recorded run FAILED verification
+//                        (meta.json's verdict). Without it such a run is not
+//                        encoded at all, so no final.mp4 exists to be uploaded
+//                        by a later step that never read the verdict.
 //
 // ffmpeg and ffprobe must be on PATH (`apt-get install ffmpeg`,
 // `brew install ffmpeg`). Without them --dry-run still works, which is how the
@@ -48,8 +57,10 @@ import {
   formatDuration,
   formatPlan,
   parseProbe,
+  planContent,
   planEdit,
   posterArgs,
+  posterAtMs,
   resolveShape,
 } from "./capture-core.mjs";
 
@@ -66,7 +77,7 @@ export function parseArgs(argv) {
       continue;
     }
     const key = a.slice(2);
-    if (key === "dry-run" || key === "all" || key === "help") {
+    if (key === "dry-run" || key === "all" || key === "help" || key === "force") {
       opts[key] = true;
       continue;
     }
@@ -150,10 +161,14 @@ export function editCapture(dir, opts) {
     sourceMs,
     samples,
     markers,
-    trimStartMs: n(opts["trim-start"], 0),
+    // Left undefined, the head trim is derived from the timeline (the
+    // page-load white flash). `--trim-start 0` opts out explicitly.
+    trimStartMs: n(opts["trim-start"], undefined),
     trimEndMs: n(opts["trim-end"], 0),
     minStillMs: n(opts["min-still"], undefined),
     holdMs: n(opts.hold, undefined),
+    endHoldMs: n(opts["end-hold"], undefined),
+    endAtContent: String(opts["end-at"] || "content") !== "eof",
     speed: n(opts.speed, undefined),
     waitMode: opts.wait,
     waitSpeed: n(opts["wait-speed"], undefined),
@@ -177,9 +192,49 @@ export function editCapture(dir, opts) {
   if (meta.prompt) console.log(`   ${meta.agent || "?"} · ${meta.model || "?"}\n   “${truncate(meta.prompt, 96)}”`);
   console.log(formatPlan(plan, { shape: shape.id }));
 
+  // The tail verdict does not need the encoder, so it is printed on a dry run
+  // too — which is the only view available on a machine without ffmpeg, and
+  // the whole point is to catch "this clip ends on nothing" BEFORE encoding.
+  const tailCheck = checkDelivery({ content: planContent(plan) });
+  for (const p of tailCheck.problems) console.log(`   ✗ ${p}`);
+  for (const w of tailCheck.warnings) console.log(`   ! ${w}`);
+
+  // THE VERDICT IS ENFORCED HERE, and this is the only place it can be. The
+  // driver grades every run and writes the verdict into meta.json, but grading
+  // a run and refusing to ship it are two different things: #CAP-21 and #CAP-22
+  // were both recorded, encoded, uploaded and put in front of the owner with
+  // their failure sitting in the last frame. "A capture whose app fails is not
+  // published" was a convention, and a convention is not a mechanism.
+  //
+  // Refusing at the EDIT stage rather than at upload is deliberate: it costs
+  // the encode too, and it means no final.mp4 exists to be uploaded by hand or
+  // by a later loop that never saw the verdict. The clip and its endframe.png
+  // stay on disk with their reasons, exactly as a failed Agent Studio app does.
+  //
+  // --force is the override, and it prints what it is overriding — a batch that
+  // deliberately ships a known-bad clip (to show the failure, say) can, but
+  // nobody does it by accident.
+  const verdict = meta.verdict;
+  if (verdict && verdict.ok === false) {
+    const reasons = Array.isArray(verdict.reasons) ? verdict.reasons : [];
+    const lines = reasons.map((r) => `     · ${r?.detail || r?.id || String(r)}`).join("\n");
+    console.log(`   ✗ the recorded run FAILED verification\n${lines}`);
+    console.log(`     endframe: ${join(dir, "endframe.png")}`);
+    // A dry run still prints its plan: inspecting a failed run is exactly when
+    // you want to see one, and nothing is produced by looking.
+    if (!opts["dry-run"] && !opts.force) {
+      return {
+        ok: false,
+        dir,
+        reason: "the recorded run FAILED verification — not encoding it; re-record, or --force",
+      };
+    }
+    if (opts.force) console.log("   ! --force: encoding it anyway");
+  }
+
   if (opts["dry-run"]) {
     console.log(`ffmpeg ${encodeArgs.join(" ")}\n`);
-    return { ok: true, dir, report: { plan, dryRun: true } };
+    return { ok: true, dir, report: { plan, dryRun: true, linkedin: tailCheck } };
   }
 
   if (!have("ffmpeg")) {
@@ -193,18 +248,17 @@ export function editCapture(dir, opts) {
   }
 
   // The poster comes from the EDITED file, so its offset is output time — a
-  // frame taken from the raw recording would usually land inside a cut.
-  // 60% in, not near the start. The first seconds of every capture are the app
-  // with an empty composer — a thumbnail of that says nothing about the run and
-  // is the same picture for every clip in the deck. Measured on the first batch
-  // (2026-08-10): at 1.5 s all four posters showed the empty starter strip; at
-  // 60% each shows its own answer with sources on screen, which is both a
-  // better feed thumbnail and the only way a reviewer can tell two cards apart
-  // before pressing play.
-  const posterAt = n(opts["poster-at"], plan.outMs * 0.6);
+  // frame taken from the raw recording would usually land inside a cut. It is
+  // taken from the END HOLD by default: the deck's card shows the poster, so
+  // the poster has to be the frame that says whether the run succeeded
+  // (owner directive, 2026-08-12). `--poster mid` restores the older 60%-in
+  // frame, which showed an answer mid-stream and looked the same whether the
+  // run finished or died.
+  const posterAt = posterAtMs(plan, { atMs: n(opts["poster-at"], null), mode: opts.poster });
   spawnSync("ffmpeg", posterArgs({ input: output, output: poster, atMs: posterAt, width: shape.out?.width }), {
     stdio: "ignore",
   });
+  if (!existsSync(poster)) console.log(`   ! no poster frame at ${Math.round(posterAt)} ms of output`);
 
   const probed = have("ffprobe")
     ? parseProbe(readProbe(output))
@@ -214,6 +268,7 @@ export function editCapture(dir, opts) {
     seconds: probed.seconds ?? undefined,
     width: probed.width ?? shape.out?.width,
     height: probed.height ?? shape.out?.height,
+    content: planContent(plan),
   });
 
   const report = {
@@ -221,12 +276,19 @@ export function editCapture(dir, opts) {
     input,
     output,
     poster: existsSync(poster) ? poster : null,
+    poster_at_ms: Math.round(posterAt),
     shape: shape.id,
     encoded_in_ms: Date.now() - started,
     source_ms: plan.sourceMs,
     output_ms: Math.round(plan.outMs),
     cut_ms: Math.round(plan.cutMs),
     dead_air_ms: Math.round(plan.waitMs),
+    head_trim_ms: Math.round(plan.headTrimMs),
+    head_trim_source: plan.headTrimSource,
+    end_hold_ms: Math.round(plan.endHoldMs),
+    content_end_ms: plan.contentEndMs == null ? null : Math.round(plan.contentEndMs),
+    content_status: plan.contentStatus,
+    tail_ms: Math.round(plan.tailMs),
     wait_mode: plan.waitMode,
     speed: plan.speed,
     segments: plan.segments,
@@ -240,8 +302,10 @@ export function editCapture(dir, opts) {
   console.log(
     `   → ${basename(output)}  ${formatDuration(plan.outMs)}  ${size}  ${probed.width || "?"}x${probed.height || "?"}`,
   );
-  for (const p of delivery.problems) console.log(`   ✗ ${p}`);
-  for (const w of delivery.warnings) console.log(`   ! ${w}`);
+  // The tail advisories were printed before the encode; don't say them twice.
+  const said = new Set([...tailCheck.problems, ...tailCheck.warnings]);
+  for (const p of delivery.problems) if (!said.has(p)) console.log(`   ✗ ${p}`);
+  for (const w of delivery.warnings) if (!said.has(w)) console.log(`   ! ${w}`);
   return { ok: true, dir, report };
 }
 

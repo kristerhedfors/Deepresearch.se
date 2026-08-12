@@ -294,6 +294,62 @@ test("europepmcIntent", async (t) => {
     for (const p of silent) pair(p, false);
   });
 
+  // The METABOLIC/ENDOCRINE strand, added 2026-08-12 from a measured miss
+  // rather than from a wishlist. CAP-20 (chat_logs #1703) asked "Vad säger den
+  // sakkunniggranskade forskningen om intermittent fasta och insulinkänslighet"
+  // and reached NO life-science leg — and neither did the English twin, so this
+  // was a plain vocabulary hole with a Swedish-compound hole inside it:
+  // `diabetes` and `cholesterol` were in the gate, `insulin`, `glucose`,
+  // `metabolism` and `fasting` were not.
+  await t.test("metabolic and endocrine questions reach the literature, EN and SV alike", () => {
+    /** @param {[string, string]} pair @param {boolean} expected */
+    const pair = ([en, sv], expected) => {
+      assert.equal(europepmcIntent(en), expected, `EN: ${en}`);
+      assert.equal(europepmcIntent(sv), expected, `SV: ${sv}`);
+    };
+
+    /** @type {Array<[string, string]>} */
+    const fires = [
+      // The reported miss itself, verbatim on the Swedish side.
+      [
+        "What does peer-reviewed research say about intermittent fasting and insulin sensitivity, and how strong is the evidence?",
+        "Vad säger den sakkunniggranskade forskningen om intermittent fasta och insulinkänslighet, och hur starka är beläggen?",
+      ],
+      ["What does the research say about insulin resistance?", "Vad säger forskningen om insulinresistens?"],
+      ["What does the research say about intermittent fasting?", "Vad säger forskningen om intermittent fasta?"],
+      ["studies on blood glucose levels", "studier om blodsockernivåer"],
+      ["papers on metabolic syndrome", "artiklar om metabola syndromet"],
+      ["research on thyroid hormones", "forskning om sköldkörtelhormoner"],
+      ["evidence on triglycerides and diet", "belägg om triglycerider och kost"],
+      ["studies on fasting glucose in older adults", "studier om fasteglukos hos äldre"],
+      // The Swedish COMPOUND holes the same pass closed: Swedish writes
+      // "vitamin supplementation" and "respiratory infection" as one word each,
+      // so the English arms had reach its Swedish counterparts did not.
+      [
+        "What does research say about vitamin D supplementation and respiratory infection?",
+        "Vad säger forskningen om D-vitamintillskott och luftvägsinfektioner?",
+      ],
+      ["studies on vitamin deficiency", "studier om vitaminbrist"],
+      ["papers on urinary tract infections", "artiklar om urinvägsinfektioner"],
+    ];
+    for (const p of fires) pair(p, true);
+
+    /** @type {Array<[string, string]>} */
+    const silent = [
+      // `fasta` is why the Swedish side of "fasting" is a COLLOCATION rather
+      // than a bare word: it is also "fixed", and the definite plural of
+      // `fast`. English "fasting" has no such sense, which is the whole reason
+      // the two languages are not treated symmetrically here.
+      ["studies of our fixed costs this quarter", "studier av våra fasta kostnader detta kvartal"],
+      ["research on fixed prices in the retail sector", "forskning om fasta priser i detaljhandeln"],
+      // And the widening must not have re-opened the feedback #61 hole: a
+      // research word plus an ordinary business question is still not the
+      // biomedical literature.
+      ["what does the research say about fixed exchange rates", "vad säger forskningen om fasta växelkurser"],
+    ];
+    for (const p of silent) pair(p, false);
+  });
+
   // The separated Swedish forms in their own right, beyond the reported pairs.
   await t.test("the Swedish separated forms carry the collocation tier", () => {
     for (const s of [

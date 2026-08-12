@@ -69,8 +69,8 @@ import {
  *
  * `spend` is the OPTIONAL provider bill this call ran up at Berget — the
  * dense-retrieval tally from src/dense-rag.js. Most sources spend nothing
- * there (a plain HTTP query to a free API) and omit it; the two hosted
- * literature legs embed the query and run a cross-encoder over 50 candidates
+ * there (a plain HTTP query to a free API) and omit it; the literature legs
+ * with a hosted tier embed the query and run a cross-encoder over 50 candidates
  * per corpus, which is real money, and the orchestrator accumulates it across
  * every leg of the request so src/billing.js can price it into the one usage
  * row (pipeline.js runOneAuxSearch). Declared HERE rather than in either
@@ -209,7 +209,10 @@ export const SEARCH_SOURCES = [
     // purpose; this source excludes them on purpose, and is cross-domain where
     // europepmc is life-science. It is the only source the Deep Science agent
     // is allowed to consult (state.auxOnly), which is why the exclusion has to
-    // live in the source rather than in a prompt.
+    // live in the source rather than in a prompt — and why, since 2026-08-12,
+    // it carries its own hosted-PubMed tier: being the only permitted source
+    // meant the site's own corpus was unreachable from the agent whose subject
+    // it is, because that corpus hung off europepmc, which auxOnly excludes.
     id: "scholar",
     intent: scholarIntent,
     leadIntent: scholarLeadIntent,

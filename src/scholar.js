@@ -60,6 +60,11 @@
 //       filtering actually needs. These need no key and are the default.
 //   (c) **Crossref**, which is authoritative for "is this DOI a journal
 //       article" and useless for discovery — see the ranking note below.
+//   (d) **This project's own hosted PubMed index** (src/pubmed-rag.js) — a
+//       frozen slice of PubMed embedded into Vectorize and searched by
+//       MEANING rather than by keyword, with no outbound request at all. Added
+//       2026-08-12; `pubmedDenseSearch` below documents why it was missing and
+//       what admitting it costs.
 //
 // The result is a backend LADDER rather than one provider: whatever is
 // configured runs, the results merge, and the agent works with no keys at all.
@@ -119,6 +124,13 @@
 //   Semantic S.     publicationTypes names JournalArticle or Review AND a
 //                   journal name is present AND it has a DOI.
 //   Crossref        type = `journal-article` AND it has an ISSN.
+//   Hosted PubMed   a journal title is present AND that journal is not one of
+//                   the preprint servers PubMed itself indexes AND the title
+//                   does not announce a retraction. The corpus stores no
+//                   publication-type field, so this reconstructs Europe PMC's
+//                   MED-not-PPR distinction from the one field it does store —
+//                   weaker evidence than the four above, and the provenance
+//                   line says which one a citation rests on.
 //   Google Scholar  NOTHING. A Scholar hit carries no peer-review signal at
 //                   all — Scholar indexes preprints, theses, slide decks,
 //                   working papers and predatory journals beside Nature, and
@@ -150,6 +162,8 @@
 /** @typedef {import('./types.js').Logger} Logger */
 
 import { loadVenues, venueNote } from "./scholar-venues.js";
+import { newRetrievalSpend } from "./dense-rag.js";
+import { pubmedRagAvailable, pubmedRagRecords } from "./pubmed-rag.js";
 
 const TIMEOUT_MS = 8000;
 const PAGE_SIZE = 8;
@@ -660,6 +674,39 @@ const JOURNAL_SOURCE_TYPES = new Set(["journal", "conference"]);
  * bioRxiv/medRxiv and is excluded by name. */
 const EPMC_PEER_SOURCES = new Set(["MED", "PMC", "AGR", "CBA"]);
 
+/** The preprint servers PubMed itself indexes (the NIH Preprint Pilot), by the
+ * `j` journal string they carry in the hosted corpus.
+ *
+ * This list is what makes the hosted tier admissible at all, so it is worth
+ * being precise about what it is doing. Europe PMC publishes a source field and
+ * the verdict above reads it: MED/PMC yes, PPR no. The hosted PubMed corpus
+ * stores no publication-type field — `types` is parsed at harvest and dropped
+ * before the vector metadata (docs/PUBMED-RAG.md §8) — so the same distinction
+ * has to be reconstructed from the one field that IS stored. Every record in
+ * that index is a PubMed citation, i.e. Europe PMC's MED source; the only
+ * PubMed records that are not the peer-reviewed record are the preprint-pilot
+ * ones, and those name their server in the journal field. bioRxiv is the 2nd
+ * most common journal in the corpus (18,880 records, §3), so this is a real
+ * exclusion and not a theoretical one.
+ *
+ * The suffix wildcard is deliberate: PubMed writes them out in full —
+ * "bioRxiv : the preprint server for biology", "medRxiv : the preprint server
+ * for health sciences". */
+const PREPRINT_VENUE =
+  /(?<![\p{L}\p{N}_])(?:bio\s?r[xX]iv|med\s?r[xX]iv|chem\s?r[xX]iv|research\s?square|ssrn|arxiv|preprints?\.org|authorea|osf\s?preprints?|preprint)/iu;
+
+/** Titles PubMed gives a citation that has been withdrawn or corrected out of
+ * the record. The corpus stores no retraction flag, so the title is the only
+ * signal there is — and a retracted paper cited as current evidence is the
+ * worst single failure this agent can produce. */
+// The trailing colon is load-bearing, not decoration: PubMed writes a notice as
+// a PREFIX to the withdrawn paper's own title ("Retracted: Vitamin D and …"),
+// while a paper ABOUT retraction is an ordinary title that happens to start
+// with the word ("Retraction rates in the biomedical literature"). Without the
+// colon this rejects the second one, which is a real paper on a real question.
+const RETRACTED_TITLE =
+  /^\s*(?:retracted(?:\s+article)?|retraction(?:\s+(?:of|notice)(?:\s+to)?)?|withdrawn|withdrawal(?:\s+of)?|expression\s+of\s+concern)\s*:/i;
+
 /**
  * The peer-review verdict, and the one line of evidence behind it.
  *
@@ -691,6 +738,16 @@ export function peerReviewed(r) {
       if (r.kind !== "journal-article") return { ok: false, why: `Crossref type "${r.kind || "unknown"}"` };
       if (!r.issn) return { ok: false, why: "no ISSN registered" };
       return { ok: true, why: `Crossref journal-article, ISSN ${r.issn}` };
+    }
+    case "pubmed": {
+      // The hosted corpus (src/pubmed-rag.js). Same shape of evidence as the
+      // europepmc case — a PubMed citation carrying a journal title — with the
+      // preprint pilot subtracted by venue name because this corpus stores no
+      // source or type field to subtract it by. Weaker evidence than Europe
+      // PMC's own `SRC:` field, and said so in the line the reader sees.
+      if (!r.venue) return { ok: false, why: "no journal title" };
+      if (PREPRINT_VENUE.test(r.venue)) return { ok: false, why: "preprint" };
+      return { ok: true, why: `indexed in PubMed under the journal ${r.venue}` };
     }
     // Google Scholar publishes no peer-review signal — see PART 3 in the
     // header. A Scholar hit is only ever admitted by being MERGED into a
@@ -870,6 +927,94 @@ export async function europePmcPeerSearch(_env, log, terms) {
     };
     return r;
   });
+}
+
+/** How many hosted-corpus records one search contributes. Lower than
+ * PAGE_SIZE: this backend runs ONCE per search rather than once per rung, its
+ * hits are already reranked by a cross-encoder, and the per-origin diversity
+ * cap in src/sources.js admits three URLs from `pubmed.ncbi.nlm.nih.gov`
+ * anyway (the rest wait in overflow). Asking for more would buy tokens, not
+ * citations. */
+const PUBMED_DENSE_MAX = 5;
+
+/**
+ * The HOSTED PubMed corpus — this project's own dense index, searched by
+ * meaning instead of by keyword (src/pubmed-rag.js, docs/PUBMED-RAG.md).
+ *
+ * WHY IT IS HERE (added 2026-08-12). Until now the Deep Science agent could not
+ * reach it. The agent narrows the request to this one source
+ * (`state.auxOnly`, set in src/scholar-metrics.js), and the hosted corpora were
+ * wired only into the two sources that narrowing excludes — src/europepmc.js
+ * for PubMed and src/arxiv.js for arXiv. So the site's own knowledge base was
+ * structurally unreachable from the agent whose whole subject it is: reviewing
+ * a recorded run (CAP-20, chat_logs #1703 — "intermittent fasta och
+ * insulinkänslighet") the owner asked why none of the twelve sources came from
+ * it, and the answer was that no code path existed. docs/PUBMED-RAG.md §8 had
+ * recorded the gap as a deliberate deferral, for the reason the verdict above
+ * now settles: the index carries no publication-type field to filter on.
+ *
+ * Three things make it a different backend rather than a faster Europe PMC:
+ *
+ *  - It is DENSE. It takes the prose question, not the rung's keyword terms —
+ *    the term extraction below is a keyword-AND concern and throws away signal
+ *    an embedder uses. So it answers a question the lexical ladder phrases
+ *    badly, which is the case a Swedish question is most likely to be.
+ *  - It is FROZEN and PARTIAL. A PMID/load-order slice, roughly 5.6% of
+ *    abstract-bearing PubMed, weighted to the last two years. A 2009 cohort
+ *    study is a legitimate miss here, which is why this is one backend among
+ *    five and never the only one.
+ *  - It is OURS. No outbound request leaves Cloudflare for it; the query is
+ *    embedded and matched inside this account's own index.
+ *
+ * Runs once per search rather than once per rung: the ladder exists to widen a
+ * keyword query that matched too little, and a dense query has no terms to
+ * drop. Fail-soft like every other backend — an unbound index, a dead embedder
+ * or a below-floor result all return [] and the live backends answer alone.
+ *
+ * @param {Env} env
+ * @param {Logger} log
+ * @param {string} query the natural question, NOT the extracted terms
+ * @param {import('./dense-rag.js').RetrievalSpend | null} [spend]
+ * @returns {Promise<ScholarRecord[]>}
+ */
+export async function pubmedDenseSearch(env, log, query, spend = null) {
+  if (!String(query || "").trim() || !pubmedRagAvailable(env)) return [];
+  const found = await pubmedRagRecords(env, log, query, { limit: PUBMED_DENSE_MAX, spend }).catch(() => null);
+  return (found || []).map(pubmedScholarRecord);
+}
+
+/**
+ * One hosted-corpus record → a ScholarRecord the verdict can judge. Separated
+ * from the search so the mapping is testable without an index, an embedder or a
+ * cross-encoder — which is the whole of what a unit test can check here.
+ * @param {NonNullable<ReturnType<typeof import('./pubmed-rag.js').pubmedRagRecord>>} rec
+ * @param {number} [i] the corpus's own retrieval position
+ * @returns {ScholarRecord}
+ */
+export function pubmedScholarRecord(rec, i = 0) {
+  return {
+    title: String(rec.title || "").replace(/\s+/g, " ").replace(/\.$/, "").trim(),
+    doi: "",
+    url: rec.url,
+    year: rec.year,
+    venue: rec.journal,
+    publisher: "",
+    issn: "",
+    authors: rec.authors,
+    // The corpus stores no citation count. Null rather than 0, so rankRecords
+    // reads it as unknown and does not rank the paper below one that genuinely
+    // has none.
+    citedBy: null,
+    abstract: String(rec.abstract || "").slice(0, 1200),
+    // No retraction flag is stored either, so the title is the only signal —
+    // see RETRACTED_TITLE.
+    retracted: RETRACTED_TITLE.test(String(rec.title || "")),
+    kind: "pubmed",
+    backend: "pubmed",
+    rank: i,
+    peerReviewed: false,
+    why: "",
+  };
 }
 
 /**
@@ -1218,7 +1363,7 @@ export function toItem(r, venues = null) {
  * @param {Logger} log
  * @param {string} query
  * @param {{ skipKeys?: Set<string> }} [opts]
- * @returns {Promise<{ items: Array<{url: string, title: string, highlights: string[]}>, durationMs: number, usedKeys: string[] }>}
+ * @returns {Promise<{ items: Array<{url: string, title: string, highlights: string[]}>, durationMs: number, usedKeys: string[], spend?: import('./dense-rag.js').RetrievalSpend }>}
  */
 export async function scholarSearch(env, log, query, { skipKeys } = {}) {
   const startedAt = Date.now();
@@ -1227,6 +1372,15 @@ export async function scholarSearch(env, log, query, { skipKeys } = {}) {
   // The venue table is a local artifact read; it costs no upstream call and is
   // cached per isolate, so it is fetched alongside the first rung.
   const venuesP = loadVenues(env);
+  // What the hosted tier cost this call, reported back to the orchestrator so
+  // the request bills it (search-sources.js SearchSourceResult `spend`).
+  // Returned whatever the outcome: a dense lookup that found nothing above the
+  // floor still paid for its embedding and its cross-encoder.
+  const spend = newRetrievalSpend();
+  // ONE dense lookup for the whole search, started here so it overlaps the
+  // first rung's four live backends instead of adding its latency to them. It
+  // gets the PROSE query; every rung below gets extracted terms.
+  const denseP = pubmedDenseSearch(env, log, query, spend).catch(() => /** @type {ScholarRecord[]} */ ([]));
 
   /** @type {ScholarRecord[]} */
   let kept = [];
@@ -1236,25 +1390,48 @@ export async function scholarSearch(env, log, query, { skipKeys } = {}) {
   /** @type {string[]} */
   let backendsUsed = [];
 
+  // No rung left to climb — every keyword attempt this ladder can make was
+  // consumed by an earlier wave, or the query extracted no terms at all. The
+  // dense lookup is neither of those things (it has no terms to consume and no
+  // ladder to exhaust), so it still answers, alone.
+  if (!rungs.length) {
+    const dense = await denseP;
+    if (dense.length) backendsUsed = ["pubmed_rag"];
+    const verdict = filterPeerReviewed(mergeRecords([dense]));
+    kept = verdict.kept;
+    rejected = verdict.rejected;
+  }
+
   for (const rung of rungs) {
     usedKeys.push(rung.key);
     // Backend-priority order is also merge order: the peer-review-bearing
     // backends go first so a Google Scholar hit merges ONTO one of them rather
     // than the other way round.
-    const [oa, epmc, s2, gs] = await Promise.all([
+    const [oa, epmc, s2, gs, dense] = await Promise.all([
       openalexSearch(env, log, rung.terms).catch(() => []),
       europePmcPeerSearch(env, log, rung.terms).catch(() => []),
       semanticScholarSearch(env, log, rung.terms).catch(() => []),
       googleScholarSearch(env, log, rung.terms).catch(() => []),
+      // Awaited, not re-run: the one dense lookup started before the ladder.
+      // Every rung merges the same records, so a rung that drops a term does
+      // not silently drop the hosted corpus with it.
+      denseP,
     ]);
     backendsUsed = /** @type {string[]} */ ([
       oa.length && "openalex",
       epmc.length && "europepmc",
       s2.length && "semanticscholar",
       gs.length && "gscholar",
+      dense.length && "pubmed_rag",
     ].filter(Boolean));
 
-    const merged = mergeRecords([oa, epmc, s2, gs]);
+    // Merge order is backend-priority order, and the hosted tier goes AFTER the
+    // live ones on purpose: where both found the same paper, the live record
+    // carries the DOI, the ISSN and the citation count, and merging keeps the
+    // identity of whichever list saw it first. The hosted tier's value is the
+    // paper the live backends did NOT return, which merges with nothing and
+    // keeps its own verdict.
+    const merged = mergeRecords([oa, epmc, s2, dense, gs]);
 
     // The one place Crossref earns its keep: a Google Scholar hit that merged
     // with nothing has a title and no evidence. Ask Crossref about it — bounded
@@ -1303,10 +1480,13 @@ export async function scholarSearch(env, log, query, { skipKeys } = {}) {
     // The counter that tells "the filter is too strict" from "the literature is
     // thin" — the two failures that look identical in an answer.
     rejected: rejected.length,
+    // How many of the survivors came from THIS project's own index rather than
+    // an outbound API — the counter the CAP-20 review had no way to read.
+    hosted: kept.filter((r) => r.backend === "pubmed").length,
     venues_ranked: venues ? venues.n : 0,
     duration_ms: durationMs,
   });
-  return { items: /** @type {any} */ (items), durationMs, usedKeys };
+  return { items: /** @type {any} */ (items), durationMs, usedKeys, spend };
 }
 
 /**

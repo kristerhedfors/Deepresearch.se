@@ -641,6 +641,11 @@ export function projectCaptureVersion(row, currentVersion) {
     width: row.width || null,
     height: row.height || null,
     note: row.note || null,
+    // Each cut's OWN edit report — the segment plan, the ffprobe result, and
+    // for an Agent Studio run the app-e2e grading. It was written to D1 from
+    // the first version onward and never read back out, so the only report any
+    // surface could show was the parent row's, whichever cut that belonged to.
+    meta: parseMeta(row.meta_json ?? null),
     video_url: versionVideoUrl(row.capture_id, version),
     poster_url: versionPosterUrl(row.capture_id, version),
     has_video: !!row.video_key,
@@ -944,12 +949,16 @@ async function materializeV1(db, capture, existing) {
     .prepare(
       `INSERT INTO capture_versions (capture_id, version, created_at, commit_sha, model, video_key,
          poster_key, size_bytes, duration_ms, source_ms, cut_ms, speed, wait_mode, width, height, note, meta_json)
-       VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL)`,
+       VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`,
     )
     .bind(
       capture.id, v1.created_at, v1.commit_sha, v1.model, v1.video_key, v1.poster_key,
       v1.size_bytes, v1.duration_ms, v1.source_ms, v1.cut_ms, v1.speed, v1.wait_mode,
       v1.width, v1.height,
+      // v1's edit report travels WITH v1. It used to be dropped here, which lost
+      // the only record of how the original cut was made and graded — while the
+      // parent row kept serving that same report against every later cut.
+      capture.meta_json ?? null,
     )
     .run()
     .catch(() => {});
@@ -1321,12 +1330,21 @@ export async function handleAdminCaptures(request, env, url, log) {
     await db
       .prepare(
         `UPDATE captures SET version = ?, commit_sha = ?, model = ?, duration_ms = ?, source_ms = ?,
-           cut_ms = ?, speed = ?, wait_mode = ?, width = ?, height = ?, size_bytes = ?,
+           cut_ms = ?, speed = ?, wait_mode = ?, width = ?, height = ?, size_bytes = ?, meta_json = ?,
            video_key = NULL, poster_key = NULL, status = 'new', updated_at = ? WHERE id = ?`,
       )
       .bind(
         version, e.commit_sha, e.model || capture.model, e.duration_ms, e.source_ms, e.cut_ms,
-        e.speed, e.wait_mode, e.width, e.height, e.size_bytes, now, capture.id,
+        e.speed, e.wait_mode, e.width, e.height, e.size_bytes,
+        // The edit report goes with the numbers. Every other describing column
+        // was already overwritten here and this one was not, so the parent row
+        // carried the NEW cut's duration and the OLD cut's grading — #CAP-22
+        // read "all six app-e2e checks pass" from v1 while playing v2, which is
+        // the opposite of the visibility a re-shoot exists to provide. A cut
+        // published without a report gets NULL rather than inheriting one: "no
+        // report for this cut" is honest, the previous cut's report is not.
+        e.meta_json ?? null,
+        now, capture.id,
       )
       .run();
     log.info("capture.version", { id: capture.id, version, commit: e.commit_sha });

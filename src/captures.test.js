@@ -286,7 +286,7 @@ test("projectCaptureVersion exposes the documented key set and marks the current
   const [v2, v1] = rows.map((r) => projectCaptureVersion(/** @type {any} */ (r), 2));
   assert.deepEqual(Object.keys(v2).sort(), [
     "commit_sha", "created_at", "cut_ms", "duration_ms", "has_video", "height", "id", "is_current",
-    "model", "note", "poster_url", "size_bytes", "source_ms", "speed", "time", "version",
+    "meta", "model", "note", "poster_url", "size_bytes", "source_ms", "speed", "time", "version",
     "video_url", "wait_mode", "width",
   ]);
   assert.equal(v2.video_url, versionVideoUrl(7, 2));
@@ -296,6 +296,36 @@ test("projectCaptureVersion exposes the documented key set and marks the current
   assert.equal(v2.has_video, true);
   assert.equal(v1.has_video, false);
   assert.equal(v1.speed, 1); // absent columns are null-safe
+});
+
+// Each cut has to carry its OWN edit report. #CAP-22 showed why: its parent row
+// answered with v1's "all six app-e2e checks pass" while playing v2, whose last
+// frame is the built app saying it could not get a response. A version's report
+// was being written to D1 and never read back.
+test("projectCaptureVersion returns each version's own edit report", () => {
+  const graded = projectCaptureVersion(
+    /** @type {any} */ ({
+      id: 2, capture_id: 7, version: 2, created_at: 1_700_000_100_000,
+      meta_json: JSON.stringify({ app_e2e: { pass: false, failures: ["app_answers"] } }),
+    }),
+    2,
+  );
+  assert.equal(graded.meta.app_e2e.pass, false);
+  assert.deepEqual(graded.meta.app_e2e.failures, ["app_answers"]);
+  // A cut published without a report says so, rather than borrowing one.
+  const ungraded = projectCaptureVersion(
+    /** @type {any} */ ({ id: 1, capture_id: 7, version: 1, created_at: 1_700_000_000_000 }),
+    2,
+  );
+  // Empty, not null — the same shape the capture-level `meta` has always had,
+  // so a reader needs no second case for "this cut was published without one".
+  assert.deepEqual(ungraded.meta, {});
+  // Unparseable JSON degrades the same way — a bad report is not a 500.
+  const broken = projectCaptureVersion(
+    /** @type {any} */ ({ id: 3, capture_id: 7, version: 3, created_at: 1, meta_json: "{not json" }),
+    3,
+  );
+  assert.deepEqual(broken.meta, {});
 });
 
 // ---------------------------------------------------------------------------
