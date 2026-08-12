@@ -311,6 +311,45 @@ scripts/captures --upload …          # per clip
 open https://deepresearch.se/captures/   # the swipe deck
 ```
 
+## Reading a clip without watching it
+
+Three reviews in a row (#CAP-20/21/22, 2026-08-12) said some version of "look
+at the last frame — it would have told you it went wrong". They were right, and
+the last frame is worth treating as an instrument rather than an impression.
+ffmpeg is not installed in the agent containers (`apt-get install -y
+--no-install-recommends ffmpeg`), and once it is, a published clip answers
+three questions in about a minute:
+
+```bash
+curl -su "$BASIC_AUTH_USER:$BASIC_AUTH_PASS" \
+  https://deepresearch.se/api/admin/captures/22/video -o cap22.mp4
+ffmpeg -v error -sseof -0.15 -i cap22.mp4 -frames:v 1 -update 1 -y last.jpg   # the verdict frame
+ffmpeg -v error -i cap22.mp4 -vf "signalstats,metadata=print:key=lavfi.signalstats.YAVG:file=-" \
+  -f null - 2>/dev/null | paste - -                                          # per-frame luma
+```
+
+Then LOOK at `last.jpg`. #CAP-22's showed the built app replying "Error: could
+not get a response." while the capture's stored `app_e2e` said all six checks
+passed — the frame and the metadata disagreed, and the frame was right.
+
+The per-frame luma is what settles a "blank frame" report, and it settled this
+one against the obvious reading: **every near-white frame in all three clips
+was at the HEAD (t=0.00–0.65 s, YAVG ≈ 235), none at the tail.** The blank was
+the page-load white flash, reached because the deck's `<video>` had `loop` set
+and wrapped to t=0 the instant the clip ended. Fixed by ending on the last
+frame with an explicit replay button (`public/js/captures.js`), but the general
+lesson is the one worth keeping: *a report about where something appears in a
+video is a measurement, not a description* — the reviewer describes what they
+saw, which is not always where the file puts it.
+
+**A version carries its own report.** `--add-version` used to overwrite every
+describing column on the parent row except `meta_json`, `projectCaptureVersion`
+never returned a version's `meta`, and materialising v1 dropped the report it
+was materialised from. The visible symptom is the nastiest kind: a re-shoot
+that plays v2 while quoting v1's grading, so the metadata vouches for a cut it
+never saw. If you add a column that describes a cut, add it to all three places
+or the row will lie about the next re-shoot.
+
 ## Traps
 
 - **`--min-still 1500` is wrong for a run with an activity log.** The default
