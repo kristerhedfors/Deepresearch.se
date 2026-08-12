@@ -44,6 +44,12 @@ encoder. `scripts/capture-core.test.mjs` therefore covers the entire editing
 model on a machine with no ffmpeg, which is every agent container this repo is
 developed in.
 
+`scripts/capture-guard.mjs` is the second pure core, on the recording side: the
+decision about whether what was just recorded shows the product **working**
+(§3.6). Same discipline, same reason — the interesting cases are a Swedish
+error answer and an app that says the key is missing, and neither should need a
+live re-recording to re-check.
+
 ## 3. Stage 1 — recording
 
 `node tests/capture.mjs --agents <csv> --models <csv> [options]`
@@ -94,7 +100,7 @@ pixel count. Recording 1080 CSS pixels and encoding 1:1 produces a crisp video
 nobody can read, so each shape records the site in its narrow, large-type
 layout and upscales with lanczos.
 
-### 3.3 The three sidecars
+### 3.3 The sidecars
 
 Each run writes `captures/<date>/<slug>/`:
 
@@ -123,7 +129,11 @@ and trimming — never for cutting.
 `starter`, `xp`, `lang`, `name`, `shape`, `viewport`, `base`, `commit_sha`,
 `deployed_digest`, `intro`, `budget_s`, `search`, `started_at`, `ended_at`,
 `durationMs`, `ok`, `error`, and — for an Agent Studio run only — `app_e2e`
-(§3.5).
+(§3.5). Plus what the run VERIFICATION GATE saw: `verdict`, `observed` and
+`frames` (§3.6).
+
+**`endframe.png`** and, for a run that walked to a published app,
+**`chatframe.png`** — the last frame as a still. §3.6.
 
 Three of those exist for the review queue rather than for the edit:
 
@@ -176,7 +186,7 @@ app FAILS is never published: it stays on disk with its verdict, because a
 video of a build that does not work is a demo of a broken thing filed as if it
 were a demo of a working one (owner directive, 2026-08-11).
 
-Six checks, each with a stable id:
+Seven checks, each with a stable id:
 
 | id | passes when |
 |---|---|
@@ -186,6 +196,7 @@ Six checks, each with a stable id:
 | `key_not_revealed` | the sentinel is in no visible text and no attribute |
 | `key_not_persisted` | the sentinel is in no storage, cookie or URL |
 | `app_interactive` | there is something to type into and press, and pressing it did not throw |
+| `app_answered` | pressing it produced a REPLY — new text on the page, and not an error message |
 
 **The sentinel rule.** The key typed is `sk-FAKE-CAPTURE-SENTINEL`, never a real
 one, for two reasons: it is typed WHILE RECORDING, so an unmasked field would
@@ -216,12 +227,107 @@ blocks `sk-[A-Za-z0-9_-]{24,}` and a longer one stops the commit.
   nothing, and the clip looks fine unless you read the composer. `selectMode`
   now holds the value and fails the run rather than recording the wrong thing.
 
-### 3.6 Failure posture
+**The fourth trap, and the one that reached the owner: pressing the button was
+never the same as getting an answer.** `app_interactive` typed a question and
+clicked Send and asked nothing further, so an app that answered "Error: could
+not get a response." scored six green checks. Capture **#CAP-22** was published
+on that verdict, and its own final frame shows the failure. `app_answered` is
+the missing assertion: after send, the page must GAIN text (the prompt itself
+subtracted — an app that echoes the question and answers nothing has "grown"),
+and that text must not be error-shaped in either language.
+
+**The narrowed noise filter.** `isProviderNoise` is deliberately generous,
+because the sentinel is fake and its rejection fires on every run — but
+"rejected" and "never arrived" are different facts. OpenAI says *"Incorrect API
+key provided: sk-…"* when a key is present and wrong (the sentinel working as
+designed) and *"You didn't provide an API key… in an Authorization header"*
+when the header is absent or malformed. The second means the app collected a
+key and failed to put it on the wire. Capture **#CAP-21** shows exactly that —
+key field filled, model selected, that verbatim 401 — and passed
+`no_page_errors` with the note "6 provider/network messages ignored". The
+filter had swallowed the one message that was evidence. A missing-key /
+malformed-authorization message is now checked FIRST and is never noise.
+
+### 3.6 The run verification gate
+
+Everything above is Agent Studio's. The gate in this section runs at the end of
+**every** recorded run, for every agent (owner directive, 2026-08-12).
+
+**What it replaced.** A run used to count as successful on one signal: the
+`.stats` footer landing, which is how the sampler sets `done`. The server emits
+that footer from a `finally` (`src/chat.js`), so it lands on **every** exit
+path — after an `{error}` event included. A turn that ended in a red error
+message was therefore indistinguishable from one that ended in an answer, and
+nothing anywhere read the answer itself. Two clips of failing runs were handed
+to the owner as good captures before anyone noticed.
+
+**How it works.** At the end of the run the driver reads the page's end state —
+the last assistant bubble's text, whether that bubble carries `.content
+.error-text` (the class `setError` puts on it, `public/js/turns.js`), whether
+the stats footer landed, the console, and the timeline's last content
+signature — and passes it to `gradeRun` in **`scripts/capture-guard.mjs`**. That
+module is pure: no filesystem, no browser, no clock, no network, no imports. It
+returns `{ ok, reasons[], summary }`, naming each failure with a stable id.
+
+| reason id | raised when |
+|---|---|
+| `driver_error` | the recorder already knew something failed |
+| `timed_out` | the turn never finished inside `--timeout` |
+| `error_state` | the answer bubble is an ERROR bubble, whatever it says |
+| `error_text:*` / `answer_text:*` / `app_text:*` | an error-shaped phrase in the error bubble, the answer, or the built app's own screen |
+| `empty_answer` | no answer, or under `MIN_ANSWER_CHARS` of it |
+| `turn_unfinished` | the completion stats never arrived |
+| `no_final_content` | the timeline's last sample is missing, unreadable, or has no assistant text in it |
+| `app_e2e` | the Agent Studio app gate failed (§3.5) |
+| `page_errors` | the page threw on its own account (network weather filtered) |
+
+**Two rules the phrase list is built around.**
+
+*Precision over reach.* A gate that fires on a good answer costs a good
+recording, fires on every run, and gets switched off. So the phrases are
+ERROR-SHAPED — `Error:` at the head of a line, "could not get a response",
+"kunde inte få ett svar", "you didn't provide an API key" — never merely
+negative. "Kunde inte" on its own is ordinary Swedish prose in a research
+answer, and the hosted mode's *success* line ("no API key needed" / "ingen
+API-nyckel behövs") says the opposite of a failure with nearly the same words;
+both are pinned as non-matches. The one structural signal — the `error-text`
+class — fails the run regardless of wording, because the product itself already
+decided.
+
+*Equal Swedish and English* (CLAUDE.md invariant 6). Every sign carries an `en`
+and an `sv` pattern; `scripts/capture-guard.test.mjs` fails the build if one is
+added without the other, and separately asserts that no Swedish pattern uses
+`\b`, which treats å/ä/ö as non-word characters. Half the capture matrix is
+`--lang sv`; an English-only gate would pass every Swedish failure.
+
+**Full visibility.** The point is that a failure is legible without watching the
+video, so every run also writes:
+
+- **`endframe.png`** — the last frame as a still, taken before the context
+  closes and therefore present on the error path too, which is the path whose
+  last frame is worth the most.
+- **`chatframe.png`** — for a run that then walks away from the transcript
+  (Agent Studio goes to the published app), the transcript's own last frame.
+- **`meta.json` → `verdict`** — `{ ok, reasons[], summary }` verbatim.
+- **`meta.json` → `observed`** — the answer's head AND tail (`setError`
+  *appends* its message to whatever streamed, so a head-only excerpt is exactly
+  the excerpt that cannot show the error), the error text, the stats line, the
+  step counts, the final URL, the first console errors, and the built app's own
+  screen text.
+
+### 3.7 Failure posture
 
 One failing run never aborts a batch (invariant 2's posture, applied to a
 harness). A run that times out keeps its video and timeline — a stalled run is
 the recording most worth watching — is marked `ok: false` with a reason, and
 the batch exits non-zero only if every run failed.
+
+A run that fails the verification gate is treated the same way: **collected,
+never aborted**, its footage kept on disk beside its verdict. What changes is
+that it is impossible to miss. The failure is printed twice — once under the
+run as it finishes, once in a block at the foot of the batch summary that names
+every failed clip, every reason, and where its `endframe.png` is — because a
+one-line row in a table of twenty is how a bad run gets scrolled past.
 
 ## 4. Stage 2 — the cut plan
 

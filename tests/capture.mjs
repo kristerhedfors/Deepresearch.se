@@ -482,8 +482,11 @@ async function sampleFinalState(page) {
  * @returns {Promise<boolean>}
  */
 async function snapshot(page, path) {
+  // `page?.screenshot(…)` on a null page evaluates to undefined WITHOUT
+  // throwing, which would have this report a frame it never wrote.
+  if (!page || typeof page.screenshot !== "function") return false;
   try {
-    await page?.screenshot({ path, timeout: 15_000 });
+    await page.screenshot({ path, timeout: 15_000 });
     return true;
   } catch {
     return false;
@@ -1029,9 +1032,10 @@ export async function captureRun(browser, run, opts, net) {
       // otherwise only recoverable by scrubbing the video.
       frames.chatframe = await snapshot(page, paths.chatframe);
       appE2E = await checkBuiltApp(page, opts, mark);
-      if (appE2E && !appE2E.pass) {
-        error = `the built app failed its end-to-end test: ${appE2E.failures.join("; ")}`;
-      }
+      // NOT folded into `error` here. The guard below raises its own `app_e2e`
+      // reason from this same verdict, and setting `error` too would have the
+      // failure printed twice in one summary, once as the driver's and once as
+      // the gate's.
     }
   } catch (e) {
     error = e instanceof Error ? e.message : String(e);
@@ -1463,6 +1467,10 @@ export async function runBatch(opts) {
       console.log(
         `   ${row.ok ? "✓" : "✗"} ${formatDuration(row.durationMs)}${row.error ? `  ${row.error}` : ""}`,
       );
+      // Say it here as well as in the summary. A batch of twenty scrolls, and
+      // the whole point of the gate is that a failed run cannot be quietly
+      // carried forward as a good clip.
+      if (!row.ok) process.stdout.write(formatRunVerdict(row.verdict, row.slug));
     }
   } finally {
     await browser.close().catch(() => {});
