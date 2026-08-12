@@ -227,12 +227,41 @@ const PROVIDER_HOSTS =
   /(api\.openai\.com|api\.anthropic\.com|api\.berget\.ai|generativelanguage\.googleapis\.com|openrouter\.ai|api\.mistral\.ai|api\.groq\.com|api\.cohere\.(com|ai)|api\.deepseek\.com|api\.together\.(ai|xyz)|api-inference\.huggingface\.co|router\.huggingface\.co|api\.x\.ai|api\.perplexity\.ai|:11434|ollama)/i;
 
 /**
+ * THE CHECKER'S OWN NOISE — errors this module provokes, in every app, always.
+ *
+ * Held apart from the provider patterns below because these two groups are
+ * justified by completely different things. This group is caused by the probe
+ * itself and is therefore noise unconditionally. The provider group is noise
+ * only because a FAKE KEY WAS TYPED, and that premise does not hold for a
+ * hosted app (see isProviderNoise).
+ */
+const SANDBOX_NOISE = [
+  // THE SANDBOX DENYING STORAGE. `/app/<slug>/` is served into an opaque
+  // origin, so reading localStorage/sessionStorage/cookies throws a
+  // SecurityError — and this checker's OWN key_not_persisted probe is what
+  // provokes it. The probe catches its own throw (a denial is a pass, and a
+  // stronger one than an empty store), but Chromium ALSO reports it on the
+  // page-error channel, where it was landing as "the app threw".
+  //
+  // Without this, every generated app fails no_page_errors on an error the
+  // checker caused. Observed on the first live run: two builds that touch no
+  // storage anywhere in their source both failed with this exact message.
+  /the document is sandboxed and lacks the '?allow-same-origin'? flag/i,
+  /securityerror[^\n]{0,80}(localstorage|sessionstorage|cookie)/i,
+  /(localstorage|sessionstorage)[^\n]{0,60}(denied|sandbox|not available|access is denied)/i,
+];
+
+/**
  * Message shapes that mean "the network said no", not "the app is broken".
  *
  * Deliberately generous. The cost of a false NEGATIVE here is one capture kept
  * that should have been reviewed by eye; the cost of a false POSITIVE is a good
  * recording thrown away because a fake key was correctly rejected — and that
  * failure mode would fire on EVERY run, which is how a gate gets switched off.
+ *
+ * That generosity is bought entirely by the sentinel. When no key is typed it
+ * is unpaid for, and these same shapes are the app's real failure — which is
+ * why isProviderNoise takes `sentinelTyped`.
  */
 const NOISE_PATTERNS = [
   /failed to load resource/i,
@@ -260,9 +289,7 @@ const NOISE_PATTERNS = [
   // Without this, every generated app fails no_page_errors on an error the
   // checker caused. Observed on the first live run: two builds that touch no
   // storage anywhere in their source both failed with this exact message.
-  /the document is sandboxed and lacks the '?allow-same-origin'? flag/i,
-  /securityerror[^\n]{0,80}(localstorage|sessionstorage|cookie)/i,
-  /(localstorage|sessionstorage)[^\n]{0,60}(denied|sandbox|not available|access is denied)/i,
+  ...SANDBOX_NOISE,
 ];
 
 /**
@@ -271,13 +298,29 @@ const NOISE_PATTERNS = [
  * @param {any} text
  * @returns {boolean}
  */
-export function isProviderNoise(text) {
+export function isProviderNoise(text, opts) {
   const s = typeof text === "string" ? text : text && typeof text.text === "string" ? text.text : String(text ?? "");
   if (!s.trim()) return false;
   // Checked BEFORE everything else, the host match included: this message
   // arrives FROM a provider host and carries a 401, so it would otherwise match
   // two separate noise rules on its way past.
   if (KEY_NEVER_SENT.test(s)) return false;
+  // NO KEY TYPED, NO AMNESTY. Every provider rule below is justified by one
+  // sentence — "the sentinel is fake, so of course it was rejected". A HOSTED
+  // app has no key field, so nothing was typed and that sentence is simply
+  // untrue; a 401, a failed fetch or a rate-limit from a hosted app is the app
+  // failing, and swallowing it is how #CAP-22 v2 passed. Its stored verdict
+  // reads "5 provider/network messages ignored — the sentinel key is rejected
+  // on purpose" on a run where `key_field_masked` recorded "no key field — this
+  // app does not ask for a key", while the clip's last frame shows the app
+  // answering "Error: could not get a response." Those five ignored messages
+  // were the failure.
+  //
+  // Defaults to true so an unaware caller keeps the old behaviour: the risk
+  // worth guarding is a BYOK run losing its amnesty and throwing away good
+  // recordings on every single run.
+  const sentinelTyped = !opts || opts.sentinelTyped == null ? true : !!opts.sentinelTyped;
+  if (!sentinelTyped) return SANDBOX_NOISE.some((re) => re.test(s));
   if (PROVIDER_HOSTS.test(s)) return true;
   return NOISE_PATTERNS.some((re) => re.test(s));
 }
@@ -1116,7 +1159,12 @@ function text(v) {
 }
 
 /** A console/page error entry, however it was recorded, judged for noise. */
-function isNoiseEntry(e) {
+function isNoiseEntry(e, sentinelTyped) {
+  // The cached `noise` flag is stamped as the message ARRIVES, which is before
+  // the key is typed, so it cannot know whether the sentinel ever went in. When
+  // it did not, re-judge from the text rather than trusting a verdict reached
+  // under the wrong premise.
+  if (sentinelTyped === false) return isProviderNoise(text(e), { sentinelTyped: false });
   if (e && typeof e === "object" && typeof e.noise === "boolean") return e.noise;
   return isProviderNoise(text(e));
 }
@@ -1194,17 +1242,28 @@ export function gradeApp(observations) {
   // The sentinel key is fake, so a 401/403 and a failed fetch are the EXPECTED
   // outcome; they are filtered rather than counted. What remains is the app
   // throwing on its own account.
+  //
+  // ONLY when a key was actually typed. A hosted app has no key field, so there
+  // is no fake rejection to forgive and a provider error is the app failing —
+  // the filter narrows to this checker's own sandbox noise instead.
   const pageErrs = arr(o.pageErrors);
   const consoleErrs = arr(o.consoleErrors);
-  const realPage = pageErrs.filter((e) => !isNoiseEntry(e)).map(text);
-  const realConsole = consoleErrs.filter((e) => !isNoiseEntry(e)).map(text);
+  const typed = Number(o.sentinelTyped) > 0;
+  const realPage = pageErrs.filter((e) => !isNoiseEntry(e, typed)).map(text);
+  const realConsole = consoleErrs.filter((e) => !isNoiseEntry(e, typed)).map(text);
   const real = [...realPage, ...realConsole];
   const ignored = pageErrs.length + consoleErrs.length - real.length;
   add(
     "no_page_errors",
     real.length === 0,
     real.length === 0
-      ? `no uncaught errors${ignored ? ` (${ignored} provider/network message${ignored === 1 ? "" : "s"} ignored — the sentinel key is rejected on purpose)` : ""}`
+      ? `no uncaught errors${
+          ignored
+            ? typed
+              ? ` (${ignored} provider/network message${ignored === 1 ? "" : "s"} ignored — the sentinel key is rejected on purpose)`
+              : ` (${ignored} message${ignored === 1 ? "" : "s"} ignored — this checker's own sandbox probes; no key was typed, so provider errors are NOT forgiven)`
+            : ""
+        }`
       : `${real.length} uncaught error${real.length === 1 ? "" : "s"}: ${real.slice(0, 3).map((t) => t.slice(0, 120)).join(" | ")}`,
   );
 
