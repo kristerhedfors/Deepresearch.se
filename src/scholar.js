@@ -699,8 +699,13 @@ const PREPRINT_VENUE =
  * the record. The corpus stores no retraction flag, so the title is the only
  * signal there is — and a retracted paper cited as current evidence is the
  * worst single failure this agent can produce. */
+// The trailing colon is load-bearing, not decoration: PubMed writes a notice as
+// a PREFIX to the withdrawn paper's own title ("Retracted: Vitamin D and …"),
+// while a paper ABOUT retraction is an ordinary title that happens to start
+// with the word ("Retraction rates in the biomedical literature"). Without the
+// colon this rejects the second one, which is a real paper on a real question.
 const RETRACTED_TITLE =
-  /^\s*(?:retracted|retraction(?:\s+(?:of|notice))?|withdrawn|withdrawal(?:\s+of)?|expression\s+of\s+concern)\b/i;
+  /^\s*(?:retracted(?:\s+article)?|retraction(?:\s+(?:of|notice)(?:\s+to)?)?|withdrawn|withdrawal(?:\s+of)?|expression\s+of\s+concern)\s*:/i;
 
 /**
  * The peer-review verdict, and the one line of evidence behind it.
@@ -975,31 +980,41 @@ const PUBMED_DENSE_MAX = 5;
 export async function pubmedDenseSearch(env, log, query, spend = null) {
   if (!String(query || "").trim() || !pubmedRagAvailable(env)) return [];
   const found = await pubmedRagRecords(env, log, query, { limit: PUBMED_DENSE_MAX, spend }).catch(() => null);
-  return (found || []).map((rec, i) => {
-    /** @type {ScholarRecord} */
-    const r = {
-      title: rec.title.replace(/\s+/g, " ").replace(/\.$/, "").trim(),
-      doi: "",
-      url: rec.url,
-      year: rec.year,
-      venue: rec.journal,
-      publisher: "",
-      issn: "",
-      authors: rec.authors,
-      // The corpus stores no citation count. Null rather than 0, so
-      // rankRecords reads "unknown" and does not rank it below a paper that
-      // genuinely has none.
-      citedBy: null,
-      abstract: rec.abstract.slice(0, 1200),
-      retracted: RETRACTED_TITLE.test(rec.title),
-      kind: "pubmed",
-      backend: "pubmed",
-      rank: i,
-      peerReviewed: false,
-      why: "",
-    };
-    return r;
-  });
+  return (found || []).map(pubmedScholarRecord);
+}
+
+/**
+ * One hosted-corpus record → a ScholarRecord the verdict can judge. Separated
+ * from the search so the mapping is testable without an index, an embedder or a
+ * cross-encoder — which is the whole of what a unit test can check here.
+ * @param {NonNullable<ReturnType<typeof import('./pubmed-rag.js').pubmedRagRecord>>} rec
+ * @param {number} [i] the corpus's own retrieval position
+ * @returns {ScholarRecord}
+ */
+export function pubmedScholarRecord(rec, i = 0) {
+  return {
+    title: String(rec.title || "").replace(/\s+/g, " ").replace(/\.$/, "").trim(),
+    doi: "",
+    url: rec.url,
+    year: rec.year,
+    venue: rec.journal,
+    publisher: "",
+    issn: "",
+    authors: rec.authors,
+    // The corpus stores no citation count. Null rather than 0, so rankRecords
+    // reads it as unknown and does not rank the paper below one that genuinely
+    // has none.
+    citedBy: null,
+    abstract: String(rec.abstract || "").slice(0, 1200),
+    // No retraction flag is stored either, so the title is the only signal —
+    // see RETRACTED_TITLE.
+    retracted: RETRACTED_TITLE.test(String(rec.title || "")),
+    kind: "pubmed",
+    backend: "pubmed",
+    rank: i,
+    peerReviewed: false,
+    why: "",
+  };
 }
 
 /**

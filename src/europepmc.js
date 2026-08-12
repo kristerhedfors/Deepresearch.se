@@ -361,7 +361,16 @@ const LIFE_SCIENCE_PHRASE = new RegExp(
     "|muskel(?:massa|styrka|tillväxt|cell|fibr|värk|protein|skada|uppbyggnad)" + LETTER +
     "|dna[-\\s]?sekvenser|gensekvenser" +
     "|patient(?:en)? med|virus(?:infektion|stam|variant|sjukdom)" + LETTER +
-    "|mineral(?:er|erna)? och vitaminer|vitaminer och mineral(?:er|erna)?)" +
+    "|mineral(?:er|erna)? och vitaminer|vitaminer och mineral(?:er|erna)?" +
+    // Swedish `fasta` is the ambiguous half of an EN/SV pair whose English side
+    // is not: "fasting" has no common non-dietary sense and sits in
+    // LIFE_SCIENCE_WORD, while `fasta` is also "fixed" (fasta kostnader, fasta
+    // priser) and the definite plural of `fast`. So it lives HERE, in the
+    // collocation tier, on exactly the rule this file already applies to hälsa
+    // and hjärta — the qualifier carries it, never the bare word.
+    "|(?:intermittent|periodisk|regelbunden|kortvarig|långvarig|utökad)\\s+fast(?:a|an)" +
+    "|fastande|faste(?:period|blodsocker|insulin|glukos|värde|dag|dygn)" + LETTER +
+    "|kalorirestriktion(?:en)?|tidsbegränsat ätande)" +
     E,
   "iu",
 );

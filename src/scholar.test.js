@@ -16,6 +16,7 @@ import {
   mergeRecords,
   parseScholarResult,
   peerReviewed,
+  pubmedScholarRecord,
   rankRecords,
   scholarDiversityKey,
   scholarIntent,
@@ -27,6 +28,14 @@ import {
   titleKey,
   toItem,
 } from "./scholar.js";
+import { pubmedRagRecord } from "./pubmed-rag.js";
+
+/** A hosted-corpus vector → the ScholarRecord the verdict sees, through BOTH
+ * real mappers (src/pubmed-rag.js's and this module's) rather than a hand-built
+ * object — the two have to agree about which stored field is the journal, and a
+ * literal would let them drift. */
+const pubmedRecordFrom = (metadata, id = "pmid:41610285") =>
+  pubmedScholarRecord(/** @type {any} */ (pubmedRagRecord({ id, metadata })));
 
 /** A ScholarRecord with sensible defaults, overridden per test. */
 const rec = (over = {}) => ({
@@ -431,6 +440,89 @@ test("peerReviewed rejects preprints, repositories, retractions and the unknown"
     const v = peerReviewed(/** @type {any} */ (r));
     assert.equal(v.ok, false, `${/** @type {any} */ (r).backend}/${/** @type {any} */ (r).kind} must be rejected`);
     assert.match(v.why, /** @type {RegExp} */ (why));
+  }
+});
+
+// ---- the hosted corpus ------------------------------------------------------
+//
+// The Deep Science agent narrows every request to this one source, and until
+// 2026-08-12 this source had no dense tier — so the site's own PubMed index was
+// unreachable from the agent whose subject it is (CAP-20 / chat_logs #1703).
+// Admitting it means admitting records whose peer-review evidence is a journal
+// NAME rather than a source field, which is exactly the weaker case the tests
+// below pin.
+
+test("a hosted-corpus record is admitted on its journal, and says so", () => {
+  const r = pubmedRecordFrom({
+    t: "Effects of intermittent fasting on insulin sensitivity.",
+    j: "Diabetologia",
+    d: "2025-04-11",
+    au: "A Author; B Author",
+    a: "A randomised trial.",
+  });
+  // The mapping the verdict depends on: the stored journal is the venue, the
+  // PMID is the link, and the absent citation count is UNKNOWN, not zero.
+  assert.equal(r.backend, "pubmed");
+  assert.equal(r.venue, "Diabetologia");
+  assert.equal(r.url, "https://pubmed.ncbi.nlm.nih.gov/41610285/");
+  assert.equal(r.year, 2025);
+  assert.equal(r.citedBy, null);
+  assert.equal(r.doi, "");
+
+  const v = peerReviewed(r);
+  assert.equal(v.ok, true);
+  assert.match(v.why, /indexed in PubMed under the journal Diabetologia/);
+
+  // …and the provenance line a reader checks the claim against names it, so a
+  // hosted citation is never indistinguishable from an OpenAlex one.
+  const item = /** @type {any} */ (toItem(filterPeerReviewed([r]).kept[0]));
+  assert.match(item.highlights[0], /peer-reviewed: indexed in PubMed/);
+});
+
+test("the hosted corpus cannot smuggle a preprint into a peer-reviewed answer", () => {
+  // PubMed's own Preprint Pilot puts bioRxiv and medRxiv INSIDE PubMed —
+  // bioRxiv is the corpus's second most common journal (docs/PUBMED-RAG.md §3)
+  // — and the index stores no publication-type field to exclude them by. The
+  // journal name is the only signal there is, so it has to carry the full
+  // spelled-out forms PubMed actually writes.
+  const cases = [
+    ["bioRxiv : the preprint server for biology", /preprint/],
+    ["medRxiv : the preprint server for health sciences", /preprint/],
+    ["Research Square", /preprint/],
+    ["arXiv", /preprint/],
+    ["", /no journal title/],
+  ];
+  for (const [venue, why] of cases) {
+    const v = peerReviewed(rec({ backend: "pubmed", kind: "pubmed", venue, issn: "", doi: "" }));
+    assert.equal(v.ok, false, `"${venue}" must be rejected`);
+    assert.match(v.why, /** @type {RegExp} */ (why));
+  }
+});
+
+test("a retraction notice in the hosted corpus is rejected on its title", () => {
+  // The corpus stores no retraction flag either, so pubmedDenseSearch sets
+  // `retracted` from the title and the shared first line of the verdict does
+  // the rest. A retracted paper cited as current evidence is the worst single
+  // failure this agent can produce.
+  for (const title of [
+    "Retracted: Vitamin D and respiratory infection",
+    "Retraction of: A trial of intermittent fasting",
+    "Withdrawn: Insulin sensitivity after time-restricted eating",
+    "Expression of Concern: Metabolic effects of fasting",
+  ]) {
+    const r = pubmedRecordFrom({ t: title, j: "The Lancet" });
+    assert.equal(r.retracted, true, title);
+    assert.equal(peerReviewed(r).ok, false, title);
+  }
+  // …and a paper ABOUT retraction is not swept up by it. PubMed writes the
+  // notice as a prefix to the withdrawn paper's title, so the colon is what
+  // separates the notice from an ordinary title starting with the same word.
+  for (const title of [
+    "Retraction rates in the biomedical literature",
+    "Withdrawal symptoms after stopping SSRIs",
+    "Expression of concern about a gene in liver tissue",
+  ]) {
+    assert.equal(pubmedRecordFrom({ t: title, j: "BMJ" }).retracted, false, title);
   }
 });
 

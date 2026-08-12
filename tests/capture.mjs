@@ -16,7 +16,32 @@
 //   <out>/<slug>/raw.webm      the recording, exactly as Playwright wrote it
 //   <out>/<slug>/timeline.json the activity samples + markers the editor cuts on
 //   <out>/<slug>/meta.json     what was run (agent, model, prompt, shape, timing)
+//                              AND the run VERDICT — see below
+//   <out>/<slug>/endframe.png  the last frame, as a still
+//   <out>/<slug>/chatframe.png the transcript, for a run that then walked to an app
 //   <out>/batch.json           the whole batch: options + one row per run
+//
+// THE RUN VERIFICATION GATE (owner directive, 2026-08-12, captures #CAP-21 and
+// #CAP-22). Both clips were handed to the owner as good captures. #CAP-21's
+// published app answered "401 — You didn't provide an API key" with its key
+// field visibly filled; #CAP-22's answered "Error: could not get a response."
+// Neither was caught, because nothing in this driver ever looked at what was ON
+// SCREEN: a run was "done" when the `.stats` footer landed, and the server
+// emits that footer from a `finally` (src/chat.js) — so a turn that ended in a
+// red error message is indistinguishable from one that ended in an answer.
+//
+// So at the END OF EVERY RUN, for every agent, the driver now reads the page's
+// final state (the assistant's text, whether the bubble is an error bubble, the
+// console, the timeline's last signature), grades it with the pure
+// `scripts/capture-guard.mjs`, and writes the verdict into meta.json. A run that
+// fails is marked `ok: false` and reported LOUDLY in the batch summary. It is
+// NOT aborted and its footage is NOT deleted — same posture as the Agent Studio
+// app gate, and as invariant 2: one bad run costs one clip.
+//
+// FULL VISIBILITY is the point ("make sure you have full visibility and verify
+// at least that far before presenting the user with the video"). endframe.png
+// plus the answer text in meta.json mean a later reviewer — or a Claude Code
+// session — can see that a run went wrong without decoding an mp4.
 //
 // OPTIONS
 //   --agents <csv>      agent ids (default research). Unknown ids are refused.
@@ -68,6 +93,7 @@ import {
   formatDuration,
   resolveShape,
 } from "../scripts/capture-core.mjs";
+import { formatRunVerdict, gradeRun } from "../scripts/capture-guard.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, "..");
@@ -381,7 +407,88 @@ function readPage() {
     stats: !!(statsEl?.textContent || "").trim(),
   };
 }
+/**
+ * THE END STATE — everything the guard needs to decide whether this recording
+ * captured the product working. Read once, at the end of the run.
+ *
+ * Deliberately more than the sampler reads. `readPage` exists to detect CHANGE
+ * (its answer field is a length, because a length is all a cut needs); this
+ * exists to detect FAILURE, so it carries the actual words, and — the part that
+ * was missing entirely — whether the product itself has flagged the turn as an
+ * error. `setError` puts `error-text` on the bubble (public/js/turns.js) for
+ * every error a turn can hit, server- and client-side, so that class is the one
+ * structural signal that holds for wording nobody has seen yet.
+ * @returns {{ answerText: string, errorElement: boolean, errorText: string,
+ *             statsPresent: boolean, statsText: string, msgs: number,
+ *             steps: number, finishedSteps: number, title: string, url: string }}
+ */
+/* c8 ignore start — runs in the browser, not in Node */
+function readFinalState() {
+  const assistants = document.querySelectorAll(".msg.assistant");
+  const last = assistants[assistants.length - 1] || null;
+  const body = last ? last.querySelector(".content") : null;
+  const statsEl = last ? last.querySelector(".stats") : null;
+  const errorNodes = Array.prototype.slice.call(document.querySelectorAll(".msg.assistant .content.error-text"));
+  return {
+    answerText: ((body || last)?.textContent || "").trim().slice(0, 8000),
+    errorElement: errorNodes.length > 0,
+    errorText: errorNodes
+      .map((e) => (e.textContent || "").trim())
+      .join(" | ")
+      .slice(0, 2000),
+    statsPresent: !!(statsEl?.textContent || "").trim(),
+    statsText: (statsEl?.textContent || "").trim().slice(0, 300),
+    msgs: document.querySelectorAll(".msg").length,
+    steps: document.querySelectorAll(".step").length,
+    finishedSteps: document.querySelectorAll(".step.finished").length,
+    title: String(document.title || "").slice(0, 200),
+    url: String(location.href),
+  };
+}
 /* c8 ignore stop */
+
+/**
+ * The end state, or an empty one. NEVER THROWS: a page that died still has to
+ * produce a verdict, and "nothing could be read" is itself the strongest
+ * possible failure — which is what the guard makes of an empty record.
+ * @param {any} page
+ */
+async function sampleFinalState(page) {
+  try {
+    const s = await page?.evaluate(readFinalState);
+    if (s && typeof s === "object") return s;
+  } catch {
+    /* a closed page, a navigation in flight — fall through */
+  }
+  return {
+    answerText: "",
+    errorElement: false,
+    errorText: "",
+    statsPresent: false,
+    statsText: "",
+    msgs: 0,
+    steps: 0,
+    finishedSteps: 0,
+    title: "",
+    url: "",
+  };
+}
+
+/**
+ * A still of whatever is on screen right now. Fail-soft to `false`: a
+ * screenshot is evidence, never a reason to lose a recording.
+ * @param {any} page
+ * @param {string} path
+ * @returns {Promise<boolean>}
+ */
+async function snapshot(page, path) {
+  try {
+    await page?.screenshot({ path, timeout: 15_000 });
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Output paths, timeline and meta — the contract scripts/capture-edit.mjs reads
@@ -400,6 +507,15 @@ export function runPaths(outRoot, slug) {
     video: join(dir, "raw.webm"),
     timeline: join(dir, "timeline.json"),
     meta: join(dir, "meta.json"),
+    // The last frame as a still. The owner's ask after #CAP-21/#CAP-22: "could
+    // you also have a look at the last frame of the video? That would tell you
+    // it went wrong." A PNG beside the webm is what makes that possible without
+    // an encoder, in a terminal, or from a later session reading the directory.
+    endframe: join(dir, "endframe.png"),
+    // For a run that walks away from the transcript (Agent Studio goes to the
+    // published app), the transcript's own last frame — otherwise it is only
+    // recoverable by scrubbing the video.
+    chatframe: join(dir, "chatframe.png"),
     // Playwright names the video file itself, so it is recorded into a scratch
     // directory and moved afterwards.
     videoTmp: join(dir, "_video"),
@@ -539,12 +655,55 @@ export function buildMeta(run, opts, timing) {
     // The publish step reads `app_e2e.pass` and skips a capture that failed —
     // a clip of a build that does not work is worse than no clip.
     app_e2e: timing.appE2E || null,
+    // THE RUN VERDICT and the end state it was reached from — the whole of
+    // "full visibility" (owner directive, 2026-08-12). Present on every real
+    // recording; omitted when the caller observed nothing, which is only ever a
+    // unit test constructing a meta by hand.
+    ...(timing.verdict ? { verdict: timing.verdict } : {}),
+    ...(timing.observed ? { observed: timing.observed } : {}),
+    ...(timing.frames ? { frames: timing.frames } : {}),
+  };
+}
+
+/**
+ * The end state, cut down to what belongs in a metadata file: enough to see
+ * WHAT WENT WRONG without opening the video, not enough to make meta.json a
+ * transcript dump.
+ *
+ * Head AND tail of the answer, because `setError` APPENDS its message to
+ * whatever had streamed (public/js/turns.js: `turn.text + "\n\n[" + message +
+ * "]"`). A head-only excerpt is exactly the excerpt that cannot show the error.
+ * @param {any} state
+ * @param {any} [extra]
+ */
+export function summariseObserved(state, extra = {}) {
+  const s = state && typeof state === "object" ? state : {};
+  const answer = String(s.answerText ?? "").replace(/\s+/g, " ").trim();
+  return {
+    answer_chars: answer.length,
+    answer_head: answer.slice(0, 400),
+    answer_tail: answer.length > 700 ? answer.slice(-300) : "",
+    error_element: s.errorElement === true,
+    error_text: String(s.errorText ?? "").replace(/\s+/g, " ").trim().slice(0, 500),
+    stats_present: s.statsPresent === true,
+    stats_text: String(s.statsText ?? "").replace(/\s+/g, " ").trim().slice(0, 200),
+    msgs: Number(s.msgs) || 0,
+    steps: Number(s.steps) || 0,
+    finished_steps: Number(s.finishedSteps) || 0,
+    final_url: String(s.url ?? "").slice(0, 300),
+    ...extra,
   };
 }
 
 /**
  * The batch summary, as a table an operator reads in the terminal.
- * @param {Array<{ slug: string, agent: string, model: string, starter: string, ok: boolean, durationMs: number, error: string | null }>} rows
+ *
+ * A failed run is then spelled out AGAIN underneath, verdict by verdict. That
+ * repetition is deliberate: #CAP-21 and #CAP-22 were handed to the owner as
+ * good captures, and a one-line row in a table of twenty is how a bad run gets
+ * scrolled past. The block at the bottom says which clips must not be
+ * presented, and why, in words.
+ * @param {Array<{ slug: string, agent: string, model: string, starter: string, ok: boolean, durationMs: number, error: string | null, verdict?: any }>} rows
  * @returns {string}
  */
 export function formatSummary(rows) {
@@ -556,7 +715,20 @@ export function formatSummary(rows) {
       (r.error ? `  ${r.error}` : ""),
   );
   const ok = rows.filter((r) => r.ok).length;
-  return [...lines, "", `${ok}/${rows.length} captured.`].join("\n") + "\n";
+  const out = [...lines, "", `${ok}/${rows.length} captured.`];
+
+  const failed = rows.filter((r) => !r.ok);
+  if (failed.length) {
+    out.push("", `${failed.length} run${failed.length === 1 ? "" : "s"} FAILED VERIFICATION — do not present ${failed.length === 1 ? "it" : "them"} as a good capture:`);
+    for (const r of failed) {
+      const reasons = Array.isArray(r.verdict?.reasons) ? r.verdict.reasons : [];
+      out.push(`  ✗ ${r.slug}`);
+      if (!reasons.length && r.error) out.push(`      ${r.error}`);
+      for (const reason of reasons) out.push(`      ${reason?.id ?? "?"}: ${reason?.detail ?? ""}`);
+      out.push(`      the last frame is beside the recording: ${join(r.slug, "endframe.png")}`);
+    }
+  }
+  return out.join("\n") + "\n";
 }
 
 // ---------------------------------------------------------------------------
@@ -709,6 +881,13 @@ export async function captureRun(browser, run, opts, net) {
   let stopSampler = () => {};
   /** @type {any} */
   let appE2E = null;
+  /** The transcript's end state, read BEFORE any walk away from the chat. */
+  /** @type {any} */
+  let chatState = null;
+  /** Console/page errors the CHAT threw, for the guard. */
+  /** @type {string[]} */
+  const consoleErrors = [];
+  const frames = { endframe: false, chatframe: false };
 
   const mark = (/** @type {string} */ id) => markers.push({ t: Date.now() - t0, id });
 
@@ -759,6 +938,23 @@ export async function captureRun(browser, run, opts, net) {
     // A dialog left unanswered blocks the page forever and the capture records
     // a frozen screen for the whole timeout.
     page.on("dialog", (/** @type {any} */ d) => d.accept().catch(() => {}));
+    // What the page threw, for the guard to judge. Bounded, because a page
+    // stuck in an error loop can produce thousands and none of them says
+    // anything the first twenty did not.
+    page.on("console", (/** @type {any} */ m) => {
+      try {
+        if (String(m.type?.() || "") === "error" && consoleErrors.length < 40) {
+          consoleErrors.push(String(m.text?.() || "").slice(0, 300));
+        }
+      } catch {
+        /* a message that would not read is not worth a failed run */
+      }
+    });
+    page.on("pageerror", (/** @type {any} */ e) => {
+      if (consoleErrors.length < 40) {
+        consoleErrors.push(String(e instanceof Error ? `${e.name}: ${e.message}` : e).slice(0, 300));
+      }
+    });
 
     await page.goto(captureUrl(opts), { waitUntil: "domcontentloaded", timeout: 60_000 });
     await page.waitForSelector("#form", { state: "visible", timeout: 60_000 });
@@ -818,11 +1014,20 @@ export async function captureRun(browser, run, opts, net) {
     // that ends on a half-drawn answer reads as a crash.
     await sleep(1500);
 
+    // READ THE TRANSCRIPT'S END STATE, before anything walks away from it.
+    // This is the observation that did not exist when #CAP-21 and #CAP-22 were
+    // presented as good captures: `state.done` only ever meant "the stats
+    // footer landed", and the server emits that footer after an error too.
+    chatState = await sampleFinalState(page);
+
     // AGENT STUDIO: a build is only worth showing if the thing it built works.
     // So the capture does not stop at the transcript — it walks to the
     // published app and uses it, ON CAMERA, and the verdict decides whether
     // this clip is published at all (owner directive, 2026-08-11).
     if (finished && run.mode === "sdk") {
+      // The app walk navigates THIS page, so the transcript's own last frame is
+      // otherwise only recoverable by scrubbing the video.
+      frames.chatframe = await snapshot(page, paths.chatframe);
       appE2E = await checkBuiltApp(page, opts, mark);
       if (appE2E && !appE2E.pass) {
         error = `the built app failed its end-to-end test: ${appE2E.failures.join("; ")}`;
@@ -833,6 +1038,14 @@ export async function captureRun(browser, run, opts, net) {
     mark("error");
   } finally {
     stopSampler();
+    // THE LAST FRAME, always — including on the error path, which is the path
+    // whose last frame is worth the most. Taken before the context is closed,
+    // because the page is gone after that.
+    frames.endframe = await snapshot(page, paths.endframe);
+    // If the run never got as far as reading the transcript (it threw during
+    // setup, or timed out inside the walk), read whatever is there now. An
+    // empty record is itself a failing verdict, which is the right answer.
+    if (!chatState) chatState = await sampleFinalState(page);
     const video = page?.video?.() || null;
     // ALWAYS close: Playwright only flushes the video file on context close, so
     // an early return here is a lost recording.
@@ -846,14 +1059,65 @@ export async function captureRun(browser, run, opts, net) {
 
   const endedAt = Date.now();
   const durationMs = Math.max(0, endedAt - t0);
-  writeFileSync(
-    paths.timeline,
-    JSON.stringify(buildTimeline({ samples, markers, durationMs, sampleMs: opts.sample }), null, 2),
-  );
-  const meta = buildMeta(run, opts, { startedAt, endedAt, ok: !error, error, appE2E });
+  const timeline = buildTimeline({ samples, markers, durationMs, sampleMs: opts.sample });
+  writeFileSync(paths.timeline, JSON.stringify(timeline, null, 2));
+
+  // THE GATE. Every agent, every run — not just Agent Studio, and not just when
+  // something already went wrong. `error` at this point is what the driver knew
+  // (a timeout, a thrown step, a failed app); the guard adds what was ON SCREEN.
+  const verdict = gradeRun({
+    agent: run.agent,
+    mode: run.mode,
+    answerText: chatState?.answerText || "",
+    errorElement: chatState?.errorElement === true,
+    errorText: chatState?.errorText || "",
+    statsPresent: chatState?.statsPresent === true,
+    steps: chatState?.steps || 0,
+    finishedSteps: chatState?.finishedSteps || 0,
+    consoleErrors,
+    lastSignature: timeline.samples.length ? timeline.samples[timeline.samples.length - 1].sig : null,
+    timedOut: /^no answer within /.test(String(error || "")),
+    driverError: error,
+    appE2E,
+    // What the BUILT APP said on its own screen. `app_answered` (check seven)
+    // already grades this, but the guard names it in the run's own verdict so
+    // meta.json says in one place what a reviewer would have seen.
+    appText: appE2E?.appText || "",
+  });
+  // A run that fails verification is NOT a good capture, whatever the driver
+  // thought. It is still written to disk, verdict and all — collect and report
+  // (invariant 2): one bad run costs one clip, never the batch.
+  if (!verdict.ok && !error) error = `failed run verification: ${verdict.summary}`;
+
+  const meta = buildMeta(run, opts, {
+    startedAt,
+    endedAt,
+    ok: verdict.ok && !error,
+    error,
+    appE2E,
+    verdict,
+    observed: summariseObserved(chatState, {
+      console_errors: consoleErrors.slice(0, 10),
+      app_text_head: String(appE2E?.appText || "").replace(/\s+/g, " ").trim().slice(0, 400),
+    }),
+    frames: {
+      endframe: frames.endframe ? "endframe.png" : null,
+      chatframe: frames.chatframe ? "chatframe.png" : null,
+    },
+  });
   writeFileSync(paths.meta, JSON.stringify(meta, null, 2));
 
-  return { slug: run.slug, agent: run.agent, model: run.model, starter: run.starter, ok: !error, durationMs, error, appE2E };
+  return {
+    slug: run.slug,
+    agent: run.agent,
+    model: run.model,
+    starter: run.starter,
+    ok: verdict.ok && !error,
+    durationMs,
+    error,
+    appE2E,
+    verdict,
+  };
 }
 
 /**
@@ -920,7 +1184,15 @@ async function checkBuiltApp(page, opts, mark) {
     const observations = await exerciseApp(page, url, { timeout: 45_000 });
     const graded = gradeApp(observations);
     mark("app_done");
-    return { ...graded, url, slug: url.replace(/\/$/, "").split("/").pop() };
+    return {
+      ...graded,
+      url,
+      slug: url.replace(/\/$/, "").split("/").pop(),
+      // What the app WROTE when it was used. #CAP-22's said "Error: could not
+      // get a response." and the verdict said pass — so the words themselves go
+      // into meta.json, where a reviewer can read them.
+      appText: String(observations?.reply?.added || observations?.reply?.text || "").slice(0, 1000),
+    };
   } catch (e) {
     mark("app_done");
     return fail(`the end-to-end check could not run: ${e instanceof Error ? e.message : String(e)}`);

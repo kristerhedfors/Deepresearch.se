@@ -63,6 +63,16 @@ function passing(overrides = {}) {
       error: null,
       threw: [],
     },
+    // What the app wrote when send was pressed. A working app answers; #CAP-22
+    // printed "Error: could not get a response." here and was certified as
+    // working anyway, which is why `app_answered` exists.
+    reply: {
+      beforeChars: 812,
+      afterChars: 1010,
+      prompt: DEFAULT_PROMPT,
+      added: "Hello! Give me one short sentence about the sea. The sea covers most of the planet and drives its weather.",
+      text: "Socratic Tutor … Hello! Give me one short sentence about the sea. The sea covers most of the planet and drives its weather.",
+    },
     consoleErrors: [],
     pageErrors: [],
     errors: [],
@@ -306,6 +316,83 @@ test("a forced click still counts as interactive, and says so", () => {
   assert.match(check(r, "app_interactive").detail, /forced/);
 });
 
+// ---------------------------------------------------------------------------
+// app_answered — the seventh check, and the reason it was added
+// ---------------------------------------------------------------------------
+
+test("THE #CAP-22 REGRESSION: a published app that answers with an error FAILS", () => {
+  // The stored verdict for #CAP-22 is pass:true with all six of the original
+  // checks green — app_interactive included, reading "typed into textarea#input
+  // and pressed button#send “Send”". The clip's own final frame shows that same
+  // app replying "Error: could not get a response." Pressing a button that
+  // leads nowhere used to be a pass; this is the assertion that was missing.
+  const r = gradeApp(
+    passing({
+      reply: { ...passing().reply, added: "Error: could not get a response.", text: "Socratic Tutor\nError: could not get a response." },
+    }),
+  );
+  assert.equal(okOf(r, "app_answered"), false);
+  assert.equal(okOf(r, "app_interactive"), true, "the old check still passes — which is exactly the problem it had");
+  assert.equal(r.pass, false, "and the capture must not be presented as a good one");
+  assert.match(check(r, "app_answered").detail, /answered with an error/);
+});
+
+test("THE #CAP-21 REGRESSION: an app that says the key is missing FAILS, in EN and SV", () => {
+  // The key field was visibly filled (masked dots) and the app still answered
+  // with OpenAI's absent-header 401. Both languages, because half the capture
+  // matrix is --lang sv (CLAUDE.md invariant 6).
+  const en = "Error: 401 — You didn't provide an API key. You need to provide your API key in an Authorization header using Bearer auth.";
+  const sv = "Fel: 401 — Du angav ingen API-nyckel. Nyckeln måste skickas med i en Authorization-header.";
+  for (const said of [en, sv]) {
+    const r = gradeApp(passing({ reply: { ...passing().reply, added: said, text: said } }));
+    assert.equal(okOf(r, "app_answered"), false, said);
+    assert.equal(r.pass, false, said);
+  }
+});
+
+test("app_answered fails when nothing at all came back", () => {
+  // The app echoed the question into its transcript and then did nothing. The
+  // page GREW, so a naive length comparison would call that a reply — the
+  // prompt is subtracted for exactly this case.
+  const r = gradeApp(passing({ reply: { ...passing().reply, added: DEFAULT_PROMPT, text: "Tutor " + DEFAULT_PROMPT } }));
+  assert.equal(okOf(r, "app_answered"), false);
+  assert.match(check(r, "app_answered").detail, /nothing came back/);
+});
+
+test("app_answered passes a short but real answer, and an observations record with no reply in it", () => {
+  const short = gradeApp(passing({ reply: { ...passing().reply, added: "The sea is mostly water.", text: "The sea is mostly water." } }));
+  assert.equal(okOf(short, "app_answered"), true);
+  // A record produced before this check existed, or one whose page text could
+  // not be read, must not be failed on a measurement that was never taken.
+  const legacy = gradeApp(passing({ reply: null }));
+  assert.equal(okOf(legacy, "app_answered"), true);
+  assert.match(check(legacy, "app_answered").detail, /no reply was observed/);
+});
+
+test("THE SENTINEL'S REJECTION IS STILL NOISE — but a key that was never SENT is not", () => {
+  // "Incorrect API key provided" means the key reached the provider and was
+  // rejected: the sentinel working as designed, on every single run.
+  assert.equal(isProviderNoise("Error: 401 Incorrect API key provided: sk-CAPT***"), true);
+  assert.equal(isProviderNoise("POST https://api.openai.com/v1/chat/completions 401 (Unauthorized)"), true);
+  // "You didn't provide an API key" means the Authorization header was absent
+  // or malformed — the app collected a key and failed to put it on the wire.
+  // #CAP-21's verdict recorded "6 provider/network messages ignored" and this
+  // was one of them.
+  for (const said of [
+    "Error: 401 — You didn't provide an API key. You need to provide your API key in an Authorization header using Bearer auth.",
+    "401 https://api.openai.com/v1/chat/completions — you did not provide an api key",
+    "Request failed: Authorization header is missing",
+  ]) {
+    assert.equal(isProviderNoise(said), false, said);
+  }
+  const r = gradeApp(
+    passing({
+      pageErrors: [{ text: "Error: 401 — You didn't provide an API key. You need to provide your API key in an Authorization header using Bearer auth." }],
+    }),
+  );
+  assert.equal(okOf(r, "no_page_errors"), false, "the evidence must reach the verdict instead of being filtered out");
+});
+
 test("every check can fail on its own, and each one alone fails the run", () => {
   const broken = {
     app_loads: { loaded: false },
@@ -314,6 +401,12 @@ test("every check can fail on its own, and each one alone fails the run", () => 
     key_not_revealed: { reveal: { ...passing().reveal, visibleText: true } },
     key_not_persisted: { reveal: { ...passing().reveal, localStorage: true } },
     app_interactive: { interaction: { ...passing().interaction, sendButton: null } },
+    // Verbatim from #CAP-22's final frame. Every other check is green on this
+    // app: it loads, throws nothing, masks its field, and its Send button
+    // presses. It just does not work.
+    app_answered: {
+      reply: { ...passing().reply, added: "Error: could not get a response.", text: "Socratic Tutor Error: could not get a response." },
+    },
   };
   for (const id of CHECK_IDS) {
     const r = gradeApp(passing(broken[id]));
@@ -397,7 +490,7 @@ test("isProviderNoise takes a console-message-shaped object too", () => {
 test("the verdict block reads as a verdict", () => {
   const r = { ...gradeApp(passing()), url: "https://deepresearch.se/app/some-slug/" };
   const out = formatAppVerdict(r);
-  assert.match(out, /^app e2e ✓ PASS {2}6\/6 checks {2}https:\/\/deepresearch\.se\/app\/some-slug\//);
+  assert.match(out, /^app e2e ✓ PASS {2}7\/7 checks {2}https:\/\/deepresearch\.se\/app\/some-slug\//);
   for (const id of CHECK_IDS) assert.match(out, new RegExp(`✓ ${id}`));
   assert.equal(out.endsWith("\n"), true);
   assert.equal(/not published because/.test(out), false);
@@ -409,7 +502,7 @@ test("a failing verdict says what to do about it", () => {
     slug: "socratic-tutor",
   };
   const out = formatAppVerdict(r);
-  assert.match(out, /✗ FAIL {2}5\/6 checks {2}socratic-tutor/);
+  assert.match(out, /✗ FAIL {2}6\/7 checks {2}socratic-tutor/);
   assert.match(out, /not published because:/);
   assert.match(out, /- key_field_masked: .*input#api-key/);
 });

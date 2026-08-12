@@ -274,9 +274,39 @@ const NOISE_PATTERNS = [
 export function isProviderNoise(text) {
   const s = typeof text === "string" ? text : text && typeof text.text === "string" ? text.text : String(text ?? "");
   if (!s.trim()) return false;
+  // Checked BEFORE everything else, the host match included: this message
+  // arrives FROM a provider host and carries a 401, so it would otherwise match
+  // two separate noise rules on its way past.
+  if (KEY_NEVER_SENT.test(s)) return false;
   if (PROVIDER_HOSTS.test(s)) return true;
   return NOISE_PATTERNS.some((re) => re.test(s));
 }
+
+/**
+ * THE ONE 401 THAT IS NOT NOISE: the key was never SENT.
+ *
+ * The filter above is deliberately generous about provider rejections, because
+ * the sentinel is fake and its rejection fires on every single run. But
+ * "rejected" and "never arrived" are different facts, and only one of them is
+ * expected. OpenAI says **"Incorrect API key provided: sk-…"** when a key is
+ * present and wrong — the sentinel working as designed — and **"You didn't
+ * provide an API key. You need to provide your API key in an Authorization
+ * header…"** when the header is absent or malformed. The second means the app
+ * collected a key and then failed to put it on the wire, which is the app being
+ * broken.
+ *
+ * #CAP-21 is exactly that: its final frame shows the key field filled (masked
+ * dots), a model selected, and that verbatim 401 — and the clip passed
+ * `no_page_errors` with the note "6 provider/network messages ignored — the
+ * sentinel key is rejected on purpose". The filter swallowed the one message
+ * that was evidence.
+ *
+ * Safe to be strict here: `exerciseApp` types the sentinel into EVERY key-ish
+ * field before it presses send, so by the time this message can appear the app
+ * has been given a key.
+ */
+const KEY_NEVER_SENT =
+  /(?:did|does|do|have|has)\s*n(?:o|')?t\s+provide[sd]?\s+(?:an?\s+|your\s+)?api[\s_-]?key|never provide[sd]?\s+(?:an?\s+|your\s+)?api[\s_-]?key|authorization header\s+(?:is\s+)?(?:missing|malformed|required|empty)|missing (?:the )?authorization header|api[\s_-]?key\s+(?:is\s+)?(?:missing|not provided|not set)/i;
 
 /**
  * The sentinel, removed from anything written into an artifact. The value is
@@ -718,6 +748,11 @@ function emptyObservations(url = "") {
       storageErrors: [],
     },
     interaction: { promptField: null, sendButton: null, filled: false, clicked: false, forced: false, error: null, threw: [] },
+    // What the app WROTE when it was used. Null when send was never pressed
+    // (app_interactive owns that verdict) or when the page's text could not be
+    // read at all — a missing measurement is recorded in `errors` instead, and
+    // `app_answered` does not invent a failure out of one.
+    reply: null,
     consoleErrors: [],
     pageErrors: [],
     errors: [],
@@ -941,6 +976,9 @@ export async function exerciseApp(page, url, opts = {}) {
 
     if (found2?.send) {
       const errorsBefore = obs.pageErrors.length;
+      // The page as it reads BEFORE send, so the reply can be told apart from
+      // the furniture that was already on screen.
+      const textBefore = await step("readTextBefore", () => page.evaluate(pageReadBodyText, [""]), null);
       try {
         await page.click(`[${SEND_MARK}]`, { timeout: Math.min(o.timeout, 8_000) });
         obs.interaction.clicked = true;
@@ -962,6 +1000,22 @@ export async function exerciseApp(page, url, opts = {}) {
           .slice(errorsBefore)
           .filter((p) => !p.noise)
           .map((p) => p.text);
+
+        // DID IT ANSWER? The whole of check seven. Read the page again and keep
+        // both the added text and the whole of it: the added text is the reply
+        // when the app appends to a transcript, and the whole is the fallback
+        // for an app that re-renders its output area in place.
+        const textAfter = await step("readTextAfter", () => page.evaluate(pageReadBodyText, [""]), null);
+        if (typeof textAfter === "string") {
+          const before = typeof textBefore === "string" ? textBefore : "";
+          obs.reply = {
+            beforeChars: before.trim().length,
+            afterChars: textAfter.trim().length,
+            prompt: String(o.prompt),
+            added: redact(addedText(before, textAfter)).slice(0, 2_000),
+            text: redact(textAfter).slice(0, 4_000),
+          };
+        }
       }
     }
 
@@ -1075,7 +1129,7 @@ function isNoiseEntry(e) {
  */
 
 /**
- * Six checks over one observations record. PURE — no clock, no network, no
+ * Seven checks over one observations record. PURE — no clock, no network, no
  * filesystem — so every verdict in the table below is reproducible from a JSON
  * file, and the interesting cases (a 401, an app with no key field, a half
  * written observations object) are unit tests rather than a live experiment.
@@ -1227,6 +1281,31 @@ export function gradeApp(observations) {
     why.length === 0
       ? `typed into ${describeControl(inter.promptField)} and pressed ${describeControl(inter.sendButton)}${inter.forced ? " (forced)" : ""}`
       : why.join("; "),
+  );
+
+  // 7. app_answered ------------------------------------------------------------
+  // The check #CAP-22 needed and did not have. `app_interactive` proves a
+  // control could be pressed; this one proves pressing it DID something, and
+  // that what it did was not print an error where the answer goes.
+  //
+  // A record with no `reply` at all passes: send was never pressed (check six
+  // already fails), or the page's text could not be read (a missing
+  // measurement, recorded in `errors`, is not evidence of a broken app). Every
+  // real exercise that presses send produces one.
+  const reply = o.reply == null ? null : obj(o.reply);
+  const replyAdded = reply ? text(reply.added) || text(reply.text) : "";
+  const answered = replyBody(replyAdded, reply ? reply.prompt : "");
+  const brokenBy = reply ? replyLooksBroken(replyAdded) || replyLooksBroken(text(reply.text)) : null;
+  add(
+    "app_answered",
+    !reply || (!brokenBy && answered.length >= MIN_REPLY_CHARS),
+    !reply
+      ? "no reply was observed (nothing was sent, or the page text could not be read)"
+      : brokenBy
+        ? `the app answered with an error (${brokenBy}): ${(answered || replyAdded).slice(0, 160)}`
+        : answered.length >= MIN_REPLY_CHARS
+          ? `the app replied with ${answered.length} characters: ${answered.slice(0, 100)}`
+          : `nothing came back — the page gained ${answered.length} characters after send, so the button leads nowhere`,
   );
 
   const failures = checks.filter((c) => !c.ok).map((c) => `${c.id}: ${c.detail}`);
