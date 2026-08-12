@@ -522,9 +522,50 @@ export async function handleServerTokenWeb(request, env, log) {
  * a disclosed upstream, by their choice. Nothing flows the other way: the
  * token never unlocks any content Se/rver stores, and the exchange is not
  * written to any store.
+ *
+ * CROSS-ORIGIN (capture #CAP-22, 2026-08-12): this is the endpoint a published
+ * Agent Studio app calls in HOSTED mode, and a published app is served into an
+ * OPAQUE ORIGIN (`Content-Security-Policy: sandbox`, src/build-pub.js) — so its
+ * requests to this same hostname arrive as `Origin: null` and need CORS like
+ * any third party's would. Hence the headers below and the preflight answer.
+ * `*` is the right value and does not weaken anything: authorization here is
+ * the bearer JWT and nothing else, no cookie or session is read, and `*`
+ * forbids credentialed requests by definition — so opening it grants a caller
+ * exactly what holding the token already granted them.
  * @param {Request} request @param {Env} env @param {Logger} log @param {URL} url
  */
 export async function handleServerTokenLlm(request, env, log, url) {
+  if (request.method === "OPTIONS") return corsPreflight();
+  const res = await llmResponse(request, env, log, url);
+  return withCors(res);
+}
+
+/** The CORS headers every /api/server-token/llm response carries. */
+const CORS_HEADERS = {
+  "access-control-allow-origin": "*",
+  "access-control-allow-methods": "GET, POST, OPTIONS",
+  "access-control-allow-headers": "authorization, content-type",
+  "access-control-max-age": "86400",
+};
+
+function corsPreflight() {
+  return new Response(null, { status: 204, headers: { ...CORS_HEADERS } });
+}
+
+/**
+ * The same response with the CORS headers added — rebuilt around the original
+ * body so a STREAMING completion stays a stream (a Response's headers are
+ * immutable once constructed).
+ * @param {Response} res
+ */
+function withCors(res) {
+  const headers = new Headers(res.headers);
+  for (const [k, v] of Object.entries(CORS_HEADERS)) headers.set(k, v);
+  return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
+}
+
+/** @param {Request} request @param {Env} env @param {Logger} log @param {URL} url */
+async function llmResponse(request, env, log, url) {
   const defaults = await serverTokenDefaults(env);
   if (!defaults.enabled) return jsonResponse({ error: "Se/rver tokens are disabled." }, 503);
   if (!env.BERGET_API_TOKEN) return jsonResponse({ error: "LLM proxy is unavailable." }, 503);

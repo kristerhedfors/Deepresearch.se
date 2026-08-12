@@ -353,7 +353,63 @@ consumer; extend the core. Unit suite: `public/js/sdk-core.test.js`.
   so `node /src/sdk/pair-cli.mjs …` works in-guest when the image ships
   node (bashAgentPrompt teaches this, with a cat/grep fallback).
 
+## Hosted model access — an app that works for whoever opens it (#CAP-22)
+
+Capture **#CAP-22** (2026-08-12) came back with a left swipe: the published
+Socratic tutor answered its first visitor *"Error: you didn't provide an api
+key!"*. The owner's ask, in their own words, was two things at once — produce
+agents that "use the existing api key with a pinned model, so user interface
+only requires the chat input window", and stop assuming every LLM app is a chat
+window at all ("one can imagine llm applications even without a chat input
+window, like only buttons as well"). So:
+
+- **`DRKit.hosted()` is the kit's second mode and the build prompts' DEFAULT.**
+  No key input, no model dropdown: the app reads `js/dr-app-config.js` and runs
+  on the site's own model access. It returns the SAME controller shape as
+  `mountModelPicker`, so `DRKit.chat`/`chatStream` did not change — the whole
+  difference is where the request goes. Bring-your-own-key stays, for a
+  never-cloud Se/cure flavour or when the user asks for it.
+- **The grant is minted at the publish boundary**, `src/app-token.js`
+  `ensureAppGrant` → `renderAppConfig` → `build-pub.js`, next to the app kit's
+  injection and for the same reason: one choke point, so the tool path, the
+  FILE-block fallback and the admin manual publish behave alike. Detection is
+  `buildNeedsHostedLlm` (the config path, `DRKit.hosted`, or `DR_APP_CONFIG`);
+  the config path is RESERVED like the kit's.
+- **No new machinery.** It is an ordinary Se/rver token with `perms: ["api"]`
+  (`source='app'`, `label='app:<slug>'`), minted through
+  `mintServerTokenGrant`, metered by the same D1 rows, adjusted and revoked
+  from the same admin surface. The app calls the existing
+  `/api/server-token/llm/chat/completions`.
+- **The token is embedded in a world-readable file, and that is the design.**
+  What bounds it is THE SERVER-TOKEN GUARANTEE plus the meter: upstream
+  completions only, never a login, never any Se/rver data, `app_quota`
+  completions (200), `app_ttl_hours` (720 h) — a republish renews a grant
+  nearing its end, and a republish REUSES a healthy one so one app never
+  accumulates allowances. Do not "simplify" the reuse away.
+- **CORS is load-bearing, and easy to lose.** A published app is served into an
+  OPAQUE ORIGIN, so its fetch to this same hostname is cross-origin with
+  `Origin: null`. `handleServerTokenLlm` answers the preflight and adds
+  `access-control-allow-origin: *` to every response (bearer auth, no cookies —
+  `*` grants exactly what holding the token already granted). Without it a
+  hosted app fails before the Worker sees the request, and the app's own error
+  message says nothing useful.
+- **Fail-soft, per invariant 2.** No D1, tokens disabled, budget spent → the
+  config file still ships with `token: null` and a `reason`, and the app says
+  "hosted access is unavailable". A build never fails to publish over a grant.
+- **The interface rule is prompt-side**, in `APP_KIT_NOTE`: a chat window is one
+  option, not the shape of every app. Buttons, a form, a single action are all
+  complete agents. Both halves are pinned in `sdk-core.test.js` — the prompt is
+  the only place this can be true.
+
+Owed (live-verify): a real Agent Studio build on the deployed site that asks for
+a chat agent, opened in a fresh browser with no key, answering. The unit suites
+cover the boundary and the kit; they cannot prove the preflight survives the
+edge.
+
 ## The app kit — the standard key + model picker (feedback #66, 2026-08-10)
+
+(The BRING-YOUR-OWN-KEY half. Hosted mode above is what a build gets by
+default; everything below still applies when a build takes a key.)
 
 Every generated agent that talks to a model needs the same three things: an
 API-key input, the models that key can actually reach, and an honest statement

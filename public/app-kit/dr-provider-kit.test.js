@@ -21,9 +21,15 @@ import { PROVIDER_REGIONS } from "../js/provider-region.js";
 const KIT_PATH = fileURLToPath(new URL("./dr-provider-kit.js", import.meta.url));
 const SOURCE = readFileSync(KIT_PATH, "utf8");
 
-/** Evaluate the kit against a fresh stub global, exactly as a script tag would. */
-function loadKit(extraGlobals = {}) {
-  const globalStub = {};
+/**
+ * Evaluate the kit against a fresh stub global, exactly as a script tag would.
+ * `globals` seeds properties ON that stub window — which is how the hosted
+ * config arrives in a real published app: its own script tag runs first and
+ * sets window.DR_APP_CONFIG. Everything else is passed as a free binding, the
+ * way `fetch` and the timers are.
+ */
+function loadKit({ globals, ...extraGlobals } = {}) {
+  const globalStub = { ...(globals || {}) };
   const names = ["window", "fetch", "TextDecoder", "setTimeout", "clearTimeout", ...Object.keys(extraGlobals)];
   const values = [
     globalStub,
@@ -425,5 +431,149 @@ describe("app kit — calling the model", () => {
       () => {},
     );
     assert.equal(antText, "ok");
+  });
+});
+
+// ---- hosted mode (capture #CAP-22, 2026-08-12) -------------------------------
+//
+// The complaint that produced this: a published Agent Studio agent answered its
+// first visitor with "Error: you didn't provide an api key". Hosted mode is the
+// answer — the app runs on the site's own model access, pinned to a model,
+// through the quota-metered Se/rver-token proxy. What has to hold: no key is
+// asked for, the pinned model is what gets called, the request goes to the
+// site's endpoint with the grant as its bearer, and the posture is stated
+// honestly in both languages.
+
+describe("app kit — hosted mode", () => {
+  const CONFIG = {
+    token: "eyJhbGciOiJIUzI1NiJ9.grant",
+    model: "mistralai/Mistral-Small-3.2-24B-Instruct-2506",
+    base: "/api/server-token/llm",
+    country: "Sweden",
+    flag: "🇸🇪",
+    quota: 200,
+  };
+
+  /** A minimal element stub — the same shape the picker suite uses. */
+  function el(tag) {
+    const node = {
+      tagName: tag.toUpperCase(),
+      value: "",
+      textContent: "",
+      hidden: false,
+      children: [],
+      listeners: {},
+      ownerDocument: {
+        createElement: (t) => ({ tagName: t.toUpperCase(), value: "", textContent: "", title: "" }),
+      },
+      appendChild(child) {
+        this.children.push(child);
+      },
+      addEventListener(type, fn) {
+        (this.listeners[type] = this.listeners[type] || []).push(fn);
+      },
+      fire(type) {
+        return Promise.all((this.listeners[type] || []).map((fn) => fn()));
+      },
+    };
+    return node;
+  }
+
+  test("with a published config the app is ready with no key and no dropdown", () => {
+    const kit = loadKit({ globals: { DR_APP_CONFIG: CONFIG } });
+    const status = el("p");
+    const llm = kit.hosted({ status });
+    assert.equal(llm.available(), true);
+    assert.equal(llm.ready(), true, "ready() and available() are the same question here");
+    const s = llm.state();
+    assert.equal(s.model, CONFIG.model, "the pinned model is what gets called");
+    assert.equal(s.apiKey, CONFIG.token, "the grant is the bearer — the visitor types nothing");
+    assert.equal(s.baseUrl, CONFIG.base);
+    assert.equal(s.provider.id, "hosted");
+    assert.match(status.textContent, /Ready/);
+    assert.match(status.textContent, /no API key needed/i);
+  });
+
+  test("the hosted route is NOT in the provider registry", () => {
+    // PROVIDERS mirrors the site's browser-callable registry under the parity
+    // test above; hosted is not a provider anyone can paste a key for, and
+    // adding it there would break that mirror.
+    const kit = loadKit({ globals: { DR_APP_CONFIG: CONFIG } });
+    assert.equal(kit.PROVIDERS.some((p) => p.id === "hosted"), false);
+    assert.equal(kit.HOSTED.id, "hosted");
+  });
+
+  test("a completion goes to the site's proxy with the grant as bearer", async () => {
+    const calls = [];
+    const kit = loadKit({
+      globals: { DR_APP_CONFIG: CONFIG },
+      fetch: async (url, init) => {
+        calls.push({ url, init, body: JSON.parse(init.body) });
+        return { ok: true, json: async () => ({ choices: [{ message: { content: "hej" } }] }) };
+      },
+    });
+    const llm = kit.hosted({});
+    const text = await kit.chat(llm.state(), [{ role: "user", content: "hi" }], { maxTokens: 64 });
+    assert.equal(text, "hej");
+    assert.equal(calls[0].url, "/api/server-token/llm/chat/completions");
+    assert.equal(calls[0].init.headers.authorization, "Bearer " + CONFIG.token);
+    assert.equal(calls[0].body.model, CONFIG.model);
+    assert.equal(calls[0].body.max_tokens, 64, "the OpenAI wire the proxy forwards");
+  });
+
+  test("no config at all is a stated condition, not a crash", () => {
+    // A build published while grants were disabled, over budget, or without D1
+    // still ships the config file — with no token. The app must be able to SAY
+    // that rather than throw at whoever opened it.
+    const kit = loadKit();
+    const status = el("p");
+    const llm = kit.hosted({ status });
+    assert.equal(llm.available(), false);
+    assert.match(status.textContent, /unavailable/i);
+    assert.match(llm.note(), /unavailable/i);
+    assert.deepEqual(llm.state().provider.id, "hosted", "still a usable shape");
+  });
+
+  test("the honest posture is stated — and in Swedish too", () => {
+    const kit = loadKit({ globals: { DR_APP_CONFIG: CONFIG } });
+    const en = kit.hosted({}).note();
+    // The whole point of the disclosure: hosted is NOT the key path's posture.
+    assert.match(en, /no API key/i);
+    assert.match(en, /server/i);
+    assert.match(en, /Sweden/);
+    assert.match(en, /metered|allowance/i);
+
+    const sv = kit.hosted({ lang: "sv" }).note();
+    assert.match(sv, /ingen API-nyckel/i);
+    assert.match(sv, /server/i);
+    assert.match(sv, /kvot/i);
+    assert.equal(kit.hosted({ lang: "sv" }).exhaustedNote().includes("kvot"), true);
+  });
+
+  test("an optional model picker lists the hosted catalog, pinned model first", async () => {
+    const kit = loadKit({
+      globals: { DR_APP_CONFIG: CONFIG },
+      fetch: async () => ({
+        ok: true,
+        json: async () => ({ data: [{ id: "openai/gpt-oss-120b" }, { id: CONFIG.model }] }),
+      }),
+    });
+    const modelSelect = el("select");
+    const llm = kit.hosted({ modelSelect });
+    await llm.refresh();
+    assert.equal(llm.models()[0], CONFIG.model, "the model the app was published with leads");
+    assert.match(modelSelect.children[0].textContent, /^🇸🇪 /);
+    assert.equal(modelSelect.children[0].title, "Processed in Sweden");
+  });
+
+  test("explicit options beat the published config", () => {
+    // The same controller drives a hand-written app (scripts/publish-app) that
+    // has its own token, so nothing here may depend on the injected global.
+    const kit = loadKit({ globals: { DR_APP_CONFIG: CONFIG } });
+    const llm = kit.hosted({ token: "other", model: "openai/gpt-oss-120b", base: "/elsewhere" });
+    assert.deepEqual(
+      { t: llm.state().apiKey, m: llm.state().model, b: llm.state().baseUrl },
+      { t: "other", m: "openai/gpt-oss-120b", b: "/elsewhere" },
+    );
   });
 });

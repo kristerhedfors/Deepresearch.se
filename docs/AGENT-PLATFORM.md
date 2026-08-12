@@ -90,16 +90,36 @@ The **Agent Studio** is where the platform folds back on itself — it is the
 generate in the VM → preview → publish at `/app/<slug>/`.
 
 A published agent does not have to reinvent how it reaches a model. Every build
-that takes an API key loads the **app kit**
-(`public/app-kit/dr-provider-kit.js`), which the publish step adds to the bundle
-on its own: pasting a key detects the provider, loads the models that key can
-actually reach, and fills the same flag-prefixed dropdown this site uses — over
-the same providers, with the country each conversation is processed in stated on
-every option. The key stays in the page and goes only to that provider, which is
-what lets a generated agent inherit Se/cure's posture rather than approximate it.
+that talks to one loads the **app kit** (`public/app-kit/dr-provider-kit.js`),
+which the publish step adds to the bundle on its own. It has two modes, and a
+build picks one:
+
+- **Hosted** (the default). The app runs on this site's own model access, pinned
+  to a model chosen when it was published, so whoever opens the link can use it
+  immediately — no key, no dropdown, nothing to configure. What makes that
+  possible is a grant, not a shared secret: at publish time the app gets its own
+  Se/rver token with the `api` permission alone (`src/app-token.js`), written
+  into the generated `js/dr-app-config.js` and metered like every other token.
+  The conversation therefore crosses this site's server on its way to the model
+  provider — the opposite of the posture below — so the app states it:
+  `llm.note()` is that sentence, and builds are told to show it.
+- **Bring your own key.** Pasting a key detects the provider, loads the models
+  that key can actually reach, and fills the same flag-prefixed dropdown this
+  site uses — over the same providers, with the country each conversation is
+  processed in stated on every option. The key stays in the page and goes only
+  to that provider, which is what lets a generated agent inherit Se/cure's
+  posture rather than approximate it. This is the right mode for a never-cloud
+  flavour, and it is what the user gets when they ask for it.
+
 The kit's registry is pinned by test against the platform's own
 (`public/js/drc-providers.js`), so an agent published today and one published a
 year ago disagree about nothing.
+
+An agent's interface is whatever its job needs. A chat window is one option —
+the most common, not the required one; a single button, a form, or a grid of
+prompts is a complete agent if that is what the work looks like. The build
+prompts say so, because before capture #CAP-22 every build converged on the same
+message thread behind the same key field.
 
 ### 2.1 Agents are not chat modes, and not tiers
 

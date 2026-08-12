@@ -137,6 +137,11 @@ import { DEFAULT_SERP_PROVIDERS, normalizeSerpProviders } from "./websearch-cf.j
  * @property {number} ttl_hours default lifetime of a token, in hours
  * @property {number} budget cap on total OUTSTANDING remaining across all live
  *   server_tokens rows (0 = uncapped)
+ * @property {number} [app_quota] LLM completions granted to a PUBLISHED Agent
+ *   Studio app running in hosted mode (src/app-token.js)
+ * @property {number} [app_ttl_hours] that grant's lifetime, in hours
+ * @property {string} [app_model] the model such an app is pinned to
+ *   ("" = the pipeline's default Berget model)
  */
 /**
  * Compute-sharing (src/pool.js) defaults + governance. A signed-in sharer lends
@@ -227,6 +232,12 @@ export const DEFAULT_CONFIG = {
     api_quota: 40, // LLM completions per token's api permission
     ttl_hours: 24,
     budget: 0, // 0 = uncapped; else caps SUM(quota-used) across live server_tokens
+    // The grant a PUBLISHED Agent Studio app ships with (src/app-token.js), so
+    // its visitors need no API key. Bigger and longer-lived than a browsing
+    // session's token: an app is shared, kept, and opened by other people.
+    app_quota: 200, // LLM completions per published app
+    app_ttl_hours: 720, // 30 days; a republish renews one nearing its end
+    app_model: "", // "" = the pipeline's default Berget model
   },
   // Compute sharing (src/pool.js): lending a local LLM as pooled capacity. The
   // default token quota is 0 (uncapped — "any number of requests"); the sharer
@@ -396,6 +407,13 @@ export function mergeConfig(base, patch) {
     if (Number.isFinite(st.api_quota)) out.server_token.api_quota = Math.min(10000, Math.max(1, Math.round(st.api_quota)));
     if (Number.isFinite(st.ttl_hours)) out.server_token.ttl_hours = Math.min(720, Math.max(1, Math.round(st.ttl_hours)));
     if (Number.isFinite(st.budget)) out.server_token.budget = Math.max(0, Math.round(st.budget));
+    // The hosted-app grant (src/app-token.js) — same clamps, its own numbers:
+    // an app someone shares is used by more people, for longer, than one
+    // browsing session's token.
+    if (Number.isFinite(st.app_quota)) out.server_token.app_quota = Math.min(10000, Math.max(1, Math.round(st.app_quota)));
+    if (Number.isFinite(st.app_ttl_hours))
+      out.server_token.app_ttl_hours = Math.min(720, Math.max(1, Math.round(st.app_ttl_hours)));
+    if (typeof st.app_model === "string") out.server_token.app_model = st.app_model.trim().slice(0, 120);
   }
   const pl = patch.pool;
   if (pl && typeof pl === "object") {

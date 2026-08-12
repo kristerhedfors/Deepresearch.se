@@ -226,6 +226,34 @@ for confirmation before anything is sent — nothing leaves the browser silently
 matching the same opt-in, per-use posture as the web-search grant and the
 research-space proxy.
 
+**A PUBLISHED APP CARRIES ONE (capture #CAP-22, 2026-08-12).** Agent Studio
+builds an app and publishes it at `/app/<slug>/` to be handed to other people.
+Until this change every such app asked whoever opened it for their own API key,
+because a page in an opaque origin has no other way to reach a model — so the
+usual first experience of a built agent was an error about a missing key. A
+build can now ask to run HOSTED: at publish time it gets its own Se/rver token
+with the `api` permission alone (`src/app-token.js`, `source='app'`,
+`label='app:<slug>'`), written into the generated `js/dr-app-config.js` and read
+by the app kit's `DRKit.hosted()`. The app then calls
+`/api/server-token/llm/chat/completions` like any other token holder — the
+endpoint answers CORS, because an opaque origin's requests to this same hostname
+arrive as `Origin: null`.
+
+That token is **public**: anyone with the app's URL can read it out of the
+page's own file. That is not a leak, it is the exposure being chosen
+deliberately, and every property that bounds it is the guarantee above — the
+token reaches upstream completions and NOTHING Se/rver stores, it is never a
+login, it is metered (`server_token.app_quota`, default 200 completions), it
+expires (`app_ttl_hours`, default 30 days, renewed by republishing), and it is
+revocable and adjustable from the admin surface like any other. It is opt-in per
+build: nothing is minted unless the build asks for hosted access. What is spent
+is a bounded number of completions on the publisher's account — never an
+account, never a data path. Se/cure's exactly-two bounded exceptions are
+untouched: this is Se/rver, where the server is inside the trust boundary. The
+honest disclosure is required in the app's own UI (`llm.note()`), because a
+hosted conversation crosses this site's server and the bring-your-own-key mode
+that a build may still choose does not.
+
 ## The MCP key — a Se/rver-side credential, not a lendable grant (2026-07-26)
 
 The MCP server (`POST /mcp`, `docs/ARCHITECTURE.md` §7) gained a bearer

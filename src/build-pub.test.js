@@ -360,3 +360,131 @@ test("app kit: no ASSETS binding at all is not an error either", async () => {
   });
   assert.equal(pub.files, 2);
 });
+
+// ---- hosted model access (capture #CAP-22, 2026-08-12) -----------------------
+//
+// A published agent used to greet its first visitor with "Error: you didn't
+// provide an api key". A build can now ask to run on the site's own model
+// access instead, and the grant that makes that possible is minted HERE, at the
+// publish boundary, so every publish surface behaves the same way. What these
+// pin: the config file ships and is served, the grant is reused across the
+// republishes that keep an app's URL stable, and a build never fails to publish
+// because no grant could be minted.
+
+const CONFIG_PATH = "js/dr-app-config.js";
+
+const hostedApp = () => [
+  {
+    path: "index.html",
+    content:
+      `<!doctype html><script src="${CONFIG_PATH}"></script>` +
+      `<script src="${KIT_PATH}"></script><script src="js/app.js"></script>`,
+  },
+  { path: "js/app.js", content: "const llm = DRKit.hosted({});" },
+];
+
+// The smallest D1 that minting runs against — schema batch, config row, INSERT.
+function hostedDb() {
+  const inserts = [];
+  return {
+    _inserts: inserts,
+    async batch(stmts) {
+      for (const s of stmts) await s.run();
+      return [];
+    },
+    prepare(sql) {
+      return {
+        _args: [],
+        bind(...a) {
+          this._args = a;
+          return this;
+        },
+        async run() {
+          if (sql.startsWith("INSERT INTO server_tokens")) inserts.push(this._args);
+          return { success: true };
+        },
+        async first() {
+          return null;
+        },
+        async all() {
+          return { results: [] };
+        },
+      };
+    },
+  };
+}
+
+const hostedEnv = (db = hostedDb()) => ({
+  STORAGE: mockBucket(),
+  ASSETS: servingKit(),
+  DB: db,
+  SESSION_SECRET: "d0a2d4e838e1c1c7c65fef7b784c9623ee113f8aab5da9aab9d62f8a311109de",
+  BERGET_API_TOKEN: "berget-test",
+});
+
+const configOf = async (env, slug) =>
+  JSON.parse((await (await handleBuildGet(env, slug, CONFIG_PATH)).text()).match(/\{[\s\S]*\}/)[0]);
+
+test("hosted: a build that asks for it ships a served config with a live grant", async () => {
+  const db = hostedDb();
+  const env = hostedEnv(db);
+  const pub = await publishBuild(env, log, { slug: null, title: "Tutor", files: hostedApp(), userId: "u1" });
+  assert.ok(!("error" in pub));
+  assert.ok(pub.paths.includes(CONFIG_PATH), "the config is part of what shipped");
+  assert.ok(pub.paths.includes(KIT_PATH), "and so is the kit it feeds");
+
+  const res = await handleBuildGet(env, pub.slug, CONFIG_PATH);
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get("content-type"), /javascript/);
+
+  const cfg = await configOf(env, pub.slug);
+  assert.ok(cfg.token, "a visitor needs no API key of their own");
+  assert.ok(cfg.model, "and the app is pinned to a model");
+  assert.equal(cfg.base, "/api/server-token/llm");
+  assert.equal(db._inserts.length, 1, "exactly one grant for the app");
+});
+
+test("hosted: iterating on an app reuses its grant instead of minting another", async () => {
+  const db = hostedDb();
+  const env = hostedEnv(db);
+  const first = await publishBuild(env, log, { slug: null, title: "Tutor", files: hostedApp(), userId: "u1" });
+  const before = await configOf(env, first.slug);
+
+  const again = await publishBuild(env, log, {
+    slug: first.slug,
+    title: "Tutor",
+    files: [...hostedApp(), { path: "css/app.css", content: "body{color:teal}" }],
+    userId: "u1",
+  });
+  assert.equal(again.slug, first.slug, "the URL is stable across iterations");
+  assert.equal((await configOf(env, again.slug)).token, before.token);
+  assert.equal(db._inserts.length, 1, "one app, one allowance");
+});
+
+test("hosted: the model's own version of the config path is replaced", async () => {
+  // Reserved like the kit's path: an app must run the grant it was published
+  // with, not a token a model invented.
+  const env = hostedEnv();
+  const files = [...hostedApp(), { path: CONFIG_PATH, content: "window.DR_APP_CONFIG={token:'fake'};" }];
+  const pub = await publishBuild(env, log, { slug: null, title: "Tutor", files, userId: "u1" });
+  const cfg = await configOf(env, pub.slug);
+  assert.notEqual(cfg.token, "fake");
+  assert.ok(cfg.token);
+});
+
+test("hosted: no D1 still publishes — with a config that says so (fail-soft)", async () => {
+  const env = { STORAGE: mockBucket(), ASSETS: servingKit(), BERGET_API_TOKEN: "berget-test" };
+  const pub = await publishBuild(env, log, { slug: null, title: "Tutor", files: hostedApp(), userId: "u1" });
+  assert.ok(!("error" in pub), "a missing grant never costs the user their app");
+  const cfg = await configOf(env, pub.slug);
+  assert.equal(cfg.token, null);
+  assert.equal(cfg.reason, "unavailable", "the app can tell its visitor what happened");
+});
+
+test("hosted: a bring-your-own-key build gets no config and no grant", async () => {
+  const db = hostedDb();
+  const env = hostedEnv(db);
+  const pub = await publishBuild(env, log, { slug: null, title: "Keyed", files: keyedApp(), userId: "u1" });
+  assert.ok(!pub.paths.includes(CONFIG_PATH));
+  assert.equal(db._inserts.length, 0, "nothing is minted for an app that never asked");
+});

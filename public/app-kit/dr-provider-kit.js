@@ -15,7 +15,18 @@
 // automatically whenever a file references it (src/app-kit.js →
 // src/build-pub.js), so a build never writes this file itself.
 //
-// PRIVACY POSTURE — the same one Se/cure keeps, and the reason the kit is a
+// TWO MODES, and the difference is a privacy difference the app must state.
+//   • BRING YOUR OWN KEY (DRKit.mountModelPicker) — the original, and the same
+//     posture Se/cure keeps: every request goes from the visitor's browser
+//     DIRECTLY to the provider they configured, and this site's server is in no
+//     data path at all.
+//   • HOSTED (DRKit.hosted) — no key at all: the app runs on the site's own
+//     model access, pinned to a model, through the quota-metered Se/rver-token
+//     LLM proxy. The conversation therefore DOES cross this site's server.
+//     That is the point (an app you hand to someone must work when they open
+//     it) and it is disclosed: `.note()` returns the sentence that says so.
+//
+// PRIVACY POSTURE of the key path — and the reason the kit is a
 // copy rather than a call home: every request it makes goes from the visitor's
 // browser DIRECTLY to the provider they configured. This site's server is in no
 // data path here. The key stays in a variable on the page (never localStorage,
@@ -267,6 +278,56 @@
       });
   }
 
+  // ---- the HOSTED provider -------------------------------------------------
+  //
+  // The entry above are all BRING-YOUR-OWN-KEY: the visitor pastes a credential
+  // and the browser calls that provider directly. That is the right shape for a
+  // Se/cure-style flavour, and the wrong shape for most agents someone actually
+  // wants to share: "Error: you didn't provide an api key" is the first thing
+  // every visitor met, on an app whose whole point was to be handed to someone
+  // (capture #CAP-22, 2026-08-12 — the owner's ask: build agents that run on
+  // the key the site already has, pinned to a model, so the app needs nothing
+  // but its own interface).
+  //
+  // So a published app can instead run HOSTED: the site's own Berget key, a
+  // model pinned at publish time, through the Se/rver-token LLM proxy
+  // (/api/server-token/llm) on a signed, quota-metered grant minted for the
+  // app's owner. THE SERVER-TOKEN GUARANTEE is what makes that safe to embed in
+  // a public page: the grant reaches upstream completions ONLY — never any
+  // Se/rver data, and never a login — and it is metered, so the exposure is a
+  // bounded number of completions rather than an account.
+  //
+  // It is deliberately NOT in PROVIDERS: that array mirrors the site's own
+  // browser-callable registry (drc-providers.js) under a parity test, and the
+  // hosted route is not a provider a key can be pasted for.
+  //
+  // The honest posture, which the app must show (see hostedNote): a hosted
+  // conversation goes to THIS SITE's server and on to Berget on the server's
+  // key. That is the opposite of the bring-your-own-key posture, and the
+  // difference is the user's to know.
+  var HOSTED = {
+    id: "hosted",
+    label: "DeepResearch.se",
+    base: "", // filled from the published config — a path, resolved per page
+    flag: "🇸🇪",
+    country: "Sweden",
+    hosted: true,
+    keyPattern: null,
+    fallbackModels: [],
+    modelFilter: function (id) {
+      return !/(embed|whisper|rerank|guard|tts|moderation)/i.test(id);
+    },
+    params: function (maxTokens) {
+      return { max_tokens: maxTokens };
+    },
+  };
+
+  /** The config the publish layer injects (js/dr-app-config.js), or {}. */
+  function hostedConfig() {
+    var c = global.DR_APP_CONFIG;
+    return c && typeof c === "object" ? c : {};
+  }
+
   // ---- the picker ----------------------------------------------------------
   //
   // Both languages, because this site's rule is that anything a user reads
@@ -288,6 +349,18 @@
           ? "Your key stays in this page and is sent only to this provider. The conversation is processed in " + c + "."
           : "Your key stays in this page and is sent only to the endpoint you configured.";
       },
+      hostedReady: function (model) {
+        return "Ready — running on " + model + ", no API key needed.";
+      },
+      hostedOff: "This app's hosted model access is unavailable — it was published without a live grant.",
+      hostedSpent: "This app's hosted allowance is used up. Its owner can republish or raise the quota.",
+      hostedNote: function (c) {
+        return (
+          "Runs on DeepResearch.se's own model access — you need no API key. Messages go to this site's server and on to its model provider" +
+          (c ? ", processed in " + c : "") +
+          "; usage is metered against the allowance this app was published with."
+        );
+      },
     },
     sv: {
       detected: function (p, n) {
@@ -303,6 +376,18 @@
         return c
           ? "Din nyckel stannar på den här sidan och skickas bara till den här leverantören. Konversationen behandlas i " + c + "."
           : "Din nyckel stannar på den här sidan och skickas bara till den slutpunkt du angett.";
+      },
+      hostedReady: function (model) {
+        return "Klar — kör på " + model + ", ingen API-nyckel behövs.";
+      },
+      hostedOff: "Appens värdbaserade modellåtkomst är inte tillgänglig — den publicerades utan ett aktivt tillstånd.",
+      hostedSpent: "Appens värdbaserade kvot är slut. Ägaren kan publicera om eller höja kvoten.",
+      hostedNote: function (c) {
+        return (
+          "Kör på DeepResearch.se:s egen modellåtkomst — du behöver ingen API-nyckel. Meddelandena går till den här sajtens server och vidare till dess modellleverantör" +
+          (c ? ", behandlas i " + c : "") +
+          "; användningen räknas av mot den kvot appen publicerades med."
+        );
       },
     },
   };
@@ -350,6 +435,29 @@
     } catch (e) {
       /* an element that refuses — its own markup then decides. */
     }
+  }
+
+  /**
+   * Fill a model <select> with flag-prefixed options for one provider, keeping
+   * the current selection when it survives the new list. Shared by the
+   * bring-your-own-key picker and the hosted controller so a hosted app's
+   * dropdown looks exactly like every other one.
+   */
+  function fillModelSelect(sel, ids, p, t) {
+    if (!sel) return;
+    var list = ids || [];
+    var previous = sel.value;
+    sel.textContent = "";
+    for (var i = 0; i < list.length; i++) {
+      var opt = sel.ownerDocument.createElement("option");
+      opt.value = list[i];
+      opt.textContent = labelWithFlag(p ? p.flag : "", list[i]);
+      var note = t.processed(p ? p.country : "");
+      if (note) opt.title = note;
+      sel.appendChild(opt);
+    }
+    if (previous && list.indexOf(previous) !== -1) sel.value = previous;
+    sel.hidden = list.length === 0;
   }
 
   /**
@@ -410,19 +518,7 @@
 
     function renderModels(ids) {
       models = ids || [];
-      if (!modelSelect) return;
-      var previous = modelSelect.value;
-      modelSelect.textContent = "";
-      for (var i = 0; i < models.length; i++) {
-        var opt = modelSelect.ownerDocument.createElement("option");
-        opt.value = models[i];
-        opt.textContent = labelWithFlag(current ? current.flag : "", models[i]);
-        var note = t.processed(current ? current.country : "");
-        if (note) opt.title = note;
-        modelSelect.appendChild(opt);
-      }
-      if (previous && models.indexOf(previous) !== -1) modelSelect.value = previous;
-      modelSelect.hidden = models.length === 0;
+      fillModelSelect(modelSelect, models, current, t);
     }
 
     function load() {
@@ -487,6 +583,96 @@
       refresh: load,
       note: function () {
         return t.note(current ? current.country : "");
+      },
+    };
+  }
+
+  /**
+   * The HOSTED counterpart of mountModelPicker: no key input, no provider
+   * detection, a model pinned when the app was published. Returns the SAME
+   * controller shape, so an app switches between the two by changing one call
+   * and `DRKit.chat` / `DRKit.chatStream` need no idea which it got.
+   *
+   * Options: { model?, token?, base?, modelSelect?, status?, lang?, onChange? }
+   * — everything omitted comes from the injected `window.DR_APP_CONFIG`. Pass
+   * `modelSelect` only when the app should let the visitor choose from the
+   * hosted catalog; the pinned model is the default and needs no control at
+   * all.
+   *   .state()      → { provider, apiKey, model, baseUrl } — pass it to chat()
+   *   .ready()      → true when a call can actually be made
+   *   .available()  → same, but reads as what it is: was a grant published?
+   *   .note()       → the honest one-line posture, in the app's language
+   *   .refresh()    → load the hosted catalog into modelSelect (if given one)
+   */
+  function hosted(opts) {
+    var o = opts || {};
+    var cfg = hostedConfig();
+    var t = textFor(o.lang);
+    var status = o.status || null;
+    var modelSelect = o.modelSelect || null;
+    var onChange = typeof o.onChange === "function" ? o.onChange : function () {};
+
+    var token = o.token || cfg.token || "";
+    var base = o.base || cfg.base || "";
+    var pinned = o.model || cfg.model || "";
+    var p = {};
+    for (var k in HOSTED) if (Object.prototype.hasOwnProperty.call(HOSTED, k)) p[k] = HOSTED[k];
+    p.base = base;
+    if (cfg.country) p.country = cfg.country;
+    if (cfg.flag != null) p.flag = cfg.flag;
+
+    var models = pinned ? [pinned] : [];
+
+    function say(msg) {
+      if (status) status.textContent = msg;
+    }
+
+    function model() {
+      return (modelSelect && modelSelect.value) || pinned || models[0] || "";
+    }
+
+    function state() {
+      return { provider: p, apiKey: token, model: model(), baseUrl: base };
+    }
+
+    function available() {
+      return !!(token && base && model());
+    }
+
+    function refresh() {
+      if (!available() || !modelSelect) return Promise.resolve(models.slice());
+      return listModels(p, token, { baseUrl: base }).then(function (ids) {
+        // The pinned model leads the list: it is what the app was published
+        // with, and a catalog reshuffle must not silently move the app onto a
+        // different model.
+        var list = ids && ids.length ? ids.slice() : models.slice();
+        var at = list.indexOf(pinned);
+        if (pinned && at > 0) list.splice(at, 1);
+        if (pinned && at !== 0) list.unshift(pinned);
+        models = list;
+        fillModelSelect(modelSelect, models, p, t);
+        onChange(state());
+        return models.slice();
+      });
+    }
+
+    fillModelSelect(modelSelect, models, p, t);
+    say(available() ? t.hostedReady(model()) : t.hostedOff);
+    onChange(state());
+
+    return {
+      state: state,
+      models: function () {
+        return models.slice();
+      },
+      ready: available,
+      available: available,
+      refresh: refresh,
+      note: function () {
+        return available() ? t.hostedNote(p.country) : t.hostedOff;
+      },
+      exhaustedNote: function () {
+        return t.hostedSpent;
       },
     };
   }
@@ -658,13 +844,17 @@
 
   global.DRKit = {
     PROVIDERS: PROVIDERS,
+    HOSTED: HOSTED,
     provider: provider,
     detectProvider: detectProvider,
     labelWithFlag: labelWithFlag,
     filterAndSortModels: filterAndSortModels,
     listModels: listModels,
     fillProviderSelect: fillProviderSelect,
+    fillModelSelect: fillModelSelect,
     mountModelPicker: mountModelPicker,
+    hosted: hosted,
+    hostedConfig: hostedConfig,
     chat: chat,
     chatStream: chatStream,
   };

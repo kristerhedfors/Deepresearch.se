@@ -332,6 +332,55 @@ test("an embeddings batch meters the api row (RAG parity), refunds an empty resu
   }
 });
 
+test("LLM endpoint answers CORS — a published app calls it from an opaque origin", async () => {
+  // Capture #CAP-22 (2026-08-12): a published Agent Studio app runs in a
+  // sandboxed opaque origin, so its calls to this same hostname arrive as
+  // `Origin: null` and are cross-origin by definition. Without these headers a
+  // hosted app cannot reach the proxy at all — the browser refuses before the
+  // Worker ever sees the completion.
+  const db = fakeDb();
+  const env = envWith(db);
+  const g = await mintServerTokenGrant(env, log, { userId: "admin" });
+  const url = new URL("https://x/api/server-token/llm/chat/completions");
+
+  // 1. The preflight the `authorization` header forces.
+  const pre = await handleServerTokenLlm(
+    new Request(url, { method: "OPTIONS", headers: { origin: "null" } }),
+    env,
+    log,
+    url,
+  );
+  assert.equal(pre.status, 204);
+  assert.equal(pre.headers.get("access-control-allow-origin"), "*");
+  assert.match(pre.headers.get("access-control-allow-headers"), /authorization/i);
+  assert.match(pre.headers.get("access-control-allow-methods"), /POST/);
+
+  // 2. The real completion, and 3. a rejection — both need the header, or the
+  //    app sees an opaque network error instead of the reason it failed.
+  const restore = mockFetch(async () =>
+    new Response(JSON.stringify({ choices: [{ message: { content: "hi" } }] }), { status: 200 }));
+  try {
+    const ok = await handleServerTokenLlm(
+      new Request(url, {
+        method: "POST",
+        headers: { authorization: `Bearer ${g.token}`, "content-type": "application/json" },
+        body: JSON.stringify({ model: "m", messages: [{ role: "user", content: "hi" }] }),
+      }),
+      env,
+      log,
+      url,
+    );
+    assert.equal(ok.status, 200);
+    assert.equal(ok.headers.get("access-control-allow-origin"), "*");
+  } finally {
+    restore();
+  }
+
+  const denied = await handleServerTokenLlm(new Request(url, { method: "POST" }), env, log, url);
+  assert.equal(denied.status, 403);
+  assert.equal(denied.headers.get("access-control-allow-origin"), "*");
+});
+
 test("LLM endpoint: models is non-metered; missing/api-less bearer is 403", async () => {
   const db = fakeDb();
   const env = envWith(db);

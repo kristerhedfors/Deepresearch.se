@@ -32,14 +32,17 @@
 
 import { jsonResponse, readJsonBody } from "./http.js";
 import {
+  APP_CONFIG_PATH,
   MAX_BUILD_FILES,
   MAX_BUILD_FILE_BYTES,
   MAX_BUILD_TOTAL_BYTES,
   buildNeedsAppKit,
+  buildNeedsHostedLlm,
   sanitizeBuildPath,
   slugify,
 } from "./sdk-tools.js";
 import { withAppKit } from "./app-kit.js";
+import { ensureAppGrant, hostedMetaRecord, renderAppConfig } from "./app-token.js";
 
 /** @typedef {import('./types.js').Env} Env */
 /** @typedef {import('./types.js').Logger} Logger */
@@ -168,6 +171,8 @@ export async function publishBuild(env, log, { slug, title, files, userId, keepO
   // fresh. On a keepOwner takeover the ORIGINAL owner is preserved.
   let owner = String(userId);
   let finalSlug = buildSlugOk(slug) ? /** @type {string} */ (slug) : null;
+  /** @type {any} */
+  let prevMeta = null;
   if (finalSlug) {
     try {
       const existing = await bucket(env).get(metaKey(finalSlug));
@@ -177,13 +182,34 @@ export async function publishBuild(env, log, { slug, title, files, userId, keepO
         else if (String(meta.owner ?? "") !== String(userId)) {
           if (keepOwner) owner = String(meta.owner ?? "");
           else finalSlug = null;
-        }
+          if (finalSlug) prevMeta = meta;
+        } else prevMeta = meta;
       }
     } catch {
       finalSlug = null;
     }
   }
   if (!finalSlug) finalSlug = newBuildSlug(cleanTitle);
+
+  // HOSTED model access (capture #CAP-22): a build that asks for it ships with
+  // its own quota-metered grant over the site's model provider, so its visitors
+  // need no API key at all. Injected HERE rather than in either build path, for
+  // the same reason the app kit is — one choke point, so the tool path, the
+  // FILE-block fallback and the admin manual publish behave alike. It has to
+  // come after the slug/owner resolution above: the grant belongs to the app,
+  // and is reused across the republishes that keep its URL stable.
+  /** @type {ReturnType<typeof hostedMetaRecord>} */
+  let hostedRecord = null;
+  if (buildNeedsHostedLlm([...clean].map(([path, content]) => ({ path, content })))) {
+    const grant = await ensureAppGrant(env, log, { slug: finalSlug, owner, prev: prevMeta?.hosted });
+    hostedRecord = hostedMetaRecord(grant);
+    // Written even when no token could be minted: the app then says "hosted
+    // access is unavailable" rather than failing in front of a visitor.
+    clean.set(APP_CONFIG_PATH, renderAppConfig(grant));
+    bytes = 0;
+    for (const [, c] of clean) bytes += new TextEncoder().encode(c).length;
+    if (bytes > MAX_BUILD_TOTAL_BYTES) return { error: "Build exceeds the total size cap." };
+  }
 
   // Prune files from the previous publish that this one no longer carries —
   // otherwise a renamed file's old copy would keep serving forever.
@@ -207,6 +233,11 @@ export async function publishBuild(env, log, { slug, title, files, userId, keepO
     createdAt: Date.now(),
     owner,
     files: [...clean].map(([p, c]) => ({ p, s: new TextEncoder().encode(c).length })),
+    // The app's hosted grant, so the next publish reuses it instead of minting
+    // a second allowance for the same app. Meta is NOT served (only
+    // build/<slug>/f/* is), but the token is in the app's own config file
+    // anyway — this is a handle, not a secret being introduced.
+    ...(hostedRecord ? { hosted: hostedRecord } : prevMeta?.hosted ? { hosted: prevMeta.hosted } : {}),
   };
   await bucket(env).put(metaKey(finalSlug), JSON.stringify(meta), {
     httpMetadata: { contentType: "application/json" },
