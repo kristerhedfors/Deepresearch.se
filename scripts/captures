@@ -50,6 +50,10 @@
 #   scripts/captures --review 12 feedback "the model dropdown is cut off"
 #                                           a feedback verdict WITHOUT a note is
 #                                           rejected by the server on purpose
+#   scripts/captures --undo 12              TAKE THE LAST VERDICT BACK: the review
+#                                           row is deleted, a like is un-counted,
+#                                           and the clip returns to the queue. For
+#                                           the swipe you did not mean.
 #
 # Editing / lifecycle:
 #   scripts/captures --set 12 '{"status":"archived"}'   retire a clip (label|status|ref)
@@ -99,6 +103,7 @@ while [ $# -gt 0 ]; do
     # `set -e` a short shift ends the script silently. It is terminal anyway:
     # break out and let the action below run.
     --review) action="review"; id="$2"; arg="$3"; arg2="${4:-}"; break ;;
+    --undo) action="undo"; id="$2"; shift ;;
     --delete) action="delete"; id="$2"; shift ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
@@ -176,6 +181,13 @@ case "$action" in
     curl_auth -X POST -H 'content-type: application/json' \
       -d "$(jq -n --arg v "$arg" --arg n "$arg2" '{verdict:$v} + (if $n=="" then {} else {note:$n} end)')" \
       "$BASE_URL/api/admin/captures/$id/review"
+    exit 0 ;;
+  undo)
+    # The mirror of --review: DELETE the last verdict rather than appending
+    # one. The server decides what the row reverts to (the verdict before it,
+    # or the queue) — this is a one-line wrapper on purpose, so the rule lives
+    # in exactly one place.
+    curl_auth -X DELETE "$BASE_URL/api/admin/captures/$id/review"
     exit 0 ;;
   delete)
     curl_auth -X DELETE "$BASE_URL/api/admin/captures/$id"
