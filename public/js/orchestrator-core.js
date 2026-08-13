@@ -22,7 +22,7 @@
 // know every shape. `custom` is the escape hatch — a persona + instructions
 // node for task types the fixed kinds don't cover.
 
-/** @typedef {"deep_research"|"introspection"|"swarm"|"custom"} AgentKind */
+/** @typedef {"web_research"|"introspection"|"swarm"|"custom"} AgentKind */
 
 /**
  * Kind → what the executor runs and what the plan prompt / viz legend say.
@@ -32,8 +32,15 @@
  * `custom` (fail-soft) rather than dropping it.
  */
 export const AGENT_KINDS = {
-  deep_research: {
-    label: "Deep Research",
+  // Renamed from `deep_research` / "Deep Research" on 2026-08-13, when the
+  // general agent of that name was retired. The ROLE was never general — it is
+  // "search the open web and write a sourced brief", one specific thing a node
+  // can be told to do — so what changed is only that it stops borrowing the name
+  // of an agent that no longer exists. A node kind is not an agent: the team a
+  // workflow fields is declared in sdk/AGENTS.json (`capability.team.kinds`),
+  // and that now names real agent ids.
+  web_research: {
+    label: "Web research",
     desc: "researches its task with live web searches, then writes a sourced brief",
     needsSource: false,
     needsSwarm: false,
@@ -87,7 +94,7 @@ export const MAX_AGENTS = 6;
 export const MAX_WAVES = 3;
 export const MAX_TASK_CHARS = 600;
 export const MAX_RESULT_CHARS = 6000; // per-node result carried into synthesis
-export const MAX_NODE_QUERIES = 2; // web searches ONE deep_research node may run
+export const MAX_NODE_QUERIES = 2; // web searches ONE web_research node may run
 export const MAX_ORCH_SEARCHES = 6; // web searches the whole workflow may run
 // How much of a node's REAL prompt rides to the client for the workflow
 // inspector (the "look inside this node" popover). The assembled prompt can be
@@ -199,10 +206,10 @@ export function normalizeWorkflow(raw, opts = {}) {
     if (!id) id = `agent-${agents.length + 1}`;
     while (ids.has(id)) id += "x";
     ids.add(id);
-    // Search queries are PLANNED up front (deep_research nodes only), so the
+    // Search queries are PLANNED up front (web_research nodes only), so the
     // executor never needs a per-node model call to decide what to search —
     // the whole workflow stays one deterministic plan.
-    const queries = kind === "deep_research" && Array.isArray(a.queries)
+    const queries = kind === "web_research" && Array.isArray(a.queries)
       ? a.queries
           .map((/** @type {any} */ q) => (typeof q === "string" ? q.trim().slice(0, 120) : ""))
           .filter(Boolean)
@@ -302,7 +309,7 @@ export function orchestratorPlanPrompt(args) {
 - 2 to ${MAX_AGENTS} agents; prefer the fewest that genuinely divide the work.
 - Each agent gets ONE focused task (max ~2 sentences). A "custom" agent also gets a one-line persona.
 - "deps" lists agent ids whose results the agent needs; agents without deps run concurrently. At most ${MAX_WAVES} sequential stages; a final reviewer/critic depending on the others is often worth one stage.
-- A "deep_research" agent also gets "queries": up to ${MAX_NODE_QUERIES} web-search queries covering its task.${swarmRule}
+- A "web_research" agent also gets "queries": up to ${MAX_NODE_QUERIES} web-search queries covering its task.${swarmRule}
 - GROUND COMPARISONS: when the request compares candidates against, or judges something relative to, a REFERENCE OBJECT (a named product, project, company — above all this site, deepresearch.se, itself), the plan MUST include a first-wave grounding agent whose sole task is to establish what that object actually is and does, and every comparing/judging agent must list it in "deps". When the reference object is this site and the "introspection" kind is available, the grounding agent MUST be kind "introspection" — it reads the site's real source instead of guessing.
 - Write names, tasks and queries in the user's language (svara på svenska om användaren skriver svenska).`,
     `Return ONLY JSON: {"title": "...", "agents": [{"id": "slug", "kind": "...", "name": "...", "task": "...", "persona": "...", "queries": ["..."]${args.hasSwarm ? ', "swarmSize": 4, "rounds": 2' : ""}, "deps": ["..."]}]}`,
@@ -391,7 +398,7 @@ export function workflowEvent(plan) {
       // bytes and it is what the workflow INSPECTOR shows when the user opens a
       // node: the specialist's persona and the exact searches it will run. Both
       // are already clamped by normalizeWorkflow. Omitted when empty so a plain
-      // deep_research team's event is unchanged.
+      // web_research team's event is unchanged.
       if (a.persona) /** @type {any} */ (node).persona = a.persona;
       if (a.queries?.length) /** @type {any} */ (node).queries = a.queries;
       // The swarm's shape rides in the plan event so the graph can draw the

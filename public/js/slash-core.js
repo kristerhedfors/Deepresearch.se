@@ -5,8 +5,9 @@
 // available in every agent").
 //
 // A slash command is PLATFORM BASELINE, not an agent feature: typing `/help` in
-// Orchestrator does the same thing as typing it in Deep Research, Agent Studio,
-// Introspection or Outrospection, and the same thing on Se/cure as on Se/rver.
+// Orchestrator does the same thing as typing it in Deep Science, Cyber, Agent
+// Studio, Introspection or Outrospection, and the same thing on Se/cure as on
+// Se/rver.
 // That is the whole point of the directive — the user should not have to know
 // which agent is listening to reach the developers or the documentation. So the
 // registry lives here, in one dependency-free pure core, and every consumer

@@ -184,8 +184,8 @@ acknowledgment that doesn't promise a conversation, and carries no transcript
 instead of a one-turn fake one. Superseded the earlier per-reply Feedback
 button + settings knob (2026-07-18). The gate is evaluated ABOVE the
 executor-phase dispatch, so it reaches the developers from every chat mode —
-Deep Research, Introspection, Agent Studio, Orchestrator, Outrospection
-(feedback #26). See the **feedback-loop** skill.
+Deep Science, Cyber, Introspection, Agent Studio, Orchestrator, Outrospection,
+Models (feedback #26). See the **feedback-loop** skill.
 
 ### F-12 · Project pulse dashboard (/pulse) — ✅ SHIPPED (low)
 
@@ -203,7 +203,11 @@ still on the fixed reliable model. See the **add-llm-provider** skill.
 
 The opt-in `google_maps` enrichment (Places / Street View / Static Maps /
 Routes, POV vision-describe, the image deck) and the Tokemon street-view AR
-mode built on it. See the **integrations** and **tokemon-game** skills.
+mode built on it. Since 2026-08-13 the enrichment is also agent-gated: the
+`street-imagery` capability belongs to the **Cyber** agent, and the per-account
+knob and the capability are ANDed — the knob is consent to reach a third party,
+the capability is which agent may use it. See the **integrations**, **cyber**
+and **tokemon-game** skills.
 
 ### F-15 · Panel selection board — the attention loop — ✅ SHIPPED (medium)
 

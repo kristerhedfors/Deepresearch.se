@@ -18,7 +18,7 @@
 // modules — no core file is edited, and `extensions.test.js` fails the build
 // if a core file starts naming a service again.
 //
-// The five seams a descriptor owns (each consumed generically by core):
+// The six seams a descriptor owns (each consumed generically by core):
 //   1. settings     — the per-account knob: wire key, availability, backing
 //                     secret, the 503 when it isn't configured.
 //   2. resolveState — request body → this extension's slice of `state.ext`.
@@ -26,6 +26,27 @@
 //   4. logMeta      — what the slice contributes to chat.complete / chat_logs.
 //   5. capability   — the line in the grounded capabilities note
 //                     (src/prompts.js), so "what can you do?" stays factual.
+//   6. contextBlock — WHICH AGENT may reach it: the CONTEXT_BLOCKS id the
+//                     answering agent has to declare (added 2026-08-13).
+//
+// Seam 6 is what turned the knob from the whole answer into half of it. Until
+// the roster change of 2026-08-13 a knob left on made an extension reachable
+// from every turn on every agent, which is one question ("may this account
+// reach this third party?") standing in for two. It now AND-gates with the
+// resolved agent's declaration, and the two halves mean different things:
+//
+//   the knob          — the account's CONSENT to reach a third party at all,
+//                       a shipped /api/settings wire contract, still per-user,
+//                       still default OFF.
+//   the contextBlock  — WHICH agent may use it, declared in sdk/AGENTS.json
+//                       and validated like every other capability selection.
+//
+// Both must hold. The capabilities seam is gated on the same declaration, so an
+// agent that cannot run the lookup does not claim it can — the grounded note
+// exists precisely so "what can you do?" is answered from fact.
+//
+// The state seam (2) is deliberately NOT gated: resolveState runs in chat.js
+// before the agent is resolved, and a sanitized slice nobody reads is harmless.
 //
 // NOT everything external is an extension. The site's own source
 // (introspection) is a core capability, and OpenStreetMap Nominatim
@@ -33,6 +54,7 @@
 // photo's metadata — neither has a knob or a service-specific request state,
 // so neither is registered here.
 
+import { capHasContext } from "./agent-spec.js";
 import { googleMapsAvailable, googleMapsEmbedKey } from "./googlemaps.js";
 import { runGoogleMapsEnrichment, validateMapView, validateStreetViewPov } from "./maps-enrichment.js";
 import { shodanAvailable } from "./shodan.js";
@@ -60,9 +82,15 @@ import { runShodanEnrichment } from "./shodan-enrichment.js";
 /**
  * One registered extension. `id` is the state-bag namespace, the enrichment
  * step/log slug, and the handle core code passes around.
+ * `contextBlock` is the CONTEXT_BLOCKS id (public/js/agent-spec-core.js) the
+ * answering agent must declare before this extension can run or be claimed —
+ * seam 6 in the header. Written as a bare vocabulary id and never as the
+ * service's own name, so the declaration a spec reads stays readable as if no
+ * particular third party existed (invariant 7).
  * @typedef {{
  *   id: string,
  *   label: string,
+ *   contextBlock: string,
  *   setting: ExtensionSetting,
  *   resolveState: (body: any, on: boolean) => Record<string, any>,
  *   enabled: (slice: any) => boolean,
@@ -83,6 +111,7 @@ export const EXTENSIONS = [
   {
     id: "shodan",
     label: "Shodan host intelligence",
+    contextBlock: "host-intel",
     setting: {
       key: "shodan_mcp",
       availability: "shodan",
@@ -111,12 +140,13 @@ export const EXTENSIONS = [
     capability: {
       order: 8,
       text:
-        "Shodan host intelligence. When your message names an IP address or hostname — or asks about open ports, exposed services, an attack surface or known CVEs for a host named earlier in the conversation or for a company by name — the site can look it up on Shodan and fold in its open ports, running services, hosting organization/ASN, location, and known CVEs, cited in the answer. Shodan search filters you type yourself (org:, hostname:, port:, product:, …) are passed through. Examples: \"what services and known vulnerabilities does <hostname> expose?\", \"find open ports at <company>\". TURN ON/OFF: Account panel → Settings → \"Shodan host intelligence\", OFF by default (only the host/IP or the search query is sent to Shodan, never your question).",
+        "Shodan host intelligence. When your message names an IP address or hostname — or asks about open ports, exposed services, an attack surface or known CVEs for a host named earlier in the conversation or for a company by name — the site can look it up on Shodan and fold in its open ports, running services, hosting organization/ASN, location, and known CVEs, cited in the answer. Shodan search filters you type yourself (org:, hostname:, port:, product:, …) are passed through. Examples: \"what services and known vulnerabilities does <hostname> expose?\", \"find open ports at <company>\". WHERE: the Cyber agent, which is the agent that carries host intelligence — ask it there, not in another agent's chat. TURN ON/OFF: Account panel → Settings → \"Shodan host intelligence\", OFF by default (only the host/IP or the search query is sent to Shodan, never your question). Both are needed: the setting is your permission to reach Shodan at all, the Cyber agent is where the lookup runs.",
     },
   },
   {
     id: "maps",
     label: "Google Maps & Street View",
+    contextBlock: "street-imagery",
     setting: {
       key: "google_maps",
       availability: "google_maps",
@@ -174,7 +204,7 @@ export const EXTENSIONS = [
     capability: {
       order: 9,
       text:
-        "Google Maps & Street View. When your message names a street address (or you attach a photo carrying GPS location), the site looks it up on Google Maps Platform — resolving it with the Places API (canonical name, formatted address, place type, rating, business status and precise coordinates), confirming Google Street View coverage and its imagery capture date, and pulling a road map of the spot — then folds those details plus clickable Maps and Street View links into the research, hands several Street View angles around the location plus the map to a vision-capable model to describe, and (where coverage exists) shows an inline drag-to-navigate Street View in the answer. Example: \"what does the building at <street address> look like, and what's there?\". TURN ON/OFF: Account panel → Settings → \"Google Maps & Street View\", OFF by default (only the address or the photo's coordinates is sent to Google, never your whole question).",
+        "Google Maps & Street View. When your message names a street address (or you attach a photo carrying GPS location), the site looks it up on Google Maps Platform — resolving it with the Places API (canonical name, formatted address, place type, rating, business status and precise coordinates), confirming Google Street View coverage and its imagery capture date, and pulling a road map of the spot — then folds those details plus clickable Maps and Street View links into the research, hands several Street View angles around the location plus the map to a vision-capable model to describe, and (where coverage exists) shows an inline drag-to-navigate Street View in the answer. Example: \"what does the building at <street address> look like, and what's there?\". WHERE: the Cyber agent, which is the agent that carries street imagery — ask it there, not in another agent's chat. TURN ON/OFF: Account panel → Settings → \"Google Maps & Street View\", OFF by default (only the address or the photo's coordinates is sent to Google, never your whole question). Both are needed: the setting is your permission to reach Google Maps Platform at all, the Cyber agent is where the lookup runs.",
     },
   },
 ];
@@ -268,15 +298,22 @@ export function emptyExtensionState() {
 // ---- 3. enrichment seam (src/enrichment.js) --------------------------------
 
 /**
- * The extensions as core `Enrichment` entries: each reads only its own slice
- * of `state.ext`, so a state bag built without extensions simply yields no
- * enabled enrichment.
+ * The extensions as core `Enrichment` entries. Two gates, AND-ed (seam 6, see
+ * the header): the account's knob — read off this extension's own slice of
+ * `state.ext`, so a state bag built without extensions yields nothing enabled —
+ * and the resolved agent's declaration of this extension's context block.
+ *
+ * Fail-soft in the narrowing direction, which is the one that matters here: a
+ * request that never consulted the agent registry has a null capability and
+ * therefore reaches no third party, rather than reaching every one whose knob
+ * happens to be on.
  * @returns {Enrichment[]}
  */
 export function extensionEnrichments() {
   return EXTENSIONS.map((e) => ({
     id: e.id,
-    enabled: (state) => e.enabled(sliceOf(state, e.id)),
+    enabled: (state) =>
+      e.enabled(sliceOf(state, e.id)) && capHasContext(/** @type {any} */ (state)?.capability, e.contextBlock),
     run: (c) => e.run(c, sliceOf(c.state, e.id)),
   }));
 }
@@ -310,8 +347,26 @@ export function extensionLogMeta(state) {
 /**
  * The extensions' entries for the grounded capabilities note, each with the
  * position it claims in the numbered list.
+ *
+ * Filtered by the SAME declaration that gates the enrichment (seam 6), because
+ * the note's whole purpose is that "what can you do?" is answered from fact
+ * rather than invented: an agent that cannot run a host lookup must not have a
+ * numbered line telling it that it can. The two gates cannot drift, since both
+ * read `contextBlock`.
+ *
+ * `capability` omitted (undefined) means "no agent was resolved for this
+ * caller" — the MCP channel, an orchestrator sub-agent, a test — and yields the
+ * UNFILTERED list, which is exactly what those callers described before this
+ * parameter existed. Narrowing a general description of the platform is not the
+ * safety property; not claiming a capability the answering agent lacks is, and
+ * that case always arrives with a capability (public/js/chat-mode-core.js's
+ * routingNeedsRegistry is unconditional for a chat request).
+ * @param {import('./agent-spec.js').AgentCapability | null} [capability]
  * @returns {Array<{ order: number, text: string }>}
  */
-export function extensionCapabilities() {
-  return EXTENSIONS.map((e) => ({ ...e.capability }));
+export function extensionCapabilities(capability) {
+  const rows = capability === undefined
+    ? EXTENSIONS
+    : EXTENSIONS.filter((e) => capHasContext(capability, e.contextBlock));
+  return rows.map((e) => ({ ...e.capability }));
 }

@@ -90,6 +90,7 @@ flowchart TB
     subgraph EDGE["☁️ THE EDGE — one Cloudflare Worker, no origin server"]
         direction TB
         IX["src/index.js<br/>routing · identity gate · request id"]
+        AGT["src/agent-registry.js<br/>the turn's AGENT + capability<br/>what it may reach"]
         PIPE["src/pipeline.js<br/>deterministic 5-phase research<br/>no function calling"]
         PROV["src/providers.js<br/>LLM dispatch by model namespace"]
         GRANT["grants & tokens<br/>websearch · proxy · Se/rver token · pool"]
@@ -124,7 +125,7 @@ flowchart TB
     SRVWS --> SRVAPP
     SRVAPP --- SRVST
     SRVAPP --- CX & ODV
-    IX --> PIPE --> PROV --> LLM
+    IX --> AGT --> PIPE --> PROV --> LLM
     PIPE --> EXA & SHO & MAPS & NOM & HF
     IX --> GRANT --> EXA & LLM
     IX --> KNOW
@@ -158,6 +159,7 @@ rest of the document elaborates.
 | **Cloud container** (§13) | Cloudflare, one ephemeral container per session | `/workspace`, the project mount, `/src` in developer mode | the operator — this is the one execution environment the server is inside | native-speed execution with nothing to install. **Se/rver only**, refused for Se/cure in code |
 | **On-device model** | browser, WebGPU | downloaded weights in OPFS | the browser only | answers with no provider and no server in the path |
 | **Worker** (`src/index.js`) | Cloudflare edge | request state only | the operator | routing, the identity gate, every server capability |
+| **Agent registry** (`src/agent-registry.js`, `sdk/AGENTS.json` served as `public/introspect/agents.json`) | Worker, cached per isolate | the shipped agent specs — no user data at all | anyone; it is a public build artifact | resolving the turn's agent and its **capability**, which decides which corpora, which retrieval blocks and which third-party intelligence the turn may reach. Consulted on every request since 2026-08-13 |
 | **Research pipeline** (`src/pipeline.js`) | Worker | the request while it runs | the operator (`chat_logs` unless incognito) | triage → search → gap → synthesis → validation, deterministic, no function calling |
 | **Grants & tokens** (`src/websearch.js`, `src/proxy*.js`, `src/server-token.js`, `src/pool-token.js`) | Worker + D1 | a `jti`, a quota, a counter — **no content** | the operator; the minting account | lending a Se/cure session bounded capability without giving it an account |
 | **Knowledge inbox** (`src/knowledge.js`) | Worker + D1 | sealed conclusion envelopes | the workspace admin at import; **the server can decrypt** (agent key in D1) | aggregating findings from many participants into one place |
@@ -167,8 +169,8 @@ rest of the document elaborates.
 | **Berget / Anthropic / OpenAI** | third party | whatever a request carries | that provider | the models. Berget is primary and runs every JSON planning phase |
 | **Exa** | third party | the search query | Exa | live web results, and the DEFAULT search backend. Only the query ever leaves — never the conversation |
 | **Web search from our own Worker** (`src/websearch-cf.js`) | Cloudflare (this Worker) | the search query, to a public results page and the result pages | the operator, plus whoever hosts each page we read | live web results with no search company in the path. Selectable site-wide by an admin, or per request by a user with the "Exa web search" knob in settings |
-| **Shodan** (`src/shodan.js`, `shodan_mcp` knob) | third party, **Se/rver only** | one host or IP | Shodan | host intelligence folded into research. Not available on Se/cure: the key is server-side, and a server-side key means a server in the data path |
-| **Google Maps / Street View** (`google_maps` knob) | third party, Se/rver only | a place or coordinate | Google | maps, street imagery, place context |
+| **Shodan** (`src/shodan.js`, `shodan_mcp` knob **and** the `host-intel` capability) | third party, **Se/rver only** | one host or IP | Shodan | host intelligence folded into research, for the Cyber agent alone. Not available on Se/cure: the key is server-side, and a server-side key means a server in the data path |
+| **Google Maps / Street View** (`google_maps` knob **and** the `street-imagery` capability) | third party, Se/rver only | a place or coordinate | Google | maps, street imagery, place context, for the Cyber agent alone |
 | **OSM Nominatim** | third party, Se/rver only | a coordinate | OSM | turning a photo's EXIF GPS into place context |
 | **Hugging Face Hub** | third party | a search query; weight downloads go browser-direct | HF | models/datasets/papers as citable sources; on-device model weights |
 
@@ -267,11 +269,12 @@ flowchart LR
 | Exa | `POST https://api.exa.ai/search`, `POST …/contents` | `x-api-key: EXA_API_KEY` | Web search — `numResults`/`type` scale with the time budget (§4.3b); `/contents` is the (currently disabled, §4.2) full-text fetch |
 | A results-page CASCADE + the result pages themselves | `GET` each configured source in order — DuckDuckGo's no-JS HTML, Marginalia, optionally Bing's RSS output — merging until the result limit is met, then a plain `GET` per result page (`src/websearch-cf.js`) | none | The Cloudflare-originating search backend: the Worker IS the search engine. A cascade because no single source answers every caller — DuckDuckGo returns an empty anti-bot shell to datacenter IPs (measured 2026-07-25). Sources are merged rather than first-wins, results are ranked against the query and page excerpts are selected for it. Bounded (8 s per source, 8 s per page, ≤5 pages, 3 at a time, ≤2 throttle follows) and fail-soft — an exhausted cascade returns null and falls back to Exa |
 | Hugging Face Hub | Hub search APIs (`src/hf.js`) | `HUGGINGFACE_API_TOKEN` (optional) | Models/datasets/papers as citable sources when the question targets HF (`hfIntent`), via the search-source registry |
-| arXiv | `GET https://export.arxiv.org/api/query` (`src/arxiv.js`), Atom 1.0 | none — public and free | Preprints as citable sources when a question asks about scientific literature (`arxivIntent`), via the same registry — and when the message NAMES arXiv (`arxivLeadIntent`) the source LEADS: the Exa leg stands down for that request (§4.3c). Queried as fielded `abs:"…" AND abs:"…"` terms: a quoted phrase in the catch-all `all:` field silently returns zero, and unquoted words there are OR, not AND. Rate-limited to 1 request / 3 s with no paid tier, hence the hosted tier below |
+| arXiv | `GET https://export.arxiv.org/api/query` (`src/arxiv.js`), Atom 1.0 | none — public and free | Preprints as citable sources when a question asks about scientific literature (`arxivIntent`), via the same registry — and when the message NAMES arXiv (`arxivLeadIntent`) the source LEADS: the Exa leg stands down for that request (§4.3c). Queried as fielded `abs:"…" AND abs:"…"` terms: a quoted phrase in the catch-all `all:` field silently returns zero, and unquoted words there are OR, not AND. Rate-limited to 1 request / 3 s with no paid tier, hence the hosted tier below. **Deep Science alone may reach it** since 2026-08-13: the registry entry declares `requiresContext: "literature-arxiv"` and `sourceAllowed` honours it (§4.2) |
 | — (no third party) | `ARXIV_INDEX` Vectorize index (`src/arxiv-rag.js`) | binding | The DENSE tier of the same source: the arXiv corpus embedded once and searched in-account, so arXiv leaves the request path entirely and the user's question reaches only the embedding call. Falls back to the live API when unbound, erroring, or below the relevance floor (`docs/ARXIV-RAG.md`) |
+| Europe PMC | `GET https://www.ebi.ac.uk/europepmc/webservices/rest/search` (`src/europepmc.js`) | none — public and free | The life-science literature leg (PubMed, PMC, bioRxiv, medRxiv), via the same registry; its query grammar is the INVERSE of arXiv's (AND by default, so the ladder climbs by dropping terms). Its dense tier is the `PUBMED_INDEX` Vectorize index (`src/pubmed-rag.js`, `docs/PUBMED-RAG.md`), searched in-account with no outbound request |
 | Hugging Face router | `GET https://router.huggingface.co/v1/models`, `POST …/v1/chat/completions` (`src/hf-inference.js`) | `HUGGINGFACE_API_TOKEN` (**required** — inference is billed) | The one OPEN provider catalog: browsed with prices in the Models agent, and — once an account enables a model — a fourth answer/synthesis provider (`hf:*` ids). OpenAI-compatible, so no stream adapter |
-| Shodan | REST API (`src/shodan.js`) | `SHODAN_API_KEY` (optional) | Opt-in host-intelligence enrichment (`shodan_mcp` knob) — an **extension**, registered in `src/extensions.js` (§4.2a); the core does not depend on it |
-| Google Maps Platform | Places, Street View Static, Static Maps, Embed (`src/googlemaps.js`) | `GOOGLE_MAPS_API_KEY` (+ optional `GOOGLE_MAPS_EMBED_KEY`) | Opt-in maps/street-view enrichment (`google_maps` knob) + Tokemon's street mode — an **extension**, registered in `src/extensions.js` (§4.2a); the core does not depend on it |
+| Shodan | REST API (`src/shodan.js`) | `SHODAN_API_KEY` (optional) | Opt-in host-intelligence enrichment — an **extension**, registered in `src/extensions.js` (§4.2a); the core does not depend on it. Two gates ANDed: the `shodan_mcp` knob (the account's consent) and the `host-intel` capability (which agent may use it — today, Cyber) |
+| Google Maps Platform | Places, Street View Static, Static Maps, Embed (`src/googlemaps.js`) | `GOOGLE_MAPS_API_KEY` (+ optional `GOOGLE_MAPS_EMBED_KEY`) | Opt-in maps/street-view enrichment + Tokemon's street mode — an **extension**, registered in `src/extensions.js` (§4.2a); the core does not depend on it. Same two gates: the `google_maps` knob and the `street-imagery` capability |
 | OpenStreetMap Nominatim | reverse geocoding (`src/geocode.js`) | none (generic UA) | Turning attached photos' EXIF GPS into place context before the pipeline |
 
 Known provider limits baked into the design:
@@ -461,6 +464,18 @@ A thin shell around the pipeline:
   provider catalog (400 on unknown or down models), enforces vision
   capability when images are attached, and degrades to the default model if
   the catalog is unreachable.
+- Resolves the turn's **mode and agent**. `resolveBodyChatMode`
+  (`public/js/chat-mode-core.js`) clamps the request to one of the seven modes —
+  falling back to `science`, and resolving the retired `normal` through
+  `RETIRED_CHAT_MODES` rather than clamping it as junk — and
+  `resolveRequestAgent` then reads the registry (`src/agent-registry.js`) and
+  puts the agent's answer phase, prompt set and whole resolved **capability** on
+  the state. The registry is consulted on every request since 2026-08-13
+  (`routingNeedsRegistry` returns `true` unconditionally): with no general agent
+  left, skipping it would resolve a null capability, which is the unrestricted
+  platform default. It is cheap because the bundler writes a small dedicated
+  artifact (`public/introspect/agents.json`) beside the source snapshot, and the
+  result is cached per isolate.
 - `clampBudget(body.time_budget_s)` (15–600 s, default 60) and
   `web_search !== false` (knob, default on). `body.incognito === true`
   suppresses the `chat_logs` row (§9) — the anonymous-chat API contract.
@@ -536,17 +551,27 @@ flowchart TD
 Phase details:
 
 0. **Enrichments** (`src/enrichment.js`, pre-pipeline): a registry of
-   opt-in context resolvers run once before any model call. Each entry is
-   gated on its per-user settings knob and follows one contract: silent
-   when the latest message names nothing to look up; a visible activity
-   step naming the external service when it does; fail-soft in every
-   branch. Results are appended as labeled context blocks so triage,
-   search and synthesis all see them. `enrichment.js` itself names no
+   opt-in context resolvers run once before any model call. Each entry
+   follows one contract: silent when the latest message names nothing to look
+   up; a visible activity step naming the external service when it does;
+   fail-soft in every branch. Results are appended as labeled context blocks so
+   triage, search and synthesis all see them. `enrichment.js` itself names no
    service — the third-party ones arrive from the extension registry
    (§4.2a), and none of the core rows is an integration: the image read,
-   introspection's committed snapshot, the model catalog, the
-   ancient-sample corpus, Scholar's venue metrics, and the two **method**
+   introspection's committed snapshot, the OWASP reference, the model catalog,
+   the ancient-sample corpus, Scholar's venue metrics, and the two **method**
    rows below.
+
+   What gates a row has changed. It used to be a per-user settings knob or a
+   mode flag; since 2026-08-13 most rows are gated on the answering **agent's
+   declared context block** —
+   `capHasContext(state.capability, "<block>")` — so a capability is
+   turned on by a spec rather than by a toggle, and removing the agent from
+   `sdk/AGENTS.json` removes the capability. The extension rows keep their knob
+   AND take the declaration, ANDed (§4.2a). A **null** capability, which means
+   no agent was resolved rather than an agent that declared nothing, disables
+   the gated rows and keeps every search source — the asymmetry is deliberate
+   and is documented at each seam.
 
    A row appends one of two kinds of block, and the registry entry says
    which. **Data** is the default and covers almost everything: the
@@ -579,10 +604,24 @@ JSON-hardening layer) falls back: substantial question →
    **search-source registry** (`src/search-sources.js`) run alongside Exa —
    concurrently with it, not after — when their intent gate fires, and
    *instead* of it when the message names one of them (§4.3c). Today that is
-   the Hugging Face Hub (models/datasets/papers, `src/hf.js`) and **arXiv**
+   the Hugging Face Hub (models/datasets/papers, `src/hf.js`), **arXiv**
    (preprints, `src/arxiv.js`, served from the hosted Vectorize corpus when
    `ARXIV_INDEX` is bound and from the live API otherwise —
-   `src/arxiv-rag.js`, `docs/ARXIV-RAG.md`). Results feed the **source
+   `src/arxiv-rag.js`, `docs/ARXIV-RAG.md`), **Europe PMC** (the life-science
+   record, `src/europepmc.js`, with the hosted PubMed corpus as its dense tier)
+   and the **peer-reviewed** leg (`src/scholar.js`).
+
+   A source may also declare `requiresContext` — a context block the answering
+   agent has to hold — which `sourceAllowed` honours generically, so the
+   orchestrator reads a field and never learns which source it belongs to. That
+   is what makes the three literature legs Deep Science's (and
+   `literature-pubmed` also Palaeogenomics'), while the Hub leg, declaring
+   nothing, runs for everyone as it always did. A null capability keeps every
+   source: it means no agent was resolved — the `POST /mcp` channel, or a
+   registry that will not load — and an outage that looks like an empty answer
+   is the wrong failure (invariant 2).
+
+   Results feed the **source
    registry** (`src/sources.js`): deduped by URL, numbered in arrival order
    so `[n]` citations stay stable, capped at `plan.maxSources` overall AND
    at 3 per origin (per-domain; per-*owner* for huggingface.co), keeping
@@ -659,7 +698,7 @@ the core imports. Everything upstream of it — `pipeline.js`,
 downstream (`shodan.js`, `shodan-enrichment.js`, `googlemaps*.js`,
 `maps-enrichment.js`) is as service-specific as it likes.
 
-One descriptor per extension owns five seams, each consumed generically:
+One descriptor per extension owns six seams, each consumed generically:
 
 | Seam | Descriptor field | Core consumer |
 |---|---|---|
@@ -668,6 +707,43 @@ One descriptor per extension owns five seams, each consumed generically:
 | Enrichment | `enabled` / `run` | `enrichment.js` `runEnrichments` |
 | Logging | `logMeta(slice)` | `chat.js` — `chat.complete` and the `chat_logs` meta |
 | Capabilities | `capability {order, text}` | `prompts.js` — the numbered grounded list |
+| Which agent may reach it | `contextBlock` — a `CONTEXT_BLOCKS` id (2026-08-13) | `extensionEnrichments()` ANDs it into the row's `enabled` via `capHasContext`; the capabilities seam is filtered by the same declaration |
+
+**Seam 6, and why it does not break this boundary.** Until 2026-08-13 a knob
+left on made an extension reachable from every turn on every agent — one
+question ("may this account reach this third party?") standing in for two. The
+owner directive that made the agent roster specific gave all outward-facing
+intelligence to the **Cyber** agent, which needed a second gate, and the obvious
+way to build it would have been to teach `enrichment.js` or `chat.js` which
+agent may use Shodan. That is exactly the edit invariant 7 exists to prevent.
+
+So the declaration is data on the descriptor, like the other five seams, and the
+vocabulary it draws from is written to keep the core service-blind: the blocks
+are named **`host-intel`** and **`street-imagery`**, never `shodan` and
+`google-maps`, and their entries in `GATE_IDS` deliberately name no module
+either — "the host-intelligence extension's own gate". A reader of
+`agent-spec-core.js`, `enrichment.js` or `pipeline.js` learns that some agent
+may fold in host intelligence, and cannot learn from whom. `sdk/AGENTS.json`
+names the capability, `src/extensions.js` binds it to a vendor, and nothing in
+between knows both halves.
+
+The two gates are ANDed and answer different questions, so neither subsumes the
+other:
+
+> the **knob** — the account's CONSENT to reach a third party at all: a shipped
+> `/api/settings` wire contract, per-user, still default OFF.
+> the **contextBlock** — WHICH agent may use it, declared in `sdk/AGENTS.json`
+> and validated like every other capability selection.
+
+Two details worth keeping. The **state** seam is deliberately *not* gated:
+`resolveState` runs in `chat.js` before the agent is resolved, and a sanitized
+slice nobody reads is harmless. And the **capabilities** seam is gated on the
+same declaration, so an agent that cannot run the lookup does not claim it can —
+the grounded note exists precisely so "what can you do?" is answered from fact.
+
+Adding or removing an integration still touches no core file, and the
+`contextBlock` values are unique across the registry so an exclusivity guard can
+assert ownership per block.
 
 **The state bag.** `RequestState.ext` is a namespaced record: `state.ext.shodan`,
 `state.ext.maps`. Each extension declares and owns its slice's shape next to its
@@ -1064,6 +1140,14 @@ adding or removing a source still touches no orchestrator file:
   angle would leave the turn thinner than not leading at all. The extra
   searches are distinct angles, chosen by the source's own `pickQuery` and
   deduped across waves as usual.
+
+**A source the answering agent may not consult cannot lead either** (2026-08-13).
+`leadingSources` applies `sourceAllowed` before the lead intent, for the same
+reason the wave does: naming arXiv in a mode that has no arXiv capability must
+leave the turn on its ordinary path, not stand the web leg down in favour of a
+leg that will never run. The corollary is that "name it and it leads" is now
+scoped by ownership — inside Deep Science, which holds `literature-arxiv`,
+naming arXiv leads exactly as before.
 
 **Neither gate reads the enriched message.** A context block is prose this
 pipeline wrote to itself, and a gate that matches it is answering a question
@@ -1943,18 +2027,28 @@ as bespoke subsystems:
   theme, animations, example questions, share-link quota — and, since spec
   0.2.0, its **capability block** (what it does: answer phase, tool set,
   context blocks, search/routing policy, gates, bounds, emitted events,
-  required knob, sub-agent team). Copy a spec, change those, validate. Nine
-  agents ship today: the seven DEFAULTS, one per chat mode — `research`
-  (`normal`), `introspection`, `agent-builder` (Agent Studio, mode `sdk`),
-  `orchestrator`, `outrospection` and `models` — plus `secure` (the Se/cure
-  archetype), `under-construction` (the template to copy) and
-  two DOMAIN agents bound to no mode at all and reached by id —
-  `palaeogenomics` (`docs/PALAEOGENOMICS.md`) and `scholar`, the Deep Science
-  agent that answers exclusively from peer-reviewed publications with the web
-  leg structurally off and integrates Google Scholar as far as Scholar's
-  robots.txt permits (`docs/SCHOLAR.md`). The registry's ordered
+  required knob, sub-agent team). Copy a spec, change those, validate. Ten
+  agents ship today: the seven DEFAULTS, one per chat mode — `scholar`
+  (Deep Science, mode `science`), `cyber`, `introspection`, `agent-builder`
+  (Agent Studio, mode `sdk`), `orchestrator`, `outrospection` and `models` —
+  plus `secure` (the Se/cure archetype), `under-construction` (the template to
+  copy) and one DOMAIN agent bound to no mode at all and reached by id,
+  `palaeogenomics` (`docs/PALAEOGENOMICS.md`). The registry's ordered
   `defaults` table is what `/api/chat` routes on; the per-agent detail is
   `docs/AGENT-PLATFORM.md` §2.
+
+  **The roster is specific, with no general member** (owner directive,
+  2026-08-13). `research` / mode `normal` — the catch-all labeled Deep Research
+  — is retired; `science` is the default and the terminal fallback, so an
+  unrouted request gets a policy (literature-first, `search.web: false`) rather
+  than open-web research, and `scholar` alone declares `requires: []` because a
+  fallback must be reachable by any caller. `capability.context` became
+  EXECUTED with the same change: Deep Science exclusively owns arXiv, PubMed and
+  the peer-reviewed leg (`palaeogenomics` keeps `literature-pubmed`), and Cyber
+  exclusively owns host intelligence, street imagery, the two OSINT methods and
+  the OWASP corpus. Deep Science (`docs/SCHOLAR.md`) answers from peer-reviewed
+  publications with the web leg structurally off and integrates Google Scholar
+  as far as Scholar's robots.txt permits.
 - **DeepResearch Platform SDK** (`sdk/MANIFEST.json`, `docs/DISTILLSDK.md`)
   — 34 modules, one buildable skill each, for distilling a whole
   DeepResearch.se-like platform. Module ids map back to the repo files that
@@ -1964,10 +2058,10 @@ as bespoke subsystems:
 description of finished work. Several surfaces already have their Platform-SDK
 module — `execution-sandbox`, `introspection-help`, `decision-boards`,
 `publish-replays`, `games-shelf`, `mcp-surface`, `grant-bridge`,
-`symbol-language`, `pair-studio`, `agent-platform`. Orchestrator, Outrospection
-and Models modes now have their AgentSpec entry and route through the registry
-(2026-07-25/26), as do the mode-less `palaeogenomics` and `scholar` domain
-agents — but none of the four has a Platform-SDK module yet. Others are still bespoke code with no
+`symbol-language`, `pair-studio`, `agent-platform`. Orchestrator, Outrospection,
+Models, Deep Science and Cyber now have their AgentSpec entry and route through
+the registry (2026-07-25 onward), as does the mode-less `palaeogenomics` domain
+agent — but none of them has a Platform-SDK module yet. Others are still bespoke code with no
 SDK module and no AgentSpec entry: **on-device inference** (`public/js/ondevice-*.js`,
 `docs/BONSAI-27B-PHONE-INFERENCE.md` — since 2026-07-25 it also powers
 Orchestrator's `swarm` node kind, `docs/SWARM-REASONING.md`: N tiny Bonsai

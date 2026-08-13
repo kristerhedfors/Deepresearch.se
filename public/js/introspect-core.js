@@ -23,6 +23,21 @@ import { regionForModelEntry, regionForProvider } from "./provider-region.js";
 
 // Where the committed snapshot artifact is served from (same-origin).
 export const SNAPSHOT_PATH = "/introspect/source-snapshot.json";
+// The agent registry, committed a SECOND time as a standalone artifact
+// (scripts/bundle-source.mjs writes both from the same source of truth,
+// sdk/AGENTS.json, and --check fails if either drifts).
+//
+// A second copy of the same bytes needs justifying. Until 2026-08-13 the Worker
+// read the registry out of the multi-megabyte snapshot above, and that was fine
+// because it only ever did so for a non-default request — the general "Deep
+// Research" turn short-circuited before the load (chat-mode-core.js
+// routingNeedsRegistry). Retiring the general agent removed that
+// short-circuit: every mode is a domain now, and a domain is enforced by the
+// resolved capability, so the registry is on EVERY chat request's path. Parsing
+// five megabytes of source to read forty kilobytes of agent specs is the wrong
+// shape for that, and it is the sort of cost that gets discovered as a latency
+// regression rather than as a decision. Hence the small artifact.
+export const AGENTS_REGISTRY_PATH = "/introspect/agents.json";
 // The committed DENSE source-RAG index (scripts/bundle-source-rag.mjs).
 export const RAG_PATH = "/introspect/source-rag.json";
 // The committed OWASP reference corpus + its dense index (scripts/fetch-owasp.mjs,

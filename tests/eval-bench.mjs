@@ -78,15 +78,38 @@ async function postOnce(modelId, messages, { webSearch = true, budgetS = BUDGET_
     const res = await fetch(`${BASE_URL}/api/chat`, {
       method: "POST",
       headers: { authorization: AUTH, "content-type": "application/json" },
-      // chat_mode:"normal" — say the mode outright. The bench measures the
-      // WEB-RESEARCH pipeline, and any other mode injects this site's own source
-      // and routes the question to source reading instead (and, pre-fix, to a
-      // quiz — chat_logs #360). Before the 2026-07-26 mode collapse this had to
-      // be spelled `developer_mode: false`, because the break-glass bench
-      // identity read as developer-mode-FORCED-on and there was no way to name
-      // the mode you wanted; that off-only override still works, but naming the
-      // mode is the current spelling.
-      body: JSON.stringify({ messages, model: modelId, web_search: webSearch, time_budget_s: budgetS, chat_mode: "normal" }),
+      // Say the mode outright. The bench measures the WEB-RESEARCH pipeline, and
+      // any other mode injects this site's own source and routes the question to
+      // source reading instead (and, pre-fix, to a quiz — chat_logs #360).
+      // Before the 2026-07-26 mode collapse this had to be spelled
+      // `developer_mode: false`, because the break-glass bench identity read as
+      // developer-mode-FORCED-on and there was no way to name the mode you
+      // wanted; that off-only override still works, but naming the mode is the
+      // current spelling.
+      //
+      // The mode named here USED to be "normal", the general Deep Research
+      // agent. That agent no longer exists: the owner directive of 2026-08-13
+      // made the roster specific with no general member, deleted `normal`, and
+      // made `science` (Deep Science) the default and terminal fallback. Sending
+      // "normal" today is not an error — it is silently rewritten to `science`
+      // by RETIRED_CHAT_MODES — which would be the worst possible outcome for a
+      // bench: Deep Science has web search structurally OFF and answers from the
+      // peer-reviewed literature alone, so every question here would be scored
+      // against a pipeline it was never written for, with no sign in the output
+      // that the measurement had changed.
+      //
+      // `cyber` is the closest remaining agent to what this bench measures: the
+      // research answer phase, web on, auxiliary sources on, no forced corpus
+      // and no per-turn narrowing. Its own enrichments (OWASP, host intel,
+      // imagery) are intent-gated and stay quiet on an ordinary question.
+      // THE SCORES ARE NOT COMPARABLE ACROSS THAT CHANGE: the agent answering
+      // is a different one, and the literature legs (arXiv, Europe PMC, the
+      // peer-reviewed leg) are now owned by Deep Science and unreachable from
+      // here, so any question whose sources used to come from them will score
+      // differently for reasons that have nothing to do with the change under
+      // test. Start a fresh baseline in tests/EVAL-BENCH-FINDINGS.md rather than
+      // comparing across the 2026-08-13 line.
+      body: JSON.stringify({ messages, model: modelId, web_search: webSearch, time_budget_s: budgetS, chat_mode: "cyber" }),
       signal: controller.signal,
     });
     requestId = res.headers.get("x-request-id");

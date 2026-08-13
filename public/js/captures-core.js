@@ -603,7 +603,7 @@ export function captureRef(c) {
 // markers. "sdk"/"mod"/"sci" are kept as historical spellings — a retired
 // prefix in an old capture should still resolve to a clean name.
 const STARTER_NOISE = new Set([
-  "res", "sch", "int", "orc", "out", "mdl", "agb", "pal", "sec", "unc",
+  "res", "sch", "int", "orc", "out", "mdl", "agb", "pal", "sec", "unc", "cyb",
   "sdk", "mod", "sci",
   "en", "sv",
 ]);

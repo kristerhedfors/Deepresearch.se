@@ -20,7 +20,7 @@ import {
   setBashLiteMcp,
   setChatMode,
 } from "./settings.js";
-import { applyChatModeTheme, cachedChatMode } from "./chat-mode.js";
+import { DEFAULT_CHAT_MODE, applyChatModeTheme, cachedChatMode } from "./chat-mode.js";
 import { isolateForSandbox, storeSandboxMode } from "./sandbox-mode.js";
 
 /** @typedef {import("./account.js").PanelCtx} PanelCtx */
@@ -91,12 +91,15 @@ export function settingSelectRow({ id, label, options, value, disabled, popId, i
 }
 
 // The Chat mode picker's dropdown options (account-views + the composer #modesel
-// share the underlying chat-mode.js state). Kept in sync with CHAT_MODES.
+// share the underlying chat-mode.js state). Kept in sync with CHAT_MODES — same
+// ids, same order, and since 2026-08-13 with no general entry at the top: the
+// list opens on Deep Science, which is both the first agent and the mode an
+// unnamed request falls back to.
 // Exported because it is the ONE agent-label table: history-ui.js's live-session
 // list names each session's agent from it rather than keeping a second copy.
 export const CHAT_MODE_OPTIONS = [
-  { value: "normal", label: "Deep Research" },
   { value: "science", label: "Deep Science" },
+  { value: "cyber", label: "Cyber" },
   { value: "introspection", label: "Introspection" },
   { value: "sdk", label: "Agent Studio" },
   { value: "orchestrator", label: "Orchestrator" },
@@ -114,17 +117,22 @@ const SANDBOX_INFO = `<strong>Execution sandbox (bash) — Experimental</strong>
   slow to start; enabling it reloads the page.`;
 
 // The Chat mode picker (the dropdown that replaced the Introspection on/off
-// switch): one of three modes. The non-Normal modes all need the developer_mode
-// capability, so picking one turns that on (and Normal turns it off) — see
-// wireModeKnob. The composer's own mode dropdown (#modesel) shares this state.
+// switch): one of the seven agents. The modes need the developer_mode
+// capability, which picking one turns on — see wireModeKnob. The composer's own
+// mode dropdown (#modesel) shares this state.
 const MODE_INFO = `<strong>Chat mode</strong><br>
-  Pick how the assistant works. The composer's mode dropdown mirrors this.<br>
-  <b>Deep Research (default):</b> ordinary web research.<br>
-  <b>Deep Science:</b> the parchment mode — answers come only from the
+  Pick how the assistant works. The composer's mode dropdown mirrors this. Every
+  agent works a stated domain — there is no general one to fall back to.<br>
+  <b>Deep Science (default):</b> the parchment mode — answers come only from the
   peer-reviewed record (Europe PMC, the open scholarly graph, and Google Scholar
   as far as it permits). No open-web search runs and no preprint reaches an
   answer, so it will say a question is unanswerable rather than reach for a
   blog post.<br>
+  <b>Cyber:</b> the crimson mode — cybersecurity and open-source intelligence.
+  What a host exposes to the internet, what street-level imagery and map data
+  say about a place, what the public record says about a person or an
+  organisation, and the OWASP reference behind an application-security
+  question.<br>
   <b>Introspection:</b> ask about this site's own implementation (“how are you
   built?”, “show me src/pipeline.js”) and it answers from a snapshot of the exact
   source this deployment runs — the composer pane turns white titanium. With the
@@ -134,7 +142,7 @@ const MODE_INFO = `<strong>Chat mode</strong><br>
   from this site (above all the client-side Se/cure tier) and get a live,
   self-contained web app at its own link.<br>
   <b>Orchestrator:</b> the violet workflow mode — your request is decomposed into
-  a small team of sub-agents (Deep Research, Introspection or custom specialists)
+  a small team of sub-agents (Deep Science, Introspection or custom specialists)
   that work in the background, with the workflow shown live.<br>
   <b>Outrospection:</b> the newsprint mode — answers come from the outward feed of
   what everyone else shipped, quoting the articles themselves.<br>
@@ -142,9 +150,10 @@ const MODE_INFO = `<strong>Chat mode</strong><br>
   model costs, verify one against the established checks and enable it for every
   other mode.<br>
   Introspection, Agent Studio, Orchestrator, Outrospection and Models read this
-  site's own source; Deep Research and Deep Science do not, because neither has
-  business with it. The pick is saved to your account, so it follows you to your
-  other devices.`;
+  site's own source; Deep Science and Cyber do not, because neither has business
+  with it — a security review of this platform is Introspection's turn, not
+  Cyber's. The pick is saved to your account, so it follows you to your other
+  devices.`;
 
 /**
  * The execution-sandbox row + the Chat mode dropdown the Settings view renders
@@ -190,10 +199,12 @@ export function renderConfigKnobs(me) {
       `<p class="muted setting-note">Admin session: the execution sandbox is on by default and the chat mode is a browser-local choice (not saved to an account). Sign in with a Google account to persist these per account.</p>`
     );
   }
-  // The displayed mode is the cached pick, forced to Normal when the modes are
-  // unavailable to this account — the same clamp the server applies to the
-  // stored value, so the dropdown never shows a mode that would not run.
-  const mode = chatModesAvailable() ? cachedChatMode() : "normal";
+  // The displayed mode is the cached pick, forced to the DEFAULT mode (Deep
+  // Science) when the modes are unavailable to this account — the same clamp the
+  // server applies to the stored value, so the dropdown never shows a mode that
+  // would not run. It used to name "normal" literally; that id is retired, and
+  // naming the constant means the clamp cannot fall behind the roster again.
+  const mode = chatModesAvailable() ? cachedChatMode() : DEFAULT_CHAT_MODE;
   return (
     settingRow({
       id: "sbknob",
@@ -368,11 +379,12 @@ export function wireSandboxKnob(ctx) {
   });
 }
 
-// The Chat mode dropdown (Settings view): the modes Normal / Introspection /
-// SDK. Replaces the old Introspection on/off switch. The non-Normal modes
-// need the developer_mode capability, so this drives that server knob too:
-// picking any non-Normal mode turns developer_mode ON, Normal turns it OFF —
-// exactly the capability the old switch controlled, now folded into the pick.
+// The Chat mode dropdown (Settings view): the seven agents. Replaces the old
+// Introspection on/off switch. The modes need the developer_mode capability, so
+// this drives that server knob too — exactly the capability the old switch
+// controlled, now folded into the pick. (The rule used to read "any non-Normal
+// mode turns developer_mode ON, Normal turns it OFF"; with the general mode
+// retired there is no longer an entry that turns it off.)
 // The composer's own dropdown (#modesel) shares the underlying chat-mode.js
 // state, so both stay in sync. Fail-soft: a rejected server write (break-glass
 // admin) still applies the theme + local mode pick, which is all the admin
@@ -384,8 +396,11 @@ export function wireModeKnob(ctx) {
   const status = document.getElementById("modestatus");
   /** @type {Record<string, string>} */
   const STATUS = {
-    normal: "Deep Research — ordinary web research.",
+    // Deep Science is FIRST and is what an unrecognised pick reads as, because
+    // it is the mode the request itself falls back to (chat-mode-core.js
+    // DEFAULT_CHAT_MODE). The retired general entry used to hold both jobs.
     science: "Deep Science — the composer pane turns parchment, and questions are answered only from the peer-reviewed record: no open-web search, no preprints, and an honest \u201cnot answerable from the literature\u201d rather than a guess.",
+    cyber: "Cyber — the composer pane turns crimson, and the turn works as a security and open-source-intelligence review: what a host exposes, what a place looks like from the street, what the public record holds about an entity, and what OWASP says about the weakness in question.",
     introspection: "Introspection — the composer pane turns white titanium, and asking about this site's own source answers from the deployed source.",
     sdk: "SDK — distill this site (above all the Se/cure tier) into a new flavour and get a live, self-contained web app at its own link.",
     orchestrator: "Orchestrator — the composer pane turns violet, and each request runs as a planned team of sub-agents working in the background.",
@@ -409,13 +424,13 @@ export function wireModeKnob(ctx) {
       // devices. The local cache above is already written — this is the durable
       // copy, and the server's response is authoritative for what it stored.
       await setChatMode(mode);
-      if (status) status.textContent = STATUS[mode] || STATUS.normal;
+      if (status) status.textContent = STATUS[mode] || STATUS.science;
     } catch (err) {
       // Break-glass (no D1 row) refuses the write — but every mode is available
       // to it, so the mode still works; keep the applied pick, just note it.
       if (status) {
         status.textContent = ctx?.me && !ctx.me.email
-          ? STATUS[mode] || STATUS.normal
+          ? STATUS[mode] || STATUS.science
           : /** @type {any} */ (err)?.message || "Could not save the setting (the mode still applies for this session).";
       }
     } finally {

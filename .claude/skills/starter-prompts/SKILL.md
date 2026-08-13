@@ -54,6 +54,19 @@ inadequate.
 | `tests/starter-eval.mjs` | The live cross-agent battery. |
 | `tests/STARTER-EVAL-FINDINGS.md` | Append-only ledger. A `rank` cites a run id here. |
 
+## Which agents have a queue
+
+One per shipped agent: `secure`, `scholar` (Deep Science), `cyber`,
+`introspection`, `orchestrator`, `outrospection`, `models`, `palaeogenomics`.
+
+The `research` queue was **deleted** on 2026-08-13 rather than re-keyed to
+another agent, along with its aspect vocabulary and its candidate entries. That
+is the rule worth keeping: a starter is a promise about what THAT agent is good
+at, so moving one to a different agent silently changes what it promises. The
+`cyber` queue was written fresh, 24 entries deep. `agentFor` resolves an unknown
+or retired mode id to `scholar`, so a stale mode pin shows Deep Science's
+openers rather than none.
+
 ## The queue model
 
 - **`SLOT_COUNT` = 4** chips shown, **`QUEUE_MIN` = 20** minimum depth.
@@ -247,7 +260,9 @@ across *every* agent, one per band.
 
 Each chip is labelled with its `#XP` tag, agent and band, and — on Se/rver —
 **switches the chat mode to its agent before sending**, because a cross-agent
-batch that ran everything as Deep Research would measure the wrong thing. On
+batch that ran every question in one agent would measure the wrong thing — and
+since 2026-08-13 that would be Deep Science, which does not search the web at
+all. On
 Se/cure the pool is restricted to the `secure` agent, since no mode switch
 exists there.
 

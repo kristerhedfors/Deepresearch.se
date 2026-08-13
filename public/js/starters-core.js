@@ -79,8 +79,8 @@ export const MIN_ASPECTS = 8;
  * @type {Record<string, string>}
  */
 export const MODE_AGENTS = {
-  normal: "research",
   science: "scholar",
+  cyber: "cyber",
   introspection: "introspection",
   sdk: "agent-builder",
   orchestrator: "orchestrator",
@@ -93,8 +93,22 @@ export const MODE_AGENTS = {
  *
  * The tier decides before the mode does: Se/cure runs the `secure` agent on
  * its own client-side pipeline, so it gets Se/cure's queue (its own privacy
- * posture is half of what its starters are for) rather than Se/rver's
- * `research` queue. Every other mode maps through MODE_AGENTS.
+ * posture is half of what its starters are for) rather than any Se/rver queue.
+ * Every other mode maps through MODE_AGENTS.
+ *
+ * An unknown or retired mode id resolves to the DEFAULT mode's agent —
+ * `scholar`, Deep Science — the same fallback the request itself takes
+ * (chat-mode-core.js DEFAULT_CHAT_MODE), so a strip can never advertise one
+ * agent's openers above the answers another agent will give. It used to resolve
+ * to `research`, the general agent, retired 2026-08-13.
+ *
+ * The default is spelled out here rather than imported from chat-mode-core.js.
+ * This module is in the PUBLIC module graph — /cure/drc.js reaches it through
+ * starters.js, and src/assets.js allowlists all three by name — while
+ * chat-mode-core.js is not, so the import would 401 and take the whole Se/cure
+ * tier dark. That failure class is recorded twice in src/assets.js already.
+ * Pinning `MODE_AGENTS.science` keeps the constant inside the table it belongs
+ * to, so a renamed default agent moves in one place.
  *
  * @param {string|null|undefined} mode  the chat mode id
  * @param {{ platform?: string }} [opts]  `platform: "client"` for the Se/cure tier
@@ -103,7 +117,7 @@ export const MODE_AGENTS = {
 export function agentForMode(mode, opts = {}) {
   if (opts.platform === "client") return "secure";
   const m = typeof mode === "string" ? mode : "";
-  return MODE_AGENTS[m] || MODE_AGENTS.normal;
+  return MODE_AGENTS[m] || MODE_AGENTS.science;
 }
 
 // ---- registry access ---------------------------------------------------------

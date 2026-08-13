@@ -75,11 +75,22 @@ const JUDGE_ENV = process.env.STARTER_JUDGE_MODEL?.trim() || null;
 // covered 5 of 7 agents would read as full coverage.
 // ---------------------------------------------------------------------------
 const AGENT_RUNS = {
-  research: {
+  // `research` — the general Deep Research agent — is GONE, with its `normal`
+  // mode, by the owner directive of 2026-08-13: the roster is specific and has
+  // no general member. Its two successors are configured here. An agent left in
+  // public/js/starters-data.js with no run configuration is reported as skipped,
+  // loudly, which is the correct outcome while the two files are out of step.
+  scholar: {
     runnable: true,
-    flags: { web_search: true, chat_mode: "normal" },
+    flags: { web_search: false, chat_mode: "science" },
     expect:
-      "Run the deep-research pipeline: search the web across several rounds, and answer from numbered sources it actually retrieved. A confident answer with zero searches and zero sources has not used this agent's capability.",
+      "Answer from the peer-reviewed literature and nothing else: web search is structurally off, so the sources must be real publications the peer-reviewed leg retrieved, cited as numbered sources with their venues. A confident answer with zero searches and zero sources has not used this agent's capability, and a preprint offered as reviewed work is the specific failure it is judged on.",
+  },
+  cyber: {
+    runnable: true,
+    flags: { web_search: true, chat_mode: "cyber" },
+    expect:
+      "Run the deep-research pipeline over a security question: search the web across several rounds, fold in the domain context the question calls for (OWASP references, host intelligence, an entity or person trail), and answer from numbered sources it actually retrieved. A confident answer with zero searches and zero sources has not used this agent's capability.",
   },
   introspection: {
     runnable: true,
@@ -251,8 +262,13 @@ function traceOf(run) {
 /** Judge one run. A judge that cannot be parsed drops THIS result only. */
 async function judge(judgeModelId, starter, agentMeta, run) {
   const prompt = starterJudgePrompt(starter, agentMeta, run.text, traceOf(run));
+  // A judge call wants a plain model reply. `normal` was removed on 2026-08-13
+  // and now resolves to Deep Science, which forces the peer-reviewed search leg
+  // on every turn — the judge prompt would be sent to a literature search.
+  // `cyber` forces no source, so with web search off this short-circuits to the
+  // direct answer, which is what judging has always run on.
   const r = await postOnce(judgeModelId, [{ role: "user", content: prompt }], {
-    flags: { web_search: false, chat_mode: "normal" },
+    flags: { web_search: false, chat_mode: "cyber" },
     budgetS: 45,
   });
   const parsed = parseJudgeReply(r.text);

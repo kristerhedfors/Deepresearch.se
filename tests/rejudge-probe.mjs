@@ -31,7 +31,13 @@ async function ask(prompt) {
     headers: { authorization: AUTH, "content-type": "application/json" },
     body: JSON.stringify({
       messages: [{ role: "user", content: prompt }],
-      model: JUDGE, web_search: false, time_budget_s: 45, chat_mode: "normal",
+      // A judging call wants a plain model reply, not research. `normal` was
+      // removed on 2026-08-13 and now resolves to Deep Science, which forces the
+      // peer-reviewed search leg on EVERY turn — so the judge prompt would have
+      // been sent to a literature search. `cyber` forces nothing, and with
+      // web_search off and no source applicable the request short-circuits to
+      // the direct answer this function has always wanted.
+      model: JUDGE, web_search: false, time_budget_s: 45, chat_mode: "cyber",
     }),
   });
   if (!res.ok || !res.body) return { ok: false, error: `HTTP ${res.status}` };

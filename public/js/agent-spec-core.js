@@ -32,6 +32,11 @@
 // (the whole reason nothing caught that: nothing validated `mode`). mode-theme.js
 // is pure and import-free, so this adds no weight to the Worker bundle.
 import { CHAT_MODE_IDS, MODE_THEMES } from "./mode-theme.js";
+// An agent that names no mode reports the DEFAULT one — "the plain composer".
+// That used to be the literal "normal"; since the general agent was retired
+// (2026-08-13) the default is a real domain agent, so the value is read from the
+// mode table rather than spelled out in three places.
+import { DEFAULT_CHAT_MODE } from "./chat-mode-core.js";
 
 export { CHAT_MODE_IDS, MODE_THEMES };
 
@@ -220,7 +225,25 @@ export const CONTEXT_BLOCKS = {
   "secure-digest": { label: "Se/cure digest", desc: "a bounded digest of the real Se/cure reference source (buildSecureSourceDigest)" },
   "shell-transcript": { label: "Shell transcript", desc: "what the in-browser sandbox actually ran, as ground truth" },
   "outward-feed": { label: "Outward feed", desc: "the stored lens feed of what everyone else shipped (src/outrospect.js)", serverOnly: true },
-  "owasp": { label: "OWASP reference", desc: "the OWASP Top 10 block retrieved for a security-assessment ask" },
+  "owasp": { label: "OWASP reference", desc: "the OWASP Top 10 block (web + LLM) retrieved for a security-assessment ask (src/owasp-context.js)" },
+  // ---- the cyber/OSINT domain (2026-08-13) ---------------------------------
+  // These four are what makes the Cyber agent a domain agent rather than a
+  // research turn with a security-sounding name. Each names retrieval or method
+  // that already shipped; what is new is that reaching it is now a DECLARATION
+  // instead of a knob, a mode, or nothing at all.
+  "entity-method": { label: "Entity OSINT method", desc: "the subject-disambiguation rule and the depth-scaled dossier scaffold — a TIBER-EU-shaped threat-intelligence report at the deepest tier (public/js/entity-research-core.js)" },
+  "person-method": { label: "Person OSINT method", desc: "the source ladder, verification rungs and write-up for researching a named individual. The GUARDRAILS half is NOT part of this block — it is a privacy rail every agent gets unconditionally (public/js/person-research-core.js)" },
+  "host-intel": { label: "Host intelligence", desc: "open ports, running services, hosting organization/ASN and known CVEs for a host, IP or organization named in the conversation, folded in from the configured host-intelligence service", serverOnly: true },
+  "street-imagery": { label: "Street imagery", desc: "geospatial reconnaissance of an address, a photo's coordinates or a live panorama — place resolution, street-level imagery described by a vision model, and the interactive embed", serverOnly: true },
+  // ---- the scientific literature (2026-08-13) ------------------------------
+  // Declared for the same reason: the two hosted corpora and their live sibling
+  // APIs used to be reachable from any turn whose wording matched a keyword
+  // gate. They are Deep Science's subject, so they are Deep Science's to
+  // declare — with Palaeogenomics holding `literature-pubmed` too, because the
+  // life-science record IS its literature leg and it has no other.
+  "literature-arxiv": { label: "arXiv literature", desc: "the preprint record — this site's hosted arXiv index searched by meaning, falling back to the live arXiv API (src/arxiv.js)", serverOnly: true },
+  "literature-pubmed": { label: "Life-science literature", desc: "the biomedical record — this site's hosted PubMed index searched by meaning, falling back to the live Europe PMC API (src/europepmc.js)", serverOnly: true },
+  "literature-peer-reviewed": { label: "Peer-reviewed literature", desc: "the merged peer-reviewed search — OpenAlex, Europe PMC's reviewed slice, Semantic Scholar, the hosted PubMed index and, where licensed, Google Scholar's own ranking (src/scholar.js)", serverOnly: true },
   "model-catalog": { label: "Model catalog", desc: "the live cross-provider model catalog — priced and annotated with verification state — folded in for a model ask (src/model-catalog.js catalogBlock)", serverOnly: true },
   "ancient-samples": { label: "Ancient samples", desc: "a structured query over the committed ancient-DNA sample corpus — geography, date window, haplogroup prefix, coverage floor — folded in as exact rows and counts (src/aadr.js)", serverOnly: true },
   "scholar-metrics": { label: "Scholar metrics", desc: "Google Scholar's robots-allowed surfaces — an author profile fetched live from citations?user=, and the committed venue h5-index table — folded in as attributed metrics, and the switch restricting the turn to the peer-reviewed source (src/scholar-metrics.js)", serverOnly: true },
@@ -241,6 +264,14 @@ export const GATE_IDS = {
   "model-lifecycle": { label: "Model lifecycle", desc: "is this ask about choosing, pricing, evaluating or starting a model? (src/models-agent.js modelIntent)" },
   "ancient-sample": { label: "Ancient sample", desc: "is this ask a structured query over the ancient-DNA sample corpus, rather than a question about the literature? (public/js/aadr-core.js ancientSampleIntent)" },
   "scholar-venue": { label: "Scholar venue", desc: "is this ask about where a field publishes — top journals, venue ranking, h5-index? (src/scholar-metrics.js venueIntent)" },
+  "security-assessment": { label: "Security assessment", desc: "is this ask for a security assessment, audit, posture review or threat model? — the one that reaches for the OWASP reference (public/js/introspect-core.js securityAssessmentIntent)" },
+  "entity-research": { label: "Entity OSINT", desc: "is this ask shaped like a dossier on an organisation — OSINT, threat intel, due diligence, bakgrundskoll? (public/js/entity-research-core.js entityResearchIntent)" },
+  "person-research": { label: "Person OSINT", desc: "is this ask research about a named individual, rather than about a topic? (public/js/person-research-core.js personResearchIntent)" },
+  // The last two name no module, deliberately. Their gates live downstream of
+  // the extension registry (invariant 7), and the vocabulary a spec selects
+  // from must stay readable as if no particular third party existed.
+  "host-intel": { label: "Host intelligence", desc: "does this ask name a host, IP or organization whose exposed ports, services or known CVEs are the subject? — the host-intelligence extension's own gate" },
+  "place-lookup": { label: "Place lookup", desc: "does this ask name a place, an address or a panorama to LOOK AT rather than to read about? — the street-imagery extension's own gate" },
   // Listed for completeness, but PLATFORM BASELINE and so declared by no
   // shipped spec: the gate — the bare keyword or the `/feedback` command —
   // runs before any agent's answer phase, and the slash commands it is half of
@@ -875,7 +906,7 @@ export function resolveRequestAgent(reg, body, granted = {}, mode = "") {
     const agent = findAgent(reg, named);
     // `mode` falls back to normal for an agent bound to no chat mode — a
     // derived agent renders in the plain composer unless it says otherwise.
-    const hit = serve(agent, agent?.mode || "normal", true);
+    const hit = serve(agent, agent?.mode || DEFAULT_CHAT_MODE, true);
     if (hit) return hit;
   }
 
@@ -1193,7 +1224,7 @@ export function composerModel(a) {
     name: a?.name || a?.id || "",
     tagline: a?.tagline || "",
     platform: a?.platform || "client",
-    mode: a?.mode || "normal",
+    mode: a?.mode || DEFAULT_CHAT_MODE,
     controls: resolveControls(a),
     theme: resolveTheme(a),
     intro: a?.intro || { kind: "none" },
@@ -1305,7 +1336,7 @@ export function renderAgentShow(reg, id) {
     `${a.id} — ${a.name}  (${a.platform}-tier)`,
     a.tagline ? `  ${a.tagline}` : "",
     `  derives-from: ${a.derivesFrom || "(baseplate)"}`,
-    `  mode: ${a.mode || "normal"}`,
+    `  mode: ${a.mode || DEFAULT_CHAT_MODE}`,
     "  controls:",
     ...resolveControls(a).map((c) => `    - ${c.id} (${c.type})${c.drives ? ` → drives \`${c.drives}\`` : ""}`),
     "  capability:",

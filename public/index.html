@@ -13,7 +13,7 @@
   <!-- Installed (home-screen) app: let the PAGE paint the strip behind the
        iPhone status icons. iOS pins a standalone app's status bar to the
        manifest theme_color at launch and ignores runtime theme-color changes,
-       so switching chat mode left that strip Deep Research blue (feedback
+       so switching chat mode left that strip on the tier's sky blue (feedback
        #20, 2026-07-24). black-translucent + viewport-fit=cover extend the
        themed field (html background, --bg) under the icons instead — CSS
        repaints it instantly on a mode switch. Safe-area padding on the fixed
@@ -35,9 +35,14 @@
      flavour), `orch-mode` (violet — Orchestrator, the sub-agent workflow
      mode), `outro-mode` (newsprint — Outrospection, the outward feed),
      `models-mode` (amber — the Models agent), `sci-mode` (parchment — the
-     Deep Science agent, the one dark-field mode besides Deep Research itself)
-     or `dev-mode` (titanium — introspection). The complete theme it
-     triggers — the field + drifting waves, the whole palette, the composer pane
+     Deep Science agent), `cyber-mode` (crimson — the Cyber agent; the two
+     dark-field modes are Science and this one) or `dev-mode` (titanium —
+     introspection). There is no branch for a general mode any more: `normal`
+     was retired with the general agent (2026-08-13) and Deep Science is the
+     default, so an unrecognised or missing cache value falls through to the
+     `else` and paints Science's parchment tint — matching what
+     chat-mode-core.js resolves the same value to on the wire. The complete
+     theme it triggers — the field + drifting waves, the whole palette, the composer pane
      and the waiting/entry animations — is CSS keyed on that class, so the
      background paints correctly from frame 1. This script ALSO sets the iOS
      status-bar tint (the theme-color meta) to the mode's field colour at parse
@@ -47,9 +52,17 @@
      Agent Studio (the JS nudge fires inside Safari's navigation-chrome
      transition and is swallowed); bar-tint.js still re-asserts the current
      mode's tint on later events. In-session switching is chat-mode.js.
+     The class is collected in a variable and added once at the end, because
+     with no unthemed mode left there is always exactly one class to add — the
+     old shape added it inside each branch and simply did nothing when none
+     matched, which was correct only while `normal` existed to mean "no class".
+     Deep Science is therefore both the default the variable starts at AND an
+     explicit branch of its own: the branch is redundant on purpose, so the
+     table lists every mode a user can pick rather than leaving one of them
+     readable only as the absence of the others.
      If this script changes, recompute its CSP hash (THEME_BOOT_HASH in
      src/security-headers.js). */
-try{var m=localStorage.getItem("dr_chat_mode");var t="#6fc3fd";if(m==="sdk"){document.documentElement.classList.add("sdk-mode");t="#66cc92";}else if(m==="orchestrator"){document.documentElement.classList.add("orch-mode");t="#c3aaf2";}else if(m==="outrospection"){document.documentElement.classList.add("outro-mode");t="#e5ddcb";}else if(m==="models"){document.documentElement.classList.add("models-mode");t="#ffd21e";}else if(m==="science"){document.documentElement.classList.add("sci-mode");t="#e8d9a8";}else if(m==="introspection"){document.documentElement.classList.add("dev-mode");t="#ccd2d8";}var mc=document.querySelector('meta[name="theme-color"]');if(mc){mc.setAttribute("content",t);}}catch(e){}</script>
+try{var m=localStorage.getItem("dr_chat_mode");var c="sci-mode";var t="#e8d9a8";if(m==="sdk"){c="sdk-mode";t="#66cc92";}else if(m==="orchestrator"){c="orch-mode";t="#c3aaf2";}else if(m==="outrospection"){c="outro-mode";t="#e5ddcb";}else if(m==="models"){c="models-mode";t="#ffd21e";}else if(m==="cyber"){c="cyber-mode";t="#ff7a86";}else if(m==="science"){c="sci-mode";t="#e8d9a8";}else if(m==="introspection"){c="dev-mode";t="#ccd2d8";}document.documentElement.classList.add(c);var mc=document.querySelector('meta[name="theme-color"]');if(mc){mc.setAttribute("content",t);}}catch(e){}</script>
 </head>
 <body>
   <header>
@@ -66,6 +79,11 @@ try{var m=localStorage.getItem("dr_chat_mode");var t="#6fc3fd";if(m==="sdk"){doc
       <a class="outro-tag" href="/outrospect/" target="_blank" rel="noopener" title="Open the outward feed — /outrospect/">outrospection ↗</a>
       <div class="models-tag">models</div>
       <div class="sci-tag">deep science</div>
+      <!-- The Cyber agent's tag (2026-08-13). Same treatment as the others,
+           over the second dark field: a pale rose that reads against the
+           operations-room palette rather than the dark-on-warm the two light
+           themes use. -->
+      <div class="cyber-tag">cyber</div>
       <div class="header-right">
         <button id="historybtn" type="button" title="Chat history" aria-label="Chat history" hidden>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
@@ -157,9 +175,14 @@ try{var m=localStorage.getItem("dr_chat_mode");var t="#6fc3fd";if(m==="sdk"){doc
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
             </button>
             <input id="camerafile" type="file" accept="image/*" capture="environment" hidden>
-            <select id="modesel" title="Chat mode — Deep Research (the ordinary research pipeline), Deep Science (parchment: answers only from the peer-reviewed record — no open-web search, no preprints), Introspection (titanium: the site answers from its own source), Agent Studio (green: distil this site into a new agent and get a live link), Orchestrator (violet: a planned team of sub-agents works your request in the background), Outrospection (newsprint: answers from the outward feed of what everyone else shipped), or Models (amber: the model lifecycle — explore every provider, see what each costs, verify it against the established checks, enable it for every mode)" aria-label="Chat mode">
-              <option value="normal">Deep Research</option>
+            <!-- Every agent names a domain; there is no general entry to fall
+                 back to (owner directive, 2026-08-13). The order is
+                 chat-mode-core.js CHAT_MODES and the labels are
+                 mode-theme.js MODE_THEMES[mode].label — both pinned by
+                 public/js/account-views.test.js, which reads this markup. -->
+            <select id="modesel" title="Chat mode — Deep Science (parchment: answers only from the peer-reviewed record — no open-web search, no preprints), Cyber (crimson: cybersecurity and OSINT — host intelligence, street-level imagery read as open sources, what is exposed about a person or an organisation, and the appsec reference), Introspection (titanium: the site answers from its own source), Agent Studio (green: distil this site into a new agent and get a live link), Orchestrator (violet: a planned team of sub-agents works your request in the background), Outrospection (newsprint: answers from the outward feed of what everyone else shipped), or Models (amber: the model lifecycle — explore every provider, see what each costs, verify it against the established checks, enable it for every mode)" aria-label="Chat mode">
               <option value="science">Deep Science</option>
+              <option value="cyber">Cyber</option>
               <option value="introspection">Introspection</option>
               <option value="sdk">Agent Studio</option>
               <option value="orchestrator">Orchestrator</option>

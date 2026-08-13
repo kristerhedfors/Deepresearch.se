@@ -141,9 +141,16 @@ test("the ten shipped agents are present with the expected identities", () => {
   // Seven DEFAULT agents — one per Se/rver chat mode — plus the two client-tier
   // entries (the Se/cure archetype and the template you copy) and one DERIVED
   // agent: palaeogenomics is bound to no chat mode and is reached by id alone.
+  //
+  // `research` is NOT here, and the count held at ten because `cyber` replaced
+  // it. That is the owner directive of 2026-08-13 in one line: the roster is
+  // specific, so the general agent — the catch-all named Deep Research, defined
+  // by what it did not specialise in — has no seat, and the terminal fallback is
+  // `scholar` instead.
   assert.deepEqual(ids, [
-    "agent-builder", "introspection", "models", "orchestrator", "outrospection", "palaeogenomics", "research", "scholar", "secure", "under-construction",
+    "agent-builder", "cyber", "introspection", "models", "orchestrator", "outrospection", "palaeogenomics", "scholar", "secure", "under-construction",
   ]);
+  assert.equal(ids.includes("research"), false, "the general agent is retired");
   // Palaeogenomics stays out of the mode table: no `defaults` row addresses it,
   // so no chat mode can resolve to it and it is reachable by id alone.
   assert.equal(reg.defaults.some((r) => r.agent === "palaeogenomics"), false);
@@ -156,7 +163,8 @@ test("the ten shipped agents are present with the expected identities", () => {
   // a `defaults` row, a theme descriptor, and no new answer phase.
   assert.equal(reg.defaults.some((r) => r.agent === "scholar"), true);
   assert.equal(findAgent(reg, "scholar").mode, "science");
-  assert.equal(findAgent(reg, "research").platform, "server");
+  assert.equal(findAgent(reg, "cyber").platform, "server");
+  assert.equal(findAgent(reg, "cyber").mode, "cyber");
   assert.equal(findAgent(reg, "secure").platform, "client");
   // The mode is the RUNNING app's id: Agent Studio's spec id stays
   // "agent-builder" (a share-link identifier) while its mode is "sdk".
@@ -265,8 +273,8 @@ test("proveComposer passes for every shipped agent (the visual-proof gate)", () 
 test("rendering helpers produce readable text", () => {
   const reg = realRegistry();
   const list = renderAgentList(reg);
-  assert.ok(/research/.test(list) && /Agent Studio/.test(list));
-  const show = renderAgentShow(reg, "research");
+  assert.ok(/Deep Science/.test(list) && /Agent Studio/.test(list));
+  const show = renderAgentShow(reg, "cyber");
   assert.ok(/drives `depth`/.test(show));
   assert.ok(/quota \(share link\)/.test(show));
   assert.equal(renderAgentShow(reg, "nope"), "unknown agent: nope");
@@ -285,7 +293,7 @@ test("backdrop is a closed per-agent axis: validated, resolved, rendered", () =>
   assert.ok(composerMarkup({ ...base, backdrop: { kind: "graph" } }).includes('data-backdrop="graph"'));
   // The shipped registry declares its agents' backgrounds.
   const reg = realRegistry();
-  assert.equal(findAgent(reg, "research").backdrop.kind, "terminal");
+  assert.equal(findAgent(reg, "cyber").backdrop.kind, "terminal");
   assert.equal(findAgent(reg, "under-construction").backdrop.kind, "none");
 });
 

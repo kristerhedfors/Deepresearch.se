@@ -28,8 +28,11 @@ function passing(overrides = {}) {
     "online in SE2 while consumption stayed flat. The four bidding areas still diverge sharply in " +
     "the winter months, and SE4 remains the most expensive.";
   return {
-    agent: "research",
-    mode: "normal",
+    // Deep Science, the default agent since the general `research` one was
+    // retired (2026-08-13) — the guard grades a RUN, so the pair only has to be
+    // a real agent and the mode that opens it.
+    agent: "scholar",
+    mode: "science",
     answerText: answer,
     errorElement: false,
     errorText: "",

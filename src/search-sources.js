@@ -44,6 +44,7 @@ import {
   europepmcTermKey,
 } from "./europepmc.js";
 import { hfDiversityKey, hfIntent, hfPickQuery, hfPromptNote, hfSearch, hfTermKey } from "./hf.js";
+import { capHasContext } from "./agent-spec.js";
 import {
   SCHOLAR_LEAD_MAX_PER_REQUEST,
   SCHOLAR_MAX_PER_REQUEST,
@@ -138,6 +139,30 @@ import {
  *   per-origin cap doesn't starve platform results while still capping any
  *   single author/namespace.
  * @property {(url: string) => string} [diversityKeyOf]
+ * @property {string} [requiresContext]
+ *   A CONTEXT_BLOCKS id (public/js/agent-spec-core.js) the ANSWERING AGENT must
+ *   declare in its capability block for this source to run at all. Declared
+ *   here as data, enforced generically by pipeline.js (`sourceAllowed`) — the
+ *   orchestrator reads the field and never learns which source it belongs to,
+ *   exactly like `intent` and `leadIntent` above.
+ *
+ *   WHY (owner directive, 2026-08-13): the agent roster became SPECIFIC, with
+ *   no general member — the `normal` mode and its `research` agent are gone and
+ *   Deep Science is the default and terminal fallback — and with that came a
+ *   division of the corpora: Deep Science is the EXCLUSIVE owner of all arXiv
+ *   and PubMed capability, and palaeogenomics keeps the life-science leg it was
+ *   built on. Before this field the only way to say that was `state.auxOnly`,
+ *   which is a per-request narrowing an enrichment writes; a corpus belonging
+ *   to an agent is a fact about the AGENT, so it belongs in the agent's spec
+ *   (`sdk/AGENTS.json` capability.context) and is read from there. A future
+ *   spec edit that hands a literature corpus to another agent is then a visible
+ *   one-line diff — and fails src/literature-exclusivity.test.js.
+ *
+ *   FAIL-SOFT (invariant 2): a NULL capability means "no agent was resolved",
+ *   not "an agent declared nothing", so the source RUNS. That is the MCP
+ *   channel (src/mcp.js builds its state with no registry) and any deployment
+ *   whose registry will not load. Same rule `toolsForRun` applies to a null
+ *   capability in src/tool-sets.js, and for the same reason.
  */
 
 /** @type {SearchSource[]} */
@@ -173,6 +198,12 @@ export const SEARCH_SOURCES = [
     // deliberate — see ARXIV_MAX_PER_REQUEST and MAX_ATTEMPTS in arxiv.js.
     maxPerRequest: ARXIV_MAX_PER_REQUEST,
     promptNote: arxivPromptNote,
+    // The preprint record belongs to ONE agent (owner directive, 2026-08-13):
+    // Deep Science owns arXiv outright, and reaches it only when the reader
+    // names the preprint record — see src/scholar-metrics.js, which widens its
+    // `auxOnly` for exactly that ask and no other. No other agent declares
+    // `literature-arxiv`, so no other agent gets preprints.
+    requiresContext: "literature-arxiv",
     diversityHost: "arxiv.org",
     diversityKeyOf: arxivDiversityKey,
   },
@@ -191,6 +222,16 @@ export const SEARCH_SOURCES = [
     dedupKey: europepmcTermKey,
     maxPerRequest: EUROPEPMC_MAX_PER_REQUEST,
     promptNote: europepmcPromptNote,
+    // The life-science record is owned by Deep Science and SHARED with the
+    // palaeogenomics agent, which declares `literature-pubmed` too (owner
+    // directive, 2026-08-13). That sharing is deliberate and is the explicit
+    // preservation in this change: ancient-DNA questions are answered from
+    // Europe PMC and the site's hosted PubMed index — the corpus half of that
+    // agent's two legs — and the evalsets tests/evalsets/palaeogenomics.json
+    // and tests/needles/*-pubmed.json measure it. Pinned in
+    // src/literature-exclusivity.test.js so neither the sharing nor its limit
+    // (arXiv, which does not cover the field, is NOT shared) can drift.
+    requiresContext: "literature-pubmed",
     // The hits are DOI URLs, so without a platform key every publisher on
     // earth would share the single origin `doi.org` and the per-origin cap
     // would starve the leg to one or two results. Keyed on the registrant
@@ -223,6 +264,13 @@ export const SEARCH_SOURCES = [
     dedupKey: scholarTermKey,
     maxPerRequest: SCHOLAR_MAX_PER_REQUEST,
     promptNote: scholarPromptNote,
+    // The peer-reviewed record is Deep Science's alone. It was already so in
+    // practice — `state.auxOnly` narrowed that agent's turn to this source —
+    // but the reverse direction was never stated: nothing stopped any OTHER
+    // agent's turn from firing this leg on a "peer-reviewed" phrasing and
+    // spending the reranker budget of the agent whose subject it is not.
+    // Declaring it here says it once, in the same place as the other two.
+    requiresContext: "literature-peer-reviewed",
     // Same reasoning as europepmc's: the hits are DOI URLs, so without a
     // platform key every publisher on earth shares the origin `doi.org` and
     // the per-origin cap starves the leg. Keyed on the registrant prefix,
@@ -232,13 +280,57 @@ export const SEARCH_SOURCES = [
   },
 ];
 
+// May the answering agent consult this source at all?
+//
+// The generic reading of the entry's `requiresContext` (see the typedef): a
+// source that names a context block runs only for an agent whose capability
+// declares that block. Everything else is unchanged — a source declaring
+// nothing runs for everyone, exactly as every source did before 2026-08-13.
+//
+// The NULL capability is the fail-soft case and it means "no agent was
+// resolved", which is not the same claim as "an agent declared nothing": the
+// MCP channel builds its state without a registry (src/mcp.js), and a
+// deployment whose registry will not load resolves nothing either. Both must
+// keep every source, because the alternative is an outage that looks like an
+// empty answer — invariant 2, and the same treatment `toolsForRun` gives a null
+// capability in src/tool-sets.js. Concretely: the literature door at POST /mcp
+// is DELIBERATELY not governed by the agent roster, because MCP has no concept
+// of an agent to govern it with — the ground-truth batteries
+// (tests/dr-eval.mjs over tests/evalsets/*, tests/needles/*) reach both corpora
+// through it and must keep doing so.
+/**
+ * @param {import('./agent-spec.js').AgentCapability | null | undefined} cap
+ * @param {SearchSource} source
+ * @returns {boolean}
+ */
+export function capabilityAllowsSource(cap, source) {
+  if (!source?.requiresContext) return true;
+  if (!cap) return true;
+  return capHasContext(cap, source.requiresContext);
+}
+
 // The concatenated planner-vocabulary notes for the triage/gap prompts
 // (prompts.js splices this next to its other standing rules). Empty string
 // when no source declares one, so the prompts are byte-identical to a
 // registry with no notes.
-/** @returns {string} */
-export function sourcePromptNotes() {
-  return SEARCH_SOURCES.map((s) => s.promptNote || "").join("");
+//
+// CAPABILITY-AWARE since 2026-08-13: a note teaches the JSON planning model the
+// vocabulary of a source ("arXiv means arxiv.org, never clarify it", "phrase at
+// least one query as the biomedical concepts"). Teaching that for a source the
+// answering agent is not allowed to consult is worse than teaching nothing — it
+// spends triage's attention shaping queries for a leg that will never run, and
+// it invites the planner to promise a corpus the answer cannot cite. The
+// capability is threaded in from pipeline.js's two prompt call sites; omitted
+// (or null — the MCP channel), every note is composed, which is what this
+// function did before the argument existed.
+/**
+ * @param {import('./agent-spec.js').AgentCapability | null} [cap]
+ * @returns {string}
+ */
+export function sourcePromptNotes(cap = null) {
+  return SEARCH_SOURCES.filter((s) => capabilityAllowsSource(cap, s))
+    .map((s) => s.promptNote || "")
+    .join("");
 }
 
 // The ids of every source the message names as THE place to look, in registry

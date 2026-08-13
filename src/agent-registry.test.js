@@ -13,7 +13,7 @@ import { dirname, join } from "node:path";
 import { loadAgentRegistry } from "./agent-registry.js";
 // routingNeedsRegistry moved to the shared mode table with the rest of the mode
 // logic (public/js/chat-mode-core.js, re-exported by src/chat-modes.js).
-import { routingNeedsRegistry } from "./chat-modes.js";
+import { DEFAULT_CHAT_MODE, routingNeedsRegistry } from "./chat-modes.js";
 import { SNAPSHOT_PATH } from "../public/js/introspect-core.js";
 import { AGENTS_PATH } from "../public/js/agent-spec-core.js";
 
@@ -73,28 +73,26 @@ test("every failure path degrades to null, never a throw", async () => {
   assert.ok((await loadAgentRegistry(flaky))?.agents?.length, "recovers on the next call");
 });
 
-test("routingNeedsRegistry keeps the plain Deep Research turn off the load path", () => {
-  // Nothing to resolve: mode `normal` with no addressed agent → always the
-  // research agent, so the multi-megabyte snapshot must stay off the path.
-  assert.equal(routingNeedsRegistry({}, "normal"), false);
-  assert.equal(routingNeedsRegistry({ web_search: true, incognito: true }, "normal"), false);
-  assert.equal(routingNeedsRegistry(undefined, "normal"), false);
-  // Any non-normal mode can route somewhere else, so it needs the registry. The
-  // MODE is what is asked here, not the raw flags — chat.js resolves those into
-  // the mode before routing starts (chat-mode-core.js resolveBodyChatMode), so a
-  // flag on a request that resolved to `normal` is already spent.
-  for (const mode of ["introspection", "sdk", "orchestrator", "outrospection", "models"]) {
+test("routingNeedsRegistry says yes to everything, because every mode is a domain now", () => {
+  // This used to be the load-path SHORTCUT: mode `normal` with no addressed
+  // agent always resolved to the general research agent, so paying a
+  // multi-megabyte snapshot read to learn that was pure cost on the commonest
+  // path, and the answer was `false`.
+  //
+  // The general agent went on 2026-08-13 and took the premise with it. Every
+  // mode names a domain, and a domain is ENFORCED by the resolved capability —
+  // capHasContext decides whether the literature legs run, whether host
+  // intelligence runs, whether street imagery runs. A request that skipped the
+  // registry would resolve a null capability, and a null capability is the
+  // unrestricted platform default: Deep Science would quietly stop being
+  // literature-only. So the shortcut is gone, and what replaced it is a cheaper
+  // artifact (AGENTS_REGISTRY_PATH) plus the per-isolate cache.
+  for (const mode of ["science", "cyber", "introspection", "sdk", "orchestrator", "outrospection", "models"]) {
     assert.equal(routingNeedsRegistry({}, mode), true, mode);
   }
-  assert.equal(routingNeedsRegistry({ sdk_mode: true }, "normal"), false);
-  // An ADDRESSED agent is the other way routing can differ. Naming one needs
-  // the registry — including a name that turns out not to exist, so that
-  // "unknown id" and "id you may not have" are indistinguishable from outside.
-  assert.equal(routingNeedsRegistry({ agent: "under-construction" }, "normal"), true);
-  assert.equal(routingNeedsRegistry({ agent: "ghost" }, "normal"), true);
-  // …but an empty or non-string one is no address at all, and must not drag the
-  // multi-megabyte snapshot onto the commonest path.
-  for (const agent of ["", "   ", null, 0, false, 7, {}, []]) {
-    assert.equal(routingNeedsRegistry({ agent }, "normal"), false, `agent=${JSON.stringify(agent)} is not an address`);
-  }
+  // The default mode is not special any more — that is the whole point.
+  assert.equal(routingNeedsRegistry({}, DEFAULT_CHAT_MODE), true);
+  assert.equal(routingNeedsRegistry(undefined, undefined), true);
+  assert.equal(routingNeedsRegistry({ agent: "under-construction" }, "science"), true);
+  assert.equal(routingNeedsRegistry({ agent: "" }, "science"), true);
 });

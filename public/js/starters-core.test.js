@@ -38,16 +38,21 @@ function fixture(n, { provenEvery = 0, rank = 4 } = {}) {
 // ---- mode → agent -----------------------------------------------------------
 
 test("agentForMode maps every chat mode, and the tier wins over the mode", () => {
-  assert.equal(agentForMode("normal"), "research");
+  assert.equal(agentForMode("science"), "scholar");
+  assert.equal(agentForMode("cyber"), "cyber");
   assert.equal(agentForMode("introspection"), "introspection");
   assert.equal(agentForMode("sdk"), "agent-builder");
   assert.equal(agentForMode("orchestrator"), "orchestrator");
   assert.equal(agentForMode("outrospection"), "outrospection");
-  // Unknown / missing modes fall back to the normal agent rather than throwing.
-  assert.equal(agentForMode("nonsense"), "research");
-  assert.equal(agentForMode(null), "research");
+  // Unknown, missing and RETIRED modes fall back to the DEFAULT mode's agent
+  // rather than throwing — `scholar` since the general agent was retired
+  // (2026-08-13), which is also the agent the request itself is answered by, so
+  // a strip can never advertise openers for an agent that will not answer.
+  assert.equal(agentForMode("nonsense"), "scholar");
+  assert.equal(agentForMode(null), "scholar");
+  assert.equal(agentForMode("normal"), "scholar");
   // Se/cure runs its own queue whatever the mode says.
-  assert.equal(agentForMode("normal", { platform: "client" }), "secure");
+  assert.equal(agentForMode("science", { platform: "client" }), "secure");
   assert.equal(agentForMode("introspection", { platform: "client" }), "secure");
 });
 
@@ -334,9 +339,15 @@ test("tagStarterText prepends once and never doubles up", () => {
 });
 
 test("starterByXp resolves a tag back to the starter a feedback entry means", () => {
-  const hit = starterByXp(STARTERS, 2, { candidates: CANDIDATES });
-  assert.ok(hit, "#XP-02 must resolve");
-  assert.equal(hit.xp, 2);
+  // Taken from the registry rather than hard-coded. The numbers are append-only
+  // and never reused, so retiring an agent leaves a HOLE in the sequence — which
+  // is exactly what happened when the general agent went (2026-08-13) and took
+  // the low numbers with it. Pinning a literal here tested the fixture, not the
+  // lookup.
+  const anyXp = evalPool(STARTERS, { candidates: CANDIDATES })[0].xp;
+  const hit = starterByXp(STARTERS, anyXp, { candidates: CANDIDATES });
+  assert.ok(hit, `#XP-${anyXp} must resolve`);
+  assert.equal(hit.xp, anyXp);
   assert.ok(hit.agent && hit.text, "the lookup carries the agent and the text");
   // Candidates share the one number space, so a promoted candidate keeps the
   // number the review that promoted it cited.

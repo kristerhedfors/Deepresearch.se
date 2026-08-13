@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { handleAgentLink, loadAgentRegistry } from "./agent-link.js";
 import { verifyServerToken } from "./server-token.js";
-import { SNAPSHOT_PATH } from "../public/js/introspect-core.js";
+import { AGENTS_REGISTRY_PATH, SNAPSHOT_PATH } from "../public/js/introspect-core.js";
 
 const SECRET = "d0a2d4e838e1c1c7c65fef7b784c9623ee113f8aab5da9aab9d62f8a311109de";
 const log = { info() {}, warn() {}, error() {}, debug() {} };
@@ -50,14 +50,21 @@ function fakeDb() {
   return { _rows: rows, prepare: stmt, async batch() { return []; } };
 }
 
-// A fake ASSETS binding serving the source snapshot with the real AGENTS.json.
-function fakeAssets(agentsText = AGENTS_TEXT) {
+// A fake ASSETS binding serving the real AGENTS.json. `serve` says by which of
+// the two routes: the standalone registry artifact (what a current deploy
+// carries), the source snapshot (the fallback, and what a deploy whose bundle
+// predates the artifact carries), or both.
+function fakeAssets(agentsText = AGENTS_TEXT, serve = "both") {
+  const snapshot = () =>
+    JSON.stringify({ v: 1, files: [{ p: "sdk/AGENTS.json", s: agentsText.length, t: agentsText }] });
   return {
     async fetch(req) {
       const u = new URL(req.url);
-      if (u.pathname === SNAPSHOT_PATH) {
-        const body = JSON.stringify({ v: 1, files: [{ p: "sdk/AGENTS.json", s: agentsText.length, t: agentsText }] });
-        return new Response(body, { status: 200 });
+      if (u.pathname === AGENTS_REGISTRY_PATH && serve !== "snapshot") {
+        return new Response(agentsText, { status: 200 });
+      }
+      if (u.pathname === SNAPSHOT_PATH && serve !== "artifact") {
+        return new Response(snapshot(), { status: 200 });
       }
       return new Response("not found", { status: 404 });
     },
@@ -68,18 +75,28 @@ const envWith = (over = {}) => ({ DB: fakeDb(), ASSETS: fakeAssets(), SESSION_SE
 const post = (body) => new Request("https://x/api/admin/agent-link", { method: "POST", body: JSON.stringify(body) });
 const url = new URL("https://x/api/admin/agent-link");
 
-test("loadAgentRegistry reads the registry from the snapshot, degrades to null", async () => {
-  const reg = await loadAgentRegistry(envWith());
-  assert.ok(reg && reg.agents.some((a) => a.id === "research"));
+test("loadAgentRegistry prefers the standalone artifact, falls back to the snapshot", async () => {
+  // Both routes must produce the same registry. The artifact is what every
+  // current deploy carries and what keeps the multi-megabyte snapshot off a
+  // path that every request now takes (2026-08-13); the snapshot leg is the
+  // fallback that keeps a deploy whose bundle predates the artifact routing by
+  // capability instead of silently resolving a null one.
+  for (const serve of ["both", "artifact", "snapshot"]) {
+    const reg = await loadAgentRegistry({ ASSETS: fakeAssets(AGENTS_TEXT, serve) });
+    assert.ok(reg && reg.agents.some((a) => a.id === "cyber"), `serve=${serve}`);
+    assert.equal(reg.agents.some((a) => a.id === "research"), false, "the general agent is retired");
+  }
   assert.equal(await loadAgentRegistry({}), null); // no ASSETS binding
+  // Neither route available: null, never a throw (invariant 2).
+  assert.equal(await loadAgentRegistry({ ASSETS: { async fetch() { return new Response("", { status: 404 }); } } }), null);
 });
 
 test("mints a Se/rver token for an agent: JWT verifies, meter rows carry the quota", async () => {
   const env = envWith();
-  const res = await handleAgentLink(post({ agent: "research" }), env, url, log, admin);
+  const res = await handleAgentLink(post({ agent: "cyber" }), env, url, log, admin);
   assert.equal(res.status, 200);
   const body = await res.json();
-  assert.equal(body.agent, "research");
+  assert.equal(body.agent, "cyber");
   assert.ok(body.token, "returns the JWT");
   assert.ok(body.link.startsWith("https://x/cure?st="), "returns a shareable /cure link");
 
@@ -97,7 +114,7 @@ test("mints a Se/rver token for an agent: JWT verifies, meter rows carry the quo
 
 test("admin can override the quota at mint time", async () => {
   const env = envWith();
-  const res = await handleAgentLink(post({ agent: "research", quotas: { api: 7 }, ttlHours: 1 }), env, url, log, admin);
+  const res = await handleAgentLink(post({ agent: "cyber", quotas: { api: 7 }, ttlHours: 1 }), env, url, log, admin);
   const body = await res.json();
   const claims = await verifyServerToken(env, body.token);
   assert.equal(env.DB._rows.get(`${claims.jti}|api`).quota, 7);
@@ -115,7 +132,7 @@ test("failure paths return the right status", async () => {
   assert.equal((await handleAgentLink(post({}), envWith(), url, log, admin)).status, 400); // no agent
   assert.equal((await handleAgentLink(post({ agent: "nope" }), envWith(), url, log, admin)).status, 404); // unknown
   const noAssets = { DB: fakeDb(), SESSION_SECRET: SECRET }; // no ASSETS → no registry
-  assert.equal((await handleAgentLink(post({ agent: "research" }), noAssets, url, log, admin)).status, 503);
+  assert.equal((await handleAgentLink(post({ agent: "cyber" }), noAssets, url, log, admin)).status, 503);
   const noDb = { ASSETS: fakeAssets(), SESSION_SECRET: SECRET }; // no D1 → mint unavailable
-  assert.equal((await handleAgentLink(post({ agent: "research" }), noDb, url, log, admin)).status, 503);
+  assert.equal((await handleAgentLink(post({ agent: "cyber" }), noDb, url, log, admin)).status, 503);
 });

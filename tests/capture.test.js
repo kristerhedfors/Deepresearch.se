@@ -43,7 +43,7 @@ const ARGS = (argv, env = {}) => parseArgs(argv, { env, now: new Date(2026, 7, 1
 
 test("bare invocation resolves every documented default", () => {
   const o = ARGS([]);
-  assert.deepEqual(o.agents, ["research"]);
+  assert.deepEqual(o.agents, ["scholar"]);
   assert.equal(o.models, null, "no --models means 'ask the site for its default', not 'no models'");
   assert.equal(o.perAgent, DEFAULTS.perAgent);
   assert.equal(o.lang, null);
@@ -61,16 +61,16 @@ test("bare invocation resolves every documented default", () => {
 });
 
 test("csv flags split, trim and drop empties", () => {
-  const o = ARGS(["--agents", " research , introspection ,", "--models", "a/b,c/d"]);
-  assert.deepEqual(o.agents, ["research", "introspection"]);
+  const o = ARGS(["--agents", " scholar , introspection ,", "--models", "a/b,c/d"]);
+  assert.deepEqual(o.agents, ["scholar", "introspection"]);
   assert.deepEqual(o.models, ["a/b", "c/d"]);
 });
 
 test("boolean flags take no value and do not eat the next argument", () => {
-  const o = ARGS(["--dry-run", "--agents", "research", "--headed"]);
+  const o = ARGS(["--dry-run", "--agents", "cyber", "--headed"]);
   assert.equal(o.dryRun, true);
   assert.equal(o.headed, true);
-  assert.deepEqual(o.agents, ["research"], "--dry-run must not have swallowed --agents");
+  assert.deepEqual(o.agents, ["cyber"], "--dry-run must not have swallowed --agents");
 });
 
 test("--limit and the other numeric flags parse as integers", () => {
@@ -95,8 +95,8 @@ test("--search takes on/off and BASE_URL supplies the target", () => {
 });
 
 test("--key=value is accepted as well as --key value", () => {
-  const o = ARGS(["--agents=research,models", "--shape=square"]);
-  assert.deepEqual(o.agents, ["research", "models"]);
+  const o = ARGS(["--agents=cyber,models", "--shape=square"]);
+  assert.deepEqual(o.agents, ["cyber", "models"]);
   assert.equal(o.shape, "square");
 });
 
@@ -185,13 +185,13 @@ test("a half-read sample degrades to zeroes rather than to NaN", () => {
 // ---------------------------------------------------------------------------
 
 test("a run writes its four files under <out>/<slug>/", () => {
-  const p = runPaths("captures/2026-08-10", "research__model-x__res-sv-elpris");
-  assert.equal(p.dir, "captures/2026-08-10/research__model-x__res-sv-elpris");
+  const p = runPaths("captures/2026-08-10", "scholar__model-x__res-sv-elpris");
+  assert.equal(p.dir, "captures/2026-08-10/scholar__model-x__res-sv-elpris");
   // `raw.webm` is what scripts/capture-edit.mjs looks for (isCaptureDir), so
   // the name is a contract, not a preference.
-  assert.equal(p.video, "captures/2026-08-10/research__model-x__res-sv-elpris/raw.webm");
-  assert.equal(p.timeline, "captures/2026-08-10/research__model-x__res-sv-elpris/timeline.json");
-  assert.equal(p.meta, "captures/2026-08-10/research__model-x__res-sv-elpris/meta.json");
+  assert.equal(p.video, "captures/2026-08-10/scholar__model-x__res-sv-elpris/raw.webm");
+  assert.equal(p.timeline, "captures/2026-08-10/scholar__model-x__res-sv-elpris/timeline.json");
+  assert.equal(p.meta, "captures/2026-08-10/scholar__model-x__res-sv-elpris/meta.json");
   assert.ok(p.videoTmp.startsWith(p.dir), "the scratch recording directory stays inside the run's own directory");
 });
 
@@ -254,9 +254,9 @@ test("a timeline assembled from a broken run is still plannable", () => {
 
 test("meta.json carries the run's identity, the shape it was recorded at, and its timing", () => {
   const [run] = expandMatrix({
-    agents: ["research"],
+    agents: ["scholar"],
     models: ["mistralai/Devstral-Small-2505"],
-    prompts: { research: [{ id: "res-sv-elpris", text: "Vad hände med elpriset?", lang: "sv", xp: 3 }] },
+    prompts: { scholar: [{ id: "res-sv-elpris", text: "Vad hände med elpriset?", lang: "sv", xp: 3 }] },
   });
   const meta = buildMeta(run, ARGS(["--budget", "60", "--search", "on"]), {
     startedAt: 1_760_000_000_000,
@@ -265,8 +265,8 @@ test("meta.json carries the run's identity, the shape it was recorded at, and it
   });
   assert.deepEqual(meta, {
     slug: run.slug,
-    agent: "research",
-    mode: "normal",
+    agent: "scholar",
+    mode: "science",
     model: "mistralai/Devstral-Small-2505",
     prompt: "Vad hände med elpriset?",
     starter: "res-sv-elpris",
@@ -342,9 +342,9 @@ test("the commit is left for runBatch — parseArgs stays pure", () => {
 
 test("a failed run still writes meta, with the reason", () => {
   const [run] = expandMatrix({
-    agents: ["research"],
+    agents: ["scholar"],
     models: ["m"],
-    prompts: { research: [{ id: "s1", text: "hello there friend", lang: "en" }] },
+    prompts: { scholar: [{ id: "s1", text: "hello there friend", lang: "en" }] },
   });
   const meta = buildMeta(run, ARGS([]), { startedAt: 10, endedAt: 20, ok: false, error: "no answer within 300s" });
   assert.equal(meta.ok, false);
@@ -400,10 +400,10 @@ test("the TLS-1.2 cap and the proxy apply to remote targets only", () => {
 
 test("the summary names each run's verdict and counts the batch", () => {
   const text = formatSummary([
-    { slug: "research__m__s1", agent: "research", model: "m", starter: "s1", ok: true, durationMs: 42_000, error: null },
+    { slug: "scholar__m__s1", agent: "scholar", model: "m", starter: "s1", ok: true, durationMs: 42_000, error: null },
     { slug: "models__m__s2", agent: "models", model: "m", starter: "s2", ok: false, durationMs: 300_000, error: "no answer within 300s" },
   ]);
-  assert.match(text, /✓ research__m__s1/);
+  assert.match(text, /✓ scholar__m__s1/);
   assert.match(text, /✗ models__m__s2/);
   assert.match(text, /no answer within 300s/);
   assert.match(text, /1\/2 captured\./);

@@ -35,6 +35,7 @@
 
 import { MODE_AGENTS, resolveQueue } from "../public/js/starters-core.js";
 import { STARTERS } from "../public/js/starters-data.js";
+import { DEFAULT_CHAT_MODE } from "../public/js/chat-mode-core.js";
 
 // ---------------------------------------------------------------------------
 // Shapes — capture viewport + delivery frame, one entry per aspect ratio
@@ -233,13 +234,15 @@ export const CAPTURABLE_AGENTS = Object.values(MODE_AGENTS);
 
 /**
  * The chat mode that puts the composer into a given agent. Unknown names fall
- * back to Deep Research rather than throwing — a typo should produce a run
- * that is obviously the wrong agent, not a dead harness.
+ * back to the DEFAULT chat mode rather than throwing — a typo should produce a
+ * run that is obviously the wrong agent, not a dead harness. That fallback used
+ * to be the literal "normal"; the general research agent was retired on
+ * 2026-08-13, so it is read from the mode table instead.
  * @param {string} agent
  * @returns {string}
  */
 export function modeForAgent(agent) {
-  return AGENT_MODES[agent] || "normal";
+  return AGENT_MODES[agent] || DEFAULT_CHAT_MODE;
 }
 
 /**

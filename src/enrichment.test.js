@@ -42,7 +42,7 @@ import { lastUserText, withoutMethodBlocks } from "./conversation.js";
 import { runEnrichments } from "./enrichment.js";
 import { entityResearchBlock } from "./entity-research.js";
 import { EXTENSIONS, emptyExtensionState, extensionEnrichments } from "./extensions.js";
-import { personResearchBlock } from "./person-research.js";
+import { personGuardrailsBlock, personResearchBlock } from "./person-research.js";
 import { fakeLog } from "./test-helpers/env.js";
 import { withFakeFetch } from "./test-helpers/fetch.js";
 
@@ -54,6 +54,11 @@ const EXPECTED_ORDER = [
   "maps",
   "image_read",
   "introspect",
+  // Immediately after introspect, and that placement is load-bearing: it used
+  // to BE a branch inside that runner (lifted out 2026-08-13), so the OWASP
+  // block still lands on the message after the source and help blocks, and the
+  // query embed introspect stashes is still reused rather than paid for twice.
+  "owasp",
   "models",
   "aadr",
   "scholar",
@@ -67,16 +72,33 @@ const EXPECTED_ORDER = [
 const EXTENSION_IDS = ["shodan", "maps"];
 const CORE_IDS = EXPECTED_ORDER.filter((id) => !EXTENSION_IDS.includes(id));
 
+/** Every context block any registry row is gated on — the Cyber agent's four
+ * (2026-08-13) plus the two domain corpora and the OWASP reference. No single
+ * shipped agent declares all of these; the point here is to reach every row. */
+const ALL_CONTEXT = [
+  "ancient-samples",
+  "scholar-metrics",
+  "owasp",
+  "entity-method",
+  "person-method",
+  "host-intel",
+  "street-imagery",
+];
+
 /** Every gate on, so the whole registry runs. */
 function everythingOn() {
   return {
     vision: true,
     introspection: true,
     modelsMode: true,
-    capability: { context: ["ancient-samples", "scholar-metrics"] },
+    capability: { context: [...ALL_CONTEXT] },
     ext: { shodan: { on: true }, maps: { on: true } },
   };
 }
+
+/** A capability declaring exactly `blocks` — the shape resolveCapability hands
+ * the request state for an agent whose spec selects them. */
+const cap = (/** @type {string[]} */ ...blocks) => ({ context: blocks });
 
 /**
  * A conversation that throws on every property access — see the header. Symbol
@@ -141,10 +163,22 @@ async function withProbes(entries, fn) {
   return fn(mod.runEnrichments);
 }
 
+// The context block a probe extension declares. Since 2026-08-13 an extension
+// is enabled only when its knob is on AND the answering agent declares its
+// `contextBlock` (src/extensions.js seam 6), so a probe has to declare one and
+// the state a probe runs under has to select it — otherwise these fail-soft
+// cases would silently stop reaching their runners and pass vacuously. Any
+// CONTEXT_BLOCKS id does; this one is the least entangled with a shipped gate.
+const PROBE_CONTEXT = "shell-transcript";
+
 /** A probe extension descriptor (the shape extensionEnrichments() consumes). */
 function probe(id, run) {
-  return { id, enabled: () => true, run };
+  return { id, contextBlock: PROBE_CONTEXT, enabled: () => true, run };
 }
+
+/** The request state a probe run needs: the probe's declaration, plus whatever
+ * the individual case adds. */
+const probeState = (over = {}) => ({ capability: { context: [PROBE_CONTEXT] }, ...over });
 
 // ---------------------------------------------------------------------------
 
@@ -185,12 +219,19 @@ describe("the enrichment registry — membership and order", () => {
     // `enabled(state)` runs for every entry in registry order, so the property
     // reads it makes ARE the gates, in order:
     //   shodan / maps  ← their own slice of state.ext (extensions.js sliceOf)
+    //                    AND state.capability — but `&&` short-circuits, so
+    //                    with the knob off the capability is never read, which
+    //                    is what these recorded names show
     //   image_read     ← state.vision
     //   introspect     ← state.introspection
+    //   owasp          ← capHasContext(state.capability, "owasp")
     //   models         ← state.modelsMode
     //   aadr           ← capHasContext(state.capability, "ancient-samples")
     //   scholar        ← capHasContext(state.capability, "scholar-metrics")
-    //   person_research← nothing at all (`enabled: () => true`)
+    //   person_research← nothing at all (`enabled: () => true`) — the privacy
+    //                    rail is unconditional; which HALF of its block applies
+    //                    is the runner's decision, not the registry's
+    //   entity_research← capHasContext(state.capability, "entity-method")
     const reads = [];
     const ext = new Proxy(
       {},
@@ -220,7 +261,9 @@ describe("the enrichment registry — membership and order", () => {
       "ext.maps",
       "vision",
       "introspection",
+      "capability",
       "modelsMode",
+      "capability",
       "capability",
       "capability",
     ]);
@@ -228,9 +271,14 @@ describe("the enrichment registry — membership and order", () => {
 
   test("person_research is the one entry that is always enabled", async () => {
     // Every other gate is off in a bare state, so it is the only runner reached
-    // — its own intent gate decides, not the registry.
+    // — its own intent gate decides, not the registry. It is unconditional
+    // because the block it appends carries a PRIVACY RAIL (the limits on
+    // reporting a private individual's health, ethnicity, personnummer or home
+    // address), and an agent that lost that rail would be worse off than one
+    // that never had the OSINT method it sits beside (invariant 4). Its sibling
+    // entity_research carries no rail and follows the declaration.
     const { warns } = await runReal(hostileConversation(), {});
-    assert.deepEqual(idsThatRan(warns), ["person_research", "entity_research"]);
+    assert.deepEqual(idsThatRan(warns), ["person_research"]);
   });
 
   test("the registry is language-independent", async () => {
@@ -260,8 +308,8 @@ describe("gating", () => {
     // The hostile conversation makes "was run called?" observable: any runner
     // that were reached would throw and log. Only person_research does.
     const { warns, out } = await runReal(hostileConversation(), { vision: false, introspection: false });
-    assert.deepEqual(idsThatRan(warns), ["person_research", "entity_research"]);
-    assert.equal(warns.length, 2);
+    assert.deepEqual(idsThatRan(warns), ["person_research"]);
+    assert.equal(warns.length, 1);
     assert.equal(typeof out, "object");
   });
 
@@ -273,56 +321,90 @@ describe("gating", () => {
 
   test("emptyExtensionState() (the MCP channel's shape) leaves both extensions off", async () => {
     const { warns } = await runReal(hostileConversation(), { ext: emptyExtensionState() });
-    assert.deepEqual(idsThatRan(warns), ["person_research", "entity_research"]);
+    assert.deepEqual(idsThatRan(warns), ["person_research"]);
   });
 
-  test("an extension fires only on its own slice", async () => {
-    const only = async (ext) => idsThatRan((await runReal(hostileConversation(), { ext })).warns);
-    assert.deepEqual(await only({ shodan: { on: true } }), ["shodan", "person_research", "entity_research"]);
-    assert.deepEqual(await only({ maps: { on: true } }), ["maps", "person_research", "entity_research"]);
-    assert.deepEqual(await only({ shodan: { on: false }, maps: { on: false } }), ["person_research", "entity_research"]);
+  test("an extension needs BOTH its knob and the agent's declaration", async () => {
+    // Two gates, AND-ed (src/extensions.js seam 6, 2026-08-13). The knob is the
+    // account's consent to reach a third party; the context block is which
+    // agent may use it. Either alone reaches nothing.
+    const only = async (state) => idsThatRan((await runReal(hostileConversation(), state)).warns);
+    const cyber = cap("host-intel", "street-imagery");
+    assert.deepEqual(await only({ ext: { shodan: { on: true } }, capability: cyber }), ["shodan", "person_research"]);
+    assert.deepEqual(await only({ ext: { maps: { on: true } }, capability: cyber }), ["maps", "person_research"]);
+    // Knob on, declaration missing — every other agent, whatever the account
+    // switched on in Settings.
+    assert.deepEqual(await only({ ext: { shodan: { on: true }, maps: { on: true } } }), ["person_research"]);
+    assert.deepEqual(
+      await only({ ext: { shodan: { on: true }, maps: { on: true } }, capability: cap("source-snapshot") }),
+      ["person_research"],
+    );
+    // Declaration present, knob off — the agent may, the account has not said
+    // it may reach the service at all.
+    assert.deepEqual(await only({ ext: { shodan: { on: false }, maps: { on: false } }, capability: cyber }), [
+      "person_research",
+    ]);
+    // …and each declaration reaches only its own extension.
+    assert.deepEqual(
+      await only({ ext: { shodan: { on: true }, maps: { on: true } }, capability: cap("host-intel") }),
+      ["shodan", "person_research"],
+    );
+    assert.deepEqual(
+      await only({ ext: { shodan: { on: true }, maps: { on: true } }, capability: cap("street-imagery") }),
+      ["maps", "person_research"],
+    );
   });
 
-  test("an ordinary Deep Research turn leaves aadr and scholar OFF", async () => {
-    // The sharpest gap this file closes: both suites call their runners
-    // directly, so nothing pinned that a request which never consulted the
-    // agent registry (capability null/absent — every ordinary turn) does not
-    // reach them. Removing the agent from sdk/AGENTS.json must turn the
-    // capability off entirely.
+  test("a turn whose agent declares nothing leaves every declared row OFF", async () => {
+    // The sharpest gap this file closes: the individual suites call their
+    // runners directly, so nothing pinned that a request which never consulted
+    // the agent registry (capability null/absent) reaches none of them.
+    // Removing an agent from sdk/AGENTS.json must turn its capability off
+    // entirely — and after 2026-08-13 that covers the whole cyber/OSINT domain
+    // (owasp, entity-method, host-intel, street-imagery) as well as the two
+    // domain corpora.
     for (const capability of [undefined, null, {}, { context: [] }, { context: ["source-snapshot"] }]) {
-      const { warns } = await runReal(hostileConversation(), { capability });
+      const { warns } = await runReal(hostileConversation(), {
+        capability,
+        ext: { shodan: { on: true }, maps: { on: true } },
+      });
       assert.deepEqual(
         idsThatRan(warns),
-        ["person_research", "entity_research"],
-        `capability ${JSON.stringify(capability)} must not enable aadr/scholar`,
+        ["person_research"],
+        `capability ${JSON.stringify(capability)} must not enable a declared row`,
       );
     }
   });
 
-  test("a capability declaring ancient-samples turns aadr on — and only aadr", async () => {
-    const { warns } = await runReal(hostileConversation(), {
-      capability: { context: ["ancient-samples"] },
-    });
-    assert.deepEqual(idsThatRan(warns), ["aadr", "person_research", "entity_research"]);
+  test("each context block turns on exactly its own row", async () => {
+    const only = async (capability) => idsThatRan((await runReal(hostileConversation(), { capability })).warns);
+    assert.deepEqual(await only(cap("ancient-samples")), ["aadr", "person_research"]);
+    assert.deepEqual(await only(cap("scholar-metrics")), ["scholar", "person_research"]);
+    assert.deepEqual(await only(cap("owasp")), ["owasp", "person_research"]);
+    assert.deepEqual(await only(cap("entity-method")), ["person_research", "entity_research"]);
+    // person-method changes WHICH BLOCK person_research appends, never whether
+    // the row runs — that is the split this registry is careful about.
+    assert.deepEqual(await only(cap("person-method")), ["person_research"]);
   });
 
-  test("a capability declaring scholar-metrics turns scholar on — and only scholar", async () => {
+  test("the Cyber agent's declaration reaches its whole domain and nothing else", async () => {
+    // sdk/AGENTS.json's `cyber` capability.context verbatim, with both knobs on.
     const { warns } = await runReal(hostileConversation(), {
-      capability: { context: ["scholar-metrics"] },
+      capability: cap("owasp", "entity-method", "person-method", "host-intel", "street-imagery", "shell-transcript"),
+      ext: { shodan: { on: true }, maps: { on: true } },
     });
-    assert.deepEqual(idsThatRan(warns), ["scholar", "person_research", "entity_research"]);
+    assert.deepEqual(idsThatRan(warns), [
+      "shodan", "maps", "owasp", "person_research", "entity_research",
+    ]);
   });
 
   test("the core knobs each enable exactly their own entry", async () => {
     const only = async (state) => idsThatRan((await runReal(hostileConversation(), state)).warns);
-    assert.deepEqual(await only({ vision: true }), ["image_read", "person_research", "entity_research"]);
-    assert.deepEqual(await only({ introspection: true }), ["introspect", "person_research", "entity_research"]);
-    assert.deepEqual(await only({ modelsMode: true }), ["models", "person_research", "entity_research"]);
+    assert.deepEqual(await only({ vision: true }), ["image_read", "person_research"]);
+    assert.deepEqual(await only({ introspection: true }), ["introspect", "person_research"]);
+    assert.deepEqual(await only({ modelsMode: true }), ["models", "person_research"]);
     // Falsy knobs stay off — the gates coerce rather than test for `true`.
-    assert.deepEqual(await only({ vision: 0, introspection: "", modelsMode: null }), [
-      "person_research",
-      "entity_research",
-    ]);
+    assert.deepEqual(await only({ vision: 0, introspection: "", modelsMode: null }), ["person_research"]);
   });
 
   test("an ordinary turn with every knob off touches nothing and reaches no network", async () => {
@@ -354,7 +436,7 @@ describe("fail-soft (CLAUDE.md invariant 2)", () => {
       ],
       async (run) => {
         const log = fakeLog();
-        const out = await run({}, log, NOOP_CTX.emit, NOOP_CTX.step, NOOP_CTX.stepDone, conversation, {});
+        const out = await run({}, log, NOOP_CTX.emit, NOOP_CTX.step, NOOP_CTX.stepDone, conversation, probeState());
         // The event name is the observability contract chatlogs/wrangler-tail
         // readers grep for; the production miss behind this file was a runner
         // with NO event of any kind.
@@ -382,7 +464,7 @@ describe("fail-soft (CLAUDE.md invariant 2)", () => {
       ],
       async (run) => {
         const log = fakeLog();
-        const out = await run({}, log, NOOP_CTX.emit, NOOP_CTX.step, NOOP_CTX.stepDone, conversation, {});
+        const out = await run({}, log, NOOP_CTX.emit, NOOP_CTX.step, NOOP_CTX.stepDone, conversation, probeState());
         assert.deepEqual(
           log.at("warn").map((l) => l.args),
           [
@@ -408,7 +490,7 @@ describe("fail-soft (CLAUDE.md invariant 2)", () => {
       ],
       async (run) => {
         const log = fakeLog();
-        const out = await run({}, log, NOOP_CTX.emit, NOOP_CTX.step, NOOP_CTX.stepDone, conversation, {});
+        const out = await run({}, log, NOOP_CTX.emit, NOOP_CTX.step, NOOP_CTX.stepDone, conversation, probeState());
         assert.deepEqual(
           log.at("warn").map((l) => l.args),
           [
@@ -438,7 +520,7 @@ describe("fail-soft (CLAUDE.md invariant 2)", () => {
         }),
       ],
       async (run) => {
-        const out = await run({}, fakeLog(), NOOP_CTX.emit, NOOP_CTX.step, NOOP_CTX.stepDone, conversation, {});
+        const out = await run({}, fakeLog(), NOOP_CTX.emit, NOOP_CTX.step, NOOP_CTX.stepDone, conversation, probeState());
         assert.equal(seen[0], conversation);
         assert.equal(seen[1], first);
         assert.equal(out, second);
@@ -464,7 +546,7 @@ describe("fail-soft (CLAUDE.md invariant 2)", () => {
         }),
       ],
       async (run) => {
-        const out = await run({}, fakeLog(), NOOP_CTX.emit, NOOP_CTX.step, NOOP_CTX.stepDone, conversation, {});
+        const out = await run({}, fakeLog(), NOOP_CTX.emit, NOOP_CTX.step, NOOP_CTX.stepDone, conversation, probeState());
         assert.equal(seen[0], conversation);
         assert.equal(out, conversation);
       },
@@ -473,7 +555,7 @@ describe("fail-soft (CLAUDE.md invariant 2)", () => {
 
   test("the ctx handed to a runner carries exactly the documented seven fields", async () => {
     const env = { SHODAN_API_KEY: "k" };
-    const state = { marker: 1 };
+    const state = probeState({ marker: 1 });
     const conversation = [{ role: "user", content: "hello" }];
     const log = fakeLog();
     let ctx;
@@ -518,7 +600,7 @@ describe("fail-soft (CLAUDE.md invariant 2)", () => {
     for (const [name, run] of misbehaviours) {
       await withProbes([probe("bad", run)], async (runEnrich) => {
         await assert.doesNotReject(
-          () => runEnrich({}, fakeLog(), NOOP_CTX.emit, NOOP_CTX.step, NOOP_CTX.stepDone, conversation, {}),
+          () => runEnrich({}, fakeLog(), NOOP_CTX.emit, NOOP_CTX.step, NOOP_CTX.stepDone, conversation, probeState()),
           `a runner that ${name} must not reject the request`,
         );
       });
@@ -526,7 +608,7 @@ describe("fail-soft (CLAUDE.md invariant 2)", () => {
   });
 
   test("the real registry never rejects even when every runner is hostile", async () => {
-    // Eight real runners, all handed a conversation that throws on touch.
+    // Every real runner, all handed a conversation that throws on touch.
     const convo = hostileConversation();
     await assert.doesNotReject(async () => {
       const { out, warns } = await runReal(convo, everythingOn());
@@ -561,7 +643,7 @@ describe("fail-soft (CLAUDE.md invariant 2)", () => {
         }),
       ],
       async (run) => {
-        const out = await run({}, log, NOOP_CTX.emit, NOOP_CTX.step, NOOP_CTX.stepDone, conversation, {});
+        const out = await run({}, log, NOOP_CTX.emit, NOOP_CTX.step, NOOP_CTX.stepDone, conversation, probeState());
         assert.equal(seen[0], conversation, "the next runner is handed the conversation, not null");
         assert.equal(out, conversation, "and the conversation survives to the caller");
       },
@@ -572,7 +654,7 @@ describe("fail-soft (CLAUDE.md invariant 2)", () => {
   test("through the REAL registry a nullish return leaves the conversation intact", async () => {
     const conversation = [{ role: "user", content: "hello" }];
     await withProbes([probe("nullish", async () => undefined)], async (run) => {
-      const out = await run({}, fakeLog(), NOOP_CTX.emit, NOOP_CTX.step, NOOP_CTX.stepDone, conversation, {});
+      const out = await run({}, fakeLog(), NOOP_CTX.emit, NOOP_CTX.step, NOOP_CTX.stepDone, conversation, probeState());
       // Before the fix person_research (always enabled, runs last) coerced the
       // undefined to [] and the request proceeded with the user's question
       // deleted. Now the nullish return never leaves the failing runner.
@@ -618,16 +700,23 @@ describe("method blocks are recorded for the query planner (feedback #65)", () =
   const QUIET_TURN = "what is the capital of France?";
 
   const turn = (/** @type {string} */ text) => [{ role: "user", content: text }];
+  // Both method rows are the Cyber agent's since 2026-08-13: entity_research is
+  // gated on `entity-method`, and person_research's FULL block (rather than its
+  // privacy rail alone) on `person-method`. So the state these cases run under
+  // is a cyber-shaped capability — the rail-only variant is pinned separately
+  // below, because what it records is a different string.
+  const CYBER = { capability: { context: ["entity-method", "person-method"] } };
+  const cyberState = () => ({ ...CYBER });
 
   test("a method row records exactly the block it appended — not the whole message", async () => {
     // The recorded string has to be the BLOCK: withoutMethodBlocks removes it by
     // exact substring, so a recording that carried the user's own words with it
     // would delete the question the planner exists to plan against.
-    const person = {};
+    const person = cyberState();
     await runReal(turn(PERSON_TURN), person);
     assert.deepEqual(/** @type {any} */ (person).methodBlocks, [personResearchBlock()]);
 
-    const entity = {};
+    const entity = cyberState();
     await runReal(turn(ENTITY_TURN), entity);
     // No `state.plan`, so entity-research falls back to the "standard" tier the
     // same way every other reportTier consumer does.
@@ -644,10 +733,26 @@ describe("method blocks are recorded for the query planner (feedback #65)", () =
     }
   });
 
+  test("the privacy rail is recorded as a method block too, on every agent", async () => {
+    // An agent that does NOT declare `person-method` still gets the guardrails,
+    // and they are still METHOD: prose that names no subject and asserts no
+    // fact. Recording it is what keeps the planner from writing a web query for
+    // "never report a home address, personal phone…" — the feedback #65 failure
+    // in its rail-only shape.
+    const state = {};
+    const { out } = await runReal(turn(PERSON_TURN), state);
+    assert.deepEqual(/** @type {any} */ (state).methodBlocks, [personGuardrailsBlock()]);
+    assert.equal(lastUserText(withoutMethodBlocks(out, /** @type {any} */ (state).methodBlocks)), PERSON_TURN);
+    // The rail is what survives without the declaration; the tradecraft is not.
+    const text = lastUserText(out);
+    assert.ok(text.includes("GUARDRAILS"), "the rail applied");
+    assert.ok(!text.includes("SOURCE LADDER"), "the OSINT tradecraft did not");
+  });
+
   test("what is recorded is what withoutMethodBlocks needs to restore the planning view", async () => {
     // The round trip is the whole contract: enrich → record → strip must hand
     // the planner back the message the user actually typed.
-    const state = {};
+    const state = cyberState();
     const { out } = await runReal(turn(PERSON_TURN), state);
     assert.notEqual(lastUserText(out), PERSON_TURN, "the block really was appended");
     const planning = withoutMethodBlocks(out, /** @type {any} */ (state).methodBlocks);
@@ -660,7 +765,7 @@ describe("method blocks are recorded for the query planner (feedback #65)", () =
     // NAMES (the photo transcription, the corpus rows, the catalog) is exactly
     // what a planner should be writing queries from. Marking a data row would
     // hide the user's own attachment from triage.
-    const state = {};
+    const state = probeState();
     const conversation = turn(QUIET_TURN);
     const DATA = "[HOST INTELLIGENCE] basalt.se — 443/tcp open";
     await withProbes(
@@ -692,7 +797,7 @@ describe("method blocks are recorded for the query planner (feedback #65)", () =
     // guardrails first, then the subject-resolution rule and the report size.
     // Both firing on one turn is correct, not a double-fire (feedback #64) —
     // and the planner has to be able to strip BOTH.
-    const state = {};
+    const state = cyberState();
     const { out } = await runReal(turn(BOTH_TURN), state);
     const blocks = /** @type {any} */ (state).methodBlocks;
     assert.equal(blocks.length, 2);
@@ -711,7 +816,7 @@ describe("method blocks are recorded for the query planner (feedback #65)", () =
     // runners defensively hand it straight back, so `next` is not a Conversation.
     // `Array.isArray(next)` gates the recording exactly as it gates the
     // assignment — nothing is diffed against a value that is not a conversation.
-    const state = {};
+    const state = cyberState();
     const { out, log } = await runReal(/** @type {any} */ ("not a conversation"), state);
     assert.equal(/** @type {any} */ (state).methodBlocks, undefined);
     assert.equal(out, "not a conversation", "and the caller's value is untouched");
@@ -726,7 +831,7 @@ describe("method blocks are recorded for the query planner (feedback #65)", () =
     // runner: the blocks still reach the conversation, the planner simply sees
     // them the way it did before feedback #65, and no runner is blamed in the
     // log for something it did not do.
-    const state = Object.freeze({});
+    const state = Object.freeze(cyberState());
     const conversation = turn(BOTH_TURN);
     /** @type {any} */
     let result;

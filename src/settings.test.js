@@ -15,7 +15,7 @@ import {
   storedChatMode,
 } from "./settings.js";
 
-const DEFAULTS = { shodan_mcp: false, google_maps: false, bash_lite_mcp: false, memory: false, chat_mode: "normal" };
+const DEFAULTS = { shodan_mcp: false, google_maps: false, bash_lite_mcp: false, memory: false, chat_mode: "science" };
 
 test("parseSettings defaults: every knob off", () => {
   assert.deepEqual(parseSettings(null), DEFAULTS);
@@ -90,9 +90,9 @@ test("parseSettings: chat_mode is the stored mode, clamped to a known one", () =
   assert.equal(parseSettings('{"chat_mode":"introspection"}').chat_mode, "introspection");
   assert.equal(parseSettings('{"chat_mode":"models"}').chat_mode, "models");
   // Junk and retired modes clamp to normal rather than riding through.
-  assert.equal(parseSettings('{"chat_mode":"swe"}').chat_mode, "normal");
-  assert.equal(parseSettings('{"chat_mode":7}').chat_mode, "normal");
-  assert.equal(parseSettings("{}").chat_mode, "normal");
+  assert.equal(parseSettings('{"chat_mode":"swe"}').chat_mode, "science");
+  assert.equal(parseSettings('{"chat_mode":7}').chat_mode, "science");
+  assert.equal(parseSettings("{}").chat_mode, "science");
 });
 
 test("parseSettings: a legacy developer_mode row migrates to the introspection mode", () => {
@@ -100,14 +100,16 @@ test("parseSettings: a legacy developer_mode row migrates to the introspection m
   // chat_mode. Knob ON meant "some non-Normal mode", and introspection is the
   // mode it unlocked — so that is what it reads as. Knob OFF means normal.
   assert.equal(parseSettings('{"developer_mode":true}').chat_mode, "introspection");
-  assert.equal(parseSettings('{"developer_mode":false}').chat_mode, "normal");
+  assert.equal(parseSettings('{"developer_mode":false}').chat_mode, "science");
   // Only an explicit stored `true` migrates — junk is not a knob-on row.
-  assert.equal(parseSettings('{"developer_mode":1}').chat_mode, "normal");
-  assert.equal(parseSettings('{"developer_mode":"true"}').chat_mode, "normal");
+  assert.equal(parseSettings('{"developer_mode":1}').chat_mode, "science");
+  assert.equal(parseSettings('{"developer_mode":"true"}').chat_mode, "science");
   // The dead key is dropped from the parsed shape like any other unknown key…
   assert.equal("developer_mode" in parseSettings('{"developer_mode":true}'), false);
   // …and once chat_mode exists it wins outright, however stale the old key is.
-  assert.equal(parseSettings('{"developer_mode":true,"chat_mode":"normal"}').chat_mode, "normal");
+  // A STORED legacy id resolves to its successor rather than being clamped as
+  // unknown: `normal` still names a mode a user once picked (RETIRED_CHAT_MODES).
+  assert.equal(parseSettings('{"developer_mode":true,"chat_mode":"normal"}').chat_mode, "science");
   assert.equal(parseSettings('{"developer_mode":false,"chat_mode":"sdk"}').chat_mode, "sdk");
 });
 
@@ -121,13 +123,13 @@ test("chatModesAvailable: any signed-in account OR the break-glass admin", () =>
 
 test("storedChatMode: the account's pick; normal for break-glass", () => {
   assert.equal(storedChatMode({ user: { id: 1, settings_json: '{"chat_mode":"orchestrator"}' } }), "orchestrator");
-  assert.equal(storedChatMode({ user: { id: 2, settings_json: null } }), "normal");
+  assert.equal(storedChatMode({ user: { id: 2, settings_json: null } }), "science");
   // Break-glass has no row to persist a pick in, so each request says which mode
   // it wants — and gets plain deep research when it says nothing. (The old knob
   // read as permanently ON here, which made every unflagged operator request
   // introspection.)
-  assert.equal(storedChatMode({ isSecretAdmin: true }), "normal");
-  assert.equal(storedChatMode({}), "normal");
+  assert.equal(storedChatMode({ isSecretAdmin: true }), "science");
+  assert.equal(storedChatMode({}), "science");
 });
 
 test("bashLiteEnabled: a user row + the knob on, OR the break-glass admin", () => {

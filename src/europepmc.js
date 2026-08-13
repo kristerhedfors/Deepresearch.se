@@ -499,7 +499,38 @@ export function europepmcIntent(text) {
 export function europepmcLeadIntent(text) {
   const s = String(text || "");
   if (!s) return false;
-  return NAMED.test(s) || NAMED_PHRASE.test(s);
+  return europepmcNamedIntent(s) || NAMED_PHRASE.test(s);
+}
+
+/**
+ * Does this message NAME the life-science archive — Europe PMC, PubMed, PMC,
+ * MEDLINE, bioRxiv or medRxiv?
+ *
+ * The archive-name half of `europepmcLeadIntent`, exported on its own for the
+ * same caller and the same reason as src/arxiv.js's `arxivNamedIntent`
+ * (owner directive, 2026-08-13): src/scholar-metrics.js widens Deep Science's
+ * `auxOnly` to this leg when the reader asks for it BY NAME, and neither
+ * neighbour is the right test. `europepmcIntent` fires on any life-science
+ * subject, which is most of what that agent is asked — widening on it would
+ * quietly readmit bioRxiv/medRxiv preprints to a peer-review-only agent on
+ * every biology question. `europepmcLeadIntent` adds NAMED_PHRASE ("the
+ * peer-reviewed literature", "den vetenskapliga litteraturen"), which is a
+ * phrasing asking for exactly what the peer-reviewed leg already serves, so
+ * widening on it would admit preprints in answer to a request for reviewed work
+ * — the precise inversion of the promise.
+ *
+ * No new regex — NAMED itself, whose EN+SV coverage the lead gate already
+ * relies on (the archive names are proper nouns and identical in both
+ * languages; the Swedish surface forms live in NAMED_PHRASE, which is
+ * deliberately NOT read here).
+ *
+ * @param {string} text
+ * @returns {boolean}
+ */
+export function europepmcNamedIntent(text) {
+  const s = String(text || "");
+  if (!s) return false;
+  return NAMED.test(s);
 }
 
 /** The planner-vocabulary sentence spliced into the triage and gap prompts.

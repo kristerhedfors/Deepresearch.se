@@ -66,7 +66,7 @@ import {
 import { runEnrichments } from "./enrichment.js";
 import { focusQueriesOnSubject } from "./query-focus.js";
 import { fetchContents, webSearch } from "./exa.js";
-import { SEARCH_SOURCES, leadSourceIds } from "./search-sources.js";
+import { SEARCH_SOURCES, capabilityAllowsSource, leadSourceIds } from "./search-sources.js";
 // Folds a source's reported dense-retrieval spend into the request's tally —
 // the one thing the orchestrator does with it; pricing is billing.js's.
 import { mergeRetrievalSpend } from "./dense-rag.js";
@@ -357,6 +357,36 @@ export function searchPolicyFor(state) {
 }
 
 /**
+ * May this request's answering agent consult this source at all?
+ *
+ * `searchPolicyFor` above narrows how MUCH searching happens; this narrows
+ * WHICH sources exist for the turn. A registry entry may declare a
+ * `requiresContext` — the id of a context block the answering agent must
+ * declare in its capability — and a source that names one runs only for an
+ * agent that declares it (owner directive, 2026-08-13: the roster became
+ * specific, and the literature corpora are owned by the agents built on them,
+ * Deep Science for all three legs and palaeogenomics for the life-science one).
+ *
+ * Generic by construction, like every other rule in this orchestrator: the
+ * requirement is DATA on the entry and the fact that satisfies it is DATA on
+ * the spec, so this reads two strings and never learns which source or which
+ * agent it is deciding for. Adding or removing a source still touches no file
+ * here (invariant: the registry is the seam).
+ *
+ * Fail-soft (invariant 2): a null capability keeps every source — see
+ * capabilityAllowsSource's note in src/search-sources.js for why "no agent was
+ * resolved" must not read as "an agent declared nothing", and why the MCP
+ * literature door is deliberately outside the roster's reach.
+ *
+ * @param {PipelineState} state
+ * @param {import('./search-sources.js').SearchSource} source
+ * @returns {boolean}
+ */
+function sourceAllowed(state, source) {
+  return capabilityAllowsSource(/** @type {any} */ (state).capability, source);
+}
+
+/**
  * Entry point (called by chat.js and mcp.js): runs the whole research
  * pipeline for one request, streaming everything through `emit`.
  * @param {Env} env
@@ -570,7 +600,16 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
     // cleanLastUser here too, and for the same reason as the two gates in
     // planAuxSource/leadingSources: whether a source APPLIES is a fact about
     // what the user asked, never about prose an enrichment appended to it.
-    if (!ctx.hasSource && !(policy.auxSources && SEARCH_SOURCES.some((s) => forcedAux.includes(s.id) || s.intent(ctx.gateLastUser)))) {
+    //
+    // …and `sourceAllowed` first, because a source the answering agent may not
+    // consult (registry `requiresContext`) is not applicable to ANYTHING here.
+    // Without it a restricted source still drags the turn into the research
+    // path — triage, a search wave, gap rounds — and planAuxSource then refuses
+    // to plan it, so the turn pays the whole pipeline to reach the same answer
+    // runWithoutSearch would have written straight away. That is the same class
+    // of waste the auxOnly filter in leadingSources exists to stop, one layer
+    // earlier (owner directive, 2026-08-13).
+    if (!ctx.hasSource && !(policy.auxSources && SEARCH_SOURCES.some((s) => sourceAllowed(state, s) && (forcedAux.includes(s.id) || s.intent(ctx.gateLastUser))))) {
       return runWithoutSearch(ctx);
     }
   }
@@ -716,7 +755,7 @@ async function runWithoutSearch(ctx) {
   // (searchOffPrompt's sourceless depth ladder; default "standard" is the
   // long-standing byte-identical prompt).
   await streamCompletion(ctx, [
-    { role: "system", content: phasePrompt(ctx.state, "direct", "answer-search-off")({ hasShell: !!ctx.shellBlock, hasSource: !!ctx.hasSource, reportTier: ctx.state.plan.reportTier, spaceScene: ctx.spaceScene, demoSurface: ctx.demoSurface }) },
+    { role: "system", content: phasePrompt(ctx.state, "direct", "answer-search-off")({ hasShell: !!ctx.shellBlock, hasSource: !!ctx.hasSource, reportTier: ctx.state.plan.reportTier, spaceScene: ctx.spaceScene, demoSurface: ctx.demoSurface, capability: ctx.state.capability }) },
     ...shellReplyMessages(ctx.shellBlock),
     ...withImageNudge(ctx.conversation),
   ]);
@@ -749,7 +788,13 @@ async function runTriage(ctx) {
     recordStat: true,
     maxTokens: 500,
     messages: [
-      { role: "system", content: triagePrompt(Math.max(4, state.plan.queries), { reinforceJsonOnly: ctx.reinforceJsonOnly }) },
+      // `capability` reaches the prompt so its composed source notes cover the
+      // sources this agent may actually consult (search-sources.js
+      // sourcePromptNotes, capability-aware since 2026-08-13): a triage prompt
+      // must not teach the planner the vocabulary of a corpus the answering
+      // agent is not allowed to search, or the plan promises a leg that will
+      // never run. Null (the MCP channel) composes every note, as before.
+      { role: "system", content: triagePrompt(Math.max(4, state.plan.queries), { reinforceJsonOnly: ctx.reinforceJsonOnly, capability: /** @type {any} */ (state).capability || null }) },
       { role: "user", content: `Conversation:\n${convText}\n\nLatest user message:\n${lastUser}` },
     ],
   });
@@ -876,7 +921,7 @@ async function runDirectReply(ctx) {
     // webSearchOn: this branch produced no sources, and without the knob's
     // actual value the model has been observed explaining that away by
     // inventing an off toggle (prompts.js SEARCH_ON_BUT_UNUSED_NOTE).
-    { role: "system", content: phasePrompt(ctx.state, "research", "answer-direct")({ hasShell: !!ctx.shellBlock, hasSource: !!ctx.hasSource, spaceScene: ctx.spaceScene, demoSurface: ctx.demoSurface, webSearchOn: ctx.state.webSearch !== false }) },
+    { role: "system", content: phasePrompt(ctx.state, "research", "answer-direct")({ hasShell: !!ctx.shellBlock, hasSource: !!ctx.hasSource, spaceScene: ctx.spaceScene, demoSurface: ctx.demoSurface, webSearchOn: ctx.state.webSearch !== false, capability: ctx.state.capability }) },
     ...shellReplyMessages(ctx.shellBlock),
     ...withImageNudge(ctx.conversation),
   ]);
@@ -956,7 +1001,7 @@ async function runSourceResearchTools(ctx, snapshot, auxBlock = "") {
   const startedAt = Date.now();
   const result = await anthropicToolRun(ctx.env, {
     model: ctx.model,
-    system: phasePrompt(ctx.state, "source-research", "answer-tools")({ externalSources: !!auxBlock }),
+    system: phasePrompt(ctx.state, "source-research", "answer-tools")({ externalSources: !!auxBlock, capability: ctx.state.capability }),
     userContent: userText,
     // The snapshot readers, reached through the agent's declared tool CLASSES
     // (src/tool-sets.js) rather than imported. The shipped introspection spec
@@ -1465,6 +1510,15 @@ async function runForcedAuxSearches(ctx) {
   if (!batch.length) return "";
   for (const source of SEARCH_SOURCES) {
     if (!forced.includes(source.id)) continue;
+    // A forced source the answering agent may not consult (registry
+    // `requiresContext`) is not run: `forceAux` is a per-request instruction an
+    // enrichment writes, and the agent's own declaration outranks it — the same
+    // ordering the `auxSources` check above applies. planAuxSource refuses it
+    // too, so this is belt-and-braces; it is spelled out here because the
+    // forced path is the one that reaches a source WITHOUT its intent gate, and
+    // a reader of this loop should not have to go two calls deep to learn that
+    // the roster still governs it (owner directive, 2026-08-13).
+    if (!sourceAllowed(state, source)) continue;
     await runAuxSearch(ctx, source, batch, 1);
   }
   const digest = sourceDigest(state.sources, state.plan.digestCap);
@@ -1595,7 +1649,7 @@ async function runSourceResearch(ctx) {
   ctx.step("synth", "Writing report…");
   const synthStartedAt = Date.now();
   await streamCompletion(ctx, [
-    { role: "system", content: phasePrompt(ctx.state, "source-research", "answer")({ externalSources: !!auxBlock }) },
+    { role: "system", content: phasePrompt(ctx.state, "source-research", "answer")({ externalSources: !!auxBlock, capability: ctx.state.capability }) },
     {
       role: "user",
       content: ctx.imageParts.length ? [{ type: "text", text: synthText }, ...ctx.imageParts] : synthText,
@@ -1680,6 +1734,10 @@ async function runSubquestionFanout(ctx) {
             content: gapPrompt([...state.ranQueries], FANOUT_QUERIES_PER_SUBQUESTION, {
               subquestions: [sq],
               reinforceJsonOnly,
+              // Same reason as the triage call site: the follow-up queries are
+              // written HERE, so the vocabulary this prompt teaches must be the
+              // vocabulary of the sources this agent may consult.
+              capability: /** @type {any} */ (state).capability || null,
             }),
           },
           {
@@ -1750,7 +1808,10 @@ async function runGapChecks(ctx) {
       recordStat: true,
       maxTokens: 400,
       messages: [
-        { role: "system", content: gapPrompt([...state.ranQueries], plan.followups, { subquestions: state.subquestions || [], reinforceJsonOnly, strive }) },
+        // `capability` for the same reason as the triage call site above — the
+        // gap round is where the follow-up queries are written, so it is the
+        // second place a planner could be taught a corpus it cannot reach.
+        { role: "system", content: gapPrompt([...state.ranQueries], plan.followups, { subquestions: state.subquestions || [], reinforceJsonOnly, strive, capability: /** @type {any} */ (state).capability || null }) },
         {
           role: "user",
           // convText rides along so a bare follow-up ("what's the latest")
@@ -2553,11 +2614,24 @@ function leadingSources(ctx) {
   // led by a corpus that had nothing to say about them. The USER names the
   // source they want; prose this pipeline wrote to itself does not.
   const ids = leadSourceIds(ctx.gateLastUser);
+  // …and a source the ANSWERING AGENT may not consult at all (the registry's
+  // `requiresContext`, read by sourceAllowed) cannot lead it, for exactly the
+  // reason the auxOnly filter below exists: leading stands the web leg down,
+  // and a lead planAuxSource will then refuse to plan spends the wave on
+  // nothing. This is the failure the roster split made reachable — after the
+  // 2026-08-13 directive an agent that does not hold a corpus's context block
+  // still MATCHED a message naming that corpus, led the turn on it, stood the
+  // web leg down, and answered with no sources at all.
+  const allowed = ids.filter((id) => {
+    const source = SEARCH_SOURCES.find((s) => s.id === id);
+    return !source || sourceAllowed(state, source);
+  });
   // …and a source the request has narrowed away (state.auxOnly) cannot lead it
-  // either: leading stands the web leg down, so a lead that planAuxSource will
-  // then refuse to plan would spend the wave on nothing.
+  // either, same reasoning one step further in: auxOnly is the per-request
+  // narrowing an enrichment writes, `requiresContext` the standing one the
+  // agent's own spec declares.
   const only = /** @type {any} */ (state).auxOnly;
-  return Array.isArray(only) && only.length ? ids.filter((id) => only.includes(id)) : ids;
+  return Array.isArray(only) && only.length ? allowed.filter((id) => only.includes(id)) : allowed;
 }
 
 /**
@@ -2629,6 +2703,17 @@ function planAuxSource(ctx, source, batch, leading) {
   // so it composes with any future agent that needs the same restriction.
   const only = /** @type {any} */ (state).auxOnly;
   if (Array.isArray(only) && only.length && !only.includes(source.id)) return [];
+  // …and the STANDING narrowing beside that per-request one: a source may
+  // declare a `requiresContext` naming a context block the answering agent has
+  // to hold (sourceAllowed above). Where auxOnly says "this turn consults only
+  // these", this says "this corpus belongs to the agents built on it" — the
+  // roster is specific and has no general member, so the literature legs answer
+  // for Deep Science (all three) and the palaeogenomics agent (the life-science
+  // one) and for nobody else (owner directive, 2026-08-13). Read generically —
+  // one string off the entry, one list off the resolved capability, no source
+  // named — and fail-soft: a request that resolved NO capability (the MCP
+  // channel, an unreadable registry) keeps every source.
+  if (!sourceAllowed(state, source)) return [];
   // Intent reads the CLEAN message too, for the reason spelled out in
   // leadingSources: enrichment blocks are prose this pipeline appended to the
   // user's own words, and a gate that matches them is answering a question

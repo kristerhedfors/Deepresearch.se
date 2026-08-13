@@ -13,6 +13,7 @@ import {
   ARXIV_MAX_PER_REQUEST,
   arxivAttempts,
   arxivLeadIntent,
+  arxivNamedIntent,
   arxivCacheKey,
   arxivDistinctiveness,
   arxivDiversityKey,
@@ -166,6 +167,43 @@ test("arxivIntent", async (t) => {
     }
   });
 
+
+  // The NAMED tier, exported for src/scholar-metrics.js (owner directive,
+  // 2026-08-13): Deep Science owns arXiv now, and admits it to a turn only when
+  // the reader names the preprint record. It sits BETWEEN the other two gates,
+  // and the containment is what makes it safe to widen an agent's sources with:
+  // a message that names the archive always engages the source (so the widened
+  // leg really runs), and a message that LEADS always named it (so the lead
+  // tier can never reach further than the widening does).
+  test("arxivNamedIntent sits between the wide intent and the lead tier", () => {
+    for (const s of [
+      "any arxiv preprints on diffusion transformers",
+      "arxiv.org/abs/2605.10698",
+      "summarize arXiv:2606.09730",
+      "finns det ett förhandstryck om detta",
+      "is there a preprint on this",
+      // Naming somewhere ELSE too stands the LEAD down but not the naming: the
+      // archive was still named, and for an agent whose web leg is structurally
+      // off there is no "elsewhere" to stand down in favour of.
+      "check arxiv and the web for this",
+    ]) {
+      assert.equal(arxivNamedIntent(s), true, s);
+      assert.equal(arxivIntent(s), true, `${s} — named but does not engage the source`);
+    }
+    for (const s of [
+      "what does the latest research say about llm swarm reasoning",
+      "senaste forskningen om språkmodeller",
+      "politiskt förtryck i Belarus",
+      "Research this founder",
+      "hello",
+      "",
+      null,
+    ]) {
+      assert.equal(arxivNamedIntent(s), false, s);
+      // …and a lead can never fire where the archive was not named.
+      assert.equal(arxivLeadIntent(s), false, s);
+    }
+  });
 
   // Feedback #61 (chat_logs #1656, 2026-08-05). A user attached a LinkedIn
   // screenshot and wrote "Research this founder". The English imperative VERB
@@ -475,13 +513,20 @@ test("arxivMapEntry", async (t) => {
     const item = arxivMapEntry(arxivParseFeed(FEED)[0]);
     assert.equal(item.url, "https://arxiv.org/abs/2605.10698v1");
     assert.equal(item.title, "The Bystander Effect in Multi-Agent Reasoning: Quantifying Cognitive Loafing");
-    assert.equal(item.highlights[0], "Dahlia Shehata, Ming Li · cs.MA · 2026-05-11 · arXiv:2605.10698v1");
+    // The line LEADS with what the record is. arXiv is a preprint server, and
+    // since 2026-08-13 the one agent that can search it is the one whose whole
+    // promise is peer-reviewed work (src/scholar-metrics.js preprintSources) —
+    // so a hit that did not say "preprint" in the material the model reads
+    // could be presented as a reviewed paper. The wording is shared with the
+    // dense tier and with Europe PMC's PPR annotation (dense-rag.js
+    // PREPRINT_LABEL), so both arXiv tiers look identical in the source list.
+    assert.equal(item.highlights[0], "Preprint, not peer-reviewed · Dahlia Shehata, Ming Li · cs.MA · 2026-05-11 · arXiv:2605.10698v1");
     assert.ok(item.highlights[1].includes("Multi-agent systems"));
   });
 
   await t.test("abbreviates author lists past three", () => {
     const item = arxivMapEntry(arxivParseFeed(FEED)[1]);
-    assert.ok(item.highlights[0].startsWith("Ruohao Li, Hongjun Liu, Leyi Zhao et al."));
+    assert.ok(item.highlights[0].startsWith("Preprint, not peer-reviewed · Ruohao Li, Hongjun Liu, Leyi Zhao et al."));
   });
 
   await t.test("junk in → null out, never a throw", () => {

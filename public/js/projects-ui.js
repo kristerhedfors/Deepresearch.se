@@ -236,12 +236,27 @@ function closePanel() {
 // mode-tag row pushes the live button down far enough that a pinned
 // chevron would sit on the pane's "Chat history" head — subtract the
 // visible tag row (its box + the header column's gap) so the chevron
-// lands at the Deep Research position, the same spot in all three modes.
+// lands at the default-agent position, the same spot in all three modes.
 export function pinPaneClose(closeBtn) {
   const r = document.getElementById("historybtn").getBoundingClientRect();
   if (!r.width) return; // button hidden/unlaid-out: keep the CSS fallback
   let top = r.top;
-  const tag = [".introspection-tag", ".sdk-tag"]
+  // EVERY mode tag, not just the two the header carried when this was written.
+  // The list stayed at Introspection + Agent Studio while five more tags shipped
+  // (Orchestrator, Outrospection, Models, Deep Science and — 2026-08-13 — Cyber),
+  // so in those modes the correction silently did not apply and the chevron sat
+  // one tag-row too low, over the "Chat history" head. Only one is ever visible
+  // at a time (chat-mode.js applies exactly one root class), so `find` still
+  // returns the row that is actually there.
+  const tag = [
+    ".introspection-tag",
+    ".sdk-tag",
+    ".orch-tag",
+    ".outro-tag",
+    ".models-tag",
+    ".sci-tag",
+    ".cyber-tag",
+  ]
     .map((sel) => document.querySelector(sel))
     .find((el) => el && el.offsetHeight > 0);
   if (tag) {

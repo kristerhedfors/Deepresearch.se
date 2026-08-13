@@ -1,11 +1,20 @@
 // @ts-check
-// The chat MODE dropdown's state + theming — Normal / Introspection / SDK
-// (owner directive, 2026-07-18: introspection and SDK as explicit modes
-// alongside Normal, picked in a dropdown; the titanium-white composer pane
-// marks introspection, GREEN marks the SDK "lovable experience" mode).
-// Normal is labeled **Deep Research** in the UI (owner directive, 2026-07-23);
-// the mode id stays `normal` — same convention as SDK mode staying `sdk`
-// while labeled "Agent Studio".
+// The chat MODE dropdown's state + theming. The dropdown started as three
+// entries (owner directive, 2026-07-18: introspection and SDK as explicit modes
+// alongside Normal; the titanium-white composer pane marks introspection, GREEN
+// marks the SDK "lovable experience" mode) and grew one entry at a time. A mode
+// id and its UI label are allowed to differ — `sdk` is labeled "Agent Studio" —
+// and mode-theme.js owns the labels.
+//
+// THERE IS NO GENERAL MODE (owner directive, 2026-08-13). The first entry used
+// to be `normal`, labeled "Deep Research": plain web research, no theme class,
+// and the value every fallback in this file named. It is retired along with the
+// general agent, and DEEP SCIENCE is now both the first dropdown entry and the
+// terminal fallback — so every fallback below lands on a themed mode with a
+// declared policy rather than on an unthemed catch-all. Requests still arriving
+// with `normal` (a stored setting, a share link, a tab that has not reloaded)
+// resolve through chat-mode-core.js's RETIRED_CHAT_MODES rather than being
+// clamped as junk.
 //
 // THE MODE IS THE UNIT (2026-07-26). Every request names its mode —
 // `chat_mode: "<mode>"` — and the theme, the answer phase and whether the site's
@@ -14,7 +23,13 @@
 // chat-mode-core.js, so this module is only the BROWSER half: which theme class
 // the root carries and where the pick is cached.
 //
-//   normal        → plain deep research. No theme class.
+//   science       → the peer-reviewed record only — no open-web search, no
+//                   preprints. The default. Theme: `sci-mode` (the parchment
+//                   reading room, a dark field).
+//   cyber         → cybersecurity and OSINT: host intelligence, geospatial
+//                   imagery read as open-source intelligence, entity research,
+//                   the appsec reference. Theme: `cyber-mode` (the crimson
+//                   operations room, the second dark field).
 //   introspection → answers from this site's own deployed source. Theme: the
 //                   `dev-mode` root class (dev-mode.js's titanium pane).
 //   sdk           → the DistillSDK build flow — distill this site (above all the
@@ -86,10 +101,13 @@ export const OUTRO_MODE_CLASS = "outro-mode";
 export const MODELS_MODE_CLASS = "models-mode";
 /** The root class carrying the parchment Deep-Science reading-room theme. */
 export const SCI_MODE_CLASS = "sci-mode";
+/** The root class carrying the crimson Cyber operations-room theme. */
+export const CYBER_MODE_CLASS = "cyber-mode";
 /**
  * The account's last picked mode — the first-paint theme and the seed a NEW
- * session starts in. "normal" when nothing is cached or storage is unavailable
- * (the safe default: the ordinary composer pane and plain deep research).
+ * session starts in. DEFAULT_CHAT_MODE (Deep Science) when nothing is cached or
+ * storage is unavailable — the safe default is now a themed mode with a stated
+ * policy rather than the general one, because the general one is gone.
  *
  * Callers wanting "which agent is answering here" want cachedChatMode(); this
  * is only the seed. app.js passes it to initSession.
@@ -128,9 +146,9 @@ export function cachedChatMode() {
 
 /**
  * Record the picked mode on THIS SESSION, and — unless told not to — update the
- * account seed so the next new tab opens in the same agent. ("normal" is stored
- * too: an explicit Normal pick must survive reloads rather than reading as
- * "nothing chosen".) Fail-soft on both.
+ * account seed so the next new tab opens in the same agent. The DEFAULT mode is
+ * stored like any other: an explicit pick of Deep Science must survive a reload
+ * rather than reading as "nothing chosen". Fail-soft on both.
  * @param {string} mode
  * @param {{ account?: boolean }} [opts] account:false writes only the session —
  *   used when adopting a value that came FROM the account, so a per-tab switch
@@ -155,9 +173,12 @@ export function storeChatMode(mode, opts) {
 }
 
 /**
- * Apply a mode's theme: exactly ONE of the registry's root classes on <html>
- * (or none, for normal). Persists unless {persist:false} (the boot-time cached
- * apply is READING the cache, not deciding).
+ * Apply a mode's theme: exactly ONE of the registry's root classes on <html>.
+ * Every surviving mode declares one — the single descriptor with `rootClass:
+ * null` was `normal`, and it went with the general agent (2026-08-13), so the
+ * "or none" branch is now only what an unthemed page would look like, never a
+ * state a picked mode produces. Persists unless {persist:false} (the boot-time
+ * cached apply is READING the cache, not deciding).
  *
  * The class list comes from mode-theme.js (MODE_ROOT_CLASSES), not from a
  * hand-written toggle per mode. Deep Science's `sci-mode` was missing from the
@@ -205,8 +226,8 @@ export function applyChatModeTheme(mode, opts) {
 /**
  * Adopt the server's mode once /api/settings resolves. The account's stored
  * `chat_mode` is the authority for the ACCOUNT DEFAULT — it follows the account
- * across devices, and the server has already forced it to "normal" if the modes
- * are unavailable — so there is no downgrade rule on this side.
+ * across devices, and the server has already forced it to the default mode if
+ * the modes are unavailable — so there is no downgrade rule on this side.
  *
  * What it is NOT, since the agent went per-session (2026-07-27): authority over
  * a session already in progress. `seed` says which case this is, and app.js
@@ -220,7 +241,7 @@ export function applyChatModeTheme(mode, opts) {
  *                 whatever agent another tab last pushed to the account.
  *
  * A server payload that does not carry `chat_mode` at all — an older or partial
- * response — leaves the pick alone rather than resetting it to normal.
+ * response — leaves the pick alone rather than resetting it to the default.
  * @param {{ chat_mode?: string } | null | undefined} serverSettings
  * @param {{ seed?: boolean }} [opts]
  * @returns {string} the effective mode for this session

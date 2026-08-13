@@ -24,8 +24,8 @@ import {
 const goodPlan = {
   title: "Compare edge runtimes",
   agents: [
-    { id: "workers", kind: "deep_research", name: "Workers researcher", task: "Research Cloudflare Workers limits.", deps: [] },
-    { id: "deno", kind: "deep_research", name: "Deno researcher", task: "Research Deno Deploy limits.", deps: [] },
+    { id: "workers", kind: "web_research", name: "Workers researcher", task: "Research Cloudflare Workers limits.", deps: [] },
+    { id: "deno", kind: "web_research", name: "Deno researcher", task: "Research Deno Deploy limits.", deps: [] },
     { id: "critic", kind: "custom", name: "Critic", persona: "A skeptical platform engineer.", task: "Compare the two briefs and flag gaps.", deps: ["workers", "deno"] },
   ],
 };
@@ -76,7 +76,7 @@ test("normalizeWorkflow salvages a sloppy model plan", () => {
   const raw = {
     title: "T",
     agents: [
-      { id: "First Agent!", kind: "deep_research", name: "One", task: "Do a thing.", deps: [] },
+      { id: "First Agent!", kind: "web_research", name: "One", task: "Do a thing.", deps: [] },
       { kind: "made-up-kind", name: "Two", task: "Other thing.", deps: ["First Agent!", "ghost"] },
       { name: "no task — dropped" },
     ],
@@ -90,10 +90,10 @@ test("normalizeWorkflow salvages a sloppy model plan", () => {
   assert.deepEqual(validateWorkflow(plan), []);
 });
 
-test("normalizeWorkflow keeps planned queries on deep_research nodes only", () => {
+test("normalizeWorkflow keeps planned queries on web_research nodes only", () => {
   const raw = {
     agents: [
-      { id: "r", kind: "deep_research", task: "t", queries: ["one", "  two  ", "", "three-too-many"] },
+      { id: "r", kind: "web_research", task: "t", queries: ["one", "  two  ", "", "three-too-many"] },
       { id: "c", kind: "custom", task: "t", queries: ["ignored"] },
     ],
   };
@@ -148,7 +148,7 @@ test("normalizeWorkflow returns null when nothing is salvageable", () => {
 
 test("plan prompt lists kinds, rules, and Swedish-parity instruction", () => {
   const p = orchestratorPlanPrompt({ message: "Jämför två ramverk", hasSource: false });
-  assert.ok(p.includes("deep_research"));
+  assert.ok(p.includes("web_research"));
   assert.ok(!p.includes('"introspection":') && !p.includes("- \"introspection\""), "introspection hidden without source");
   assert.ok(p.includes("svenska"));
   assert.ok(p.includes("Jämför två ramverk"));
@@ -209,7 +209,7 @@ test("workflowEvent carries the persona and planned queries the inspector shows"
   // shows the rest, so it has to ride along (feedback #35).
   const plan = normalizeWorkflow({
     agents: [
-      { id: "workers", kind: "deep_research", name: "R", task: "Research.", queries: ["cloudflare workers limits", "workers cpu"] },
+      { id: "workers", kind: "web_research", name: "R", task: "Research.", queries: ["cloudflare workers limits", "workers cpu"] },
       { id: "critic", kind: "custom", name: "C", persona: "A skeptical engineer.", task: "Compare.", deps: ["workers"] },
     ],
   });
@@ -217,7 +217,7 @@ test("workflowEvent carries the persona and planned queries the inspector shows"
   assert.deepEqual(ev.agents[0].queries, ["cloudflare workers limits", "workers cpu"]);
   assert.equal(ev.agents[0].persona, undefined, "omitted when empty — an unchanged event for a plain team");
   assert.equal(ev.agents[1].persona, "A skeptical engineer.");
-  assert.equal(ev.agents[1].queries, undefined, "only deep_research nodes plan searches");
+  assert.equal(ev.agents[1].queries, undefined, "only web_research nodes plan searches");
 });
 
 test("agentUpdateEvent normalizes status and bounds the note", () => {
@@ -239,7 +239,7 @@ test("agentUpdateEvent head-clamps the prompt but reports its true length", () =
 });
 
 test("kind registry is closed and self-describing", () => {
-  assert.deepEqual(AGENT_KIND_IDS.slice().sort(), ["custom", "deep_research", "introspection", "swarm"]);
+  assert.deepEqual(AGENT_KIND_IDS.slice().sort(), ["custom", "introspection", "swarm", "web_research"]);
   for (const k of AGENT_KIND_IDS) {
     assert.ok(AGENT_KINDS[k].label && AGENT_KINDS[k].desc);
     assert.equal(typeof AGENT_KINDS[k].needsSource, "boolean");
@@ -299,7 +299,7 @@ test("a swarm node can never depend on another agent (it runs before the request
   const plan = normalizeWorkflow(
     {
       agents: [
-        { id: "res", kind: "deep_research", task: "Look it up.", queries: ["q"] },
+        { id: "res", kind: "web_research", task: "Look it up.", queries: ["q"] },
         { id: "sw", kind: "swarm", task: "Judge it.", deps: ["res"] },
         { id: "critic", kind: "custom", task: "Combine.", deps: ["sw", "res"] },
       ],

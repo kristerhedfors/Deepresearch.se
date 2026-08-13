@@ -48,15 +48,17 @@ const BOOT_GUARD_HASH = "'sha256-u3ySwtFlG4CiAt1dxXdOkRXyntKuJg40eE2Z21Vm9+Y='";
 const STORY_INLINE_HASH = "'sha256-ATMgXgI8+2fgznyrbCNX5n9ZAqIHL8/YoN64WD6CwlI='";
 // The parse-time MODE-theme cue bootstrap in index.html (the
 // `<script data-devtheme>` — carries an attribute so the boot-guard recompute
-// regex above stays unique to the attribute-less boot guard). Adds the
-// `dev-mode` (introspection, white titanium), `sdk-mode` (SDK, green) or
-// `orch-mode` (Orchestrator, violet), `outro-mode` (Outrospection,
-// newsprint), `models-mode` (Models, amber) or `sci-mode` (Deep Science,
-// parchment) class before first paint from the
-// chat-mode cache (public/js/chat-mode.js).
+// regex above stays unique to the attribute-less boot guard). It adds EXACTLY
+// ONE root class before first paint, read from the chat-mode cache
+// (public/js/chat-mode.js): `sci-mode` (Deep Science, parchment — also the
+// default, since the general mode was retired 2026-08-13 and every remaining
+// mode declares a class), `cyber-mode` (Cyber, crimson), `dev-mode`
+// (Introspection, white titanium), `sdk-mode` (Agent Studio, green),
+// `orch-mode` (Orchestrator, violet), `outro-mode` (Outrospection, newsprint)
+// or `models-mode` (Models, amber).
 // Recompute on edit:
 //   node -e 'const c=require("crypto"),h=require("fs").readFileSync("public/index.html","utf8").match(/<script data-devtheme>([\s\S]*?)<\/script>/)[1];console.log("sha256-"+c.createHash("sha256").update(h).digest("base64"))'
-const THEME_BOOT_HASH = "'sha256-AtHqtF+jlgdrQTKJhK6FQ9ykTqrX0zefVxjUlE/DMUs='";
+const THEME_BOOT_HASH = "'sha256-BfWkLmb37bpPpc9HF2zYuepj4Z3taG00+/JPZ5vl5ks='";
 const CSP = [
   "default-src 'self'",
   "base-uri 'self'",

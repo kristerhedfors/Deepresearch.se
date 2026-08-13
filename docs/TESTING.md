@@ -84,11 +84,24 @@ solver turns two of the three red. Plus an identity assertion that
 wrapper fails at the seam instead of downstream in a prompt),
 `settings.js` (`parseSettings` coercion, `storageAvailability`, the
 generic `extensionEnabled`/`extensionEnabledMap` knob gates),
-`extensions.js` (the extension registry — the five seams core consumes
-generically, the shipped knob/meta wire names, and the CORE-PURITY GUARD:
+`extensions.js` (the extension registry — the six seams core consumes
+generically, the shipped knob/meta wire names, the `contextBlock` seam
+added 2026-08-13 with its uniqueness and `serverOnly` assertions and the
+knob-AND-capability truth table, and the CORE-PURITY GUARD:
 it fails the build when a core module names a third-party service in code
 or imports an integration module directly, which is what keeps CLAUDE.md
 invariant 7 from rotting; see `docs/ARCHITECTURE.md` §4.2a),
+`cyber-exclusivity.js` and `literature-exclusivity.js` (the two OWNERSHIP
+guards, both over the SHIPPED `sdk/AGENTS.json` rather than a fixture, because
+exclusivity is a claim about every OTHER agent and nothing fails when one
+quietly gains a block. The cyber suite pins `entity-method`, `person-method`,
+`host-intel` and `street-imagery` to `cyber` alone and `owasp` to `cyber` +
+`introspection`; the literature suite pins `literature-arxiv` /
+`literature-pubmed` / `literature-peer-reviewed` from both ends — which agents
+may declare each, and which sources a real resolved capability then reaches —
+including palaeogenomics keeping Europe PMC and NOT getting arXiv, and the
+deliberate fail-soft hole where a NULL capability keeps every source, which is
+how `POST /mcp` and the ground-truth batteries still reach both corpora),
 `rag.js` (`validateRagIndexPayload`, the base64⇄Float32 vector codec,
 the `idOk` key-path id validator shared with `storage.js`),
 `vault.js` (the project-vault endpoints against a mocked R2 bucket:
@@ -120,8 +133,9 @@ may select nothing server-only; a declared gate must carry EN and SV), and
 CHARACTERIZES the mode routing, including the acceptance test that a sixth
 agent added only as registry data routes with no code change —
 `agent-registry.js` (the per-binding registry cache, every failure path
-degrading to null, and the guard that keeps the snapshot off the plain
-Deep Research turn's hot path), `prompt-sets.js` (the prompt-set binding,
+degrading to null, and both load routes — the small dedicated
+`public/introspect/agents.json` artifact first, the source snapshot as the
+fallback), `prompt-sets.js` (the prompt-set binding,
 identity-checked against the shipped builders so a re-pointed prompt fails
 the suite rather than a request, plus totality: no state can leave a phase
 without a prompt), `agent-link.js` (the share-link mint against a mocked
@@ -512,7 +526,19 @@ CAPTCHA detection, since that page answers 200 — the profile block attributing
 every number to Scholar and refusing to imply peer review, `parseVenueTable`
 refusing a layout it does not know, and the enrichment restricting EVERY turn
 to the peer-reviewed source while folding in venue metrics with no outbound
-request), plus the two added 2026-08-05/06 — `image-read.js` (the attached-image
+request — plus, since 2026-08-13, `preprintSources`: the default turn still the
+bare scholar leg, arXiv or Europe PMC admitted only when the message NAMES the
+preprint record, in both languages, and an ordinary scientific question that
+merely engages the wide gates admitting neither),
+the OWASP reference block extracted out of `introspect.js` into
+`owasp-context.js`, covered where it was before the extraction — `introspect.js`
+drives `runOwaspContextEnrichment` against the corpus and index fixtures
+(retrieval through the ASSETS binding, per-category diversification, and every
+fail-soft branch degrading to no block), `enrichment.js` pins the
+declared-`owasp` gate in its capability truth table, and `prompts.js` pins
+`OWASP_ASSESSMENT_NOTE` being spliced on the same declaration and on no
+other),
+plus the two added 2026-08-05/06 — `image-read.js` (the attached-image
 transcription: a turn without an image completely silent so the message array is
 byte-identical, an attached image folded in as a labeled block that tells later
 phases it is NOT a source, and the whole fail-soft surface of invariant 2 —
@@ -525,7 +551,11 @@ are asserted to actually bound the call, rather than the test's own) and
 gate, both tiers off the one core: what users actually sent in feedback #60
 firing it, a topic, a company or a product NOT firing it, full Swedish parity
 per invariant 6, the methodology block, and the enrichment silent when the
-message names nobody — never throwing whatever it is handed).
+message names nobody — never throwing whatever it is handed; and since
+2026-08-13 the GUARDRAIL SPLIT: an agent declaring `person-method` gets the full
+protocol byte-identical to before, an agent that does not gets the
+privacy-rail-only block, the two activity steps differ, and a missing or
+malformed capability narrows to the rail rather than widening to the method).
 `entity-research.js` + `public/js/entity-research-core.js` cover the sibling
 method from feedback #64: the verbatim reported message firing the gate, an
 ordinary research request not firing it, the matched EN/SV `PAIRS` table with a
@@ -1271,10 +1301,13 @@ instead of erroring.
 > made `cachedChatMode()` default to **introspection**, so specs asserting
 > the ordinary chat surface were driving a different mode; the mode collapse
 > (2026-07-26) removed that failure mode at the root — there is one mode
-> value now, and it defaults to Deep Research. `openApp` patches the
-> `/api/settings` GET to `bash_lite_mcp: false, chat_mode: "normal"` and
-> pins the matching `dr_chat_mode` cache; pass `{ sandbox: true }` to opt
-> back in, or `{ chatMode: "introspection" }` to drive another mode. A spec that
+> value now. `openApp` patches the `/api/settings` GET to
+> `bash_lite_mcp: false, chat_mode: "science"` and pins the matching
+> `dr_chat_mode` cache; pass `{ sandbox: true }` to opt back in, or
+> `{ chatMode: "introspection" }` to drive another mode. The default was
+> `"normal"` until the general agent was retired (2026-08-13); a spec needing
+> open-web research now has to name a mode, because Deep Science does not
+> search the web. A spec that
 > mocks `/api/settings` ITSELF must pass `{ pinSettings: false }` — routes
 > match last-registered-first, so `openApp`'s handler would shadow it.
 

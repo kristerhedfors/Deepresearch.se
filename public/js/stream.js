@@ -127,9 +127,10 @@ import { markUnanswered } from "./unanswered-core.js";
  * @property {boolean} webSearch
  * @property {string} [chatMode] WHICH AGENT produced this conversation. Added
  *   2026-07-27: without it, reopening a chat continued it under whatever agent
- *   the tab happened to be in — an Agent Studio build silently answered as plain
- *   Deep Research. Optional on purpose, so records written before this keep
- *   today's behaviour (the tab's current agent) instead of snapping to Normal.
+ *   the tab happened to be in — an Agent Studio build silently answered as some
+ *   other agent entirely. Optional on purpose, so records written before this
+ *   keep today's behaviour (the tab's current agent) instead of snapping to the
+ *   default mode.
  * @property {Array<{id: string, name: string}>} ragDocs
  * @property {import("./embeds.js").EmbedEntry[]} embeds
  * @property {?string} projectId
@@ -304,7 +305,7 @@ function openConversationRecord(id, record) {
   setActiveProject(convProjectId);
   // A conversation carries the AGENT that produced it (2026-07-27), so reopening
   // an Agent Studio build keeps answering as Agent Studio instead of silently
-  // continuing as plain Deep Research. Scoped to this session, never to the
+  // continuing as whatever agent this tab is in. Scoped to this session, never to the
   // account seed: reopening a chat in one tab must not move another tab's agent.
   // Records written before `chatMode` existed leave the session's agent alone.
   if (record.chatMode) applyChatModeTheme(record.chatMode, { account: false });
@@ -940,11 +941,15 @@ async function buildChatPayload(opts) {
   };
   if (opts.model) payload.model = opts.model;
   // WHICH MODE answers this request — the one field that says it (chat-mode.js
-  // holds the pick; chat-mode-core.js resolves it server-side). Every mode is
-  // named, Normal included: an explicit "normal" is what makes plain web
-  // research beat a stored non-Normal pick, which is the job the off-only
-  // `developer_mode: false` override used to do from the client. That override
-  // still exists on the server for external callers — the app no longer needs it.
+  // holds the pick; chat-mode-core.js resolves it server-side). The mode is
+  // ALWAYS named, the default one included: naming it explicitly is what makes
+  // this tab's agent beat a different pick stored on the account, which is the
+  // job the off-only `developer_mode: false` override used to do from the
+  // client. That override still exists on the server for external callers — the
+  // app no longer needs it. The argument used to be phrased as "an explicit
+  // `normal` beats a stored non-Normal pick"; the general mode is retired
+  // (2026-08-13) and the rule is unchanged, because it never depended on which
+  // mode was the default — only on the mode being stated rather than implied.
   //
   // SDK mode additionally carries the conversation's published build slug so an
   // iteration keeps its /app/<slug>/ URL.

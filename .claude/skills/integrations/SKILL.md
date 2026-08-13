@@ -16,7 +16,11 @@ description: >-
   EXTENSION BOUNDARY (src/extensions.js, CLAUDE.md invariant 7): the
   knob-gated third-party integrations are extensions, not core, so wiring
   one is a descriptor in the registry plus its own modules — never an edit
-  to chat.js / settings.js / validation.js / prompts.js / types.d.ts.
+  to chat.js / settings.js / validation.js / prompts.js / types.d.ts. Since
+  2026-08-13 a descriptor also declares a sixth seam, contextBlock, ANDing the
+  per-account knob with the answering AGENT's declared capability — Shodan and
+  Maps belong to the Cyber agent (see the **cyber** skill), so "why did the
+  lookup stop firing" now has two possible answers, not one.
 ---
 
 # External providers & the enrichment pattern
@@ -31,7 +35,7 @@ no external service existed.
 
 `src/extensions.js` is the ONLY `src/` module that may name an individual
 service at the architectural seam, and the only one core imports. One
-descriptor per extension owns five seams core consumes generically:
+descriptor per extension owns six seams core consumes generically:
 
 | Seam | Field | Who calls it |
 |---|---|---|
@@ -40,6 +44,29 @@ descriptor per extension owns five seams core consumes generically:
 | Enrichment | `enabled` / `run` | `enrichment.js` |
 | Log meta | `logMeta(slice)` | `chat.js` |
 | Capability line | `capability {order, text}` | `prompts.js` |
+| Which agent may reach it | `contextBlock` (2026-08-13) | `extensionEnrichments()` and `extensionCapabilities()`, both via `capHasContext` |
+
+**The sixth seam is an AND, not a replacement.** Until 2026-08-13 a knob left
+on made an extension reachable from every turn on every agent — one question
+standing in for two. Now:
+
+> the **knob** — the account's CONSENT to reach a third party at all: a shipped
+> `/api/settings` wire contract, per-user, still default OFF.
+> the **contextBlock** — WHICH agent may use it, declared in `sdk/AGENTS.json`
+> and validated like every other capability selection.
+
+Both must hold. Today both blocks (`host-intel` for Shodan, `street-imagery`
+for Maps) are declared only by the **Cyber** agent — see the **cyber** skill —
+so an address named in a Deep Science turn reaches Google nowhere, whatever
+the knob says. Two details: the STATE seam is deliberately not gated
+(`resolveState` runs before the agent is resolved and a sanitized slice nobody
+reads is harmless), and the CAPABILITY seam is gated on the same declaration,
+so an agent that cannot run the lookup does not claim it can in the grounded
+"what can you do?" note.
+
+Name a new block for the CAPABILITY, never the vendor — `host-intel`, not
+`shodan`. That is what keeps the vocabulary a core module reads service-blind,
+and it is why the matching `GATE_IDS` entries name no module either.
 
 So when this skill's per-service sections below say "wire it into the
 pipeline", the wiring is **one descriptor in `src/extensions.js` plus the
@@ -389,7 +416,10 @@ context every phase can use.
   column. **Default OFF** (only an
   explicit stored `true` enables it) because enriching a query sends the host/IP
   to a third party, an opt-in a security-minded user should choose
-  deliberately. `/api/settings` reports the EFFECTIVE state: it reads off
+  deliberately. Since 2026-08-13 the knob is half the gate: the descriptor's
+  `contextBlock: "host-intel"` is ANDed with it, and only the **Cyber** agent
+  declares that block — so the knob being on is no longer enough, and the
+  lookup not firing has two possible causes rather than one. `/api/settings` reports the EFFECTIVE state: it reads off
   unless the `SHODAN_API_KEY` secret is set AND the caller has a real D1
   user row (break-glass has none), via `featureAvailability()` (kept
   separate from `storageAvailability()` so that function's tested
@@ -444,7 +474,10 @@ context every phase can use.
 > also owns the client-view sanitizers `validateStreetViewPov` /
 > `validateMapView` and this integration's `streetview_embed` /
 > `streetview_frames` / `map_embed` SSE status types; `StreetViewPov` lives
-> in `src/googlemaps.js`. None of it is in a core module any more.
+> in `src/googlemaps.js`. None of it is in a core module any more. Its
+> `contextBlock` is `street-imagery`, declared only by the **Cyber** agent
+> (2026-08-13), and ANDed with the knob — so a place named in any other mode
+> gets no lookup however the knob is set.
 
 An opt-in per-user setting (account panel's **Settings** sub-view, "Google
 Maps & Street View") that enriches a research question with Google Maps

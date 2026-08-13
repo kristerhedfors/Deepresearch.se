@@ -68,12 +68,37 @@ what this block appended, so the query-planning phases can read the conversation
 without it (`docs/ARCHITECTURE.md` §4.2b). Every other row appends data, and
 data is what a planner should be writing queries from.
 
-`enabled: () => true`. There is no knob, no chat mode and no request field: the
-intent gate inside the runner decides, and the runner is silent otherwise.
-`runEnrichments` runs before triage (`src/pipeline.js`), so the planner, the
-search waves and synthesis all see the block. The append goes through
-`appendToLast` (`src/conversation.js`), which adds a new text part rather than
-rewriting the message, so an attached screenshot survives.
+There is no knob, no chat mode and no request field: the intent gate inside the
+runner decides, and the runner is silent otherwise. `runEnrichments` runs before
+triage (`src/pipeline.js`), so the planner, the search waves and synthesis all
+see the block. The append goes through `appendToLast` (`src/conversation.js`),
+which adds a new text part rather than rewriting the message, so an attached
+screenshot survives.
+
+**Ownership moved to the Cyber agent (owner directive, 2026-08-13).** The method
+this document describes — subject disambiguation plus the depth-scaled dossier
+scaffold — is one of the capabilities the new `cyber` agent owns exclusively. It
+is declared as the context block **`entity-method`**
+(`public/js/agent-spec-core.js` `CONTEXT_BLOCKS`), listed in that agent's
+`capability.context` in `sdk/AGENTS.json`, and read at the registry row:
+
+```js
+enabled: (state) => capHasContext(state.capability, "entity-method"),
+```
+
+So the row's old `enabled: () => true` is gone. No mode flag and no settings
+toggle is involved, and removing the agent from `sdk/AGENTS.json` removes the
+capability. The intent gate still decides inside the runner, which is why an
+agent that holds the block is silent on every non-dossier turn.
+
+Nothing here is kept unconditional, and that is the difference from its
+neighbour. The person-research block asserts a **limit** on what may be reported
+about a human being, so losing it makes an answer worse than never having had it
+(`docs/PERSON-RESEARCH.md` §3.0). This block asserts no limit — it decides how to
+resolve a subject and how long the report should be, which is exactly the kind
+of domain method a declaration is for. An agent that does not declare it answers
+an OSINT question the way it answered every other question: a less careful
+report, and nothing worse.
 
 A firing turn emits the SSE step `entity_research` ("Applying the
 entity-research method…", then "Entity-research method applied") whose finished

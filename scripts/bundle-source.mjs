@@ -33,6 +33,17 @@ import { createHash } from "node:crypto";
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const OUT = "public/introspect/source-snapshot.json";
 
+// The agent registry, written a second time as a standalone artifact. Both come
+// from the same source of truth — `sdk/AGENTS.json`, which is also inside the
+// snapshot — and `--check` fails if either has drifted, so the two copies cannot
+// disagree without failing `npm test`. Why a copy at all: since the general
+// agent was retired (2026-08-13) the Worker resolves the registry on EVERY chat
+// request, and reading it out of the multi-megabyte snapshot would mean parsing
+// five megabytes of source per isolate to reach forty kilobytes of specs.
+// See public/js/introspect-core.js AGENTS_REGISTRY_PATH.
+const AGENTS_SRC = "sdk/AGENTS.json";
+const AGENTS_OUT = "public/introspect/agents.json";
+
 // Text source only — the snapshot is for reading and grep'ing, not serving
 // media. Everything here must stay valid UTF-8 (checked below anyway).
 const TEXT_EXT = /\.(js|mjs|cjs|d\.ts|css|html|md|json|toml|txt|webmanifest|sh|py|yml|yaml)$/i;
@@ -120,7 +131,20 @@ function main() {
   const check = process.argv.includes("--check");
   const json = buildSnapshotJson();
   const outPath = join(ROOT, OUT);
+  // The registry copy is byte-identical to its source, deliberately: anything
+  // clever here (re-serializing, stripping the prose notes) would be a second
+  // place the two could differ.
+  const agentsJson = readFileSync(join(ROOT, AGENTS_SRC), "utf8");
+  const agentsOutPath = join(ROOT, AGENTS_OUT);
   if (check) {
+    const currentAgents = existsSync(agentsOutPath) ? readFileSync(agentsOutPath, "utf8") : "";
+    if (currentAgents !== agentsJson) {
+      console.error(
+        `STALE: ${AGENTS_OUT} does not match ${AGENTS_SRC}.\n` +
+          "Re-run `npm run bundle` (node scripts/bundle-source.mjs) and commit the result.",
+      );
+      process.exit(1);
+    }
     const current = existsSync(outPath) ? readFileSync(outPath, "utf8") : "";
     if (current !== json) {
       console.error(
@@ -139,13 +163,15 @@ function main() {
       }
       process.exit(1);
     }
-    console.log(`${OUT} is up to date.`);
+    console.log(`${OUT} and ${AGENTS_OUT} are up to date.`);
     return;
   }
   mkdirSync(dirname(outPath), { recursive: true });
   writeFileSync(outPath, json);
+  writeFileSync(agentsOutPath, agentsJson);
   const parsed = JSON.parse(json);
   console.log(`Wrote ${OUT}: ${parsed.count} files, ${parsed.bytes} bytes, digest ${parsed.digest.slice(0, 12)}…`);
+  console.log(`Wrote ${AGENTS_OUT}: ${JSON.parse(agentsJson).agents.length} agents.`);
 }
 
 main();
