@@ -787,6 +787,41 @@ cannot use. A test that pins an assumption makes it permanent.
 
 ---
 
+## 4d. The third live run (2026-08-13): connected, and still stuck
+
+Not a connection failure — the first one where every part of §4a was working.
+Reported as a research question that "just got stuck" during a voice session.
+
+Workers Logs for `mcp.deepresearch.se`, 05:41–05:43: two `deep_research` calls,
+86.5 s and 50.5 s of wall time, **both `ok`**, both logged by `mcp.complete`,
+both written to `chat_logs` in full (#1725, #1726). `scripts/chatlogs --errors`
+was empty and `mcp.tool_failed` never fired. Seconds after the second one
+returned, the connector POSTed a fresh `initialize` and two `tools/list` — a
+reconnect, which is what a client does after it has given up.
+
+The cause was silence. `tools/call` was answered as one buffered JSON response,
+so between the POST and the finished answer the server sent nothing at all —
+for a minute and a half. A client cannot distinguish that from a hung server,
+and nothing on this side records that it happened, because on this side nothing
+went wrong.
+
+Fixed by answering `tools/call` on an SSE stream when the client accepts one:
+keepalive comments every 10 s, `notifications/progress` on the same tick when
+the caller supplied a `progressToken` (the spec's timeout rule lets a client
+reset its clock on one), then the same JSON-RPC response as the last frame. The
+dispatch, the envelopes and the results are untouched, and a caller that did not
+ask for a stream still gets the buffered JSON. Details, the four rules the shape
+has to keep, and the failure this does NOT fix (a client with a hard wall-clock
+ceiling rather than an idle timeout) are in the **mcp-server** skill.
+
+**What this run says generally.** A green connection check says a client can
+reach the server, not that it can wait for it. The tool battery in
+`npm run mcp:probe` never surfaced this: every literature call answers in
+seconds, and the one tool that runs for minutes is the one the probe skips
+unless `--deep` is passed.
+
+---
+
 ## 5. What it does and does not change about privacy
 
 Nothing in invariant 4 moves. An MCP call was already a **Se/rver** call:

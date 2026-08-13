@@ -243,7 +243,15 @@ per-account concurrency gate over the spending tools: a slot is taken and
 released, the refusal comes back as a JSON-RPC result rather than a transport
 error so a client renders it, the free tools reserve nothing, and the two
 failure directions are deliberately opposite — a reservation that cannot be
-recorded fails OPEN, a quota gate that cannot be read fails CLOSED) — plus
+recorded fails OPEN, a quota gate that cannot be read fails CLOSED) and
+`mcp-progress.js` (the SSE transport a long `tools/call` is answered on: the
+last frame carries the same JSON-RPC envelope the buffered path returns,
+keepalive comments and `notifications/progress` flow while the tool runs, the
+progress value increases, a caller that sent no `progressToken` gets
+keepalives and no notifications, and a client that did not ask for a stream
+still gets plain JSON — driven through the real `handleMcp` with a fake index
+that hangs until the test releases it, so the ticking is exercised without
+waiting for the interval) — plus
 the OAUTH CONNECTOR family that makes the surface addable in Claude and
 ChatGPT (built 2026-08-03): `oauth-metadata.js` (redirect-URI matching as
 DATA, so a new client is an allowlist entry and not an edit — both hosted
