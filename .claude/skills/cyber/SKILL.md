@@ -82,11 +82,25 @@ never learn which agent or which service it belongs to:
 
 **Two rules that are easy to get backwards:**
 
-- A **null** capability keeps everything. Null means *no agent was resolved* —
-  the `POST /mcp` channel builds its state without a registry, and a deployment
-  whose registry will not load resolves nothing either. Both must keep working
-  (invariant 2). Declaring an **empty** `context` is a real declaration and does
-  gate.
+- **A null capability means two different things, and the polarity is opposite
+  on the two seams. Read this before assuming.** Null means *no agent was
+  resolved* — the `POST /mcp` channel builds its state without a registry, and a
+  deployment whose registry will not load resolves nothing either. Both must
+  keep working (invariant 2), but "keep working" resolves differently depending
+  on what is being gated:
+  - **Search sources** (`requiresContext` in `src/search-sources.js`, the
+    literature legs): null **allows** the source. These legs have always run for
+    any caller, MCP included, and switching them off for a channel with no
+    concept of an agent would be a silent capability loss rather than a fail-soft
+    degradation.
+  - **Enrichments and extension capabilities** (`capHasContext` in
+    `src/enrichment.js` and `src/extensions.js`): null **denies** the row. This
+    is the shipped `aadr`/`scholar` precedent, and it is the right default for a
+    block that costs an outbound request to a third party or injects a method
+    the turn did not ask for.
+
+  Declaring an **empty** `context` is a real declaration on both seams and does
+  gate — that is an agent saying "nothing", not a caller saying nothing.
 - `routingNeedsRegistry` therefore returns `true` unconditionally. A request
   that skipped the registry would resolve a null capability and silently get the
   unrestricted platform default — the exact failure this work exists to prevent.
