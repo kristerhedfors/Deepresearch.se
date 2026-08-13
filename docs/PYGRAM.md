@@ -173,17 +173,23 @@ it repairs. But it repairs it by keeping a 9.7 MiB working set resident in a VM
 whose memory is the browser's, and it does nothing about the first boot.
 Shipping a 541 KB static binary removes the problem instead of amortising it.
 
-**So pygram ships daemonless, and `pygramd` is not built.** The design is
-recorded in §4 because the decision should be reversible on evidence rather
-than re-derived. Revisit it if — and only if — a measurement shows interpreter
-init appearing in a real trace: a future workload running many one-liners
-inside one `execInSandbox` batch, or a pygram whose initialisation grows
-expensive (a large frozen corpus, a loaded index). Neither is true today.
+**So pygram ships daemonless, and `pygramd` is not built.** The daemon was an
+explicit part of the original ask; the measurements above were put to the owner
+and the answer was **"fine, no daemon, just a binary" (2026-08-13)**. That
+settles it — pygram is one static binary, and nothing in this project should
+reintroduce a resident process without new evidence.
+
+The design is still recorded in §4, because a decision made on measurement
+should be reversible by reading rather than by rediscovery. Revisit it if — and
+only if — a measurement shows interpreter init appearing in a real trace: a
+future workload running many one-liners inside one `execInSandbox` batch, or a
+pygram whose initialisation grows expensive (a large frozen corpus, a loaded
+index). Neither is true today.
 
 ## 4. The `pygramd` design, recorded but not built
 
-Kept so that reversing §3a means reading a design rather than rediscovering
-one. A zygote, the shape Android's zygote and preforked application servers
+**Not built, by owner decision (§3a). Nothing below is implemented.** Kept so
+that reversing §3a means reading a design rather than rediscovering one. A zygote, the shape Android's zygote and preforked application servers
 use: pay initialisation once in a parent, `fork()` per request so children
 inherit the initialised heap copy-on-write.
 
