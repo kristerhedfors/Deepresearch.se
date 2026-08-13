@@ -55,6 +55,21 @@
 #define MICROPY_PY_RE_MATCH_GROUPS (1)
 #define MICROPY_PY_RE_SUB (1)
 
+// deflate's COMPRESSOR defaults to FULL_FEATURES, one level above this
+// variant; the decompressor is already in. The frozen zlib shim needs both.
+#define MICROPY_PY_DEFLATE (1)
+#define MICROPY_PY_DEFLATE_COMPRESS (1)
+
+// hashlib's md5 and sha1 are NOT a flag, which is worth recording so nobody
+// spends the afternoon again. They default to MICROPY_PY_SSL, but turning them
+// on by name does not build: unlike sha256 (which has a vendored implementation
+// in lib/crypto-algorithms), both are implemented ONLY against mbedtls or
+// axtls, so switching them on demands an SSL submodule — the one thing this
+// build avoids, since it would put a second network dependency and a large
+// crypto stack behind a 350 KB binary. sha256 is on and covers the corpus's
+// main digest use; md5/sha1 belong in the frozen shim stdlib as pure Python if
+// they are ever needed.
+
 // Language surface the corpus needs and EXTRA_FEATURES does not give.
 #define MICROPY_PY_BUILTINS_SLICE_ATTRS (1)
 #define MICROPY_PY_BUILTINS_STR_CENTER (1)

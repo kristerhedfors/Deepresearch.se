@@ -22,6 +22,7 @@ import {
   buildPlan,
   classify,
   firstDiff,
+  isImplementationDefined,
   isInterpreterSpecific,
   isNondeterministic,
   loadCorpus,
@@ -212,6 +213,19 @@ test("an explicit interpreter-specific tag also works, and both feed the stdout 
   // through it — otherwise the detection exists but changes nothing.
   assert.equal(isNondeterministic({ program: "import sys;print(sys.version)", tags: [] }), true);
   assert.equal(isNondeterministic({ program: "print(1)", tags: [] }), false);
+});
+
+test("an implementation-defined quantity is exempt, but the class stays narrow", () => {
+  // DEFLATE (RFC 1951) constrains the stream, not its length: CPython's zlib
+  // emits 12 bytes where MicroPython's deflate emits 11, and both are valid.
+  assert.equal(isImplementationDefined({ program: 'import zlib;print(len(zlib.compress(b"a"*100)))' }), true);
+  assert.equal(isImplementationDefined({ program: "print(1)", tags: ["implementation-defined"] }), true);
+
+  // The danger is using this class to silence a REAL divergence. Compressing
+  // and decompressing, or the crc32 that DEFLATE does specify, stay compared.
+  assert.equal(isImplementationDefined({ program: "import zlib;print(zlib.crc32(b'IHDR'))" }), false);
+  assert.equal(isImplementationDefined({ program: "import zlib;print(zlib.decompress(zlib.compress(b'a')))" }), false);
+  assert.equal(isImplementationDefined({ program: "print(len(x))" }), false);
 });
 
 test("classify treats a timeout and a failed spawn as hard failures", () => {

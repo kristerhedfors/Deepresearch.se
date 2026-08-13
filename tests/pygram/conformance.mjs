@@ -209,7 +209,33 @@ export function isInterpreterSpecific(entry) {
   const src = entry && typeof entry.program === "string" ? entry.program : "";
   // sys.argv and sys.stdin/stdout are about the RUN, not the interpreter, and
   // must still be compared — so the list above names attributes, not `sys`.
-  return INTERPRETER_SPECIFIC.some((re) => re.test(src));
+  return INTERPRETER_SPECIFIC.some((re) => re.test(src)) || isImplementationDefined(entry);
+}
+
+// Programs whose output PYTHON ITSELF does not specify, so two conformant
+// implementations may legitimately disagree.
+//
+// The live example: `len(zlib.compress(b"a" * 100))` is 12 under CPython's
+// zlib and 11 under MicroPython's deflate. Both are valid DEFLATE streams —
+// the format promises a decodable stream, not a byte count. The crc32 in the
+// same program IS specified and still gets compared, because the exemption
+// only lifts the stdout check for the whole entry when the program asks for an
+// unspecified quantity.
+//
+// This class must stay SMALL and each pattern must be justified by a written
+// standard, not by convenience. The temptation is to silence a real divergence
+// by declaring it unspecified; the test file pins these and
+// docs/PYGRAM-SUBSET.md §6 records them.
+const IMPLEMENTATION_DEFINED = [
+  // Compressed size: DEFLATE (RFC 1951) constrains the stream, never its length.
+  /len\s*\(\s*(?:zlib|gzip)\s*\.\s*compress/,
+];
+
+export function isImplementationDefined(entry) {
+  const tags = entry && Array.isArray(entry.tags) ? entry.tags : [];
+  if (tags.includes("implementation-defined")) return true;
+  const src = entry && typeof entry.program === "string" ? entry.program : "";
+  return IMPLEMENTATION_DEFINED.some((re) => re.test(src));
 }
 
 export function classify(ref, got, entry = null) {

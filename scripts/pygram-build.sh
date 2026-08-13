@@ -320,6 +320,28 @@ check "int() arbitrary precision" \
     "$("$OUT" -c 'print(2 ** 100)')" "1267650600228229401496703205376"
 check "floor division floors toward -inf" \
     "$("$OUT" -c 'print(-7 // 2)')" "-4"
+check "slicing with a step, both directions" \
+    "$("$OUT" -c 'print("abcdefgh"[::2], "abcdefgh"[::-1], (1, 2, 3)[::-1], [1, 2, 3, 4][::-2])')" \
+    "aceg hgfedcba (3, 2, 1) [4, 2]"
+
+# CLAUDE.md invariant 6: equal Swedish and English support in every
+# deterministic gate, with a parity check in the same change. Both of these
+# were real, and both were SILENT — a plausible answer with a zero exit code.
+# re1.5 matches bytes, so an ASCII-only \w shredded `räksmörgås` into
+# ['r', 'ksm', 'rg', 's'], and repr() escaped every non-ASCII character, so
+# any Swedish string inside a list or dict printed as \xNN.
+check "Swedish: \\w keeps a word whole" \
+    "$("$OUT" -c 'import re; print(re.findall(r"\w+", "åäö abc räksmörgås"))')" \
+    "['åäö', 'abc', 'räksmörgås']"
+check "Swedish: \\W does not split inside a word" \
+    "$("$OUT" -c 'import re; print(re.sub(r"\W+", "-", "Kalle Anka på Öland!"))')" \
+    "Kalle-Anka-på-Öland-"
+check "Swedish: repr inside a container" \
+    "$("$OUT" -c 'print(["Ärlig", "Öl"], {"å": "ö"})')" \
+    "['Ärlig', 'Öl'] {'å': 'ö'}"
+check "Swedish: len and slicing are by character" \
+    "$("$OUT" -c 's = "räksmörgås"; print(len(s), len(s.encode()), s[:3])')" \
+    "10 13 räk"
 
 BYTES="$(stat -c %s "$OUT")"
 [ "$fail" = 0 ] || die "smoke checks failed"
