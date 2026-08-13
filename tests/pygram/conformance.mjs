@@ -181,7 +181,35 @@ function runOne(bin, entry) {
  */
 export function isNondeterministic(entry) {
   const tags = entry && Array.isArray(entry.tags) ? entry.tags : [];
-  return tags.includes("nondeterministic") || tags.includes("seeded");
+  return tags.includes("nondeterministic") || tags.includes("seeded") || isInterpreterSpecific(entry);
+}
+
+// Programs that interrogate the INTERPRETER rather than compute something.
+// A harvested corpus fills up with these — `sys.version`, `sys.executable`,
+// `dir(module)`, `sys.implementation` — and by construction they can never
+// match: pygram IS a different executable, and it is required NOT to claim a
+// CPython version (docs/PYGRAM-SUBSET.md §2). Reporting them as MISMATCH would
+// mean the runner permanently accuses pygram of a bug for behaving correctly,
+// and worse, it trains the reader to expect a non-zero MISMATCH count — which
+// is how a real divergence gets waved through.
+//
+// Detected from the program text rather than a hand-applied tag, because these
+// arrive automatically from the capture harness and nobody will tag them.
+const INTERPRETER_SPECIFIC = [
+  /\bsys\s*\.\s*(?:version|executable|implementation|path|prefix|base_prefix|maxsize|byteorder|flags)\b/,
+  /\bplatform\s*\.\s*\w+/,
+  /\bdir\s*\(/,
+  /\bos\s*\.\s*uname\b/,
+  /__file__|__spec__|__loader__/,
+];
+
+export function isInterpreterSpecific(entry) {
+  const tags = entry && Array.isArray(entry.tags) ? entry.tags : [];
+  if (tags.includes("interpreter-specific")) return true;
+  const src = entry && typeof entry.program === "string" ? entry.program : "";
+  // sys.argv and sys.stdin/stdout are about the RUN, not the interpreter, and
+  // must still be compared — so the list above names attributes, not `sys`.
+  return INTERPRETER_SPECIFIC.some((re) => re.test(src));
 }
 
 export function classify(ref, got, entry = null) {

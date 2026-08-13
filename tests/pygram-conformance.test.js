@@ -22,6 +22,7 @@ import {
   buildPlan,
   classify,
   firstDiff,
+  isInterpreterSpecific,
   isNondeterministic,
   loadCorpus,
   normalizeProgram,
@@ -168,6 +169,49 @@ test("a wall-clock or seeded entry is compared on exit code, not stdout", () => 
   assert.equal(classify(ref, ok({ stdout: "x", code: 1 }), entry).verdict, "MISMATCH");
   // And the same stdout difference on an untagged entry is still caught.
   assert.equal(classify(ref, got, { tags: ["datetime"] }).verdict, "MISMATCH");
+});
+
+test("a program that interrogates the interpreter is compared on exit code only", () => {
+  // The harvested corpus fills with these automatically and nobody will tag
+  // them. They can NEVER match: pygram is a different executable and is
+  // required not to claim a CPython version. Reporting them as MISMATCH would
+  // make a non-zero MISMATCH count normal, which is exactly how a real
+  // divergence gets waved through.
+  for (const program of [
+    "import sys;print(sys.version)",
+    "import sys;print('ok', sys.executable)",
+    "import re;print(dir(re))",
+    "import sys;print(sys.implementation.name)",
+    "import platform;print(platform.python_version())",
+    "print(__file__)",
+  ]) {
+    assert.equal(isInterpreterSpecific({ program }), true, program);
+  }
+});
+
+test("the interpreter-specific exemption does not swallow ordinary programs", () => {
+  // This is the dangerous direction. `sys.argv`, `sys.stdin` and `sys.exit`
+  // are about the RUN, not the interpreter, and 20+ corpus entries depend on
+  // them — exempting those would silently stop checking the largest cluster in
+  // the corpus. The pattern names attributes deliberately, never bare `sys`.
+  for (const program of [
+    "import sys;print(sys.argv)",
+    "import sys;print(sys.stdin.read().upper())",
+    "import sys;sys.exit(3)",
+    "import sys;sys.stdout.write('x')",
+    "import json;print(json.dumps({'a':1}))",
+    "print(sorted([3,1,2]))",
+  ]) {
+    assert.equal(isInterpreterSpecific({ program }), false, program);
+  }
+});
+
+test("an explicit interpreter-specific tag also works, and both feed the stdout exemption", () => {
+  assert.equal(isInterpreterSpecific({ program: "print(1)", tags: ["interpreter-specific"] }), true);
+  // isNondeterministic is what classify() consults, so the new class must flow
+  // through it — otherwise the detection exists but changes nothing.
+  assert.equal(isNondeterministic({ program: "import sys;print(sys.version)", tags: [] }), true);
+  assert.equal(isNondeterministic({ program: "print(1)", tags: [] }), false);
 });
 
 test("classify treats a timeout and a failed spawn as hard failures", () => {
