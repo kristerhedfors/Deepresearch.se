@@ -221,21 +221,36 @@ observation is most of §3a on its own.
 PKGS_COMMON="bash coreutils grep sed gawk findutils file less python3 jq nodejs git"
 ```
 
-That recipe is the delivery path. The end state is pygram installed as
-`/usr/local/bin/pygram`, plus a decision about `python3` that
-`docs/PYGRAM-RESEARCH.md` must answer explicitly:
+That recipe is the delivery path: pygram installed as `/usr/local/bin/pygram`,
+with a decision about `python3` that turned out to be less balanced than it
+looked.
 
-- **Add alongside** — `python3` stays, pygram is opt-in. Safe, and costs nothing
-  at rest (unrun binaries are never streamed), but the agent keeps typing
-  `python3` and keeps paying 8.5 s, so it wins nothing without also teaching
-  the agent loop to prefer pygram.
-- **Replace** — pygram becomes `python3`. Wins immediately and everywhere, and
-  breaks the moment a one-liner leaves the subset. Only defensible once the
-  fallback contract in §6 is solid and the corpus is broad.
+- **Add alongside** — `python3` stays, pygram is opt-in. Costs nothing at rest,
+  since a binary nobody runs is never streamed. But the agent keeps typing
+  `python3` and keeps paying 8.5 s, so it wins nothing on its own.
+- **Alias** — pygram *is* `python3`, and CPython leaves the image. Wins
+  immediately and everywhere, and meets the subset boundary head-on.
 
-The staged answer: add alongside first, measure against the real corpus, and
-only then consider shadowing `python3`. This image is also the tier that has no
-server to fall back on (Se/cure), so the conservative order is the right one.
+`docs/PYGRAM-RESEARCH.md` §6 item 6 recommends **aliasing**, and the argument
+that decides it is not about python at all: dropping CPython removes **27.0 MiB
+and 16 shared-library dependencies** from an image whose entire design goal is
+to be small and to stream without stalling — and a `command -v python3` that
+finds *nothing* is the single most expensive failure mode in this VM, the one
+that once consumed the whole 30 s ceiling and destroyed the VM. Aliasing is
+therefore safer than removing CPython without a stand-in, and much cheaper than
+keeping it.
+
+What aliasing costs, stated plainly: every generated `python3 -c` gets the
+subset, so `subprocess` and anything else outside it now fails at exit 90
+instead of working. That is only acceptable because of §6 — a greppable,
+branchable failure — and it obliges a matching change to `bashAgentPrompt`
+stating the subset and naming `subprocess` a non-goal, so the model hoists such
+work into its own bash block rather than being silently misled.
+
+The order is still staged, because the acceptance metric has not been measured
+live yet: build, gate, conform, **then** measure in a real VM (§2), and only
+then edit `PKGS_COMMON`. This image is the tier with no server to fall back on
+(Se/cure), so nothing here should land on a projection.
 
 The same binary is relevant to `container/Dockerfile` (the server-side
 execution environment) but wins far less there — that image is a normal
