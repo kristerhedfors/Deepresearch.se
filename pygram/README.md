@@ -222,40 +222,58 @@ apart.
 Five conformance entries still MISMATCH. Three of them cannot be fixed by any
 subset runtime, and two are real.
 
-**Real, and not fixed here.**
+**Real, and now fixed — with a cost.**
 
-*Dictionaries are not insertion-ordered* (`dict-items-loop`,
-`collections-defaultdict`). CPython's `dict` has preserved insertion order
-since 3.7, where it is a language guarantee; MicroPython's is an
-open-addressing hash map that does not. It changes the output of `print(d)`,
-`d.items()`, `json.dumps(d)` and every Counter/defaultdict display — plausible,
-different, exit 0.
+*Dictionaries are insertion-ordered* (owner decision, 2026-08-13). CPython's
+`dict` has preserved insertion order since 3.7, where it is a language
+guarantee; MicroPython's is an open-addressing hash map that does not. Leaving
+it alone changed the output of `print(d)`, `d.items()`, `json.dumps(d)` and
+every `Counter`/`defaultdict` display — plausible, different, exit 0, which is
+the failure `docs/PYGRAM.md` exists to prevent.
 
-The ordered machinery IS already compiled in (`mp_map_t.is_ordered`, used by
-`collections.OrderedDict`), and pointing the builtin `dict` at it is **one
-line** in `mp_obj_new_dict()`. It was built and measured. It produces exactly
-CPython's order, and it costs **zero bytes** — the two binaries are byte-for-byte
-the same size. The cost is asymptotic, because MicroPython's ordered map is a
-linear array with a linear scan:
+The ordered machinery was already compiled in (`mp_map_t.is_ordered`, used by
+`collections.OrderedDict`), so the fix is one line in `mp_obj_new_dict()`
+pointing the Python-level dict at it. It costs **zero bytes** — the binary is
+390,456 B either way — and it takes MISMATCH to **0**.
 
-| distinct keys | hashed (shipped) | ordered | ratio |
-|---|---|---|---|
-| 1,000 | 10 ms | 19 ms | 2.0× |
-| 2,000 | 37 ms | 68 ms | 1.8× |
-| 5,000 | 105 ms | 384 ms | 3.7× |
-| 10,000 | 216 ms | 1,562 ms | **7.2×** |
+It is deliberately in `mp_obj_new_dict()` and **not** in `mp_obj_dict_init()`.
+The latter also backs module globals and other internal dicts, and setting the
+flag there breaks `mpy-cross` while it compiles the frozen modules. That was
+found by trying it; the build fails with a bare `error compiling shutil.py`.
 
-The ratio itself grows, which is the quadratic showing. Those are native
-x86-64 host numbers; the same work in the CheerpX guest is far slower, against
-an exec ceiling that **destroys the VM** when crossed (`docs/PYGRAM.md` §1). A
-word count over a moderately large file is an ordinary one-liner, and this
-trade converts one into a lost turn.
+**The cost is asymptotic**, because MicroPython's ordered map is a linear array
+with a linear scan. Measured on the shipped binary, native x86-64 host, one
+dict built by inserting N distinct string keys:
 
-So it is not a build option and it is not a byte budget question — it is a data
-structure. The right fix is CPython's compact-dict layout (an ordered array
-with a hash index), which is a VM change of a different order from a shallow
-variant. Documented here as the largest remaining divergence rather than
-absorbed.
+| distinct keys | wall | vs previous |
+|---|---|---|
+| 1,000 | 11 ms | — |
+| 5,000 | 193 ms | — |
+| 10,000 | 768 ms | 4.0× for 2× keys |
+| 20,000 | 3,005 ms | 3.9× for 2× keys |
+| 40,000 | `MemoryError` | — |
+
+That is clean quadratic behaviour: doubling the keys quadruples the time. Two
+things bound the risk, and both matter for the 30 s exec ceiling that
+**destroys the VM** (`docs/PYGRAM.md` §1):
+
+- **The heap cap fires first.** At 40,000 keys the default heap raises
+  `MemoryError` — a normal Python exception with a traceback and exit 1 — before
+  the quadratic can reach the ceiling. A pathological dict fails loudly rather
+  than hanging, which is the better failure.
+- **These are HOST numbers.** The CheerpX guest is an emulated i386 and is
+  substantially slower, so the ceiling is nearer than this table suggests.
+  A dict of ~20,000 distinct keys is the point to be careful about — a word
+  count over a large document is an ordinary one-liner that could reach it.
+
+**This has not yet been measured in a real VM.** `docs/PYGRAM.md` §5 already
+stages delivery behind a live `tests/e2e/sandbox-perf.spec.js` run before
+`PKGS_COMMON` changes, and a large-dict case belongs in that run. Until then
+the guest-side cost is an extrapolation, and is labelled as one.
+
+The permanent fix is CPython's compact-dict layout — an ordered array with a
+hash index, O(1) lookup *and* insertion order. That is a VM change of a
+different order from a shallow variant, and is not attempted here.
 
 *`zlib.compress` output length* (`zlib-crc32`). The entry prints
 `len(zlib.compress(data))`, and MicroPython's deflate emits 11 bytes where

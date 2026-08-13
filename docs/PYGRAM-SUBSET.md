@@ -1,7 +1,7 @@
 # pygram — the Python subset
 
-*Spec date: 2026-08-13. Status: SPEC, derived from a measured corpus. No
-implementation yet.*
+*Spec date: 2026-08-13. Status: IMPLEMENTED — `pygram/build/pygram` passes 189 of
+202 corpus entries with 0 mismatches; 13 remain unsupported.*
 
 **pygram** (py + gram) is a minimal Python interpreter for the in-browser Linux
 sandbox (CheerpX, x86-32, `public/js/sandbox.js`). It exists because the real
@@ -291,7 +291,7 @@ divergence.
 | `round` | banker's rounding, and `round(2.675, 2)` → `2.67` (the float, not the decimal, answer) | `arith-mixed` |
 | `str` | unicode; `len("åäö") == 3`, `len("åäö".encode()) == 6` | `file-encoding-utf8`, `str-translate-encode` |
 | `bytes` repr | `b'caf\xc3\xa9'` — printable ASCII literal, `\xNN` otherwise | `str-translate-encode`, `struct-pack` |
-| `dict` | insertion-ordered; repr `{'a': 1, 'b': 2}` with the exact spacing | `dictcomp`, `dict-items-loop` |
+| `dict` | insertion-ordered (**implemented, with an asymptotic cost — see below**); repr `{'a': 1, 'b': 2}` with the exact spacing | `dictcomp`, `dict-items-loop` |
 | `sorted` | **stable** | `sorted-stability` |
 | container repr | `print(list)` shows element `repr`s: `[1, 'b']`, tuples as `('k', '=', 'v=w')`, `None`/`True` bare | `repr-vs-str`, `str-partition-splitlines` |
 | exception messages | verbatim: `invalid literal for int() with base 10: 'abc'`, `KeyError` printing as `'missing'` | `except-generic-message`, `json-keyerror-guard` |
@@ -302,6 +302,31 @@ divergence.
 | `re` | leftmost, non-POSIX-longest, backtracking; `match` anchors at 0 while `search` does not; `\d \w \s` are **unicode-aware** by default | `re-match-vs-search`, `stdin-regex-extract` |
 | exit codes | clean end → 0; `sys.exit(n)` → n; uncaught exception → 1 with a traceback on stderr and nothing extra on stdout | `stdin-exit-code-nonzero`, `uncaught-exception-traceback` |
 | iteration over a file/stdin | yields lines *with* their `\n`, lazily (so `break` after 2 lines does not read the rest) | `stdin-head-n` |
+
+### Dict ordering — exact, and what it costs
+
+CPython has guaranteed `dict` insertion order since 3.7. MicroPython's dict is
+an open-addressing hash map that does not preserve it, so `print(d)`,
+`d.items()`, `json.dumps(d)` and every `Counter`/`defaultdict` display came out
+reordered — plausible, different, exit 0.
+
+**Shipped as exact** (owner decision, 2026-08-13): one line in
+`mp_obj_new_dict()` points the Python-level dict at the ordered map that was
+already compiled in for `collections.OrderedDict`. Zero bytes, and it took the
+conformance MISMATCH count to 0.
+
+The cost is asymptotic, because that ordered map is a linear array. Measured on
+the shipped binary, native host, inserting N distinct string keys: 1,000 →
+11 ms, 5,000 → 193 ms, 10,000 → 768 ms, 20,000 → 3,005 ms — clean quadratic,
+and 40,000 raises `MemoryError` before it can get worse. Two consequences worth
+holding: the heap cap makes a pathological dict fail LOUDLY (traceback, exit 1)
+rather than hang into the 30 s ceiling that destroys the VM; and these are host
+numbers, so the guest is nearer that ceiling than the table suggests. A
+large-dict case belongs in the live `tests/e2e/sandbox-perf.spec.js` run that
+§5 of `docs/PYGRAM.md` already stages before `PKGS_COMMON` changes.
+
+The permanent fix is CPython's compact-dict layout — ordered array plus hash
+index, O(1) *and* ordered — which is a VM change, not a variant change.
 
 ### Where we may cheat, and the risk
 

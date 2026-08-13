@@ -442,6 +442,31 @@ index 6f085f2..71fe911 100644
          mp_float_t mult = MICROPY_FLOAT_C_FUN(pow)(10, (mp_float_t)num_dig);
          // TODO may lead to overflow
          mp_float_t rounded = MICROPY_FLOAT_C_FUN(nearbyint)(val * mult) / mult;
+diff --git a/py/objdict.c b/py/objdict.c
+index 692a7de..a086833 100644
+--- a/py/objdict.c
++++ b/py/objdict.c
+@@ -649,6 +649,20 @@ void mp_obj_dict_init(mp_obj_dict_t *dict, size_t n_args) {
+ mp_obj_t mp_obj_new_dict(size_t n_args) {
+     mp_obj_dict_t *o = m_new_obj(mp_obj_dict_t);
+     mp_obj_dict_init(o, n_args);
++    // pygram: CPython has guaranteed dict insertion order since 3.7. A subset
++    // runtime that quietly reorders print(d), d.items(), json.dumps(d) and
++    // every Counter/defaultdict display emits plausible wrong output with exit
++    // 0 — the failure docs/PYGRAM.md exists to prevent. The ordered map is
++    // already compiled in for collections.OrderedDict; this points the PYTHON-
++    // level dict at it, and costs zero bytes.
++    //
++    // Deliberately here and NOT in mp_obj_dict_init: that is also used for
++    // module globals and other internal dicts, and setting the flag there
++    // breaks mpy-cross while compiling frozen modules. The cost is asymptotic
++    // — MicroPython's ordered map is a linear array, so very many distinct
++    // keys degrade quadratically. Owner decision 2026-08-13; timing table in
++    // pygram/README.md.
++    o->map.is_ordered = 1;
+     return MP_OBJ_FROM_PTR(o);
+ }
+ 
 diff --git a/py/objexcept.c b/py/objexcept.c
 index d43cf97..98a91f9 100644
 --- a/py/objexcept.c
