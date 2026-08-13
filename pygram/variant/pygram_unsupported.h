@@ -1,0 +1,291 @@
+/*
+ * pygram — the unsupported-module half of the fallback contract.
+ *
+ * docs/PYGRAM-SUBSET.md §7 rule 4 draws a line that matters more than it looks:
+ *
+ *   - A module CPython itself does not have in this image (PIL, numpy) must
+ *     raise ModuleNotFoundError and exit 1, exactly as CPython does. That is a
+ *     program that RAN CORRECTLY and found its dependency missing.
+ *
+ *   - A module that exists in CPython but not in pygram (subprocess, argparse,
+ *     zlib, csv) must exit 90 with one greppable stderr line. That is pygram
+ *     being too small, and it is what lets an agent loop — or a shell wrapper —
+ *     retry the same line with real python3 instead of rewriting the program.
+ *
+ * Collapsing those two into one exit code would make the retry undecidable, so
+ * this header carries the only thing that can tell them apart: the list of
+ * top-level module names CPython ships.
+ *
+ * The list is CPython 3.11's `sys.stdlib_module_names`, 217 names, packed as one
+ * \0-separated blob (~1.6 KB of .rodata) rather than an array of pointers,
+ * because on i386 the pointer array alone would cost half as much again.
+ *
+ * Modules pygram DOES provide never reach this code: the import resolves and
+ * nothing is raised. So the table needs no exclusions and no maintenance when
+ * a frozen shim lands in pygram/lib.
+ *
+ * MIT, same as MicroPython.
+ */
+
+#ifndef PYGRAM_UNSUPPORTED_H
+#define PYGRAM_UNSUPPORTED_H
+
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+
+// mp_obj_is_instance_type() lives here and py/builtinimport.c does not pull it
+// in on its own; including it from this header rather than from the port patch
+// keeps the patch to the two call sites.
+#include "py/obj.h"
+#include "py/objtype.h"
+#include "py/runtime.h"
+
+// CPython 3.11 sys.stdlib_module_names, minus the leading-underscore internals.
+static const char pygram_cpython_stdlib[] =
+    "abc\0aifc\0antigravity\0argparse\0array\0ast\0asynchat\0asyncio\0"
+    "asyncore\0atexit\0audioop\0base64\0bdb\0binascii\0bisect\0builtins\0"
+    "bz2\0cProfile\0calendar\0cgi\0cgitb\0chunk\0cmath\0cmd\0code\0codecs\0"
+    "codeop\0collections\0colorsys\0compileall\0concurrent\0configparser\0"
+    "contextlib\0contextvars\0copy\0copyreg\0crypt\0csv\0ctypes\0curses\0"
+    "dataclasses\0datetime\0dbm\0decimal\0difflib\0dis\0distutils\0"
+    "doctest\0email\0encodings\0ensurepip\0enum\0errno\0faulthandler\0"
+    "fcntl\0filecmp\0fileinput\0fnmatch\0fractions\0ftplib\0functools\0gc\0"
+    "genericpath\0getopt\0getpass\0gettext\0glob\0graphlib\0grp\0gzip\0"
+    "hashlib\0heapq\0hmac\0html\0http\0idlelib\0imaplib\0imghdr\0imp\0"
+    "importlib\0inspect\0io\0ipaddress\0itertools\0json\0keyword\0lib2to3\0"
+    "linecache\0locale\0logging\0lzma\0mailbox\0mailcap\0marshal\0math\0"
+    "mimetypes\0mmap\0modulefinder\0msilib\0msvcrt\0multiprocessing\0"
+    "netrc\0nis\0nntplib\0nt\0ntpath\0nturl2path\0numbers\0opcode\0"
+    "operator\0optparse\0os\0ossaudiodev\0pathlib\0pdb\0pickle\0"
+    "pickletools\0pipes\0pkgutil\0platform\0plistlib\0poplib\0posix\0"
+    "posixpath\0pprint\0profile\0pstats\0pty\0pwd\0py_compile\0pyclbr\0"
+    "pydoc\0pydoc_data\0pyexpat\0queue\0quopri\0random\0re\0readline\0"
+    "reprlib\0resource\0rlcompleter\0runpy\0sched\0secrets\0select\0"
+    "selectors\0shelve\0shlex\0shutil\0signal\0site\0smtpd\0smtplib\0"
+    "sndhdr\0socket\0socketserver\0spwd\0sqlite3\0sre_compile\0"
+    "sre_constants\0sre_parse\0ssl\0stat\0statistics\0string\0stringprep\0"
+    "struct\0subprocess\0sunau\0symtable\0sys\0sysconfig\0syslog\0"
+    "tabnanny\0tarfile\0telnetlib\0tempfile\0termios\0textwrap\0this\0"
+    "threading\0time\0timeit\0tkinter\0token\0tokenize\0tomllib\0trace\0"
+    "traceback\0tracemalloc\0tty\0turtle\0turtledemo\0types\0typing\0"
+    "unicodedata\0unittest\0urllib\0uu\0uuid\0venv\0warnings\0wave\0"
+    "weakref\0webbrowser\0winreg\0winsound\0wsgiref\0xdrlib\0xml\0xmlrpc\0"
+    "zipapp\0zipfile\0zipimport\0zlib\0zoneinfo\0";
+
+// Is `name` (a top-level module name, no dots) one CPython ships?
+static inline bool pygram_is_cpython_stdlib(const char *name, size_t len) {
+    for (const char *p = pygram_cpython_stdlib; *p; p += strlen(p) + 1) {
+        if (strlen(p) == len && memcmp(p, name, len) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// CPython 3.11's public builtins (dir(builtins)), 149 names, ~1563 bytes. Same
+// packing, same purpose: NameError on one of these is pygram missing a builtin
+// (FileNotFoundError, frozenset, complex), while NameError on anything else is
+// the program's own undefined name and keeps CPython's exit 1.
+static const char pygram_cpython_builtins[] =
+    "ArithmeticError\0AssertionError\0AttributeError\0BaseException\0"
+    "BaseExceptionGroup\0BlockingIOError\0BrokenPipeError\0BufferError\0"
+    "BytesWarning\0ChildProcessError\0ConnectionAbortedError\0"
+    "ConnectionError\0ConnectionRefusedError\0ConnectionResetError\0"
+    "DeprecationWarning\0EOFError\0Ellipsis\0EncodingWarning\0"
+    "EnvironmentError\0Exception\0ExceptionGroup\0False\0FileExistsError\0"
+    "FileNotFoundError\0FloatingPointError\0FutureWarning\0GeneratorExit\0"
+    "IOError\0ImportError\0ImportWarning\0IndentationError\0IndexError\0"
+    "InterruptedError\0IsADirectoryError\0KeyError\0KeyboardInterrupt\0"
+    "LookupError\0MemoryError\0ModuleNotFoundError\0NameError\0None\0"
+    "NotADirectoryError\0NotImplemented\0NotImplementedError\0OSError\0"
+    "OverflowError\0PendingDeprecationWarning\0PermissionError\0"
+    "ProcessLookupError\0RecursionError\0ReferenceError\0ResourceWarning\0"
+    "RuntimeError\0RuntimeWarning\0StopAsyncIteration\0StopIteration\0"
+    "SyntaxError\0SyntaxWarning\0SystemError\0SystemExit\0TabError\0"
+    "TimeoutError\0True\0TypeError\0UnboundLocalError\0UnicodeDecodeError\0"
+    "UnicodeEncodeError\0UnicodeError\0UnicodeTranslateError\0"
+    "UnicodeWarning\0UserWarning\0ValueError\0Warning\0ZeroDivisionError\0"
+    "abs\0aiter\0all\0anext\0any\0ascii\0bin\0bool\0breakpoint\0bytearray\0"
+    "bytes\0callable\0chr\0classmethod\0compile\0complex\0copyright\0"
+    "credits\0delattr\0dict\0dir\0divmod\0enumerate\0eval\0exec\0exit\0"
+    "filter\0float\0format\0frozenset\0getattr\0globals\0hasattr\0hash\0"
+    "help\0hex\0id\0input\0int\0isinstance\0issubclass\0iter\0len\0"
+    "license\0list\0locals\0map\0max\0memoryview\0min\0next\0object\0oct\0"
+    "open\0ord\0pow\0print\0property\0quit\0range\0repr\0reversed\0round\0"
+    "set\0setattr\0slice\0sorted\0staticmethod\0str\0sum\0super\0tuple\0"
+    "type\0vars\0zip\0";
+
+static inline bool pygram_is_cpython_builtin(const char *name) {
+    size_t len = strlen(name);
+    for (const char *p = pygram_cpython_builtins; *p; p += strlen(p) + 1) {
+        if (strlen(p) == len && memcmp(p, name, len) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/*
+ * Write the one contract line and exit 90.
+ *
+ * Exiting from inside the VM rather than raising a catchable exception is
+ * deliberate. The whole point of the 90 is that the CALLER — the shell, the
+ * agent loop — sees it; a program that wrapped `import csv` in try/except
+ * ImportError would not have taken that branch under CPython either, because
+ * under CPython the import succeeds. Suppressing the signal to emulate a
+ * branch CPython never takes would be the silent divergence §6 exists to
+ * prevent.
+ *
+ * write(2) rather than mp_printf keeps this callable from anywhere in the VM.
+ * stdout in the unix port is unbuffered (write(2) per chunk, see
+ * ports/unix/unix_mphal.c), so exiting cannot lose output the program already
+ * produced — which §7 rule 3 allows a runtime 90 to leave behind.
+ */
+static inline NORETURN void pygram_exit_unsupported(const char *kind, const char *a, const char *b) {
+    char line[160];
+    static const char prefix[] = "pygram: unsupported: ";
+    size_t n = 0;
+    const char *piece[5] = { prefix, kind, ": ", a, b };
+    for (int i = 0; i < 5; i++) {
+        if (piece[i] == NULL) {
+            continue;
+        }
+        size_t l = strlen(piece[i]);
+        if (l > sizeof(line) - n - 2) {
+            l = sizeof(line) - n - 2;
+        }
+        memcpy(line + n, piece[i], l);
+        n += l;
+    }
+    line[n++] = '\n';
+    // One line, nothing else (§7 rule 5). A short write here would only ever
+    // happen on a closed stderr, where there is nothing useful left to do.
+    ssize_t ignored = write(STDERR_FILENO, line, n);
+    (void)ignored;
+    exit(PYGRAM_UNSUPPORTED_EXIT);
+}
+
+/*
+ * Called from py/builtinimport.c at the two points where a failed import is
+ * about to become an ImportError. If the module is one CPython has, this exits
+ * 90; otherwise it returns and the normal ImportError is raised.
+ *
+ * The name reported is the full dotted path that failed to resolve
+ * ("http.server"), while the table lookup uses its top-level package — so
+ * `import os.path` is recognised as unsupported even though the table holds
+ * only "os".
+ */
+static inline void pygram_check_unsupported_module(const char *name) {
+    const char *dot = strchr(name, '.');
+    size_t top = dot ? (size_t)(dot - name) : strlen(name);
+    if (pygram_is_cpython_stdlib(name, top)) {
+        pygram_exit_unsupported("module", name, NULL);
+    }
+}
+
+/*
+ * Called from py/runtime.c at the point where a failed attribute lookup is
+ * about to become an AttributeError.
+ *
+ * Two of the three cases are pygram being too small rather than the program
+ * being wrong, and §7 says so with `attribute: str.casefold` as its example:
+ *
+ *   - a missing attribute on a STDLIB MODULE (`re.findall`), and
+ *   - a missing method on a BUILT-IN TYPE (`str.casefold`).
+ *
+ * The third — a missing attribute on a user-defined class — is an ordinary
+ * program error and keeps CPython's exit 1. MP_TYPE_FLAG_INSTANCE_TYPE is what
+ * separates them: it marks a type created by a `class` statement.
+ *
+ * KNOWN IMPRECISION, stated rather than hidden: pygram cannot tell a method
+ * CPython has from a typo. `"x".casefold()` and `"x".casefld()` both report
+ * unsupported, where CPython gives AttributeError and exit 1 for the second.
+ * Closing that would mean carrying CPython's full attribute table for every
+ * stdlib module and built-in type — tens of KB of .rodata against a 700 KB
+ * budget — to improve the diagnosis of a typo. The cost of being wrong here is
+ * bounded: the caller retries with real python3 and gets the accurate error.
+ */
+static inline void pygram_check_unsupported_attr(mp_obj_t base, qstr attr) {
+    const char *attr_str = qstr_str(attr);
+    // Dunders are protocol probes, not library surface: reporting
+    // `attribute: str.__aiter__` would be noise, and several of them are
+    // looked up speculatively by the runtime itself.
+    if (attr_str[0] == '_') {
+        return;
+    }
+    if (mp_obj_is_type(base, &mp_type_module)) {
+        mp_obj_t dest[2];
+        mp_load_method_maybe(base, MP_QSTR___name__, dest);
+        if (dest[0] == MP_OBJ_NULL || !mp_obj_is_qstr(dest[0])) {
+            return;
+        }
+        const char *mod = qstr_str(mp_obj_str_get_qstr(dest[0]));
+        const char *dot = strchr(mod, '.');
+        size_t top = dot ? (size_t)(dot - mod) : strlen(mod);
+        if (!pygram_is_cpython_stdlib(mod, top)) {
+            return;
+        }
+        char qualified[96];
+        size_t l = strlen(mod);
+        if (l > sizeof(qualified) - 2) {
+            l = sizeof(qualified) - 2;
+        }
+        memcpy(qualified, mod, l);
+        qualified[l] = '.';
+        qualified[l + 1] = '\0';
+        pygram_exit_unsupported("attribute", qualified, attr_str);
+    }
+    const mp_obj_type_t *type = mp_obj_get_type(base);
+    if (type == NULL || mp_obj_is_instance_type(type) || mp_obj_is_type(base, &mp_type_type)) {
+        return;
+    }
+    char qualified[96];
+    const char *tname = qstr_str(type->name);
+    size_t l = strlen(tname);
+    if (l > sizeof(qualified) - 2) {
+        l = sizeof(qualified) - 2;
+    }
+    memcpy(qualified, tname, l);
+    qualified[l] = '.';
+    qualified[l + 1] = '\0';
+    pygram_exit_unsupported("attribute", qualified, attr_str);
+}
+
+/*
+ * Called from py/runtime.c where an undefined global becomes a NameError.
+ * A name CPython HAS in builtins is pygram being too small; anything else is
+ * the program's own bug and keeps exit 1.
+ */
+static inline void pygram_check_unsupported_name(const char *name) {
+    if (pygram_is_cpython_builtin(name)) {
+        pygram_exit_unsupported("builtin", name, NULL);
+    }
+}
+
+/*
+ * Called from py/runtime.c's mp_raise_NotImplementedError().
+ *
+ * Inside MicroPython that exception means exactly one thing — this VM does not
+ * implement the construct — which is the definition of the 90. The message is
+ * plain text rather than a compressed ROM string because mpconfigvariant.mk
+ * turns MICROPY_ROM_TEXT_COMPRESSION off, and this is one of the two reasons it
+ * does: an unsupported line has to name the precise thing (§7), and a
+ * compressed message cannot be printed from here.
+ */
+static inline NORETURN void pygram_exit_not_implemented(const char *msg) {
+    pygram_exit_unsupported("syntax", msg, NULL);
+}
+
+/*
+ * Called from py/argcheck.c when a C-level function is handed a keyword it does
+ * not accept, and from extmod/modre.c when the regex engine cannot compile a
+ * pattern. Both are the `argument` kind from §7: the program is fine, the
+ * argument is outside what pygram implements (json.dumps(indent=),
+ * print(flush=), a named group `(?P<k>...)`).
+ */
+static inline NORETURN void pygram_exit_unsupported_kwarg(const char *name) {
+    pygram_exit_unsupported("argument", "keyword ", name);
+}
+
+#endif // PYGRAM_UNSUPPORTED_H

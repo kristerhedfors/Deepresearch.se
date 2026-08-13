@@ -75,6 +75,84 @@ jobs:
       - name: Coverage ratchet
         run: npm run coverage:check
 
+  # pygram: build the REAL artifact and execute it.
+  #
+  # docs/PYGRAM.md §2 accepts pygram on three numbers that no unit test can
+  # stand in for — statically linked, under 700 KB stripped, and at most three
+  # file opens on `-c 'pass'` — because the sandbox cost model is bytes and
+  # path probes fetched over a WebSocket, not CPU. All three are properties of
+  # a compiled i386 binary, so the only honest gate compiles one.
+  #
+  # This is affordable because of a finding in docs/PYGRAM-RESEARCH.md §2.1:
+  # i386 binaries EXECUTE on an ordinary x86-64 Linux runner, so the target
+  # artifact can be built and run here with no Docker, no VM, no emulator and
+  # no cross toolchain — install gcc-multilib, build musl for i386 from source
+  # in about a minute, build the variant, run it. Network is needed once, for
+  # two pinned downloads.
+  #
+  # Deliberately its own job: it is slower than the unit suite and its failures
+  # read differently ("the binary grew past the gate" is not "a test broke").
+  pygram:
+    name: pygram (build + gates + conformance)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # The 32-bit host toolchain. Ubuntu's musl-tools is NOT a substitute:
+      # it is x86_64-only and ships no 32-bit musl libc, so its -m32 mode
+      # cannot work. scripts/pygram-build.sh builds musl from source instead.
+      - name: Install the i386 toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-multilib libc6-dev-i386 strace file
+
+      # Cache only the parts that depend purely on the pinned musl version:
+      # the tarball and the built prefix. The MicroPython checkout and the
+      # object files are deliberately NOT cached, so every run compiles the
+      # variant and the port patch from the pinned tag — a stale cache serving
+      # yesterday's binary would silently pass the gates it exists to enforce.
+      - name: Cache the musl-i386 toolchain
+        uses: actions/cache@v4
+        with:
+          path: |
+            pygram/.build/dl
+            pygram/.build/musl-i386
+          key: musl-i386-${{ hashFiles('scripts/pygram-build.sh') }}
+
+      # Builds, then runs the smoke checks that are contracts rather than
+      # measurements: sys.argv shapes, the pinned sys.path, and both halves of
+      # the unsupported contract — exit 90 with one stderr line for a module
+      # CPython has, exit 1 for one it does not.
+      - name: Build pygram
+        run: bash scripts/pygram-build.sh
+
+      # static / size / file opens, with the system CPython printed alongside
+      # as the baseline being replaced.
+      - name: Size and file-open gate
+        run: node scripts/pygram-gate.mjs pygram/build/pygram --compare
+
+      # Every corpus entry run twice — once by CPython, once by pygram — and
+      # diffed on stdout and exit code. MISMATCH is a hard failure; UNSUPPORTED
+      # (exit 90 with the contract line) is coverage, not failure, and is what
+      # the build order is read from.
+      - name: Conformance against CPython
+        run: PYGRAM_BIN=$PWD/pygram/build/pygram node tests/pygram/conformance.mjs
+
+      # The build log names WHY a compile failed, and 40 lines of tail in the
+      # step output is rarely the interesting part.
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: pygram-build-logs
+          path: pygram/.build/*.log
+          retention-days: 7
+          if-no-files-found: ignore
+
   # The browser suite, against a Worker started on the runner — no credentials,
   # no deployment, no tokens spent. Closes gap A4 in
   # docs/TESTING-GAP-ANALYSIS.md: these 63 tests already existed and were free,

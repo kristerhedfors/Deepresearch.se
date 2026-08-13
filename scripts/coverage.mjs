@@ -67,7 +67,9 @@ export const TEST_GLOBS = [
   "public/games/*/js/*.test.js",
   "sdk/*.test.mjs",
   "scripts/*.test.mjs",
+  "scripts/*/*.test.mjs",
   "tests/*.test.js",
+  "tests/pygram/*.test.mjs",
 ];
 
 /**

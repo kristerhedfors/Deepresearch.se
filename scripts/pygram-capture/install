@@ -1,0 +1,126 @@
+#!/bin/sh
+# pygram-capture installer: puts the python shim on $PATH as both `python` and
+# `python3`, so every interpreter invocation in this dev environment is logged.
+#
+#   scripts/pygram-capture/install              install into $PYGRAM_BIN (default ~/.local/bin)
+#   scripts/pygram-capture/install --uninstall  remove the shims it installed
+#   scripts/pygram-capture/install --force      overwrite a NON-shim file at the target
+#   scripts/pygram-capture/install --status     report what is installed, change nothing
+#
+# Idempotent: re-running copies the current shim over the installed one and says
+# so. It refuses to clobber a real interpreter that happens to live at the
+# target path unless --force is given, because silently shadowing one python
+# with another is a different bug every time.
+set -u
+
+MARKER=PYGRAM_SHIM_MARKER
+NAMES="python python3"
+
+src_dir=$(cd "$(dirname -- "$0")" && pwd)
+shim="$src_dir/python-shim"
+bin_dir=${PYGRAM_BIN:-${HOME:-}/.local/bin}
+
+mode=install
+force=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --uninstall) mode=uninstall ;;
+    --status) mode=status ;;
+    --force | -f) force=1 ;;
+    -h | --help) sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    *) echo "unknown argument: $1" >&2; exit 2 ;;
+  esac
+  shift
+done
+
+if [ ! -f "$shim" ]; then
+  echo "pygram-capture: shim not found at $shim" >&2
+  exit 1
+fi
+
+# is_shim FILE -> 0 when FILE is one of our shims (marker in the first lines).
+is_shim() {
+  [ -f "$1" ] && [ -r "$1" ] || return 1
+  head -n 12 "$1" 2>/dev/null | grep -q "$MARKER"
+}
+
+case "$mode" in
+  status)
+    echo "shim source : $shim"
+    echo "install dir : $bin_dir"
+    for n in $NAMES; do
+      t="$bin_dir/$n"
+      if is_shim "$t"; then
+        if cmp -s "$shim" "$t"; then echo "  $n: installed (current)"; else echo "  $n: installed (STALE — re-run the installer)"; fi
+      elif [ -e "$t" ]; then
+        echo "  $n: NOT ours — a different file occupies $t"
+      else
+        echo "  $n: not installed"
+      fi
+    done
+    echo "log file    : ${PYGRAM_LOG:-${HOME:-~}/.pygram/invocations.jsonl}"
+    case ":$PATH:" in
+      *":$bin_dir:"*) echo "PATH        : $bin_dir is on PATH" ;;
+      *) echo "PATH        : WARNING — $bin_dir is NOT on PATH; the shim will not be used" ;;
+    esac
+    exit 0
+    ;;
+  uninstall)
+    removed=0
+    for n in $NAMES; do
+      t="$bin_dir/$n"
+      if is_shim "$t"; then
+        rm -f "$t" && echo "removed  $t" && removed=$((removed + 1))
+        if [ -e "$t.pygram-backup" ]; then
+          mv "$t.pygram-backup" "$t" && echo "restored $t (from .pygram-backup)"
+        fi
+      elif [ -e "$t" ]; then
+        echo "left alone $t (not a pygram shim)"
+      fi
+    done
+    [ "$removed" -eq 0 ] && echo "nothing to uninstall in $bin_dir"
+    echo "note: the log at ${PYGRAM_LOG:-${HOME:-~}/.pygram/invocations.jsonl} was NOT deleted."
+    exit 0
+    ;;
+esac
+
+if [ -z "$bin_dir" ] || [ "$bin_dir" = "/.local/bin" ]; then
+  echo "pygram-capture: cannot resolve an install dir (\$HOME unset). Set PYGRAM_BIN." >&2
+  exit 1
+fi
+
+mkdir -p "$bin_dir" || { echo "pygram-capture: cannot create $bin_dir" >&2; exit 1; }
+
+for n in $NAMES; do
+  t="$bin_dir/$n"
+  if [ -e "$t" ] && ! is_shim "$t"; then
+    if [ "$force" -eq 1 ]; then
+      mv "$t" "$t.pygram-backup" && echo "backed up $t -> $t.pygram-backup"
+    else
+      echo "REFUSING: $t exists and is not a pygram shim." >&2
+      echo "  It looks like a real interpreter. Re-run with --force to move it aside," >&2
+      echo "  or set PYGRAM_BIN to a directory earlier on PATH." >&2
+      exit 1
+    fi
+  fi
+  was=stale
+  is_shim "$t" && cmp -s "$shim" "$t" && was=current
+  cp "$shim" "$t.pygram-tmp" && chmod 0755 "$t.pygram-tmp" && mv "$t.pygram-tmp" "$t" || {
+    echo "pygram-capture: failed to install $t" >&2
+    rm -f "$t.pygram-tmp"
+    exit 1
+  }
+  case "$was" in
+    current) echo "unchanged $t (already the current shim)" ;;
+    *) echo "installed $t" ;;
+  esac
+done
+
+echo
+echo "log file : ${PYGRAM_LOG:-${HOME:-~}/.pygram/invocations.jsonl}"
+case ":$PATH:" in
+  *":$bin_dir:"*) echo "PATH     : ok — $bin_dir is on PATH" ;;
+  *) echo "PATH     : WARNING — put $bin_dir first on PATH, or the shim never runs" ;;
+esac
+echo "verify   : command -v python3 && python3 -c 'print(1)' && tail -1 \"\${PYGRAM_LOG:-\$HOME/.pygram/invocations.jsonl}\""
+echo "harvest  : node scripts/pygram-capture/harvest.mjs"
