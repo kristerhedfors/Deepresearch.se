@@ -69,3 +69,13 @@ COPT = -Os -DNDEBUG
 # musl has no __stack_chk_fail_local, and the guard is pointless in a binary
 # whose whole input is a program the caller already controls.
 CFLAGS += -fno-stack-protector
+
+# Error strings stay as plain text in .rodata rather than being compressed.
+# Two reasons, both correctness rather than taste:
+#   - docs/PYGRAM-SUBSET.md §6 makes several exception messages contractual
+#     ("invalid literal for int() with base 10: 'abc'"), and
+#   - the unsupported contract has to print a NotImplementedError's message from
+#     inside the VM (pygram_unsupported.h), which a compressed ROM string cannot
+#     be turned back into at that point.
+# Measured cost: about 8 KB against a 700 KB budget.
+MICROPY_ROM_TEXT_COMPRESSION = 0

@@ -1,7 +1,7 @@
 # pygram frozen shim: hashlib. MicroPython's C hashlib (aliased as `_hashlib`
 # by the variant) has update()/digest() but no hexdigest(), which every corpus
 # program uses. See pygram/lib/README.md.
-import _hashlib
+import uhashlib as _hashlib
 from binascii import hexlify as _hexlify
 
 

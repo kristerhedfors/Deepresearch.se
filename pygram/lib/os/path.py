@@ -1,5 +1,5 @@
 # pygram frozen shim: os.path (posixpath subset). See pygram/lib/README.md.
-import _os
+import uos as _os
 
 sep = "/"
 extsep = "."

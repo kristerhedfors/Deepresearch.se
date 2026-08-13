@@ -2,7 +2,7 @@
 # (aliased as `_re` by the variant). Adds findall/finditer/split/escape,
 # named groups, the I/M/S flags, CPython sub() semantics, and rewrites the
 # constructs re1.5 would silently mis-compile. See pygram/lib/README.md.
-import _re
+import ure as _re
 
 I = IGNORECASE = 2
 M = MULTILINE = 8

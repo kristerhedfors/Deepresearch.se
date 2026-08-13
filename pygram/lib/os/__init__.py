@@ -2,8 +2,8 @@
 # `_os` by the variant) and adds the CPython surface it lacks: os.path,
 # os.environ, os.makedirs, os.walk and a stat result with named fields.
 # See pygram/lib/README.md.
-from _os import *
-import _os
+from uos import *
+import uos as _os
 
 import os.path as path
 

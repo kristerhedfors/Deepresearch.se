@@ -83,6 +83,49 @@ static inline bool pygram_is_cpython_stdlib(const char *name, size_t len) {
     return false;
 }
 
+// CPython 3.11's public builtins (dir(builtins)), 149 names, ~1563 bytes. Same
+// packing, same purpose: NameError on one of these is pygram missing a builtin
+// (FileNotFoundError, frozenset, complex), while NameError on anything else is
+// the program's own undefined name and keeps CPython's exit 1.
+static const char pygram_cpython_builtins[] =
+    "ArithmeticError\0AssertionError\0AttributeError\0BaseException\0"
+    "BaseExceptionGroup\0BlockingIOError\0BrokenPipeError\0BufferError\0"
+    "BytesWarning\0ChildProcessError\0ConnectionAbortedError\0"
+    "ConnectionError\0ConnectionRefusedError\0ConnectionResetError\0"
+    "DeprecationWarning\0EOFError\0Ellipsis\0EncodingWarning\0"
+    "EnvironmentError\0Exception\0ExceptionGroup\0False\0FileExistsError\0"
+    "FileNotFoundError\0FloatingPointError\0FutureWarning\0GeneratorExit\0"
+    "IOError\0ImportError\0ImportWarning\0IndentationError\0IndexError\0"
+    "InterruptedError\0IsADirectoryError\0KeyError\0KeyboardInterrupt\0"
+    "LookupError\0MemoryError\0ModuleNotFoundError\0NameError\0None\0"
+    "NotADirectoryError\0NotImplemented\0NotImplementedError\0OSError\0"
+    "OverflowError\0PendingDeprecationWarning\0PermissionError\0"
+    "ProcessLookupError\0RecursionError\0ReferenceError\0ResourceWarning\0"
+    "RuntimeError\0RuntimeWarning\0StopAsyncIteration\0StopIteration\0"
+    "SyntaxError\0SyntaxWarning\0SystemError\0SystemExit\0TabError\0"
+    "TimeoutError\0True\0TypeError\0UnboundLocalError\0UnicodeDecodeError\0"
+    "UnicodeEncodeError\0UnicodeError\0UnicodeTranslateError\0"
+    "UnicodeWarning\0UserWarning\0ValueError\0Warning\0ZeroDivisionError\0"
+    "abs\0aiter\0all\0anext\0any\0ascii\0bin\0bool\0breakpoint\0bytearray\0"
+    "bytes\0callable\0chr\0classmethod\0compile\0complex\0copyright\0"
+    "credits\0delattr\0dict\0dir\0divmod\0enumerate\0eval\0exec\0exit\0"
+    "filter\0float\0format\0frozenset\0getattr\0globals\0hasattr\0hash\0"
+    "help\0hex\0id\0input\0int\0isinstance\0issubclass\0iter\0len\0"
+    "license\0list\0locals\0map\0max\0memoryview\0min\0next\0object\0oct\0"
+    "open\0ord\0pow\0print\0property\0quit\0range\0repr\0reversed\0round\0"
+    "set\0setattr\0slice\0sorted\0staticmethod\0str\0sum\0super\0tuple\0"
+    "type\0vars\0zip\0";
+
+static inline bool pygram_is_cpython_builtin(const char *name) {
+    size_t len = strlen(name);
+    for (const char *p = pygram_cpython_builtins; *p; p += strlen(p) + 1) {
+        if (strlen(p) == len && memcmp(p, name, len) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /*
  * Write the one contract line and exit 90.
  *
@@ -207,6 +250,42 @@ static inline void pygram_check_unsupported_attr(mp_obj_t base, qstr attr) {
     qualified[l] = '.';
     qualified[l + 1] = '\0';
     pygram_exit_unsupported("attribute", qualified, attr_str);
+}
+
+/*
+ * Called from py/runtime.c where an undefined global becomes a NameError.
+ * A name CPython HAS in builtins is pygram being too small; anything else is
+ * the program's own bug and keeps exit 1.
+ */
+static inline void pygram_check_unsupported_name(const char *name) {
+    if (pygram_is_cpython_builtin(name)) {
+        pygram_exit_unsupported("builtin", name, NULL);
+    }
+}
+
+/*
+ * Called from py/runtime.c's mp_raise_NotImplementedError().
+ *
+ * Inside MicroPython that exception means exactly one thing — this VM does not
+ * implement the construct — which is the definition of the 90. The message is
+ * plain text rather than a compressed ROM string because mpconfigvariant.mk
+ * turns MICROPY_ROM_TEXT_COMPRESSION off, and this is one of the two reasons it
+ * does: an unsupported line has to name the precise thing (§7), and a
+ * compressed message cannot be printed from here.
+ */
+static inline NORETURN void pygram_exit_not_implemented(const char *msg) {
+    pygram_exit_unsupported("syntax", msg, NULL);
+}
+
+/*
+ * Called from py/argcheck.c when a C-level function is handed a keyword it does
+ * not accept, and from extmod/modre.c when the regex engine cannot compile a
+ * pattern. Both are the `argument` kind from §7: the program is fine, the
+ * argument is outside what pygram implements (json.dumps(indent=),
+ * print(flush=), a named group `(?P<k>...)`).
+ */
+static inline NORETURN void pygram_exit_unsupported_kwarg(const char *name) {
+    pygram_exit_unsupported("argument", "keyword ", name);
 }
 
 #endif // PYGRAM_UNSUPPORTED_H

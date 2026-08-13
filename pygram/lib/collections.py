@@ -2,7 +2,7 @@
 # Re-exports MicroPython's C collections (deque/namedtuple/OrderedDict) when
 # the variant aliases it as `_collections`. See pygram/lib/README.md.
 try:
-    from _collections import *
+    from ucollections import *
 except ImportError:
     pass
 

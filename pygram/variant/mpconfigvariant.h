@@ -102,6 +102,12 @@
 #define MICROPY_PY_SYS_SETTRACE (0)
 #define MICROPY_TRACKED_ALLOC (0)
 
+// Float repr must be CPython's shortest round-trip: docs/PYGRAM-SUBSET.md §6
+// requires 0.1 + 0.2 -> 0.30000000000000004 AND 9.7 -> 9.7, and the default
+// APPROX implementation gets the first right while printing the second as
+// 9.699999999999999. EXACT is the only setting that satisfies `float-repr`.
+#define MICROPY_FLOAT_FORMAT_IMPL (MICROPY_FLOAT_FORMAT_IMPL_EXACT)
+
 // Detailed error reporting stays ON. The messages are not decoration: §6 makes
 // several of them contractual ("invalid literal for int() with base 10: 'abc'"),
 // and the terse mode would replace the module name in an ImportError with

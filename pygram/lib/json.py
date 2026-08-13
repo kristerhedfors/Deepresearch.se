@@ -2,7 +2,7 @@
 # `_json` by the variant); serialisation is reimplemented because the C
 # dumps() has no indent/sort_keys/ensure_ascii and does not escape non-ASCII.
 # See pygram/lib/README.md.
-import _json
+import ujson as _json
 
 
 class JSONDecodeError(ValueError):
