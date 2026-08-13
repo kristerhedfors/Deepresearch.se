@@ -5,8 +5,10 @@ directive) into a SELF-REFILLING QUEUE OF TWENTY that replaced the try-it
 queue's launcher in the chat header: twenty unanswered clips spanning all
 seven agents, each numbered and named, each stamped with the commit it was
 recorded at, and each able to grow a thread of successive versions when it
-comes back with feedback. The pixels are verified (§8); what remains untested
-is the gesture on a real touch screen.*
+comes back with feedback. Extended again 2026-08-13 (owner directive): the
+review surface is a scrollable FEED of every capture rather than a deck that
+served the next in queue, and a verdict can be UNDONE. The pixels are verified
+(§8); what remains untested is the gesture on a real touch screen.*
 
 The working guide is the **video-capture** skill; this is the reference —
 formats, endpoints, fields, and the reasoning behind the numbers.
@@ -138,7 +140,7 @@ and trimming — never for cutting.
 Three of those exist for the review queue rather than for the edit:
 
 - **`commit_sha`** is the commit the SITE WAS SERVING, resolved once per batch.
-  Without it a clip is un-reproducible — the deck outlives the code, and six
+  Without it a clip is un-reproducible — the feed outlives the code, and six
   merges later "why does this video not match the app" has no answer.
 
   It is deliberately **not** always the working tree's HEAD. Against a loopback
@@ -155,7 +157,7 @@ Three of those exist for the review queue rather than for the edit:
   deploy rebuilds, read with a 300-byte Range request. `origin/main` is still
   only a best answer (a branch build also deploys here), so this is what makes
   a wrong `commit_sha` **detectable** rather than believed.
-- **`name`** is the short human name the deck shows beside the capture's
+- **`name`** is the short human name the feed shows beside the capture's
   `#CAP-<id>` number, derived from the starter id (`res-sv-elpris` → "Elpris":
   the agent prefix and the language marker are noise, not name) so it needs no
   model call and never blocks an unattended top-up. It
@@ -384,7 +386,7 @@ YAVG per frame across the three published clips (CAP-20/21/22): every
 near-white frame in all three sits between t=0 and ~0.65 s at YAVG 235–236,
 and every tail is a static content-rich frame. **The blank frame is at the
 head, not the tail.** What a reviewer reports as "the video ends blank" is the
-deck's player looping — it wraps to t=0, and t=0 is the flash.
+player looping — it wraps to t=0, and t=0 is the flash.
 
 So `headTrim(timeline)` derives the head trim instead of hardcoding it. The
 sampler only starts once the app is up (composer visible, model dropdown
@@ -467,7 +469,7 @@ and warnings and writes the file anyway, because "95 seconds against a 90
 second target" is a judgement, not an error.
 
 Passed a `content` block (`planContent(plan)`), it also judges the **ending**,
-which is the half a reviewer cannot see from the deck's card:
+which is the half a reviewer cannot see from the card:
 
 | Verdict | Why |
 |---|---|
@@ -489,7 +491,7 @@ verdict and the original `meta.json`, which is what the publish step reads.
 
 The poster is taken from the *edited* file, so its offset is output time — a
 frame from the raw recording usually lands inside a cut. `posterAtMs` puts it
-in the **middle of the end hold** by default: the deck's card shows the poster,
+in the **middle of the end hold** by default: the card shows the poster,
 so the poster is the one image that says whether the run succeeded without
 pressing play. It used to be 60% in, which showed an answer mid-stream and
 looked identical whether the run finished, errored or hung (`--poster mid`
@@ -528,7 +530,7 @@ Admin-gated, under `/api/admin/captures` (`src/captures.js`, dispatched from
 
 | Method | Path | Purpose |
 |---|---|---|
-| `GET` | `/api/admin/captures` | List. `?queue=1` is the unreviewed deck; also `status`, `agent`, `model`, `q`, `limit`, `format=text`. |
+| `GET` | `/api/admin/captures` | List. `?queue=1` is the unreviewed queue; also `status`, `agent`, `model`, `q`, `limit`, `format=text`. |
 | `POST` | `/api/admin/captures` | Create the metadata row; returns the upload URLs. |
 | `GET` | `/api/admin/captures/:id` | One capture with its reviews. |
 | `PATCH` | `/api/admin/captures/:id` | `{label?, name?, status?, ref?, commit_sha?}`. |
@@ -542,6 +544,7 @@ Admin-gated, under `/api/admin/captures` (`src/captures.js`, dispatched from
 | `POST` | `/api/admin/captures/:id/versions` | A NEW cut: `version = max+1`, status back to `new`. |
 | `PUT`/`GET` | `/api/admin/captures/:id/versions/:v/{video,poster}` | One specific cut; Range preserved. |
 | `POST` | `/api/admin/captures/:id/review` | The verdict: `{verdict:"like"\|"feedback", note?}`. |
+| `DELETE` | `/api/admin/captures/:id/review` | Undo the last verdict — the row goes, a like is un-counted, the capture reverts. 404 when there is none. |
 
 `commit_sha` on `PATCH` is for BACKFILL — the recorder stamps it at capture
 time and nothing in the normal path edits it — and is validated as a hex sha
@@ -549,7 +552,7 @@ rather than free text, because a provenance field holding "unknown" is worse
 than an empty one: it looks like an answer.
 
 Range support is not a nicety: the surface exists so a clip can be scrubbed in
-a deck, and a `<video>` element seeks by range.
+a feed, and a `<video>` element seeks by range.
 
 Uploads are capped at **100 MB** for the video and 4 MB for the poster. 100 MB
 is not a policy choice — it is Cloudflare's edge body limit on this plan, which
@@ -561,7 +564,7 @@ with an opaque edge error instead of a legible 413. The pipeline aims at 40 MB
 Without the R2 binding the media endpoints answer 503 and the rest of the
 board keeps working — the metadata list is useful on its own.
 
-### 6.3 The swipe deck
+### 6.3 The review feed
 
 **Capture reviews** is its own admin-gated page at **`/captures/`**, reached
 from the account panel's admin row beside "Admin interface".
@@ -580,25 +583,70 @@ generalising them, so a non-admin gets exactly the same 302 to `/rver` — no
 403 body naming a surface they cannot see. Neither the page nor its CSS/JS is
 on the public allowlist in `src/assets.js`.
 
-- **Right = like.** Posts immediately, the deck advances.
-- **Left = feedback.** The card leaves and a **feedback input field takes its
-  place**, titled with the capture so the reviewer knows what they are writing
-  about. Nothing posts until Send. The server *requires* a note on a
-  `feedback` verdict — a left swipe with no words is a shrug, not a review —
-  so the field is the mechanism rather than a courtesy.
-- Arrow keys and two explicit buttons do the same two things. A gesture is
-  never the only way to act on this page.
+**It is a feed, not a deck** (owner directive, 2026-08-13: *"I can see only the
+next in queue — I want to scroll through all of them north to south and swipe
+or review any one of my choice"*). Until then the page rendered a stack of
+three cards with one interactive top: the only reviewable clip was whichever
+one the server had put first. Now every capture in the open list is on the
+page, in order, and the reviewer picks.
+
+- **Right = like**, from a swipe, the 👍 button or →.
+- **Left = feedback.** The note field opens **inside the card**, under the
+  clip it is about. Nothing posts until Send. The server *requires* a note on a
+  `feedback` verdict — a left swipe with no words is a shrug, not a review — so
+  the field is the mechanism rather than a courtesy.
+- **A filed card keeps its place**, wearing what was decided, with an
+  **undo** beside it. It is not removed: a card that vanished would take the
+  reader's position in the scroll with it, and there would be nothing left to
+  undo against.
+- Arrow keys and the two explicit buttons do the same two things. A gesture is
+  never the only way to act on this page — and on a feed it cannot be, because
+  nobody drags fifty cards with a mouse. The keys act on the focused card, else
+  on the first unfiled card in the viewport.
+- All four lists (To review / Appreciated / Needs work / All) are the same
+  reviewable feed. Changing your mind about a clip you already filed IS
+  reviewing it, so the last three stopped being read-only in the same change.
+
+**Undo** — `DELETE /api/admin/captures/:id/review`, and `scripts/captures
+--undo <id>` — takes the LAST verdict back: the `capture_reviews` row is
+deleted, a like is un-counted, and the capture reverts to whatever the verdict
+before it said, or to the queue if there was none. Three rules, all in
+`undoReviewState`:
+
+- **Only the last verdict.** The thread is the whole input to the re-record
+  loop, so undo is for the swipe just made, not a way to rewrite history.
+- **The status comes from what remains**, so undoing the second of two
+  verdicts restores the first.
+- **`answered_at` clears only when nothing is left.** Everywhere else that
+  stamp is set once and never cleared (§6.4). Undoing the ONLY verdict is the
+  one case where it describes something that did not happen, and leaving it
+  would hold the capture out of the top-up's unanswered count forever.
+
+Before this existed a mis-swipe could only be half-fixed by PATCHing the
+status: the like stayed counted and the verdict stayed in the thread as if it
+had been meant.
+
+**Clips mount lazily.** A card's `<video>` is built when the card comes within
+600px of the viewport (`IntersectionObserver`), not when the feed renders —
+fifty `preload="metadata"` elements on page open is fifty range requests, and
+on a phone that is the difference between a feed that scrolls and one that
+stalls. Playing one clip pauses the others.
 
 The pure half (`public/js/captures-core.js`) owns the thresholds, the
-direction test, the tilt, the hint overlay and the formatting, and is
-node-tested. The DOM half (`public/js/captures.js`) owns pointer capture,
-the video element and the fetches, and fails soft: a failed review POST leaves
-the card in place with an inline error rather than silently dropping a
-verdict.
+direction test, the tilt, the hint overlay, the per-card state and the
+formatting, and is node-tested. The DOM half (`public/js/captures.js`) owns
+pointer capture, the video elements, the lazy mount and the fetches, and fails
+soft: a failed review POST leaves the card as it was with an inline error
+rather than silently dropping a verdict.
+
+One gesture rule earns its keep more here than it did on the deck: a
+mostly-vertical drag (`SWIPE.maxAngle`) is never a verdict. On a feed the
+reviewer's thumb crosses twenty cards on the way down, and every one of those
+is a scroll, not a judgement.
 
 ### 6.4 The queue of twenty
 
-The deck is not a pile that drains — it is a **queue held at twenty**
+The feed is not a pile that drains — it is a **queue held at twenty**
 (`QUEUE_TARGET`), because its purpose is to let the owner judge how the
 product answers without running a prompt and waiting for it. Twenty unanswered
 clips spanning all seven agents is enough to sample the whole surface in one
@@ -610,14 +658,14 @@ is unambiguous. The name is short and human ("Elpris", "Vitamin D"), derived
 from the starter id and improvable by hand.
 
 **Every capture records its commit.** `commit_sha` is the git HEAD the
-recording was made at. The deck outlives the code; without it, "why does this
+recording was made at. The feed outlives the code; without it, "why does this
 video not match the app" has no answer.
 
 **What happens when one is answered:**
 
 | Verdict | The capture | The queue |
 |---|---|---|
-| **Like** (swipe right) | → `liked`, filed in **Appreciated**, still viewable | one short; the top-up records a new one |
+| **Like** (swipe right) | → `liked`, filed in **Appreciated**, still on the feed with an undo | one short; the top-up records a new one |
 | **Feedback** (swipe left, note required) | → `needs_work`, and the note joins its **thread** | one short; the top-up records a new one |
 
 A capture with feedback is not discarded and not overwritten. It grows
@@ -628,7 +676,7 @@ is stamped on the FIRST verdict and never cleared, which is how the top-up
 tells a genuinely fresh capture from a re-cut of an old one.
 
 `npm run capture:topup` reads `queue-status`, records whatever is missing —
-always giving the next slot to the agent with the fewest captures in the deck,
+always giving the next slot to the agent with the fewest captures in the queue,
 and never re-recording an (agent, starter) pair already there — then edits,
 publishes, and reports. `deficit <= 0` exits without recording, so it is safe
 on a timer.
@@ -684,7 +732,7 @@ first written:
   pipeline spent researching is exactly the span the editor acts on.
 - **Range works on the served video.** A `bytes=1000000-1000999` request
   answers `206` with the right `content-range` and exactly 1000 bytes, which is
-  what lets the deck scrub a clip rather than only play it.
+  what lets a card scrub a clip rather than only play it.
 
 And one thing it CHANGED. The default `--min-still 1500` is wrong for a
 research run: the activity bar posts a new search step every couple of
@@ -697,7 +745,7 @@ phase; this is a per-run knob, not a bug.
 
 ### Still not verified
 
-- **The deck has not met a thumb.** The thresholds in `captures-core.js` are
+- **The feed has not met a thumb.** The thresholds in `captures-core.js` are
   reasoned and unit-tested, and the page has been rendered at phone width in a
   headless browser — but no real touch screen has dragged a card. The four test
   points in `docs/test-requests/` exist for this.

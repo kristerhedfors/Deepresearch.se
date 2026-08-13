@@ -5,11 +5,20 @@
 //
 // A "capture" is a recorded run of the research pipeline (one agent × one
 // model × one query) edited into a short clip for sharing. The admin reviews
-// them as a card deck: swipe RIGHT to keep a clip, LEFT to say what is wrong
-// with it. The gesture MATH is the fiddly, regression-prone part — a threshold
-// that is wrong by 20px makes the deck feel either twitchy or dead — so it
-// lives here as pure functions with unit tests rather than tangled into
-// pointer handlers where the only way to check it is a thumb on a phone.
+// them as a vertical FEED: every capture in the open list is on the page, in
+// order, scrolled north to south, and any one of them can be reviewed —
+// swipe RIGHT to keep a clip, LEFT to say what is wrong with it. The gesture
+// MATH is the fiddly, regression-prone part — a threshold that is wrong by
+// 20px makes the feed feel either twitchy or dead — so it lives here as pure
+// functions with unit tests rather than tangled into pointer handlers where
+// the only way to check it is a thumb on a phone.
+//
+// It was a one-card-at-a-time DECK until 2026-08-13 (owner directive: "I can
+// see only the next in queue — I want to scroll through all of them north to
+// south and review any one of my choice"). The gesture math did not change;
+// what changed is that a card is no longer consumed by being filed. It stays
+// where it is, wearing its verdict, with an UNDO beside it — which is the
+// other half of the same directive ("revert the one I just swiped right").
 //
 // Nothing here may touch `document`, `window`, `fetch` or the clock: the test
 // runner imports this file in bare Node.
@@ -86,10 +95,12 @@ export const SWIPE = {
   // that and still under one thumb arc.
   minPx: 72,
   // A gesture counts as horizontal only while |dy| <= |dx| * maxAngle, i.e.
-  // within ~31° of the horizontal. The deck sits inside a long scrolling admin
-  // page, so a mostly-vertical drag is the owner SCROLLING past the panel, not
-  // judging a clip; filing a capture on a scroll would be both wrong and
-  // unreviewable (the card is already gone by the time they notice).
+  // within ~31° of the horizontal. The feed is a long north–south scroll, so a
+  // mostly-vertical drag is the owner SCROLLING PAST a clip, not judging it;
+  // filing a capture on a scroll would be both wrong and — before the feed
+  // kept filed cards in place — unnoticeable until much later. This rule
+  // carries more weight now than it did in the deck, not less: there are
+  // twenty cards under the thumb on the way down instead of one.
   maxAngle: 0.6,
   // px/ms. A flick is how a deck is actually used on a phone: the thumb leaves
   // the glass long before the card has travelled 28% of its width. 0.5 px/ms
@@ -295,30 +306,101 @@ export function swipeHint(dx, dy, width) {
   };
 }
 
-// ---- deck bookkeeping ------------------------------------------------------
+// ---- feed bookkeeping ------------------------------------------------------
 
 /**
- * The captures still awaiting a verdict, in the server's display order minus
- * anything already reviewed in THIS session. The queue is not re-fetched after
- * every verdict (that would re-download 50 rows per swipe and stutter the
- * deck), so the client has to remember what it has filed.
+ * The rows the feed can actually render, in the server's display order. A row
+ * with no id is dropped: every action the card offers posts to `/:id/review`,
+ * so an id-less row would be a card whose buttons cannot work (UX-18).
  *
  * @param {any[]} captures
- * @param {{ reviewedIds?: Iterable<any> }} [opts]
  * @returns {any[]}
  */
-export function nextDeck(captures, opts) {
-  const list = Array.isArray(captures) ? captures : [];
-  const raw = opts && opts.reviewedIds ? opts.reviewedIds : [];
-  /** @type {Set<string>} */
-  const done = new Set();
-  try {
-    for (const id of /** @type {Iterable<any>} */ (raw)) done.add(String(id));
-  } catch {
-    // A non-iterable reviewedIds (a bad caller) must not empty the deck.
-  }
-  return list.filter((c) => c && c.id != null && !done.has(String(c.id)));
+export function feedRows(captures) {
+  return (Array.isArray(captures) ? captures : []).filter((c) => c && c.id != null);
 }
+
+/**
+ * How many of these captures still want a verdict. This is the number in the
+ * heading, and it is computed from the rows' STATUS rather than from a count
+ * of what was swiped this session: filing a card no longer removes it, so the
+ * server's answer (merged back into the row after each verdict) is the only
+ * thing that can be right after an undo.
+ *
+ * @param {any[]} captures
+ * @returns {number}
+ */
+export function pendingCount(captures) {
+  return feedRows(captures).filter((c) => cardStatus(c) === "new").length;
+}
+
+/**
+ * A capture's status, normalised. Anything unrecognised — including a row from
+ * a newer server — reads as `new`, because the failure that matters is a card
+ * that cannot be acted on; a card offered twice costs one extra swipe.
+ *
+ * @param {any} c
+ * @returns {string}
+ */
+function cardStatus(c) {
+  const s = c && typeof c === "object" && typeof c.status === "string" ? c.status.trim() : "";
+  return s === "liked" || s === "needs_work" || s === "archived" ? s : "new";
+}
+
+/** How a filed card announces what was done to it. */
+export const FILED_LABELS = { liked: "👍 Liked", needs_work: "✍️ Sent back", archived: "Archived" };
+
+/**
+ * Everything the feed needs to know about ONE card's state, derived from the
+ * row the server sent.
+ *
+ * Driven by `status`, deliberately NOT by the last review. A capture that was
+ * sent back and then RE-CUT returns to `new` while keeping every earlier
+ * verdict in its thread — reading the last review would render that card as
+ * already filed and there would be no way to review the new cut at all.
+ *
+ * `can_undo` is the mirror: it asks whether there is a verdict to take back,
+ * which is a question about the THREAD, not about the status. That is what
+ * makes "revert the one I just swiped right" work on a capture whose status
+ * someone has since moved by hand.
+ *
+ * @param {any} c
+ * @returns {{ status: string, filed: boolean, verdict: Verdict|null, label: string,
+ *   can_undo: boolean, reviews: number }}
+ */
+export function cardState(c) {
+  const status = cardStatus(c);
+  const reviews = c && typeof c === "object" && Array.isArray(c.reviews) ? c.reviews.length : 0;
+  return {
+    status,
+    filed: status !== "new",
+    verdict: status === "liked" ? "like" : status === "needs_work" ? "feedback" : null,
+    label: FILED_LABELS[/** @type {keyof typeof FILED_LABELS} */ (status)] || "",
+    can_undo: reviews > 0,
+    reviews,
+  };
+}
+
+/**
+ * The one-line label on the undo control — "Undo the 👍", "Undo the ✍️".
+ * Names the verdict being taken back rather than saying "undo", because on a
+ * page where every card has one, "Undo" alone does not say what is about to
+ * happen to THIS card.
+ *
+ * @param {any} c
+ * @returns {string} "" when there is nothing to undo
+ */
+export function undoLabel(c) {
+  const st = cardState(c);
+  if (!st.can_undo) return "";
+  const last = /** @type {any[]} */ (c.reviews)[c.reviews.length - 1];
+  const verdict = last && last.verdict === "like" ? "like" : last && last.verdict === "feedback" ? "feedback" : null;
+  const mark = verdict ? VERDICT_MARKS[verdict] : st.verdict ? VERDICT_MARKS[st.verdict] : "";
+  return mark ? `↩︎ Undo the ${mark}` : "↩︎ Undo the last verdict";
+}
+
+/** @type {Record<string, string>} */
+const VERDICT_MARKS = { like: "👍", feedback: "✍️" };
 
 // ---- display helpers -------------------------------------------------------
 

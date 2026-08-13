@@ -73,6 +73,9 @@
 //   PUT    /api/admin/captures/:id/poster raw JPEG bytes (4 MB cap)
 //   GET    /api/admin/captures/:id/poster the poster frame
 //   POST   /api/admin/captures/:id/review THE SWIPE — {verdict, note?}
+//   DELETE /api/admin/captures/:id/review UNDO the last verdict — the review
+//                                         row goes, a like is un-counted, and
+//                                         the capture returns to the queue
 //   GET    /api/admin/captures/:id/versions          the thread, newest first
 //   POST   /api/admin/captures/:id/versions          a NEW cut: version = max+1
 //   PUT|GET /api/admin/captures/:id/versions/:v/video   one version's MP4
@@ -183,13 +186,63 @@ export const CAPTURE_QUEUE_TARGET = 20;
 export const CAPTURE_VERDICTS = ["like", "feedback"];
 
 // One glyph per verdict, used everywhere a verdict is rendered (the text view
-// here, the swipe deck's buttons).
+// here, the review feed's buttons).
 /** @type {Record<string, string>} */
 export const VERDICT_SYMBOLS = { like: "👍", feedback: "✍️" };
 
 // The verdict → the status it drives.
 /** @type {Record<string, string>} */
 export const VERDICT_STATUS = { like: "liked", feedback: "needs_work" };
+
+/**
+ * UNDO — what the row looks like once the LAST verdict is taken back (owner
+ * directive, 2026-08-13: "revert the one I just swiped right"). Pure, so the
+ * rule can be read and tested without a database.
+ *
+ * A swipe is a fast gesture on a small target and the right one is permanent;
+ * before this, a mis-swipe could only be half-fixed by PATCHing the status,
+ * which left the like counted and the verdict sitting in the thread as if it
+ * had been meant.
+ *
+ * Three decisions worth stating:
+ *
+ *  * **Only the last verdict.** Undo is for the swipe just made, not a way to
+ *    rewrite a clip's history — a thread of what was asked for is the whole
+ *    input to the re-record loop.
+ *  * **The status comes from what REMAINS**, so undoing the second of two
+ *    verdicts restores the first rather than dropping the capture to `new`.
+ *  * **`answered_at` clears only when nothing is left.** Everywhere else in
+ *    this module that stamp is set once and never cleared — that is what tells
+ *    a fresh capture from a re-cut that came back around. An undo of the ONLY
+ *    verdict is the one case where the stamp describes something that did not
+ *    happen, and leaving it would keep the capture out of the top-up's
+ *    unanswered count forever.
+ *
+ * @param {Array<{ id?: unknown, verdict?: unknown }>} reviews oldest first
+ * @param {{ likes?: unknown }} row the capture row
+ * @returns {{ review_id: number, verdict: string, status: string, likes: number,
+ *   clear_answered: boolean } | null} null when there is no verdict to undo
+ */
+export function undoReviewState(reviews, row) {
+  const list = (Array.isArray(reviews) ? reviews : []).filter(
+    (r) => r && typeof r === "object" && Number.isFinite(Number(r.id)),
+  );
+  if (!list.length) return null;
+  const verdictOf = (/** @type {any} */ r) =>
+    CAPTURE_VERDICTS.includes(String(r?.verdict)) ? String(r.verdict) : "feedback";
+  const last = list[list.length - 1];
+  const remaining = list.slice(0, -1);
+  const prior = remaining.length ? remaining[remaining.length - 1] : null;
+  const verdict = verdictOf(last);
+  const likes = Math.max(0, Math.round(Number(row?.likes) || 0) - (verdict === "like" ? 1 : 0));
+  return {
+    review_id: Math.trunc(Number(last.id)),
+    verdict,
+    status: prior ? VERDICT_STATUS[verdictOf(prior)] : "new",
+    likes,
+    clear_answered: remaining.length === 0,
+  };
+}
 
 /** @type {Record<string, string>} */
 const VERDICT_WORDS = { like: "👍 liked", feedback: "✍️ needs work" };
@@ -653,7 +706,7 @@ export function projectCaptureVersion(row, currentVersion) {
   };
 }
 
-// Row → API object. The key set is a CONTRACT with the swipe deck: it reads
+// Row → API object. The key set is a CONTRACT with the review feed: it reads
 // `video_url`/`poster_url` straight into the <video>/<img>, `has_video` to
 // decide whether the card is playable at all, and `meta` for the edit report.
 // Optional columns are null-safe because a hand-made row (or an older row
@@ -1057,7 +1110,7 @@ export async function handleAdminCaptures(request, env, url, log) {
   const path = url.pathname.replace(/^\/api\/admin\/captures/, "");
   const method = request.method;
 
-  // GET /api/admin/captures — the board (or, with ?queue=1, the swipe deck).
+  // GET /api/admin/captures — the board (or, with ?queue=1, the review queue).
   if (path === "" && method === "GET") {
     const p = url.searchParams;
     const limit = Math.min(Math.max(Number(p.get("limit")) || 50, 1), 200);
@@ -1393,6 +1446,39 @@ export async function handleAdminCaptures(request, env, url, log) {
     // holds it; the log line stays metadata.
     log.info("capture.review", { id: capture.id, verdict: v.verdict });
     return jsonResponse({ capture: await readBack(db, capture.id) }, 201);
+  }
+
+  // DELETE …/review — THE UNDO. Takes back the last verdict: the review row is
+  // deleted, a like is un-counted, and the capture returns to whatever the
+  // verdict before it said (or to the queue, if there was none). See
+  // `undoReviewState` for why each of those three is what it is.
+  //
+  // The response is the same `{capture}` the POST answers with, so the card
+  // that undid a swipe redraws from the server's truth rather than from a
+  // client-side guess about what an undo does.
+  if (sub === "/review" && method === "DELETE") {
+    const { results } = await db
+      .prepare("SELECT * FROM capture_reviews WHERE capture_id = ? ORDER BY id ASC")
+      .bind(capture.id)
+      .all()
+      .catch(() => ({ results: [] }));
+    const undo = undoReviewState(/** @type {any[]} */ (results || []), capture);
+    if (!undo) return jsonResponse({ error: "Nothing to undo — this capture has no verdict on it." }, 404);
+    const now = Date.now();
+    await db.prepare("DELETE FROM capture_reviews WHERE id = ?").bind(undo.review_id).run();
+    await db
+      .prepare("UPDATE captures SET status = ?, likes = ?, updated_at = ? WHERE id = ?")
+      .bind(undo.status, undo.likes, now, capture.id)
+      .run();
+    if (undo.clear_answered) {
+      await db
+        .prepare("UPDATE captures SET answered_at = NULL WHERE id = ?")
+        .bind(capture.id)
+        .run()
+        .catch(() => {});
+    }
+    log.info("capture.undo", { id: capture.id, verdict: undo.verdict, status: undo.status });
+    return jsonResponse({ capture: await readBack(db, capture.id), undone: { verdict: undo.verdict } });
   }
 
   return jsonResponse({ error: "Not found." }, 404);

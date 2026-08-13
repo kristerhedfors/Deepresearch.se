@@ -1,4 +1,4 @@
-// The /captures/ page — the video-capture swipe deck, promoted out of /admin
+// The /captures/ page — the video-capture review feed, promoted out of /admin
 // to its own door on 2026-08-10 (owner directive).
 //
 // Why this file exists: the deck used to be protected by nothing of its own.

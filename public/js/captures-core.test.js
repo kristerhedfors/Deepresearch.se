@@ -1,5 +1,5 @@
 // Unit tests for the capture-review pure core (public/js/captures-core.js):
-// the swipe/fling verdict maths, the drag-feedback styling, deck bookkeeping,
+// the swipe/fling verdict maths, the drag-feedback styling, feed bookkeeping,
 // note validation and the display formatters.
 //
 // The gesture rules are the reason this core exists. Every one of them is a
@@ -31,8 +31,10 @@ import {
   formatClock,
   formatDay,
   formatDuration,
+  cardState,
+  feedRows,
   hasVersionHistory,
-  nextDeck,
+  pendingCount,
   playbackSource,
   queueHealthLine,
   queueTarget,
@@ -43,6 +45,7 @@ import {
   swipeHint,
   swipeThreshold,
   swipeVerdict,
+  undoLabel,
   validateNote,
   versionLabel,
   versionMedia,
@@ -221,26 +224,73 @@ test("swipeHint reaches full progress exactly when swipeVerdict commits", () => 
   assert.equal(swipeVerdict(t - 1, 0, W), null);
 });
 
-// ---- nextDeck -------------------------------------------------------------
+// ---- the feed -------------------------------------------------------------
 
-test("nextDeck drops what was reviewed this session, keeping server order", () => {
-  // The queue is not re-fetched per swipe (50 rows per gesture would stutter
-  // the deck), so the client has to remember what it filed.
-  const list = [{ id: 3 }, { id: 4 }, { id: 5 }];
-  assert.deepEqual(nextDeck(list, { reviewedIds: new Set([4]) }), [{ id: 3 }, { id: 5 }]);
-  assert.deepEqual(nextDeck(list, { reviewedIds: [3, 5] }), [{ id: 4 }]);
-  // Ids may arrive as strings from a dataset attribute — compare as strings.
-  assert.deepEqual(nextDeck(list, { reviewedIds: ["4"] }), [{ id: 3 }, { id: 5 }]);
+test("feedRows keeps the server's order and drops what cannot be acted on", () => {
+  // Every control a card offers posts to /:id/review, so an id-less row would
+  // render buttons that cannot work (UX-18).
+  assert.deepEqual(feedRows([{ id: 3 }, { id: 4 }, { id: 5 }]), [{ id: 3 }, { id: 4 }, { id: 5 }]);
+  assert.deepEqual(feedRows([null, { id: 1 }, {}]), [{ id: 1 }]);
+  assert.deepEqual(feedRows(null), []);
+  assert.deepEqual(feedRows(undefined), []);
 });
 
-test("nextDeck is inert on junk rather than emptying the deck", () => {
-  assert.deepEqual(nextDeck(null), []);
-  assert.deepEqual(nextDeck(undefined, {}), []);
-  assert.deepEqual(nextDeck([{ id: 1 }]), [{ id: 1 }]);
-  assert.deepEqual(nextDeck([{ id: 1 }], { reviewedIds: 7 }), [{ id: 1 }]);
-  // Rows with no id can never be reviewed (no endpoint to post to), so they
-  // are dropped rather than shown as an unactionable card.
-  assert.deepEqual(nextDeck([null, { id: 1 }, {}]), [{ id: 1 }]);
+test("pendingCount counts what still wants a verdict, from the STATUS", () => {
+  // Not from a tally of what was swiped this session: on the feed a filed card
+  // stays on the page and can be UNDONE, and only the row the server sent back
+  // can be right about that.
+  const rows = [{ id: 1 }, { id: 2, status: "liked" }, { id: 3, status: "needs_work" }, { id: 4, status: "new" }];
+  assert.equal(pendingCount(rows), 2);
+  assert.equal(pendingCount([]), 0);
+  assert.equal(pendingCount(null), 0);
+});
+
+test("cardState reads the STATUS, so a re-cut is reviewable again", () => {
+  // The trap this pins: a capture that was sent back and then re-recorded goes
+  // to `new` while KEEPING every earlier verdict in its thread. Deriving the
+  // card's state from the last review would render that card as already filed
+  // and there would be no way to review the new cut at all.
+  const recut = { id: 1, status: "new", reviews: [{ verdict: "feedback", note: "too fast" }] };
+  const st = cardState(recut);
+  assert.equal(st.filed, false);
+  assert.equal(st.verdict, null);
+  assert.equal(st.can_undo, true, "the earlier verdict is still takeable back");
+
+  const liked = cardState({ id: 2, status: "liked", reviews: [{ verdict: "like" }] });
+  assert.equal(liked.filed, true);
+  assert.equal(liked.verdict, "like");
+  assert.equal(liked.label, "👍 Liked");
+
+  const sent = cardState({ id: 3, status: "needs_work", reviews: [{ verdict: "feedback" }] });
+  assert.equal(sent.verdict, "feedback");
+  assert.equal(sent.label, "✍️ Sent back");
+});
+
+test("cardState treats an unknown status as reviewable, and junk as empty", () => {
+  // A row from a newer server must not render a card nobody can act on: being
+  // offered a clip twice costs one swipe, a dead card costs the review.
+  assert.equal(cardState({ id: 1, status: "quarantined" }).filed, false);
+  assert.equal(cardState({ id: 1 }).status, "new");
+  assert.equal(cardState(null).status, "new");
+  assert.equal(cardState(null).can_undo, false);
+  // Archived is filed, but there is no verdict to name.
+  const arch = cardState({ id: 1, status: "archived" });
+  assert.equal(arch.filed, true);
+  assert.equal(arch.verdict, null);
+  assert.equal(arch.label, "Archived");
+});
+
+test("undoLabel names the verdict being taken back", () => {
+  // "Undo" alone on a page where every card has one does not say what is about
+  // to happen to THIS card.
+  assert.equal(undoLabel({ id: 1, status: "liked", reviews: [{ verdict: "like" }] }), "↩︎ Undo the 👍");
+  assert.equal(
+    undoLabel({ id: 1, status: "needs_work", reviews: [{ verdict: "like" }, { verdict: "feedback" }] }),
+    "↩︎ Undo the ✍️",
+    "the LAST verdict is the one that comes back",
+  );
+  assert.equal(undoLabel({ id: 1, status: "new", reviews: [] }), "", "nothing to undo says nothing");
+  assert.equal(undoLabel(null), "");
 });
 
 // ---- titles and facts -----------------------------------------------------

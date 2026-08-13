@@ -109,12 +109,17 @@ input, select, textarea {
 }
 
 /* ===========================================================================
-   Capture reviews — the swipe deck (public/js/captures.js).
-   One clip at a time on a positioned stack: swipe right to keep it, left to
-   open the feedback field. Everything below serves one of three jobs — make
-   the top card draggable without breaking page scroll, make the direction of
-   a drag legible before it commits, and keep a portrait clip from blowing the
-   page open.
+   Capture reviews — the swipe FEED (public/js/captures.js).
+   Every clip in the open list, in order, scrolled north to south; each card
+   swipes right to keep it and left to open its feedback field, and each keeps
+   its place afterwards with an undo beside it. Everything below serves one of
+   four jobs — make a card draggable without breaking page scroll, make the
+   direction of a drag legible before it commits, keep a portrait clip from
+   blowing the page open, and make it obvious at a glance which cards in a long
+   scroll have already been dealt with.
+
+   It was a one-card DECK until 2026-08-13 (owner directive). The .cap-deck
+   stack rules went with it; the gesture rules did not change at all.
    =========================================================================== */
 
 .cap-filters { display: flex; flex-wrap: wrap; gap: .35rem; margin-bottom: .6rem; }
@@ -128,13 +133,13 @@ input, select, textarea {
 .cap-health[hidden] { display: none; }
 
 .cap-progress { margin: 0 0 .4rem; font-variant-numeric: tabular-nums; }
-.cap-hintline { margin: .5rem 0 0; }
+.cap-hintline { margin: 0 0 .7rem; }
 .cap-empty { padding: .8rem 0; }
 .cap-empty p { margin: 0 0 .35rem; }
 
-/* The stack. position:relative + absolutely-stacked cards is what lets the
-   top card fly out without the ones behind it jumping up to fill the gap. */
-.cap-deck { position: relative; min-height: 12rem; }
+/* The feed: one column, north to south, every capture in the open list. The
+   gap is what makes a card read as a unit while scrolling past at speed. */
+.cap-feed { display: flex; flex-direction: column; gap: .9rem; }
 
 .cap-card {
   position: relative;
@@ -142,33 +147,41 @@ input, select, textarea {
   padding: .6rem .7rem;
   box-shadow: 0 2px 8px rgba(10, 46, 92, .12);
   overflow: hidden;
+  cursor: grab;
   /* pan-y is the whole reason a horizontal drag works inside a long scrolling
      page: the browser keeps vertical scrolling for itself and hands us the
      horizontal axis, so the page still scrolls under a swipe that turns out to
-     be a scroll. touch-action:none here would trap the page. */
+     be a scroll. touch-action:none here would trap the page — and on a feed
+     that would mean the page could not be scrolled AT ALL, since the cards
+     cover it. */
   touch-action: pan-y;
   user-select: none;
   will-change: transform;
+  scroll-margin-top: .75rem;
 }
-/* The cards behind the top one: only their edges show, as depth. They are
-   stacked absolutely so they occupy no extra height. */
-.cap-card--behind {
-  position: absolute; inset: 0;
-  transform: scale(.97) translateY(10px);
-  opacity: .55; pointer-events: none;
-}
-.cap-card--top { z-index: 10; cursor: grab; }
+/* Keyboard reviewers aim the arrow keys with focus, so where the focus is has
+   to be visible — on a feed it is also "which clip am I about to file". */
+.cap-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .cap-card--dragging { cursor: grabbing; transition: none; }
-/* Spring back after an uncommitted drag, and the two fly-outs. The fly-out
-   distance is in vw so the card clears the viewport on any screen. */
+/* Spring back after a drag — committed or not. A filed card keeps its place in
+   the feed (that is what makes it undoable), so nothing ever flies away. */
 .cap-card--spring { transition: transform .22s ease-out, opacity .22s ease-out; }
-.cap-card--out-left,
-.cap-card--out-right {
-  transition: transform .28s ease-in, opacity .28s ease-in;
-  opacity: 0; pointer-events: none;
-}
-.cap-card--out-left { transform: translateX(-120vw) rotate(-14deg); }
-.cap-card--out-right { transform: translateX(120vw) rotate(14deg); }
+/* A request is in flight on this card. Per card, not per page: on a feed the
+   next clip can be filed while the last POST is still going. */
+.cap-card--busy { opacity: .7; }
+
+/* ALREADY FILED. Quieter, and marked down the left edge in the verdict's own
+   colour, so a scroll through fifty clips shows at a glance what is left to
+   do without reading a single badge. */
+.cap-card--filed { background: var(--panel); box-shadow: none; }
+.cap-card--filed .cap-body { opacity: .82; }
+.cap-card--liked { border-left: 4px solid var(--ok); }
+.cap-card--needs-work { border-left: 4px solid var(--warn); }
+/* What was decided, said in words beside the undo that reverses it. */
+.cap-filed { font-size: .82rem; font-weight: 600; }
+.cap-filed.liked { color: var(--ok); }
+.cap-filed.needs_work { color: var(--warn); }
+.cap-act-undo { font-size: .76rem; padding: .3rem .6rem; }
 
 .cap-card video {
   display: block; width: 100%;
@@ -178,6 +191,12 @@ input, select, textarea {
   border-radius: 8px; background: #000;
   object-fit: contain;
 }
+
+/* The player before its clip is mounted. A card's <video> is built only when
+   the card nears the viewport (fifty of them on page open is fifty range
+   requests), and this height is what stops the mount from shoving the rest of
+   the feed down under the reader's thumb. */
+.cap-player--pending { min-height: 34vh; border-radius: 8px; background: var(--panel-2); }
 
 /* The version strip under the player. Only rendered when a capture has been
    re-recorded, so its absence is the common case and costs nothing. */
@@ -199,6 +218,10 @@ input, select, textarea {
 .cap-replay[hidden] { display: none; }
 
 .cap-body { padding-top: .5rem; }
+/* The headline and the card's place in the scroll, on one line. */
+.cap-head { display: flex; align-items: baseline; gap: .5rem; }
+.cap-head .cap-title { flex: 1; }
+.cap-pos { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .cap-title { margin: 0 0 .35rem; font-size: .9rem; overflow-wrap: anywhere; }
 /* THE NUMBER. It is how a capture is referred to out loud ("produce a review
    of #12"), so it leads the card and it has to be selectable — the card sets
@@ -241,13 +264,14 @@ input, select, textarea {
 .cap-act-like { background: var(--ok); }
 .cap-err { margin: 0; flex: 1 1 100%; }
 
-/* The feedback field — revealed in the card's place by a left swipe. It sits
-   INSIDE the deck so it lands exactly where the card was, which is what makes
-   the swipe read as "the card turned into a question". */
+/* The feedback field — opened INSIDE the card by a left swipe, directly under
+   the clip it is about. In the deck it replaced the card (which had flown off
+   screen) and had to repeat the capture's title; in the feed the card stays
+   put, so the question needs no reintroduction. */
 .cap-feedback {
-  position: relative; z-index: 30;
-  border: 1px solid var(--border); border-radius: 12px; background: var(--panel-2);
-  padding: .7rem .8rem;
+  position: relative; z-index: 30; margin-top: .6rem;
+  border: 1px solid var(--border); border-radius: 10px; background: var(--panel-2);
+  padding: .6rem .7rem;
 }
 .cap-feedback-lead { margin: 0 0 .2rem; }
 .cap-feedback-title { margin: 0 0 .5rem; font-size: .85rem; overflow-wrap: anywhere; }
@@ -255,12 +279,8 @@ input, select, textarea {
 .cap-feedback-err { margin: .4rem 0 0; }
 .cap-feedback-actions { display: flex; gap: .5rem; margin-top: .6rem; }
 
-/* Read-only rendering for the appreciated / needs-work / all filters. */
-.cap-row .cap-facts, .cap-row .cap-review { margin-top: .3rem; }
-.cap-link { font-size: .8rem; color: var(--accent); }
-
-/* The feedback thread on a needs-work row: what was asked for, oldest first,
-   which is what the next version has to answer. */
+/* The feedback thread on a card that has one: what was asked for, oldest
+   first, which is what the next version has to answer. */
 .cap-thread {
   margin: .4rem 0 .1rem; padding: .4rem .55rem;
   background: var(--panel-2); border-radius: 8px;
@@ -270,11 +290,9 @@ input, select, textarea {
 .cap-msg.like strong { color: var(--ok); }
 
 /* Reduced motion: the transforms ARE the animation here, so a reduced-motion
-   reviewer gets the same state changes with no travel — the card simply is,
-   or is not, in the deck. The verdicts and the feedback field are unchanged. */
+   reviewer gets the same state changes with no travel — the card simply is, or
+   is not, filed. The verdicts and the feedback field are unchanged. */
 @media (prefers-reduced-motion: reduce) {
-  .cap-card, .cap-card--spring, .cap-card--out-left, .cap-card--out-right { transition: none; }
-  .cap-card--out-left, .cap-card--out-right { transform: none; }
-  .cap-card--behind { transform: none; }
+  .cap-card, .cap-card--spring { transition: none; }
   .cap-hint.like, .cap-hint.feedback { transform: none; }
 }

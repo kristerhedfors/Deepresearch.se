@@ -476,7 +476,7 @@ export function renderSummary(me) {
       <button id="docsbtn" type="button">Documentation</button>
       ${me.role === "admin" ? '<button id="articlesbtn" type="button">Article collection</button>' : ""}
       ${me.role === "admin" ? '<a href="/admin" target="_blank" rel="noopener">Admin interface</a>' : ""}
-      <!-- Capture reviews (/captures/) — the recorded-run swipe deck. It sits
+      <!-- Capture reviews (/captures/) — the recorded-run review feed. It sits
            BESIDE "Admin interface" rather than inside it because it stopped
            being an admin panel on 2026-08-10; it is gated on the SAME
            admin-role condition as the link above (the server redirects a
