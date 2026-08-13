@@ -366,9 +366,22 @@ real CPython and recognises exactly three outcomes:
 
 | outcome | definition | verdict |
 |---|---|---|
-| **MATCH** | stdout, stderr and exit code identical to CPython | pass |
+| **MATCH** | stdout and exit code identical to CPython | pass |
 | **UNSUPPORTED** | exit 90 with the one-line stderr form | coverage not yet reached — **not a failure** |
 | **MISMATCH** | anything else | hard failure |
+
+stderr is deliberately **not** compared byte-for-byte. CPython's tracebacks
+carry file paths, line numbers and interpreter internals that a subset runtime
+has no business reproducing, and requiring them would fail every error case for
+no benefit — what a pipeline and an agent loop actually consume is stdout and
+the exit code. The one stderr rule that is enforced: if CPython reported an
+error and pygram was silent, that is a MISMATCH. A program that fails under
+CPython must fail under pygram.
+
+Two entries in the corpus (`datetime-now`, `random-seeded`) are tagged
+`nondeterministic` / `seeded` and compared on exit code alone — a wall clock
+and a PRNG stream differ between two runs of the *same* interpreter, so
+demanding a stdout match would fail them permanently and bury the real signal.
 
 Silent semantic divergence — a program that runs to completion and prints the
 wrong thing — is the failure this whole contract exists to make impossible to
@@ -422,10 +435,14 @@ environment:
 1. Does the parser reject unsupported syntax up front (rule 3) cheaply enough
    to keep startup flat? If not, syntax 90s become late 90s and rule 3 weakens
    to "before executing that statement".
-2. `re`: writing a backtracking engine, or mapping onto the host JavaScript
-   `RegExp`? The mapping is fast but diverges on `\d`/`\w` unicode semantics,
-   named-group syntax and `re.M`/`re.S` details — every one of which has a
-   corpus entry (`re-multiline-anchors`, `re-groups-named`).
+2. `re` is the largest single module in Tier 0 (13 entries) and there is no way
+   to borrow one. pygram is a native ELF running *inside* the guest, so the
+   browser's `RegExp` is not reachable from it, and linking an external engine
+   (PCRE, Oniguruma) reintroduces exactly the shared-object streaming the whole
+   design exists to avoid. So: a small backtracking engine compiled in, scoped
+   to the constructs the corpus actually uses. The divergence risks to test
+   are `\d`/`\w` unicode semantics, named groups, and `re.M`/`re.S`, each of
+   which has a corpus entry (`re-multiline-anchors`, `re-groups-named`).
 3. Float→string: shortest round-trip printing must be implemented, not
    approximated. `float-repr` is the test.
 4. `int`: which bignum representation, given that `2 ** 100` must print
