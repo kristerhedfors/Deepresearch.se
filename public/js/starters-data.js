@@ -166,9 +166,6 @@ export const ASPECTS = {
 export const STARTERS = {
   queues: {
     // =====================================================================
-    // research — Deep Research on the Se/rver tier. The taxonomy here leans
-    // the way the logs lean: news and Swedish practical questions are the
-    // real front door, not the polished multi-hop benchmark questions.
     // =====================================================================
 
     // =====================================================================
@@ -622,7 +619,8 @@ export const STARTERS = {
     // scholar — Deep Science. The editorial rule here follows from what the
     // agent structurally CANNOT do: there is no web leg, so a starter whose
     // answer lives in a news article, a vendor page or a policy document gets
-    // a worse answer here than in Deep Research, not a better one. Every
+    // a worse answer here than an agent with one would give, not a better
+    // one. Every
     // opener below is a question the published literature has actually
     // studied.
     //

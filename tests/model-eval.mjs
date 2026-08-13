@@ -232,8 +232,13 @@ async function postOnce(model, messages) {
         web_search: true,
         time_budget_s: BUDGET_S,
         // Name the mode outright, so the battery measures the WEB-RESEARCH
-        // pipeline rather than source reading (see eval-bench.mjs's note).
-        chat_mode: "normal",
+        // pipeline rather than source reading (see eval-bench.mjs's note, which
+        // also records why this is no longer "normal": that mode and its general
+        // Deep Research agent were removed by the owner directive of 2026-08-13,
+        // and sending the retired name now resolves silently to Deep Science —
+        // web search structurally off, peer-reviewed sources only, which is not
+        // the pipeline this battery exists to exercise).
+        chat_mode: "cyber",
       }),
       signal: controller.signal,
     });

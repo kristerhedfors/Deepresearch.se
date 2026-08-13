@@ -344,12 +344,24 @@ holds for the routing as for the run); validation enforces invariants 1, 3,
 **default agents**, bound to their mode by the registry's ordered
 `defaults` table, which is what `/api/chat` routes on
 (`src/agent-registry.js` → `src/chat.js` → `src/pipeline.js`
-`ANSWER_PHASE_RUNNERS`). Since 2026-07-18 the SDK is WIRED into the app: the pure core
+`ANSWER_PHASE_RUNNERS`). **The roster is SPECIFIC and has no general member
+(owner directive, 2026-08-13):** the `normal` mode and its `research` agent —
+the catch-all labeled "Deep Research" — are retired (`RETIRED_CHAT_MODES` keeps
+old clients resolving); **Deep Science (`science` / agent `scholar`) is the
+default and terminal fallback**, so an unrouted request now gets a POLICY
+(literature-first, `search.web: false`) instead of open-web research, and it
+alone among the mode defaults declares `requires: []`; and a new **Cyber**
+(`cyber`) agent owns cybersecurity and OSINT. `capability.context` became
+EXECUTED with it — `capHasContext` gates the enrichment and search-source
+registries, so Deep Science exclusively owns arXiv + PubMed + the peer-reviewed
+leg (palaeogenomics keeps `literature-pubmed`) and Cyber exclusively owns host
+intelligence, street imagery, the OSINT methods and the OWASP corpus. Since
+2026-07-18 the SDK is WIRED into the app: the pure core
 `public/js/sdk-core.js` (façade `src/sdk-tools.js`; the CLI re-exports it) powers
 **SDK mode** — labeled **Agent Studio** in the UI (2026-07-23; renamed from
 "Agent Builder"; the mode id stays `sdk`, internally still "SDK mode"/DistillSDK)
-— the green "lovable experience" entry in the chat-mode dropdown (Deep Research /
-Introspection / Agent Studio; the `normal` mode id displays as **Deep Research**)
+— the green "lovable experience" entry in the chat-mode dropdown (Deep Science /
+Cyber / Introspection / Agent Studio / Orchestrator / Outrospection / Models)
 that DISTILLS this site — above all the client-side **Se/cure** tier — into
 either a new individual **agent** OR an entire new **platform**, using the SDK's
 modules/skills as the method and the deployed Se/cure source as the original,
@@ -454,11 +466,12 @@ Features & surfaces:
 
 - **execution-sandbox** — the in-browser Linux sandbox + bash-lite agent: COEP isolation, the fenced-block loop, file mounts. ALSO the choice of WHERE commands run (`docs/EXECUTION-ENVIRONMENTS.md`): the DREE/1 seam and its three environments — the browser VM, a runner on the user's own machine, and (Se/rver only, because it is the one with the server in the data path) an ephemeral Cloudflare Container per session.
 - **introspection** — introspection mode (`chat_mode: "introspection"`; the `developer_mode` knob it replaced): the committed snapshot + rag artifacts, both tiers' wiring.
+- **cyber** — the crimson Cyber agent (`chat_mode: "cyber"`), the cybersecurity/OSINT domain and the only agent allowed outward-facing intelligence: what it exclusively owns (host intelligence, street imagery, the entity + person OSINT methods, the OWASP corpus), how each is declared as a `capability.context` block and enforced by `capHasContext`, the AND-gate with the per-account extension knobs, the exclusivity guard, and how to add a new OSINT source.
 - **models-agent** — the amber Models agent and the model LIFECYCLE it owns (discovered → evaluated → enabled): the provider-agnostic catalog (`src/model-catalog.js`, the ALLOWANCE), the established verification checks (`src/model-checks.js` — status, never blockers), the mode's enrichment (forced Hub search + the EN/SV lifecycle gate + the priced catalog block + the `model_cards` event), `/api/models/{catalog,verify,enable,disable}`, the per-account record, and the left-sidebar board that promotes a model into every OTHER mode's dropdown.
 - **palaeogenomics** — the ancient-DNA agent: the two legs that make it (Europe PMC for the life-science literature, whose query grammar is the INVERSE of arXiv's — AND by default, so the ladder climbs by dropping terms; and a committed corpus of 20,927 published ancient individuals queried by radius/date window/haplogroup/coverage with no outbound request at all, not even a geocoder), the domain conventions an answer gets wrong without them (`Ignore_`, BP=1950, one-way haplogroup prefixes, dates as intervals), the entity-matching traps found only against the real corpus, and the seam worth copying: an enrichment gated on the agent spec's declared context block rather than on a mode or a knob. ALSO the reference for the JS `\b` Swedish-boundary trap, which silently kills bilingual regex gates repo-wide (invariant 6).
-- **outrospection** — introspection's mirror image: the FIFTH chat mode (answers from the outward feed) and the feed page at `/outrospect/`: the seven-lens registry, the offline scan + per-visit refresh that fill it, and the feedback STRATEGY lane.
-- **sdk-mode** — the green Agent Studio "lovable experience" mode: the chat-mode dropdown (Deep Research / Deep Science / Introspection / Agent Studio / Orchestrator / Outrospection / Models), the Platform-SDK (DistillSDK) build flow that distils an individual agent OR a whole platform, `/app/<slug>/` publishing, the MCP `sdk_*` tools.
-- **orchestrator-mode** — the violet sub-agent workflow mode: one JSON plan phase decomposes a request into a team of sub-agents (Deep Research / Introspection / custom) the Worker runs in parallel waves, the `workflow`/`agent_update` SSE events, the live workflow graph view.
+- **outrospection** — introspection's mirror image: the chat mode that answers from the outward feed, and the feed page at `/outrospect/`: the seven-lens registry, the offline scan + per-visit refresh that fill it, and the feedback STRATEGY lane.
+- **sdk-mode** — the green Agent Studio "lovable experience" mode: the chat-mode dropdown (Deep Science / Cyber / Introspection / Agent Studio / Orchestrator / Outrospection / Models), the Platform-SDK (DistillSDK) build flow that distils an individual agent OR a whole platform, `/app/<slug>/` publishing, the MCP `sdk_*` tools.
+- **orchestrator-mode** — the violet sub-agent workflow mode: one JSON plan phase decomposes a request into a team of sub-agents (Web research / Introspection / swarm / custom) the Worker runs in parallel waves, the `workflow`/`agent_update` SSE events, the live workflow graph view.
 - **publish-app** — the admin/CLI bridge (`scripts/publish-app`, `PUT /api/build/:slug`) that publishes an already-built bundle (sandbox outbox, hand-assembled files) into sdk-mode's `/app/<slug>/` without a chat/tool loop.
 - **help-docs** — help mode, the documentation-first layer of introspection: the docs corpus/index, docs-first routing.
 - **publish-research** — publishing frozen replays at `DeepResearch.Se/cure/<slug>`; slugs must complete the phrase.

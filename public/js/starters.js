@@ -200,7 +200,7 @@ export function renderStarterStrip({ mount, compose, mode, platform, lang, setMo
  *     on the feedback entry and the report names the exact starter.
  *  3. **Clicking a chip switches the chat mode to that starter's agent.** The
  *     batch is cross-agent by design; sending an Agent Studio starter while the
- *     app sits in Deep Research would measure the wrong thing entirely and
+ *     app sits in Deep Science would measure the wrong thing entirely and
  *     look like the starter's fault.
  *
  * @param {{mount: HTMLElement, compose: (t: string) => void, platform?: string,
@@ -336,7 +336,7 @@ function migrateSeenLedger() {
  *
  * Returns a `refresh()` the host calls when the empty state is rebuilt (a new
  * chat) or when the agent changes (the mode dropdown) — the strip has to
- * follow the mode, since a Deep Research opener in Agent Studio would be
+ * follow the mode, since a Deep Science opener in Agent Studio would be
  * actively misleading about what that mode does.
  *
  * @param {Object} opts

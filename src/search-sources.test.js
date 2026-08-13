@@ -5,7 +5,8 @@
 // concatenated planner prompt notes, and platform diversity keying.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { SEARCH_SOURCES, leadSourceIds, platformDiversityKey, sourcePromptNotes } from "./search-sources.js";
+import { SEARCH_SOURCES, capabilityAllowsSource, leadSourceIds, platformDiversityKey, sourcePromptNotes } from "./search-sources.js";
+import { CONTEXT_BLOCKS } from "./agent-spec.js";
 
 // The registry is the parallel-work seam: every source integrates as data
 // here, and the pipeline/prompts/sources modules only iterate. These tests
@@ -31,6 +32,16 @@ describe("SEARCH_SOURCES registry contract", () => {
       }
       // diversityHost and diversityKeyOf come as a pair.
       assert.equal(!!s.diversityHost, typeof s.diversityKeyOf === "function", `${s.id}: diversityHost/diversityKeyOf pair`);
+      if (s.requiresContext) {
+        // A requirement naming a block the AgentSpec vocabulary does not have
+        // can never be satisfied, so the source would silently never run for
+        // anyone — the failure mode this field exists to make impossible.
+        assert.equal(typeof s.requiresContext, "string", `${s.id}: requiresContext`);
+        assert.ok(
+          Object.prototype.hasOwnProperty.call(CONTEXT_BLOCKS, s.requiresContext),
+          `${s.id}: requiresContext "${s.requiresContext}" is not a CONTEXT_BLOCKS id — no agent can ever declare it`,
+        );
+      }
       if (s.leadIntent) assert.equal(typeof s.leadIntent, "function", `${s.id}: leadIntent`);
       if (s.leadMaxPerRequest != null) {
         assert.ok(Number.isInteger(s.leadMaxPerRequest) && s.leadMaxPerRequest >= 1, `${s.id}: leadMaxPerRequest`);
@@ -100,6 +111,74 @@ describe("sourcePromptNotes", () => {
   test("concatenates every declared note (hf's referent note included)", () => {
     const notes = sourcePromptNotes();
     assert.match(notes, /"HF"\/"hf" in a user message means Hugging Face/);
+  });
+
+  test("a null capability composes every note — the MCP channel, unchanged", () => {
+    // Null means "no agent was resolved", which is not "an agent declared
+    // nothing": src/mcp.js builds its state without a registry, and a
+    // deployment whose registry will not load resolves nothing either. Both
+    // keep the pre-2026-08-13 prompt byte for byte.
+    assert.equal(sourcePromptNotes(null), sourcePromptNotes());
+    assert.equal(sourcePromptNotes(undefined), sourcePromptNotes());
+  });
+
+  test("a capability's notes cover exactly the sources it may consult", () => {
+    // The planner is taught the vocabulary of a corpus only when the answering
+    // agent can actually reach it (owner directive, 2026-08-13). Teaching
+    // "arXiv means arxiv.org, never clarify it" to an agent forbidden to search
+    // arXiv spends triage's attention shaping queries for a leg that will never
+    // run, and invites a plan that promises sources the answer cannot cite.
+    const restricted = sourcePromptNotes({ context: [] });
+    const full = sourcePromptNotes(null);
+    for (const s of SEARCH_SOURCES) {
+      if (!s.promptNote) continue;
+      assert.ok(full.includes(s.promptNote), `${s.id}: its note is missing from the unrestricted prompt`);
+      assert.equal(
+        restricted.includes(s.promptNote),
+        !s.requiresContext,
+        `${s.id}: an agent declaring no context blocks must get the notes of exactly the unrestricted sources`,
+      );
+    }
+    // …and declaring the block puts that source's note back.
+    for (const s of SEARCH_SOURCES) {
+      if (!s.requiresContext || !s.promptNote) continue;
+      assert.ok(
+        sourcePromptNotes({ context: [s.requiresContext] }).includes(s.promptNote),
+        `${s.id}: declaring "${s.requiresContext}" must restore its planner note`,
+      );
+    }
+  });
+});
+
+describe("capabilityAllowsSource", () => {
+  test("a source declaring no requirement runs for everyone, as before", () => {
+    for (const s of SEARCH_SOURCES) {
+      if (s.requiresContext) continue;
+      assert.equal(capabilityAllowsSource({ context: [] }, s), true, `${s.id}`);
+      assert.equal(capabilityAllowsSource({ context: ["something-else"] }, s), true, `${s.id}`);
+    }
+  });
+
+  test("a declared requirement is enforced against the agent's context blocks", () => {
+    for (const s of SEARCH_SOURCES) {
+      if (!s.requiresContext) continue;
+      assert.equal(capabilityAllowsSource({ context: [] }, s), false, `${s.id}: ungated`);
+      assert.equal(capabilityAllowsSource({ context: ["unrelated"] }, s), false, `${s.id}: wrong block admitted it`);
+      assert.equal(capabilityAllowsSource({ context: [s.requiresContext] }, s), true, `${s.id}: declared and refused`);
+    }
+  });
+
+  test("a NULL capability keeps every source — invariant 2, and the MCP door", () => {
+    // The fail-soft rule, and the one deliberate hole in the roster's reach:
+    // POST /mcp has no concept of an agent to govern its literature door with
+    // (src/mcp.js builds state without a registry), and the ground-truth
+    // batteries reach both corpora through it. A deployment whose registry will
+    // not load takes the same path, because an outage that looks like an empty
+    // answer is the worst possible reading of "the agent declared nothing".
+    for (const s of SEARCH_SOURCES) {
+      assert.equal(capabilityAllowsSource(null, s), true, `${s.id}: null capability`);
+      assert.equal(capabilityAllowsSource(undefined, s), true, `${s.id}: missing capability`);
+    }
   });
 });
 

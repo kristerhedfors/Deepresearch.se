@@ -14,6 +14,7 @@ import assert from "node:assert/strict";
 
 import {
   MAX_ABSTRACT_CHARS,
+  PREPRINT_LABEL,
   authorsLine,
   citationHighlights,
   denseSearch,
@@ -76,7 +77,13 @@ test("both hosted tiers abbreviate an author list the same way", () => {
   const arxiv = arxivRagItem({ id: "2601.00001", metadata: { t: "T", au } });
   const pubmed = pubmedRagItem({ id: "pmid:1", metadata: { t: "T", au } });
   assert.ok(arxiv && pubmed);
-  assert.ok(arxiv.highlights[0].startsWith("A One, B Two, C Three et al. · "));
+  // The arXiv line leads with PREPRINT_LABEL and the PubMed one does not —
+  // that difference is the whole point of the label (2026-08-13): one corpus is
+  // a preprint server and the other is the indexed journal literature, and an
+  // agent that can reach both in one turn must be able to tell them apart from
+  // the metadata line alone. The author formatting after it is what has to
+  // match, so the assertion reads the same slice of both.
+  assert.ok(arxiv.highlights[0].startsWith(`${PREPRINT_LABEL} · A One, B Two, C Three et al. · `));
   assert.ok(pubmed.highlights[0].startsWith("A One, B Two, C Three et al. · "));
 });
 

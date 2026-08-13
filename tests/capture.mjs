@@ -6,10 +6,10 @@
 // contract are shared with the editor through `scripts/capture-core.mjs`, which
 // is the only place any of them is defined. See the **video-capture** skill.
 //
-//   node tests/capture.mjs --agents research --models mistralai/Devstral-Small-2505
-//   node tests/capture.mjs --agents research,introspection --per-agent 2 --lang sv
-//   node tests/capture.mjs --agents research --models x --dry-run
-//   cd tests && npm run capture -- --agents research
+//   node tests/capture.mjs --agents scholar --models mistralai/Devstral-Small-2505
+//   node tests/capture.mjs --agents scholar,introspection --per-agent 2 --lang sv
+//   node tests/capture.mjs --agents cyber --models x --dry-run
+//   cd tests && npm run capture -- --agents cyber
 //
 // It writes one directory per run under `--out`:
 //
@@ -44,7 +44,8 @@
 // session — can see that a run went wrong without decoding an mp4.
 //
 // OPTIONS
-//   --agents <csv>      agent ids (default research). Unknown ids are refused.
+//   --agents <csv>      agent ids (default scholar, the default agent). Unknown ids
+//                       are refused.
 //   --models <csv>      model ids as they appear in the #model dropdown.
 //                       Omitted: the site's own first up model from /api/models.
 //   --per-agent <n>     example prompts per agent (default 1)
@@ -172,7 +173,9 @@ const LOCAL_USER = "e2e";
 const LOCAL_PASS = "e2e-local-worker-no-secret";
 
 export const DEFAULTS = {
-  agents: ["research"],
+  // Deep Science: the agent the composer opens on, since the general
+  // `research` agent was retired (2026-08-13).
+  agents: ["scholar"],
   perAgent: 1,
   offset: 0,
   shape: DEFAULT_SHAPE,
@@ -1233,10 +1236,12 @@ async function selectMode(page, mode) {
   // The early return above made this worse rather than better — the
   // `dr_chat_mode` pin means the dropdown ALREADY reads the wanted mode, so
   // selectMode returned satisfied, and then settings landed and knocked it
-  // back to `normal`.
+  // back to the DEFAULT mode (`normal` when this was observed; the general
+  // agent behind it was retired on 2026-08-13 and the default is `science` now,
+  // which changes the symptom's name and nothing about the race).
   //
   // That is not a cosmetic race. It silently records THE WRONG AGENT: an
-  // Agent Studio capture that reverted to Deep Research answers by printing
+  // Agent Studio capture that reverted to the default agent answers by printing
   // code as prose and never builds anything, and the clip looks fine unless
   // you read the composer. Observed on 2026-08-11, twice in one batch.
   //

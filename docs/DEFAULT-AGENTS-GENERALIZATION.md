@@ -435,7 +435,7 @@ distinction is the thing worth remembering: a passing test proves a field is
 | `capability.bounds` | declared | **executed** | `capBound` in the tool loops and the orchestrator's per-node caps |
 | `capability.tools` | declared | **executed** | `toolsForRun` over `src/tool-sets.js` |
 | `capability.search` | declared | **executed** | `searchPolicyFor` → the Exa gate, the aux wave, `takeSearchBatch`, the orchestrator budget |
-| `capability.context` | declared | declared | blocks are still selected by `state.introspection` / `sdkMode` |
+| `capability.context` | declared | **executed** | `capHasContext` at the enrichment registry (`src/enrichment.js`) and the search-source registry (`src/search-sources.js` `requiresContext` → `sourceAllowed`) |
 | `capability.gates`, `emits`, `team` | declared | declared | the gates and caps live in their own modules |
 | `theme`, `intro`, `loading`, `backdrop`, `controls` | declared | declared | rendered only by `/agents/preview.html`; the running app draws from `mode-theme.js` |
 
@@ -443,6 +443,48 @@ So the visual half is still not authoritative — `agent-preview.js` renders a
 spec's composer, and the real chat pane does not. The registry describes both
 halves accurately because tests force it to, not because either half is
 generated from it.
+
+#### What moved `capability.context` into the executed column (2026-08-13)
+
+The owner directive that made the roster **specific, with no general member**
+is what did it. Once `normal` and its `research` agent were gone and every mode
+named a domain, the domains had to be enforced by something, and the only
+honest place was the spec that claims them.
+
+The seam is `capHasContext(state.capability, "<block>")`, read at two registries
+that already existed:
+
+- **Enrichments** (`src/enrichment.js`). The ancient-sample corpus and the
+  Scholar metrics leg were already gated this way; 2026-08-13 added the OWASP
+  reference — extracted from inside the introspection enrichment into its own
+  module `src/owasp-context.js` — and the *method* half of person research.
+  Before the extraction, OWASP hung off `state.introspection`, so **five modes
+  reached it as a side effect of carrying the source snapshot while exactly one
+  agent declared it**. That mismatch is the clearest single example of why a
+  declaration nobody reads is not a boundary.
+- **Search sources** (`src/search-sources.js`). A registry entry may now name a
+  `requiresContext` block, and `sourceAllowed` in `src/pipeline.js` honours it
+  generically — the orchestrator reads the field and never learns which source
+  it belongs to, exactly like `intent` and `leadIntent`. That is what makes Deep
+  Science the exclusive owner of `literature-arxiv`, `literature-pubmed` and
+  `literature-peer-reviewed`, with Palaeogenomics holding `literature-pubmed`
+  too because Europe PMC is its only literature leg.
+
+Three consequences worth carrying forward:
+
+- **A corpus belonging to an agent is a fact about the agent.** The previous
+  spelling was `state.auxOnly`, a per-request narrowing an enrichment writes;
+  handing a corpus to a different agent is now a one-line spec diff rather than
+  an edit somewhere in the request path.
+- **`routingNeedsRegistry` had to become unconditional.** Skipping the registry
+  resolves a null capability, and a null capability is the unrestricted platform
+  default — the exact opposite of what the gates are for. The cost is paid by a
+  small dedicated registry artifact (`public/introspect/agents.json`) instead of
+  the multi-megabyte snapshot.
+- **Null and empty mean different things.** A null capability (`POST /mcp`, or a
+  registry that will not load) keeps every source, because "no agent was
+  resolved" is not "an agent declared nothing" — invariant 2. An agent that
+  declares an empty `context` gets none of the gated blocks.
 
 ### The three limits Agent Studio actually hits
 

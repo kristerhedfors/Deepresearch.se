@@ -68,12 +68,31 @@ what this block appended, so the query-planning phases can read the conversation
 without it (`docs/ARCHITECTURE.md` §4.2b). Every other row appends data, and
 data is what a planner should be writing queries from.
 
-`enabled: () => true`. There is no knob, no chat mode and no request field: the
-intent gate inside the runner decides, and the runner is silent otherwise.
-`runEnrichments` runs before triage (`src/pipeline.js`), so the planner, the
-search waves and synthesis all see the block. The append goes through
-`appendToLast` (`src/conversation.js`), which adds a new text part rather than
-rewriting the message, so an attached screenshot survives.
+There is no knob, no chat mode and no request field: the intent gate inside the
+runner decides, and the runner is silent otherwise. `runEnrichments` runs before
+triage (`src/pipeline.js`), so the planner, the search waves and synthesis all
+see the block. The append goes through `appendToLast` (`src/conversation.js`),
+which adds a new text part rather than rewriting the message, so an attached
+screenshot survives.
+
+**Ownership moved to the Cyber agent (owner directive, 2026-08-13).** The method
+this document describes — subject disambiguation plus the depth-scaled dossier
+scaffold — is one of the capabilities the new `cyber` agent owns exclusively. It
+is declared as the context block **`entity-method`**
+(`public/js/agent-spec-core.js` `CONTEXT_BLOCKS`) and listed in that agent's
+`capability.context` in `sdk/AGENTS.json`. The mechanism is the one the
+ancient-sample corpus and the Scholar metrics leg already use:
+`capHasContext(state.capability, "entity-method")` at the registry row, so no
+mode flag and no settings toggle is involved and removing the agent from
+`sdk/AGENTS.json` removes the capability.
+
+> Status note (2026-08-13): the declaration is in the registry and the
+> vocabulary; the registry row in `src/enrichment.js` still reads
+> `enabled: () => true`, so on the tree as it stands the method block is
+> appended for any agent whose turn matches the gate. Its sibling
+> `person_research` is the pattern to follow — that row is deliberately
+> unconditional too, and the split is made inside the runner (see
+> `docs/PERSON-RESEARCH.md`).
 
 A firing turn emits the SSE step `entity_research` ("Applying the
 entity-research method…", then "Entity-research method applied") whose finished

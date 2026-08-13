@@ -1,7 +1,16 @@
 # Deep Science — Google Scholar and the peer-reviewed record
 
-The **Deep Science** agent (`scholar` in `sdk/AGENTS.json`) answers only from
-peer-reviewed publications. No web search runs. No preprint reaches an answer.
+The **Deep Science** agent (`scholar` in `sdk/AGENTS.json`) answers from the
+peer-reviewed literature. No web search runs — `search.web: false` is
+structural, not a default. On an ordinary turn no preprint reaches an answer;
+the one exception, added 2026-08-13, is a reader who names the preprint record
+outright, and everything it returns is labelled a preprint (§4).
+
+**It is the default agent** (owner directive, 2026-08-13). The general
+`research` agent and its `normal` mode were retired, and `science` took the
+terminal-fallback slot in both the mode resolver and the agent resolver — so a
+request that names no mode is answered by this one. It is also the **exclusive
+owner of arXiv and PubMed** across the platform (§4).
 
 Modules: `src/scholar.js` (the search source), `src/scholar-metrics.js` (the
 enrichment), `src/scholar-venues.js` (the metrics table),
@@ -245,7 +254,7 @@ Three declarations, not a sentence in a prompt:
 |---|---|---|
 | `capability.search.web: false` | `sdk/AGENTS.json` | `capSearch` composes by **narrowing in both directions**, so a request cannot re-enable the Exa leg |
 | `state.forceAux = ["scholar"]` | `src/scholar-metrics.js` | the peer-reviewed source runs every turn, whatever the message says |
-| `state.auxOnly = ["scholar"]` | same | **no other auxiliary source may run** — without it, arXiv would still fire on a physics question and hand the agent preprints |
+| `state.auxOnly = ["scholar", …preprintSources(asked)]` | same | **no other auxiliary source may run** — without it, arXiv would still fire on a physics question and hand the agent preprints |
 
 `state.auxOnly` is new (2026-07-31) and generic: `pipeline.js` reads ids off the
 state and names no source, so any future agent needing the same restriction gets
@@ -255,10 +264,62 @@ the safety argument for user-authorable specs intact.
 The agent's control set has **no web-search toggle**. With `web: false` the
 toggle could only ever be a no-op that implied otherwise.
 
+### The corpora belong to this agent (2026-08-13)
+
+The same directive that retired the general agent divided the scientific
+corpora among the agents built on them, and Deep Science got all of them. Three
+new context blocks say so, and `sdk/AGENTS.json` declares them on this spec:
+
+| Block | Reaches | Also declared by |
+|---|---|---|
+| `literature-peer-reviewed` | the merged peer-reviewed leg (`src/scholar.js`) | nobody |
+| `literature-arxiv` | the hosted arXiv index, falling back to the live arXiv API (`src/arxiv.js`) | nobody |
+| `literature-pubmed` | the hosted PubMed index, falling back to Europe PMC (`src/europepmc.js`) | `palaeogenomics` |
+
+The enforcement is the search-source registry's `requiresContext` field
+(`src/search-sources.js`), read generically by `sourceAllowed` in
+`src/pipeline.js`: a source naming a block runs only for an agent whose
+capability declares it. Palaeogenomics keeping `literature-pubmed` is the one
+explicit, justified preservation — Europe PMC is that agent's only literature
+leg, and the ancient-DNA field publishes in journals and on bioRxiv, not on
+arXiv. Handing a corpus to a different agent is now a one-line spec diff.
+
+A **null** capability keeps every source, because it means *no agent was
+resolved* rather than *an agent declared nothing*: that is `POST /mcp`, which
+has no concept of an agent, and it is deliberate — the ground-truth batteries
+(`tests/dr-eval.mjs`, `tests/needles/*`) reach both corpora through that door.
+
+### The one widening: name the preprint record and get it
+
+Owning a corpus you can never consult is owning nothing, so `preprintSources`
+(`src/scholar-metrics.js`) admits arXiv or Europe PMC to `auxOnly` when — and
+only when — the message **names** the preprint record:
+
+```
+"any arxiv preprints on diffusion transformers"  → + arxiv
+"vad säger förhandstrycken om …"                 → + arxiv
+"search pubmed for statin adherence trials"      → + europepmc
+```
+
+The gates are the sources' own NAMED tiers (`arxivNamedIntent`,
+`europepmcNamedIntent`), not their wide `intent` gates — those fire on any
+research phrasing over a scientific topic, which is most of what this agent is
+ever asked, and widening on them would turn "peer-reviewed only" into
+"peer-reviewed plus whatever matched". Reusing the sources' own vocabulary also
+keeps invariant 6 without a third bilingual word list.
+
+Everything the preprint leg returns is **labelled** in the context the model
+reads: arXiv's item mapper leads its metadata line with "Preprint, not
+peer-reviewed" (`src/arxiv.js` and `src/arxiv-rag.js`), and Europe PMC has
+always annotated its PPR records the same way. So an answer cannot present a
+preprint as reviewed work even when the reader asked for both. The default turn
+is byte-identical to what it was before the widening existed.
+
 ## 5. Reaching the agent
 
 **It is the `science` chat mode** (since 2026-07-31), labeled **Deep Science**
-in the composer dropdown, wearing a parchment theme.
+in the composer dropdown, wearing a parchment theme, and since 2026-08-13 the
+**first entry in that dropdown and the mode a request falls back to**.
 
 It did not start that way, and the correction is worth keeping. This document
 originally argued that `scholar` should be bound to no chat mode — reached only
@@ -277,17 +338,24 @@ does exist is unreachable. **A capability with no door is not a capability.**
 What it actually cost to give it one is the honest measure of the seam: a
 `defaults` row in `sdk/AGENTS.json`, a theme descriptor, an `<option>`, and a
 CSS block. **No new answer phase** — `science` resolves to the same `research`
-phase as `normal` and `models`, because a mode is a SELECTION over shipped
+phase as `models` and `cyber`, because a mode is a SELECTION over shipped
 behaviour, not new behaviour. Deleting the row still removes the mode; deleting
 the agent entry still removes the capability.
 
-One thing it does NOT inherit: `science` is the first mode that does not carry
+One thing it does NOT inherit: `science` was the first mode that does not carry
 this site's own source. That rule used to be spelled "every mode except
 `normal`", which was true only because all five non-normal modes happened to
 want it; a peer-reviewed-literature agent has no more business with this repo
-than plain Deep Research does. The carriers are now named outright in
+than a general research turn did. The carriers are named outright in
 `public/js/chat-mode-core.js` `SOURCE_CARRYING_MODES`, so the next domain mode
-inherits nothing by accident.
+inherits nothing by accident — and `cyber`, the second domain mode, is absent
+for the same reason.
+
+**Being the terminal fallback has one structural consequence.** `scholar` is the
+only mode default declaring `requires: []`. A fallback must be reachable by any
+caller: a requirement on the terminal row would fall through to *nothing*, and
+nothing resolves to a null capability, which is the unrestricted platform
+default. Every other mode default still requires `developer_mode`.
 
 `palaeogenomics` is still bound to no chat mode and still reachable by id
 alone — the same gap, unfixed, and now a known one.

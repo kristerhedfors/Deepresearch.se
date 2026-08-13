@@ -66,7 +66,7 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-import { SEARCH_SOURCES, leadSourceIds } from "./search-sources.js";
+import { SEARCH_SOURCES, capabilityAllowsSource, leadSourceIds } from "./search-sources.js";
 import { fakeLog } from "./test-helpers/env.js";
 import { withFakeFetch } from "./test-helpers/fetch.js";
 import { SCHOLAR_SEARCHES_PER_REQUEST, SCHOLAR_SOURCE_ID } from "./scholar-metrics.js";
@@ -95,6 +95,10 @@ const REGISTRY = [
     service: "Hugging Face Hub",
     diversityHost: "huggingface.co",
     maxPerRequest: 3,
+    // The one source no agent owns: the hub is not a literature corpus, so it
+    // runs for whoever engages it, exactly as every source did before the
+    // 2026-08-13 roster split.
+    requiresContext: undefined,
     // The one source that never leads: a hub question is a question the hub
     // can help with, not an instruction to stand the web leg down.
     leads: false,
@@ -107,6 +111,12 @@ const REGISTRY = [
     // Lower than hf's 3 on purpose: arXiv publishes 1 req / 3 s and sells no
     // way past it (ARXIV_MAX_PER_REQUEST).
     maxPerRequest: 2,
+    // Owned outright by Deep Science (owner directive, 2026-08-13). The
+    // exclusivity itself — which AGENTS hold these blocks — is pinned in
+    // src/literature-exclusivity.test.js; this row pins the registry half, so
+    // dropping the field (which would silently hand preprints back to every
+    // agent) fails here rather than in production.
+    requiresContext: "literature-arxiv",
     leads: true,
     leadMaxPerRequest: 4,
   },
@@ -119,6 +129,12 @@ const REGISTRY = [
     maxPerRequest: 2,
     leads: true,
     leadMaxPerRequest: 4,
+    // The one SHARED corpus: Deep Science owns it and the palaeogenomics agent
+    // declares it too, because ancient-DNA questions are answered out of the
+    // life-science literature (tests/evalsets/palaeogenomics.json,
+    // tests/needles/*-pubmed.json). arXiv deliberately is not shared with it —
+    // that agent's own spec says arXiv does not cover the field.
+    requiresContext: "literature-pubmed",
   },
   {
     id: "scholar",
@@ -127,6 +143,7 @@ const REGISTRY = [
     maxPerRequest: 2,
     leads: true,
     leadMaxPerRequest: 4,
+    requiresContext: "literature-peer-reviewed",
   },
 ];
 
@@ -150,6 +167,11 @@ describe("§1 registry membership", () => {
       assert.equal(s.diversityHost, want.diversityHost, `${want.id}: diversityHost (sources.js per-origin cap)`);
       assert.equal(typeof s.diversityKeyOf, "function", `${want.id}: diversityHost without a key function is inert`);
       assert.equal(s.maxPerRequest, want.maxPerRequest, `${want.id}: maxPerRequest`);
+      // The standing narrowing (owner directive, 2026-08-13): a source naming a
+      // context block runs only for an agent whose capability declares it
+      // (pipeline.js sourceAllowed). Silently dropping the field re-opens a
+      // corpus to every agent on the roster and leaves every other test green.
+      assert.equal(s.requiresContext, want.requiresContext, `${want.id}: requiresContext`);
       assert.equal(typeof s.leadIntent === "function", want.leads, `${want.id}: declares a leadIntent?`);
       assert.equal(s.leadMaxPerRequest, want.leadMaxPerRequest, `${want.id}: leadMaxPerRequest`);
       if (want.leads) {
@@ -581,6 +603,12 @@ const MAX_AUX_SEARCHES_DEFAULT = 3;
 function sourceRuns(source, text, state = {}, leading = false) {
   const only = state.auxOnly;
   if (Array.isArray(only) && only.length && !only.includes(source.id)) return false;
+  // The STANDING narrowing beside that per-request one (owner directive,
+  // 2026-08-13): a source may require a context block the answering agent has
+  // to declare. `state.capability` null — the MCP channel, an unreadable
+  // registry — keeps every source, which is why this reads a capability rather
+  // than a list of ids.
+  if (!capabilityAllowsSource(state.capability ?? null, source)) return false;
   const forced = Array.isArray(state.forceAux) && state.forceAux.includes(source.id);
   return Boolean(forced || leading || source.intent(text));
 }
@@ -603,6 +631,7 @@ describe("§4 forced / restricted routing", () => {
     // assertion below is testing a fiction. Fix the mirror, don't delete this.
     for (const line of [
       "if (Array.isArray(only) && only.length && !only.includes(source.id)) return [];",
+      "if (!sourceAllowed(state, source)) return [];",
       "if (!batch.length || (!forced && !leading && !source.intent(ctx.gateLastUser))) return [];",
       "const override = /** @type {any} */ (state).auxMaxPerRequest?.[source.id];",
       "const declared = (leading ? source.leadMaxPerRequest ?? source.maxPerRequest : source.maxPerRequest);",
@@ -661,6 +690,49 @@ describe("§4 forced / restricted routing", () => {
       SCHOLAR_SEARCHES_PER_REQUEST,
       "…and the agent's override outranks even the leading ceiling",
     );
+  });
+
+  test("state.capability narrows on TOP of auxOnly — the roster split, end to end", () => {
+    // The two narrowings compose, and they are different in kind: `auxOnly` is
+    // what an enrichment wrote for THIS turn, `requiresContext` is what the
+    // answering agent's spec declares standing (owner directive, 2026-08-13).
+    // Neither can readmit what the other refused.
+    const scholarCap = { context: ["scholar-metrics", "literature-peer-reviewed", "literature-arxiv", "literature-pubmed"] };
+    const text = "any arxiv preprints on diffusion transformers";
+
+    // Deep Science's DEFAULT turn: it owns arXiv but has not been asked for it.
+    const strict = { capability: scholarCap, forceAux: [SCHOLAR_SOURCE_ID], auxOnly: [SCHOLAR_SOURCE_ID] };
+    assert.deepEqual(SEARCH_SOURCES.filter((s) => sourceRuns(s, text, strict)).map((s) => s.id), [SCHOLAR_SOURCE_ID]);
+
+    // …and the same turn once the ask NAMED the preprint record, which is what
+    // src/scholar-metrics.js's preprintSources adds to auxOnly.
+    const widened = { ...strict, auxOnly: [SCHOLAR_SOURCE_ID, "arxiv"] };
+    assert.deepEqual(SEARCH_SOURCES.filter((s) => sourceRuns(s, text, widened)).map((s) => s.id), ["arxiv", SCHOLAR_SOURCE_ID]);
+
+    // An agent that does NOT own the corpus cannot reach it however the message
+    // is phrased — no auxOnly, no forceAux, intent firing, and still nothing.
+    const cyberCap = { context: ["owasp", "host-intel"] };
+    assert.equal(entry("arxiv").intent(text), true, "precondition: the message engages arXiv");
+    assert.equal(sourceRuns(entry("arxiv"), text, { capability: cyberCap }), false);
+    // …not even when a forceAux list names it, because the standing declaration
+    // outranks a per-request instruction.
+    assert.equal(sourceRuns(entry("arxiv"), text, { capability: cyberCap, forceAux: ["arxiv"] }), false);
+    // …and not even leading, which is why leadingSources filters first.
+    assert.equal(sourceRuns(entry("arxiv"), text, { capability: cyberCap }, true), false);
+
+    // The palaeogenomics agent keeps its life-science leg and gets no preprint
+    // archive — the explicit preservation (src/literature-exclusivity.test.js).
+    const adnaCap = { context: ["ancient-samples", "literature-pubmed"] };
+    const adna = "pubmed studies on ancient DNA damage patterns";
+    assert.deepEqual(
+      SEARCH_SOURCES.filter((s) => sourceRuns(s, adna, { capability: adnaCap })).map((s) => s.id),
+      ["europepmc"],
+    );
+
+    // And a request that resolved NO capability keeps everything: the MCP
+    // channel builds its state without a registry (invariant 2).
+    assert.equal(sourceRuns(entry("arxiv"), text, {}), true);
+    assert.equal(sourceRuns(entry("arxiv"), text, { capability: null }), true);
   });
 
   test("the Deep Science state, applied whole, yields exactly one source at its raised cap", () => {

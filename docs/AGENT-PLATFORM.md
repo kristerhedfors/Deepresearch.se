@@ -87,7 +87,7 @@ research. Old clients, stored settings, share links and the eval harnesses still
 sending `normal` resolve through `RETIRED_CHAT_MODES`
 ([`public/js/chat-mode-core.js`](../public/js/chat-mode-core.js)).
 
-The first six rows are the dropdown, in dropdown order.
+The first seven rows are the dropdown, in dropdown order.
 
 | Agent | Mode | Tier | What it is |
 |---|---|---|---|
@@ -429,26 +429,38 @@ selects it. **Array order is precedence.**
   { "mode": "outrospection", "agent": "outrospection", "flag": "outrospection_mode" },
   { "mode": "models",        "agent": "models",        "flag": "models_mode" },
   { "mode": "introspection", "agent": "introspection", "flag": "introspection_mode" },
-  { "mode": "normal",        "agent": "research",      "flag": null }
+  { "mode": "cyber",         "agent": "cyber",         "flag": "cyber_mode" },
+  { "mode": "science",       "agent": "scholar",       "flag": "science_mode" }
 ]
 ```
 
 A request normally names its mode outright — `chat_mode: "<mode>"` — and
 `resolveRequestAgent(registry, body, granted, mode)` serves that row if the
 agent's `capability.requires` are all granted. The per-mode booleans are the
-legacy spelling and still resolve, in array order; `normal` (flag null) is the
-terminal fallback. "A client cannot acquire a capability it does not hold" is
-therefore one rule applied uniformly, rather than a condition repeated per mode.
+legacy spelling and still resolve, in array order; `science` is the terminal
+fallback. "A client cannot acquire a capability it does not hold" is therefore
+one rule applied uniformly, rather than a condition repeated per mode.
 
 **Introspection got its flag on 2026-07-26.** Before that its row had
 `flag: null` and it was the *derived* mode — whatever a request resolved to when
 the `developer_mode` capability was granted and no other flag matched. That made
 one boolean carry three unrelated jobs (availability, the persisted user choice,
 and introspection's activation), so the same choice had to be stored three times
-and reconciled on every page load. Now every mode is nameable, `developer_mode`
-is an availability grant only, and the terminal fallback is plain Deep Research —
-which is also why a broken `sdk` row now falls to `normal` rather than silently
-answering as introspection.
+and reconciled on every page load. Now every mode is nameable and
+`developer_mode` is an availability grant only.
+
+**The terminal row changed on 2026-08-13.** It was `normal` / `research`,
+flag `null` — the general agent. It is now `science` / `scholar`, and two
+consequences are load-bearing:
+
+- **The fallback must be reachable by any caller**, so `scholar` alone among the
+  mode defaults declares `requires: []`. A requirement on the terminal row would
+  fall through to *nothing*, and nothing resolves to a null capability, which is
+  the unrestricted platform default — the opposite of what a fallback should be.
+- **An unrouted request now gets a policy.** Deep Science answers from the
+  peer-reviewed record with `search.web: false`, so a caller that wants the open
+  web has to name an agent that has it. A broken `sdk` row falls to Deep Science,
+  not to open-web research.
 
 `src/chat.js` resolves the request; `src/pipeline.js` dispatches on the
 resulting `capability.answerPhase` through a table of executors. Three practical
@@ -467,14 +479,24 @@ notes:
   agent whose phase already exists needs no executor code. `src/chat.js`
   therefore resolves it from the mode directly and lets it lose to any mode that
   DOES replace the flow.
-- **Fail-soft (PA-2).** The registry ships inside the source snapshot and is
-  loaded once per ASSETS binding ([`src/agent-registry.js`](../src/agent-registry.js)).
-  An unreadable registry falls back to the hand-written mode cascade, which the
-  table reproduces exactly — pinned by test.
-- **It stays off the hot path.** A request that resolved to `normal` with no
-  address can only be answered by the research agent, so `routingNeedsRegistry`
-  skips the load entirely. The plain Deep Research turn pays nothing for any of
-  this.
+- **Fail-soft (PA-2).** The registry is loaded once per ASSETS binding
+  ([`src/agent-registry.js`](../src/agent-registry.js)). An unreadable registry
+  falls back to the hand-written mode cascade, which the table reproduces
+  exactly — pinned by test.
+- **It is on every path now.** `routingNeedsRegistry` returns `true`
+  unconditionally. The old shortcut skipped the load for a `normal` turn with no
+  address, on the sound reasoning that the general agent declared nothing that
+  could narrow it. That premise died with the general agent: every mode is a
+  domain, a domain is enforced by `capHasContext`, and a request that skipped
+  the registry would resolve a **null** capability — the unrestricted platform
+  default. Deep Science would quietly stop being literature-only, which is the
+  exact failure the exclusivity work exists to prevent.
+- **What pays for it** is a second bundler output. `scripts/bundle-source.mjs`
+  now writes `public/introspect/agents.json` — a byte copy of the registry,
+  served at `AGENTS_REGISTRY_PATH` ([`public/js/introspect-core.js`](../public/js/introspect-core.js))
+  — which `src/agent-registry.js` reads first, falling back to the source
+  snapshot when a deploy's bundle predates it. So the per-isolate cost is one
+  small asset read, not a multi-megabyte parse.
 
 ### 4.1 Three ways to reach an agent
 

@@ -13,6 +13,7 @@ import {
   ARXIV_MAX_PER_REQUEST,
   arxivAttempts,
   arxivLeadIntent,
+  arxivNamedIntent,
   arxivCacheKey,
   arxivDistinctiveness,
   arxivDiversityKey,
@@ -166,6 +167,43 @@ test("arxivIntent", async (t) => {
     }
   });
 
+
+  // The NAMED tier, exported for src/scholar-metrics.js (owner directive,
+  // 2026-08-13): Deep Science owns arXiv now, and admits it to a turn only when
+  // the reader names the preprint record. It sits BETWEEN the other two gates,
+  // and the containment is what makes it safe to widen an agent's sources with:
+  // a message that names the archive always engages the source (so the widened
+  // leg really runs), and a message that LEADS always named it (so the lead
+  // tier can never reach further than the widening does).
+  test("arxivNamedIntent sits between the wide intent and the lead tier", () => {
+    for (const s of [
+      "any arxiv preprints on diffusion transformers",
+      "arxiv.org/abs/2605.10698",
+      "summarize arXiv:2606.09730",
+      "finns det ett förhandstryck om detta",
+      "is there a preprint on this",
+      // Naming somewhere ELSE too stands the LEAD down but not the naming: the
+      // archive was still named, and for an agent whose web leg is structurally
+      // off there is no "elsewhere" to stand down in favour of.
+      "check arxiv and the web for this",
+    ]) {
+      assert.equal(arxivNamedIntent(s), true, s);
+      assert.equal(arxivIntent(s), true, `${s} — named but does not engage the source`);
+    }
+    for (const s of [
+      "what does the latest research say about llm swarm reasoning",
+      "senaste forskningen om språkmodeller",
+      "politiskt förtryck i Belarus",
+      "Research this founder",
+      "hello",
+      "",
+      null,
+    ]) {
+      assert.equal(arxivNamedIntent(s), false, s);
+      // …and a lead can never fire where the archive was not named.
+      assert.equal(arxivLeadIntent(s), false, s);
+    }
+  });
 
   // Feedback #61 (chat_logs #1656, 2026-08-05). A user attached a LinkedIn
   // screenshot and wrote "Research this founder". The English imperative VERB
