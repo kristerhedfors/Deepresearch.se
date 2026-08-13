@@ -301,6 +301,11 @@ limits, both narrower than the stage as originally written:
   source snapshot, so `routingNeedsRegistry` skips loading it for any request
   that can only resolve to `normal` — which is most of them. The plain Deep
   Research turn pays nothing.
+  *(Superseded 2026-08-13 — see §7. With the general agent retired there is no
+  request that "can only resolve to `normal`", and skipping the load resolves a
+  null capability, which is the unrestricted platform default.
+  `routingNeedsRegistry` now returns `true` unconditionally, paid for by a small
+  dedicated registry artifact rather than the snapshot.)*
 
 The three mode booleans survive as the fail-soft fallback for a deployment whose
 registry cannot be read, and for the MCP channel, which builds its state without
