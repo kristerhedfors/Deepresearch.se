@@ -86,8 +86,9 @@ DRC has no server embedder of the right model, so it can't do dense retrieval
 mode is on — same "always on in dev mode" rule, minus retrieval.
 
 **Off-only request override (2026-07-15, still honored):** `/api/chat` accepts
-`developer_mode: false` in the body to force that one request back to `normal` —
-no source enrichment, no mode (never enables anything — the incognito pattern;
+`developer_mode: false` in the body to force that one request back to the
+DEFAULT mode — no source enrichment, no mode (never enables anything — the
+incognito pattern;
 `chat.js resolveEnrichmentOptions` → `chat-mode-core.js resolveBodyChatMode`).
 It exists because developer mode used to be ALWAYS ON for the break-glass admin,
 which made the eval harnesses structurally unable to measure the web pipeline:
@@ -95,7 +96,7 @@ every bench request routed introspection-first, and pre-fix even quiz-triggered
 off the injected CLAUDE.md prose (chat_logs #360 — the quiz gate now reads
 `cleanLastUser`, source-pinned in `pipeline.test.js`).
 
-Since the 2026-07-26 collapse the harnesses say `chat_mode: "normal"` instead,
+Since the 2026-07-26 collapse the harnesses name their mode outright instead,
 and break-glass no longer defaults to introspection at all — so the override is
 kept for EXTERNAL callers written against the old shape, not because anything in
 this repo needs it. `developer_mode: true` grants nothing.
@@ -368,10 +369,23 @@ the full order and the whole help layer live in the **help-docs** skill.
 
 ## The OWASP Top 10 reference corpus (security assessments)
 
-A dev-mode conversation that asks for a **security assessment** (audit / review
+> **It moved out of this enrichment on 2026-08-13** (owner directive: the roster
+> became specific and OSINT/security became the **Cyber** agent's domain). The
+> retrieval now lives in its own module `src/owasp-context.js`, is its own row
+> in the `src/enrichment.js` registry, and is gated on the answering agent's
+> declared **`owasp` context block** rather than on `state.introspection`. Two
+> agents declare it and both correctly: `cyber` (a security assessment of
+> somebody else's system) and `introspection` (an assessment OF THIS PLATFORM).
+> What is gone is the four other source-carrying modes that reached it as a side
+> effect — Agent Studio, Orchestrator, Outrospection and Models — while exactly
+> one agent declared it. The corpus, its build, its index and its serving are
+> unchanged, as is Se/cure's own client-side path (which is UNGATED: that tier
+> has no agent registry to resolve against). See the **cyber** skill.
+
+A conversation that asks for a **security assessment** (audit / review
 / pentest / threat model / "how secure is X", `securityAssessmentIntent` in
 introspect-core.js — EN+SV parity per invariant 6) gets the OWASP Top 10 text
-injected alongside the site's own source, so findings are classified against —
+injected, so findings are classified against —
 and quote — the actual OWASP wording. Owner directive (2026-07-13): with no
 framework named, DEFAULT to the **OWASP Top 10 for LLM Applications (2025)** +
 the **OWASP Top 10 for Web Applications (2021)** for structure, terminology, and
@@ -408,20 +422,28 @@ for "quote several different vulnerabilities, self-contained":
   to it** when the query embed is unavailable. Verified live to surface 6-7
   correct categories per query and to drive accurate multi-category quoting.
 
-Wiring — **DRS** (`src/introspect.js`): embeds the query ONCE (`embedQuery`) and
-reuses it for source retrieval and — when `securityAssessmentIntent` fires
-(sticky over the conversation) — `retrieveOwasp` (dense+diversify, else lexical)
-→ `buildOwaspReferenceBlock`. The block is appended to the conversation (so the
+Wiring — **DRS**: `src/introspect.js` embeds the query ONCE (`embedQuery`) and
+reuses it for source retrieval, stashing the embed so the OWASP row does not pay
+for it twice; `src/owasp-context.js` then runs — when the agent declares `owasp`
+AND `securityAssessmentIntent` fires (sticky over the conversation) —
+`retrieveOwasp` (dense+diversify, else lexical)
+→ `buildOwaspReferenceBlock`. That row is registered immediately AFTER
+`introspect`, so for a source-carrying mode the block lands exactly where it
+always did. The block is appended to the conversation (so the
 read-loop synthesis sees it via the DIRTY convText) AND stashed in
 `state.owaspBlock`, which `pipeline.js runSourceResearchTools` injects explicitly
 (the native-tool path reads the CLEAN pre-enrichment text). Wiring — **DRC**
 (`public/cure/drc.js` `owaspBlockFor`): fetches `owasp-corpus.json` (a PUBLIC
 static asset — added to `isPublicAsset`), lexical-retrieves, and appends the
 block to the introspection context — server in no data path. The
-`OWASP_ASSESSMENT_NOTE` in `prompts.js` (spliced into `sourceAnswerPrompt` +
-`sourceToolAgentPrompt`) AND the instruction inside `buildOwaspReferenceBlock`
+`OWASP_ASSESSMENT_NOTE` in `prompts.js` AND the instruction inside
+`buildOwaspReferenceBlock`
 both carry the default + the report structure, so it holds even if retrieval or
-the prompt is bypassed.
+the prompt is bypassed. The note is spliced on the SAME `owasp` declaration
+(`owaspNoteFor(capability)`): an agent told to cite `LLM01:2025` while holding
+none of the text those ids come from writes the classification from memory,
+which is the failure the retrieval exists to prevent. A caller passing no
+capability at all still gets it, which is the pre-2026-08-13 behaviour.
 
 **Verify multi-source quoting:** `npm run verify:owasp`
 (`scripts/verify-owasp-quotes.mjs`, needs `BERGET_API_KEY`) drives real models
@@ -453,9 +475,13 @@ hand-edit the artifacts.
 - **DRS: the MODE, not a knob (2026-07-26 collapse).** The account's
   `chat_mode` (`src/settings.js`) is the stored pick; the request names its
   mode in the `chat_mode` field; and whether the source is injected is
-  `modeCarriesSource(mode)` — true for EVERY non-normal mode, so Agent Studio,
-  Orchestrator, Outrospection and Models all get the source too, exactly as
-  they did when the knob was on for all of them. The table and the one wire
+  `modeCarriesSource(mode)` — a NAMED list (`SOURCE_CARRYING_MODES`) rather
+  than "every mode but the default", so Agent Studio, Orchestrator,
+  Outrospection and Models all get the source too, exactly as they did when the
+  knob was on for all of them, while the two DOMAIN modes `science` and `cyber`
+  deliberately do not: neither has business with this repo's source, and paying
+  a multi-megabyte snapshot load to ignore it is the failure the named list
+  prevents. The table and the one wire
   resolution live in `public/js/chat-mode-core.js` (Worker façade
   `src/chat-modes.js`); `chatModesAvailable` answers whether the modes are
   available at all (any signed-in account or break-glass) — an availability

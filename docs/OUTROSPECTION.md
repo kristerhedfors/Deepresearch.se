@@ -214,8 +214,14 @@ the note strategic.
 *(Owner directive, 2026-07-25: the chat-mode lineup is Deep Research,
 Introspection, Agent Studio, Orchestrator and Outrospection.)*
 
-The feed is also the **fifth chat mode**, and the symmetry with introspection
-is the whole design. Introspection retrieves from a committed snapshot of this
+*(Superseded 2026-08-13: the lineup is Deep Science, Cyber, Introspection,
+Agent Studio, Orchestrator, Outrospection and Models. The general "Deep
+Research" mode was retired and Deep Science took its place as the default and
+the terminal fallback; the Models mode had joined in between. Outrospection's
+position moved, nothing about it did.)*
+
+The feed is also a chat mode of its own — the fifth to ship — and the symmetry
+with introspection is the whole design. Introspection retrieves from a committed snapshot of this
 site's own source and answers from that. Outrospection retrieves from the feed
 of what everyone else shipped and answers from that. Same three steps —
 deterministic retrieval, one context block, one streamed answer — pointed the

@@ -239,8 +239,26 @@ fail-soft, decoration never costs a chat).
 
 As shipped:
 
-- **Deep Research** — the tier default: the **balloon** spinner → **blue ✓**
-  (`--check-blue`), plain history drawer, the balloon greeter (§5).
+- **Se/rver, the tier itself** — the **balloon** spinner → **blue ✓**
+  (`--check-blue`), plain history drawer, the balloon greeter (§5). It is a
+  `TIER_THEMES` reference entry, not a selectable mode: the general "Deep
+  Research" mode that used to wear it was retired on 2026-08-13, and every
+  selectable mode now recolours the balloon in its own accent.
+- **Deep Science** — the **reading room**: parchment gold (`#b08d3f`) on a warm
+  dark field, the balloon recoloured gold → **gold ✓** (`--check-gold`), the
+  `deep science` tag, a reading-desk composer pane. It does real literature
+  research over a corpus rather than the open web, so the **depth slider
+  applies** — the modes that hide it hide it because their answer comes from no
+  search at all, which is the distinction the slider tracks. Since 2026-08-13 it
+  is also the default mode and the terminal fallback.
+- **Cyber** — the **sweep**: alert crimson (`#b32d3a`) on a darkened operations
+  field, the balloon recoloured crimson → **crimson ✓** (`--check-crimson`), the
+  `cyber` tag, the terminal backdrop reading as the room's own furniture rather
+  than as decoration. Deliberately **not** Outrospection's masthead red
+  (`#8f1d14`): that one is ink printed on paper, this one is a warning drawn on
+  a dark screen, and each owns its own `--check-*` property, because two modes
+  sharing one is how a recolour silently stops matching its spinner. Depth
+  slider applies.
 - **Introspection** — the **titanium** pane + **TIN**, the titanium mascot
   (`introspect-ui.js`), and a titanium-tinted drawer. It keeps the balloon
   spinner (its distinctness is the pane + character), so its ✓ stays blue —

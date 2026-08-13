@@ -809,11 +809,20 @@ describe("wiring — the extension registry actually reaches this runner", () =>
     assert.ok(shodanEntry(), "extensionEnrichments() carries the shodan entry");
   });
 
-  test("`enabled` follows slice.on", () => {
+  test("`enabled` follows slice.on AND the agent's declared context block", () => {
+    // Two gates since 2026-08-13 (src/extensions.js seam 6). The knob is the
+    // ACCOUNT's consent to send a host or IP to Shodan; `host-intel` is which
+    // agent may use it — the Cyber agent, and no other. Either alone reaches
+    // nothing, which is why both cases are asserted here rather than just the
+    // knob the test was originally written for.
     const e = shodanEntry();
-    assert.equal(e.enabled({ ext: { shodan: { on: true, count: 0 } } }), true);
-    assert.equal(e.enabled({ ext: { shodan: { on: false, count: 0 } } }), false);
-    assert.equal(e.enabled({ ext: {} }), false);
+    const cyber = { context: ["host-intel"] };
+    assert.equal(e.enabled({ ext: { shodan: { on: true, count: 0 } }, capability: cyber }), true);
+    assert.equal(e.enabled({ ext: { shodan: { on: false, count: 0 } }, capability: cyber }), false);
+    // Knob on, no declaration — every agent that is not Cyber.
+    assert.equal(e.enabled({ ext: { shodan: { on: true, count: 0 } } }), false);
+    assert.equal(e.enabled({ ext: { shodan: { on: true, count: 0 } }, capability: { context: [] } }), false);
+    assert.equal(e.enabled({ ext: {}, capability: cyber }), false);
     assert.equal(e.enabled({}), false);
   });
 

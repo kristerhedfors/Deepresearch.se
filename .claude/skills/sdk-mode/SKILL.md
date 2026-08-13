@@ -1,12 +1,12 @@
 ---
 name: sdk-mode
-description: Load when working on SDK MODE — the green "lovable experience" entry in the chat-mode dropdown (Deep Research / Deep Science / Introspection / Agent Studio / Orchestrator / Outrospection / Models) that DISTILLS this site (above all the client-side Se/cure tier) into either a new individual agent OR an entire new platform, self-contained web app, with the DeepResearch Platform SDK (codename DistillSDK) and publishes it live at /app/<slug>/ — or when touching public/js/sdk-core.js (buildSdkContextBlock / SECURE_SOURCE_REFS), src/sdk-tools.js, src/build-pub.js, pipeline.js runSdkBuild, the sdk_mode/build_slug chat fields, the /mcp sdk_* tools, public/js/chat-mode.js, the mode dropdown (#modesel), or the green sdk-mode theme. Also load when a published /app/<slug>/ build misbehaves or the mode dropdown/theming regresses.
+description: Load when working on SDK MODE — the green "lovable experience" entry in the chat-mode dropdown (Deep Science / Cyber / Introspection / Agent Studio / Orchestrator / Outrospection / Models) that DISTILLS this site (above all the client-side Se/cure tier) into either a new individual agent OR an entire new platform, self-contained web app, with the DeepResearch Platform SDK (codename DistillSDK) and publishes it live at /app/<slug>/ — or when touching public/js/sdk-core.js (buildSdkContextBlock / SECURE_SOURCE_REFS), src/sdk-tools.js, src/build-pub.js, pipeline.js runSdkBuild, the sdk_mode/build_slug chat fields, the /mcp sdk_* tools, public/js/chat-mode.js, the mode dropdown (#modesel), or the green sdk-mode theme. Also load when a published /app/<slug>/ build misbehaves or the mode dropdown/theming regresses.
 ---
 
 # SDK mode — the "lovable distiller" (2026-07-18; SWE folded in 2026-07-19)
 
-The third entry in the chat-mode dropdown: the user DESCRIBES a FLAVOUR to
-distill from this site — above all the client-side **Se/cure** tier — the model
+The fourth entry in the chat-mode dropdown (the third to ship): the user
+DESCRIBES a FLAVOUR to distill from this site — above all the client-side **Se/cure** tier — the model
 DESIGNS + BUILDS it with DistillSDK (`sdk/` — manifest + skills) plus the
 deployed Se/cure source, and the pipeline PUBLISHES the files at a live,
 shareable `/app/<slug>/` URL. Green is the mode's color (the composer pane + the
@@ -173,9 +173,10 @@ show live signatures/`:root` vars.
   `#modesel` (index.html, wired in app.js) AND the **Settings-panel Chat mode
   dropdown** (`account-views.js` `settingSelectRow` / `wireModeKnob`, which
   REPLACED the old Introspection on/off switch — owner directive 2026-07-18).
-  Both pick from Deep Research / Deep Science / Introspection / Agent Studio / Orchestrator /
-  Outrospection / Models (the Settings list is pinned against `CHAT_MODES` by
-  test — it had silently lost `models`). Picking a mode PUTs
+  Both pick from Deep Science / Cyber / Introspection / Agent Studio /
+  Orchestrator / Outrospection / Models (the Settings list is pinned against
+  `CHAT_MODES` by test — it had silently lost `models`). The general `normal`
+  entry was retired 2026-08-13 and Deep Science took first position. Picking a mode PUTs
   `chat_mode` to /api/settings, fail-soft — break-glass's PUT refuses and the
   theme applies anyway. `loadSettings().then` calls `adoptServerChatMode`: the
   account's stored mode replaces the cache, with no downgrade rule (the server
@@ -183,10 +184,10 @@ show live signatures/`:root` vars.
   syncs `#modesel` and routes through `applyChatModeTheme`, so both dropdowns,
   the theme class, and the cache stay consistent.
 - Per-send fields (`stream.js buildChatPayload`): ONE field,
-  `chat_mode:"<mode>"`, for every mode including `normal` — plus `build_slug`
+  `chat_mode:"<mode>"` — plus `build_slug`
   in sdk mode when the conversation already published. The old per-mode
-  booleans (and normal's `developer_mode:false`) are still accepted by the
-  server for external callers.
+  booleans are still accepted by the server for external callers, as is the
+  retired `normal`, which `RETIRED_CHAT_MODES` resolves to `science`.
 
 ## The showcase gallery (client — the SDK build-idea library)
 
@@ -196,8 +197,8 @@ reference model **Claude Sonnet 5** (`SHOWCASE_REF`, kept in sync with the
 Anthropic catalog id). It renders into the LEFT library pane (the history
 drawer, `#sdkshowcase` in index.html) **only when the chat mode is SDK**:
 `history-ui.js` calls `renderShowcase()` in its `refresh()`, gated on
-`cachedChatMode() === "sdk"`, so the same drawer is history in Deep Research/
-Introspection and a build-idea library in SDK mode (green cards, matching the
+`cachedChatMode() === "sdk"`, so the same drawer is history in every other mode
+and a build-idea library in SDK mode (green cards, matching the
 composer pane + `agent studio` tag). Picking a card calls app.js's
 `onShowcasePick`, which prefills the composer with the brief (switching to SDK
 mode defensively) and closes the drawer — the user still presses send, so it
@@ -210,9 +211,9 @@ to the right group in `SDK_SHOWCASE` — don't renumber existing ids.
 ## The server flow
 
 - `src/chat.js`: sdk mode is `enrich.chatMode === "sdk"`, and the mode was
-  resolved once by `resolveBodyChatMode`, which returns `normal` when the modes
-  are unavailable to the caller (a client can't acquire a capability it doesn't
-  hold); `build_slug` is validated (`buildSlugOk`). State carries
+  resolved once by `resolveBodyChatMode`, which returns the DEFAULT mode
+  (`science`, Deep Science — `normal` is retired) when the modes are unavailable
+  to the caller: a client can't acquire a capability it doesn't hold; `build_slug` is validated (`buildSlugOk`). State carries
   `sdkMode`/`buildSlug`/`userId`; the chat_logs meta records `sdk: 1` and
   `build: {slug,url,files,bytes}`.
 - `src/pipeline.js` `runSdkBuild` (routed FIRST in runPipeline — SDK mode

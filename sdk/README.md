@@ -116,7 +116,7 @@ evidence-driven decisions).
 |---|---|---|
 | `pair-generator` | D | Selection → dependency closure → module-at-a-time generation; adoption mode |
 | `pair-studio` | X | The in-app builder: prompt → SDK-guided generation in the VM → preview deploy in the same UI → save as a runnable test application; platform types (client-tier builds run instantly, server-tier builds export) |
-| `agent-platform` | X | AgentSpec — an agent defined by its chat-input-pane controls, animations, theme, examples and share-link quota; the four shipped agents; composer renderer + visual proof + example generation + share-link minting (`docs/AGENT-PLATFORM.md`) |
+| `agent-platform` | X | AgentSpec — an agent defined by its chat-input-pane controls, animations, theme, examples and share-link quota; the CAPABILITY block that says what an agent may reach; the ten shipped agents; composer renderer + visual proof + example generation + share-link minting (`docs/AGENT-PLATFORM.md`) |
 | `deploy-pipeline` | S | Deploy the workspace and try it LIVE: a same-origin preview URL for client-tier builds, a push to the user's own edge account for server-tier builds (never the platform's origin). Server-tier |
 
 ## How to use it

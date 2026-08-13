@@ -10,6 +10,7 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
+import { CONTEXT_BLOCKS } from "./agent-spec.js";
 import {
   EXTENSIONS,
   emptyExtensionState,
@@ -41,6 +42,26 @@ describe("registry shape", () => {
       assert.ok(e.setting.unavailableError, `${e.id}: unavailableError`);
       assert.equal(typeof e.capability.order, "number", `${e.id}: capability.order`);
       assert.ok(e.capability.text, `${e.id}: capability.text`);
+      // Seam 6 (2026-08-13): which agent may reach this extension at all.
+      assert.equal(typeof e.contextBlock, "string", `${e.id}: contextBlock`);
+    }
+  });
+
+  test("every contextBlock is a real entry in the AgentSpec vocabulary", () => {
+    // The declaration side of seam 6 has to be selectable by a spec, or the
+    // extension is unreachable by construction: capHasContext compares against
+    // whatever the spec listed, and validateCapability only admits CONTEXT_BLOCKS
+    // keys. A typo here would switch the extension off for every agent and
+    // nothing else in the suite would notice.
+    for (const e of EXTENSIONS) {
+      assert.ok(
+        Object.prototype.hasOwnProperty.call(CONTEXT_BLOCKS, e.contextBlock),
+        `${e.id}: contextBlock "${e.contextBlock}" is not a CONTEXT_BLOCKS id`,
+      );
+      // Both of today's extensions reach a third party from the server, so the
+      // block they select must be server-only — a client-tier agent declaring
+      // it would be rejected by validateCapability, which is the right answer.
+      assert.equal(CONTEXT_BLOCKS[e.contextBlock].serverOnly, true, `${e.id}: ${e.contextBlock} must be serverOnly`);
     }
   });
 
@@ -50,6 +71,10 @@ describe("registry shape", () => {
     assert.ok(unique(EXTENSIONS.map((e) => e.setting.key)), "setting keys");
     assert.ok(unique(EXTENSIONS.map((e) => e.setting.availability)), "availability keys");
     assert.ok(unique(EXTENSIONS.map((e) => e.capability.order)), "capability orders");
+    // One extension per context block: two extensions behind one declaration
+    // would make the exclusivity guard (src/cyber-exclusivity.test.js) unable
+    // to say which capability an agent actually gained.
+    assert.ok(unique(EXTENSIONS.map((e) => e.contextBlock)), "context blocks");
   });
 
   test("getExtension resolves by id and is null for anything else", () => {
@@ -134,20 +159,52 @@ describe("per-request state seam", () => {
 });
 
 describe("enrichment seam", () => {
+  // The capability an agent declaring every extension's block would carry.
+  const allBlocks = { context: EXTENSIONS.map((e) => e.contextBlock) };
+
   test("an extension is enabled only when its own slice says so", () => {
     const entries = extensionEnrichments();
     assert.deepEqual(entries.map((e) => e.id), ["shodan", "maps"]);
-    const state = { ext: resolveExtensionState({}, { shodan: true }) };
+    const state = { ext: resolveExtensionState({}, { shodan: true }), capability: allBlocks };
     assert.equal(entries.find((e) => e.id === "shodan").enabled(state), true);
     assert.equal(entries.find((e) => e.id === "maps").enabled(state), false);
   });
 
+  test("the knob AND the agent's declaration are both required (seam 6)", () => {
+    // The knob is the ACCOUNT's consent to reach a third party; the context
+    // block is WHICH AGENT may use it. Either alone must reach nothing — that
+    // is the whole content of the 2026-08-13 change, and without this test the
+    // capability half could be deleted and every other assertion here would
+    // still pass.
+    const both = { ext: resolveExtensionState({}, { shodan: true, maps: true }), capability: allBlocks };
+    const knobOnly = { ext: resolveExtensionState({}, { shodan: true, maps: true }) };
+    const capOnly = { ext: emptyExtensionState(), capability: allBlocks };
+    for (const entry of extensionEnrichments()) {
+      assert.equal(entry.enabled(both), true, `${entry.id}: knob + declaration`);
+      assert.equal(entry.enabled(knobOnly), false, `${entry.id}: knob without declaration`);
+      assert.equal(entry.enabled(capOnly), false, `${entry.id}: declaration without knob`);
+    }
+    // …and a declaration selects only its own extension.
+    for (const e of EXTENSIONS) {
+      const state = { ext: resolveExtensionState({}, { shodan: true, maps: true }), capability: { context: [e.contextBlock] } };
+      for (const entry of extensionEnrichments()) {
+        assert.equal(entry.enabled(state), entry.id === e.id, `${e.contextBlock} → ${entry.id}`);
+      }
+    }
+  });
+
   test("a state with no ext bag at all leaves every extension off", () => {
     // The safety net for any channel that builds state by hand: an absent bag
-    // must read as "nothing enabled", never throw.
+    // must read as "nothing enabled", never throw. Same for an absent or junk
+    // capability — the narrowing direction, so a request that never consulted
+    // the agent registry reaches no third party rather than every one.
     for (const entry of extensionEnrichments()) {
       assert.equal(entry.enabled({}), false, entry.id);
       assert.equal(entry.enabled({ ext: {} }), false, entry.id);
+      const on = resolveExtensionState({}, { shodan: true, maps: true });
+      for (const capability of [undefined, null, {}, { context: [] }, { context: "host-intel" }, { context: ["source-snapshot"] }]) {
+        assert.equal(entry.enabled({ ext: on, capability }), false, `${entry.id}: ${JSON.stringify(capability)}`);
+      }
     }
   });
 });
@@ -192,6 +249,35 @@ describe("capabilities seam", () => {
       // the whole point of the grounded note.
       assert.match(c.text, /TURN ON\/OFF/);
     }
+  });
+
+  test("every capability line names the AGENT as well as the knob", () => {
+    // The knob stopped being the whole answer on 2026-08-13. A line that still
+    // said only "Account panel → Settings" would send a user who switched the
+    // knob on to an agent that cannot run the lookup, and the grounded note
+    // exists precisely so this answer is not guesswork.
+    for (const c of extensionCapabilities()) {
+      assert.match(c.text, /WHERE: the Cyber agent/);
+      assert.match(c.text, /Both are needed/);
+    }
+  });
+
+  test("the list is filtered to what the ANSWERING agent can reach", () => {
+    // The other half of the gate. Without this an agent that cannot run a host
+    // lookup would still carry a numbered line telling it that it can, and
+    // src/prompts.js's capabilityList would be the one place left lying about
+    // the roster.
+    for (const e of EXTENSIONS) {
+      const only = extensionCapabilities({ context: [e.contextBlock] });
+      assert.deepEqual(only, [{ ...e.capability }], `${e.contextBlock} selects exactly its own line`);
+    }
+    for (const capability of [null, {}, { context: [] }, { context: ["source-snapshot"] }]) {
+      assert.deepEqual(extensionCapabilities(capability), [], JSON.stringify(capability));
+    }
+    // Omitted entirely — the MCP channel, a sub-agent, a test — is the
+    // unfiltered list, exactly what those callers described before the filter.
+    assert.equal(extensionCapabilities().length, EXTENSIONS.length);
+    assert.equal(extensionCapabilities(undefined).length, EXTENSIONS.length);
   });
 });
 
@@ -342,10 +428,17 @@ describe("core purity", () => {
     // knob, no network — and the alternative was asking every runner to hand
     // its block back, which would have put the same knowledge in nine places
     // instead of one.
+    //
+    // owasp-context.js is the newest entry (2026-08-13) and the least arguable:
+    // it reads a committed corpus of a PUBLIC STANDARD out of this deployment's
+    // own assets — no knob, no secret, no per-request state slice, no extension
+    // descriptor, and no outbound connection of any kind. It was a branch
+    // inside introspect.js until the roster change made "which agent may reach
+    // the standard" a question the introspection MODE could not answer.
     assert.deepEqual(imports, [
       "./aadr.js", "./agent-spec.js", "./conversation.js", "./entity-research.js", "./extensions.js",
-      "./image-read.js", "./introspect.js", "./models-agent.js", "./person-research.js",
-      "./scholar-metrics.js",
+      "./image-read.js", "./introspect.js", "./models-agent.js", "./owasp-context.js",
+      "./person-research.js", "./scholar-metrics.js",
     ]);
   });
 });

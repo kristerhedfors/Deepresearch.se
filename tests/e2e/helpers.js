@@ -51,8 +51,10 @@ export const SENTINEL = {
 // matches routes last-registered-first, so the handler below would otherwise
 // shadow the spec's own and answer from the real server instead. Such a spec
 // owns the pinning: a mock that omits `bash_lite_mcp`/`chat_mode` already reads
-// as sandbox-off and Deep Research, which is the state these specs want.
-export async function openApp(page, { webSearch = false, budgetS = 15, sandbox = false, chatMode = "normal", pinSettings = true } = {}) {
+// as sandbox-off and the DEFAULT agent, which is the state these specs want.
+// That default became Deep Science when the general agent was retired
+// (2026-08-13); a spec that needs open-web research must name a mode.
+export async function openApp(page, { webSearch = false, budgetS = 15, sandbox = false, chatMode = "science", pinSettings = true } = {}) {
   const base = process.env.BASE_URL || "https://deepresearch.se";
   // The break-glass header must never reach a third party (see
   // stripCrossOriginAuth): the app pre-warms the sandbox on load now, so every

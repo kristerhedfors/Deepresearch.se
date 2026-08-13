@@ -106,6 +106,9 @@ the summaries below with the parser in `introspect-core.js` if a skill's
   to judge a corpus change on the SERVED path with paired significance.
 - **bugreport-bugfix** — turning a bug reported as little more than a chat
   keyword into a verified fix via chatlogs.
+- **arxiv-ingest** — re-running the arXiv ingest: the full-rebuild and delta
+  runbooks, the `--until` datestamp window that decides whether a delta
+  silently under-harvests, and the category mode.
 - **bulk-corpus-etl** — the provider-agnostic discipline for turning any large
   external corpus into a hosted searchable index: two-source enumeration
   (one cannot find its own gaps), checkpointing, rate-limit citizenship,
@@ -118,6 +121,11 @@ the summaries below with the parser in `introspect-core.js` if a skill's
   (`scripts/build-pulse.mjs`, `public/pulse/`) and the landing's "What work has
   been done and when" card — the **activity graph**, so a bare "update activity
   graph" / "uppdatera aktivitetsgrafen" loads this skill.
+- **cyber** — the Cyber agent (`chat_mode: "cyber"`), the cybersecurity/OSINT
+  domain and the only agent allowed outward-facing intelligence: host
+  intelligence, street imagery, the entity + person OSINT methods and the OWASP
+  corpus, each declared as a `capability.context` block and enforced by
+  `capHasContext`.
 - **decision-boards** — building/extending an admin DECISION BOARD; the shared
   core `src/board.js` and the panel ⇄ loop mechanism.
 - **deploy** — how code reaches production (push-to-main auto-deploy, direct
@@ -135,6 +143,9 @@ the summaries below with the parser in `introspect-core.js` if a skill's
   `docs/MAINTENANCE-OWNERS.md`.
 - **feedback-loop** — the site's feedback pipeline as an agent loop
   (`src/feedback.js`); gather → decide → act → message back.
+- **ground-truth-eval** — measuring whether answers are RIGHT rather than
+  well-written: the gold-answer battery over `POST /mcp`, the no-search control
+  arm, the retrieval-vs-synthesis loss breakdown, and the A/B deploy dance.
 - **help-docs** — HELP MODE, the documentation-first layer of introspection:
   the docs corpus + index (symbol references, served doc images), the
   docs→source escalation, the `bundle:docs` regeneration discipline.

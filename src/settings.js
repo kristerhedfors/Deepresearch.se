@@ -89,7 +89,7 @@ import {
 // job was to unlock INTROSPECTION MODE. It is GONE as of 2026-07-26: the
 // account's `chat_mode` below replaced it. The knob had degenerated into
 // derived state — the Chat mode dropdown wrote it on every mode change, so it
-// only ever said "the picked mode is not Normal" — while ALSO being the sole
+// only ever said "the picked mode is not the default one" — while ALSO being the sole
 // activation signal for introspection (which had no request flag of its own)
 // and the name of the availability gate. Three jobs, one boolean, mirrored in
 // three stores. Now the MODE is stored and everything is derived from it; see
@@ -143,9 +143,9 @@ export function parseSettings(json) {
 //
 // MIGRATION (2026-07-26): rows written before the collapse carry the old
 // `developer_mode` boolean and no `chat_mode`. An account that had it ON was,
-// by definition, in a non-Normal mode — and introspection is the mode it
+// by definition, in a non-default mode — and introspection is the mode it
 // started as and the one the client's own pre-dropdown fallback assumed — so it
-// reads as `introspection`. Everything else reads as `normal`. The old key is
+// reads as `introspection`. Everything else reads as the DEFAULT mode. The old key is
 // simply not written any more; a stored copy is ignored once `chat_mode` exists,
 // and mergeStoredSettings leaves the dead key alone rather than rewriting rows
 // (it costs nothing and a failed migration write would be worse than a stale
@@ -200,7 +200,7 @@ export function featureAvailability(env, identity) {
     // bashLiteEnabled), which is what makes the feature reachable and
     // end-to-end testable with the break-glass credentials.
     bash_lite: !!(identity.user || identity.isSecretAdmin),
-    // Whether the NON-NORMAL CHAT MODES (introspection, Agent Studio,
+    // Whether the NON-DEFAULT CHAT MODES (Cyber, introspection, Agent Studio,
     // Orchestrator, Outrospection, Models) are available to this identity at
     // all. Mirrors bash_lite exactly: no server secret — the source snapshot is
     // a committed public artifact — and the break-glass admin (an explicit
@@ -315,7 +315,7 @@ export function memoryEnabled(env, identity) {
   return getSettings(identity).memory === true;
 }
 
-// Whether this identity may use the non-normal chat modes at all. The whole
+// Whether this identity may use the non-default chat modes at all. The whole
 // answer is availability (see featureAvailability's `developer` note) — there is
 // no per-account opt-in left to consult. WHICH mode a given request runs in is
 // resolved per request from the mode field, the legacy flags and the stored
@@ -332,9 +332,11 @@ export function chatModesAvailable(env, identity) {
 
 // The chat mode this account last picked — the durable half of the choice, so
 // the mode follows the account across devices (the browser's localStorage copy
-// is a first-paint CACHE of this, not a second authority). Normal for the
+// is a first-paint CACHE of this, not a second authority). The default for the
 // break-glass admin: it has no D1 row to persist a pick in, so each request
-// says which mode it wants and gets plain deep research when it says nothing.
+// says which mode it wants and gets the default agent when it says nothing.
+// Since 2026-08-13 that default is Deep Science rather than a general research
+// turn: the roster has no general member, so saying nothing picks a domain.
 // That is a deliberate change from the old knob, which read as permanently ON
 // for break-glass and made every unflagged operator request introspection.
 /**
@@ -407,7 +409,7 @@ function settingsPayload(env, identity, settings) {
   for (const spec of extensionSettingSpecs()) {
     knobs[spec.key] = !!(available[spec.availability] && settings[spec.key]);
   }
-  // The account's persisted chat mode, forced to Normal when the modes are
+  // The account's persisted chat mode, forced to the DEFAULT when the modes are
   // unavailable — so a client never paints a mode it cannot actually run.
   const chatMode = available.developer ? normalizeChatMode(settings.chat_mode) : DEFAULT_CHAT_MODE;
   return {
@@ -415,7 +417,7 @@ function settingsPayload(env, identity, settings) {
     bash_lite_mcp: available.bash_lite && (identity.user ? settings.bash_lite_mcp : true),
     chat_mode: chatMode,
     // BACK-COMPAT (2026-07-26): the old boolean, now purely derived — "the
-    // stored mode is not Normal". A client cached mid-deploy still reads it and
+    // stored mode is not the default one". A client cached mid-deploy still reads it and
     // gets the right answer; nothing in this repo reads it any more. Removable
     // once no released client does.
     developer_mode: chatMode !== DEFAULT_CHAT_MODE,
@@ -448,8 +450,11 @@ export async function handleSettingsGet(env, identity) {
 //
 // LEGACY (2026-07-26): a `developer_mode` boolean is still accepted and mapped
 // onto `chat_mode` — true becomes introspection (what the knob unlocked), false
-// becomes normal — so a client cached mid-deploy keeps working. An explicit
-// `chat_mode` in the same body wins.
+// becomes the DEFAULT mode — so a client cached mid-deploy keeps working. An
+// explicit `chat_mode` in the same body wins. The `false` leg used to mean
+// "plain web research"; since the general agent was retired (2026-08-13) it
+// means Deep Science, because that is what the default is now. The promise the
+// leg makes is "clear the mode", and it still keeps it.
 /**
  * @param {Request} request
  * @param {Env} env
@@ -512,7 +517,7 @@ export async function handleSettingsPut(request, env, log, identity) {
       503,
     );
   }
-  // A non-Normal mode needs only a user row (the source snapshot is a public
+  // A non-default mode needs only a user row (the source snapshot is a public
   // artifact) — available is false only for break-glass, which can't reach this
   // handler anyway.
   if (nextMode && nextMode !== DEFAULT_CHAT_MODE && !available.developer) {

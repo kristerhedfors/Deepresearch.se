@@ -13,8 +13,13 @@ mode, has no settings knob and no request flag, and no row in the registry's
 the whole capability.
 
 That reachability is the point. The domain is narrow; the platform is not. The
-agent adds two source legs and one context block, and touches nothing that a
-Deep Research turn, an Introspection turn or an Agent Studio build can see.
+agent adds two source legs and two context blocks, and touches nothing any other
+agent's turn can see. Since 2026-08-13 the second block, `literature-pubmed`, is
+also what LETS it reach the life-science record at all: the corpora were divided
+among the agents built on them, and this agent's share is the explicit
+preservation in that division — Europe PMC and the hosted PubMed index are its
+only literature leg, and it deliberately gets no arXiv, which does not cover the
+field (`src/literature-exclusivity.test.js`).
 
 Se/rver tier only. Its context block is marked `serverOnly` in the capability
 vocabulary, so `validateCapability` refuses it to a client-tier agent rather

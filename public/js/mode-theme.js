@@ -2,9 +2,10 @@
 // The MODE-THEME REGISTRY — the codified catalog of what makes each mode
 // visually its own. The site speaks two TIERS (DeepResearch.Se/cure and
 // DeepResearch.Se/rver — separate served apps) and, WITHIN the Se/rver app,
-// five chat MODES picked from the dropdown (Deep Research / Introspection /
-// Agent Studio / Orchestrator / Outrospection — chat-mode.js). Each identity
-// distinguishes itself the same way, along the SAME axes:
+// seven chat MODES picked from the dropdown (Deep Science / Cyber /
+// Introspection / Agent Studio / Orchestrator / Outrospection / Models —
+// chat-mode.js). Each identity distinguishes itself the same way, along the
+// SAME axes:
 //
 //   • a root THEME CLASS (the composer-pane tint + tag)   — chat-mode.js / CSS
 //   • a palette ACCENT + a completion ✓ COLOR              — public/css/app.css
@@ -58,39 +59,34 @@
  * @property {boolean} depthSlider   whether the composer's research depth/time
  *                                   slider (#budget) applies in this mode — an
  *                                   OPTIONAL theme feature (owner, 2026-07-19):
- *                                   Deep Research researches so it shows it;
- *                                   Introspection (answers from source) and SDK
- *                                   (builds, no web research) don't need it, so
- *                                   the slider is hidden (CSS keys off the theme
- *                                   class, `:root.dev-mode`/`:root.sdk-mode`).
+ *                                   a mode that researches shows it (Deep
+ *                                   Science reads the literature, Cyber sweeps
+ *                                   hosts and open sources, Models surveys the
+ *                                   landscape); Introspection (answers from
+ *                                   source) and SDK (builds, no web research)
+ *                                   don't need it, so the slider is hidden (CSS
+ *                                   keys off the theme class,
+ *                                   `:root.dev-mode`/`:root.sdk-mode`).
  * @property {string} symbol         the identity's symbol, in words
  * @property {string} blurb          one line: what the identity says
  */
 
 /** The Se/rver-app chat modes, dropdown order. Mirrors chat-mode.js CHAT_MODES;
  * kept here too so the registry is self-describing. */
-export const CHAT_MODE_IDS = ["normal", "science", "introspection", "sdk", "orchestrator", "outrospection", "models"];
+export const CHAT_MODE_IDS = ["science", "cyber", "introspection", "sdk", "orchestrator", "outrospection", "models"];
 
 /** The mode descriptors, keyed by id.
+ *
+ * There is NO general descriptor any more (owner directive, 2026-08-13). The
+ * first entry used to be `normal` — labeled "Deep Research", the unthemed mode
+ * with `rootClass: null` that every other descriptor was implicitly described
+ * against ("where Normal folds to --check-blue"). It is gone with the general
+ * agent, and Deep Science took both its dropdown seat and its role as the
+ * fallback `modeTheme()` returns. The Se/rver TIER keeps the balloon-and-blue
+ * identity that used to be Normal's — it is in TIER_THEMES below, where it now
+ * carries it alone.
  * @type {Record<string, ModeTheme>} */
 export const MODE_THEMES = {
-  normal: {
-    id: "normal",
-    label: "Deep Research",
-    rootClass: null,
-    tag: null,
-    accent: "#0d4fa0",
-    bar: "#6fc3fd",
-    check: "#0d4fa0",
-    checkVar: "--check-blue",
-    spinner: "balloon",
-    character: "balloon",
-    panel: "history",
-    backdrop: "terminal",
-    depthSlider: true,
-    symbol: "the balloon",
-    blurb: "carried — the server lifts the load",
-  },
   science: {
     id: "science",
     label: "Deep Science",
@@ -111,14 +107,51 @@ export const MODE_THEMES = {
     character: "balloon",
     panel: "history",
     backdrop: "terminal",
-    // The ONE non-normal mode that keeps the depth slider. It does real
-    // literature research, over a corpus rather than the open web, and depth
-    // buys exactly what it buys everywhere else: more searches, more sources.
-    // Every other mode hides it because its answer does not come from a search
-    // at all — that is the distinction the slider tracks, not "is it normal".
+    // The slider applies. It does real literature research, over a corpus
+    // rather than the open web, and depth buys exactly what it buys everywhere
+    // else: more searches, more sources. The modes that hide it hide it because
+    // their answer does not come from a search at all — that is the distinction
+    // the slider tracks, and it never was "is it the general mode".
     depthSlider: true,
     symbol: "the reading room",
     blurb: "read — only what survived peer review, and nothing that did not",
+  },
+  cyber: {
+    id: "cyber",
+    label: "Cyber",
+    rootClass: "cyber-mode",
+    tag: "cyber",
+    // Alert crimson — the agent's own declared accent (sdk/AGENTS.json
+    // `cyber.theme.--agent-accent`), so the mode a user picks and the agent
+    // registry describe one identity rather than two that merely look alike.
+    // It is deliberately NOT Outrospection's masthead red (#8f1d14): that one
+    // is ink printed on paper, this one is a warning drawn on a dark screen,
+    // and the two are never on the field at the same time.
+    accent: "#b32d3a",
+    bar: "#ff7a86", // alarm rose over the darkened operations field
+    // The ✓ is the accent itself, so the crimson that marks the agent also
+    // marks its finished steps. It cannot borrow --check-red, which
+    // Outrospection already owns at a different value — two modes sharing one
+    // custom property is how a recolour silently stops matching its spinner.
+    check: "#b32d3a",
+    checkVar: "--check-crimson",
+    // The balloon recoloured in CRIMSON (mode-spinner.js CYBER_SPINNER) — the
+    // introspection/orchestrator/outrospection/models/science recolour pattern;
+    // the KIND stays "balloon", the palette lives in mode-spinner.js.
+    spinner: "balloon",
+    character: "balloon",
+    panel: "history",
+    // The sandbox terminal-text layer, and this is the mode where it reads as
+    // the room's own furniture rather than as a decoration: a security turn
+    // that sweeps a host or walks a scene is exactly the work a terminal shows.
+    backdrop: "terminal",
+    // The slider applies. This agent researches for real — host intelligence,
+    // street imagery, open-source records about an entity, the appsec
+    // reference — and depth buys the same thing it buys anywhere else: more
+    // queries answered before the synthesis runs.
+    depthSlider: true,
+    symbol: "the sweep",
+    blurb: "swept — what is exposed, from the outside, before someone else looks",
   },
   introspection: {
     id: "introspection",
@@ -288,13 +321,22 @@ export const MODE_ROOT_CLASSES = /** @type {string[]} */ (
 );
 
 /**
- * The descriptor for a mode, falling back to Deep Research for anything unknown.
+ * The descriptor for a mode, falling back to DEEP SCIENCE for anything unknown.
+ *
+ * The fallback moved off `normal` when the general agent was retired
+ * (2026-08-13). It is the same fallback the routing core uses
+ * (chat-mode-core.js DEFAULT_CHAT_MODE), and the two must not drift: a request
+ * answered by Deep Science while the page paints an unrelated theme is a mode
+ * mismatch the user can see. The value that lands here is a retired or garbled
+ * id — `normal` from a browser that has not reloaded, a share link written
+ * before the change — and it now paints the reading room rather than an
+ * unthemed sky-blue field that no longer belongs to any mode.
  * @param {unknown} mode
  * @returns {ModeTheme}
  */
 export function modeTheme(mode) {
   const id = typeof mode === "string" ? mode : "";
-  return MODE_THEMES[id] || MODE_THEMES.normal;
+  return MODE_THEMES[id] || MODE_THEMES.science;
 }
 
 /** The root class a mode carries on <html>, or null for the unthemed default.

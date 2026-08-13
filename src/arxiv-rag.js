@@ -43,7 +43,7 @@
 //   queries WORSE in both languages. The live tier is the lexical arm, and it
 //   is a fallback rather than a fusion input.
 
-import { authorsLine, citationHighlights, denseSearch, rerankMatches, titleAbstractDoc } from "./dense-rag.js";
+import { PREPRINT_LABEL, authorsLine, citationHighlights, denseSearch, rerankMatches, titleAbstractDoc } from "./dense-rag.js";
 
 /** @typedef {{ url: string, title: string, highlights: string[] }} ArxivItem */
 
@@ -98,6 +98,11 @@ export function arxivRagItem(match) {
   const title = String(m.t || "").trim();
   if (!id || !title) return null;
   const meta = [
+    // The same "this is a preprint" label the live tier leads with — the two
+    // tiers must produce identical-looking sources (see this function's note),
+    // and after 2026-08-13 that label is what stops a peer-review-only agent's
+    // answer presenting an arXiv hit as reviewed work.
+    PREPRINT_LABEL,
     authorsLine(m.au),
     String(m.c || ""),
     arxivSubmitted(id) || String(m.d || "").slice(0, 10),

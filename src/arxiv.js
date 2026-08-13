@@ -98,7 +98,7 @@ import { cacheGet, cachePut } from "./edge-cache.js";
 import { arxivRagAvailable, arxivRagSearch } from "./arxiv-rag.js";
 // The tally the hosted tier folds its provider tokens into, so this leg's
 // spend reaches the request's accounting (src/billing.js denseSpend).
-import { newRetrievalSpend } from "./dense-rag.js";
+import { PREPRINT_LABEL, newRetrievalSpend } from "./dense-rag.js";
 
 /**
  * One source-registry item (same shape Exa results carry).
@@ -383,8 +383,42 @@ const ARXIV_ALSO_ELSEWHERE =
 export function arxivLeadIntent(text) {
   const s = String(text || "");
   if (!s) return false;
-  if (!ARXIV_EXPLICIT.test(s)) return false;
+  if (!arxivNamedIntent(s)) return false;
   return !ARXIV_ALSO_ELSEWHERE.test(s);
+}
+
+/**
+ * Does this message NAME the preprint record — arXiv itself, an arXiv id, or
+ * the word "preprint" in either language?
+ *
+ * The explicit tier of `arxivIntent`, exported on its own because a second
+ * caller needs exactly it and neither of its neighbours. `arxivIntent` is far
+ * wider (any literature or research phrasing over a scientific topic) and
+ * `arxivLeadIntent` is narrower (it additionally stands down when the message
+ * names somewhere ELSE to look, because leading displaces the web leg).
+ *
+ * The caller is src/scholar-metrics.js (owner directive, 2026-08-13). Deep
+ * Science owns arXiv now, but its shipped promise is peer-reviewed sources
+ * only — so preprints are reachable there ONLY when the reader asks for the
+ * preprint record by name, which is this predicate and not the other two:
+ * widening on `arxivIntent` would hand preprints to every "what does the
+ * research say" turn and break the promise in the tagline, while widening on
+ * `arxivLeadIntent` would refuse the ask "compare the arxiv preprints with the
+ * journals" — whose ALSO_ELSEWHERE half is meaningless for an agent whose web
+ * leg is structurally down.
+ *
+ * No new regex: this is ARXIV_EXPLICIT, the same set the two gates above
+ * already read, so the EN+SV parity it carries (`förhandstryck`, and the
+ * documented exclusion of `förtryck` — which means OPPRESSION, feedback #61's
+ * failure shape reached through a dictionary word) holds here by construction
+ * rather than by a second list that could drift (invariant 6).
+ *
+ * @param {unknown} text
+ */
+export function arxivNamedIntent(text) {
+  const s = String(text || "");
+  if (!s) return false;
+  return ARXIV_EXPLICIT.test(s);
 }
 
 // ---- query building --------------------------------------------------------
@@ -708,8 +742,8 @@ export function arxivIdOf(idUrl) {
 /**
  * One parsed entry → one registry item, or null when it is unusable.
  * The highlight lines are what the synthesis reads and cites from, so the
- * metadata line carries what a literature answer needs: authors, primary
- * category, submission date and the id.
+ * metadata line carries what a literature answer needs: what kind of record it
+ * is, authors, primary category, submission date and the id.
  * @param {ArxivEntry} e
  * @returns {ArxivItem | null}
  */
@@ -721,6 +755,11 @@ export function arxivMapEntry(e) {
   const authors = (e.authors || []).filter(Boolean);
   const shown = authors.slice(0, 3).join(", ");
   const meta = [
+    // What this record IS, first — arXiv is a preprint server and nothing on it
+    // is peer-reviewed by virtue of being there. Shared with the dense tier so
+    // both look identical in the source list (src/dense-rag.js PREPRINT_LABEL,
+    // which carries the full rationale).
+    PREPRINT_LABEL,
     authors.length ? `${shown}${authors.length > 3 ? " et al." : ""}` : "",
     (e.categories || [])[0] || "",
     String(e.published || "").slice(0, 10),

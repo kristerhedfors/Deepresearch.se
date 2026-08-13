@@ -418,6 +418,36 @@ export function titleAbstractDoc(match) {
 export const MAX_ABSTRACT_CHARS = 420;
 
 /**
+ * What a preprint is, said in the one line the synthesis model reads.
+ *
+ * A preprint server publishes nothing peer-reviewed by virtue of hosting it,
+ * and a paper later accepted by a journal still appears there as its preprint.
+ * The metadata line of an arXiv item carried the id, the category and the date
+ * but never that fact, so a model reading a digest of mixed sources had nothing
+ * to distinguish it from a journal article except the URL.
+ *
+ * That became load-bearing on 2026-08-13, when the agent roster was made
+ * specific and Deep Science — the agent whose whole promise is peer-reviewed
+ * sources — became the OWNER of arXiv, with the ability to search it when the
+ * reader names the preprint record outright (src/scholar-metrics.js
+ * `preprintSources`). An answer that can reach both records in one turn must
+ * never present a preprint as reviewed work, and the honest place to say so is
+ * the source item itself rather than a prompt rule the model may or may not
+ * apply. It is applied to EVERY item from a preprint leg, not only that
+ * agent's: it is equally true of all of them, and a label that appears
+ * conditionally is a label nobody can rely on.
+ *
+ * It lives HERE for the reason the abstract cut above does — both arXiv tiers
+ * must look identical to a reader of the numbered source list, and a property
+ * that is invisible when it breaks belongs in one constant. The wording is
+ * Europe PMC's, which has annotated its PPR (bioRxiv/medRxiv) records
+ * "preprint, not peer-reviewed" since that leg shipped (src/europepmc.js
+ * `provenance`), so the model sees one phrasing across the literature legs
+ * rather than two dialects of the same warning.
+ */
+export const PREPRINT_LABEL = "Preprint, not peer-reviewed";
+
+/**
  * The stored `au` metadata ("A; B; C; D") → a citation author line, first three
  * names with "et al." for the rest, or "" when there are none.
  * @param {any} value

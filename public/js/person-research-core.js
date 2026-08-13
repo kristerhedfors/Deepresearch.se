@@ -333,10 +333,47 @@ export function personResearchIntent(text) {
 // sentence has to earn its tokens. The trailing "USING THIS BLOCK" paragraph is
 // the house convention (public/js/aadr-core.js sampleBlock) and does real work
 // here — without it, models cite the methodology as though it were a finding.
-const LINES = [
+//
+// ---- the split: a privacy RAIL and a domain CAPABILITY (2026-08-13) ---------
+//
+// The block is assembled from four parts rather than written as one list,
+// because two different things were living inside it and the roster change of
+// 2026-08-13 pulled them apart.
+//
+// The GUARDRAILS section is a PRIVACY RAIL. It is what turns "find everything
+// about this person" into a bounded, public-professional-record-only report:
+// the special categories (health, ethnicity, religion, politics, sexuality),
+// the personnummer, the home address, the family, the face matching, the
+// de-anonymisation of a pseudonymous account. It is not a research technique
+// and it is not anybody's domain expertise — it is the bound on what may be
+// reported about a human being at all, and invariant 4 makes that load-bearing
+// in this repository.
+//
+// Everything else — PLAN, the SOURCE LADDER, VERIFY, WRITE IT UP — is domain
+// METHOD: how to resolve an identity, which rungs can raise a claim to
+// verified, what the claim/evidence/confidence table looks like. That is OSINT
+// tradecraft, and the owner directive of 2026-08-13 gives OSINT to the Cyber
+// agent, declared as the `person-method` context block.
+//
+// Moving the whole thing behind that declaration was the obvious edit and the
+// wrong one: every other agent would then lose the rail on exactly the turns
+// that need it, because the gate that fires is personResearchIntent — "who is
+// this founder" reaches Deep Science and Introspection too. So the guardrails
+// stay UNCONDITIONAL, gated only by the intent as they always were, and only
+// the method half follows the declaration. The full block
+// (personResearchBlock) is byte-identical to what it was before the split, so
+// an agent that declares `person-method` sees exactly the block it saw
+// yesterday; an agent that does not now sees the rail alone.
+const HEAD_LINES = [
   "PERSON RESEARCH METHOD — how to research a named individual's public professional record.",
   "This is method, not evidence. It contains no facts about anyone.",
   "",
+];
+
+// The METHOD half — the OSINT tradecraft, behind the `person-method` context
+// block. Split in two around the guardrails so the assembled full block keeps
+// the reading order it was written in: plan, ladder, verify, LIMITS, write-up.
+const METHOD_LINES = [
   "PLAN. Resolve identity BEFORE collecting: the name plus at least one anchor — employer, city, " +
     "alma mater, a stable handle, an ORCID. Run a collision census first: search the bare name and " +
     "see how many distinct people carry it, then carry that namesake risk into the answer. Then " +
@@ -378,6 +415,13 @@ const LINES = [
     "absence of a source, never evidence of anything: most legitimate professional activity leaves no " +
     "public trace, so say WHERE you looked when you found nothing.",
   "",
+];
+
+// The PRIVACY RAIL — unconditional, every agent, on any turn personResearchIntent
+// fires. Never put a research TECHNIQUE in here and never move a prohibition out
+// of it: this list is the only thing standing between a person question and the
+// special categories.
+const GUARDRAIL_LINES = [
   "GUARDRAILS — public professional information only. The governing test: report only facts of the " +
     "kind that would appear in a professional profile the subject might publish themselves. Never " +
     "report a home address, personal phone, personal email or any private contact detail, including " +
@@ -395,6 +439,10 @@ const LINES = [
     "before anyone acts on them. Report roles, dates and documents; never infer character, competence " +
     "or motive, and never read a gap in the record as a red flag.",
   "",
+];
+
+// The second half of the METHOD, after the rail it is written around.
+const WRITEUP_LINES = [
   "WRITE IT UP. The core artefact is a claim/evidence/confidence table: claim, who asserts it, " +
     "status, provenance class, key evidence with dates. Statuses: verified, partially verified, " +
     "self-reported only, unverifiable, contested. Keep likelihood separate from confidence — never " +
@@ -404,22 +452,55 @@ const LINES = [
     "list. Close with the limitations: namesake risk, what was searched without result, and what was " +
     "out of scope.",
   "",
+];
+
+// The house tail, on BOTH assembled blocks: without it, models cite the
+// guidance as though it were a finding about the subject.
+const TAIL_LINES = [
   "USING THIS BLOCK: this is METHOD, not evidence. It contains no facts about anyone, so never cite " +
     "it as a source, never quote it back at the user, and never describe anything in it as something " +
     "that was found. Follow it silently and let the report show the difference.",
 ];
 
 /**
- * The labeled context block. A constant — no query, no state, no arguments —
- * which is what makes it free to build and impossible to fail.
+ * The FULL labeled context block — head, method, rail, write-up, tail. A
+ * constant, and byte-identical to what it was before the guardrail split, which
+ * is what keeps the split a no-op for any agent that declares `person-method`.
+ * No query, no state, no arguments: free to build and impossible to fail.
  * @returns {string}
  */
 export function personResearchBlock() {
-  return LINES.join("\n");
+  return [...HEAD_LINES, ...METHOD_LINES, ...GUARDRAIL_LINES, ...WRITEUP_LINES, ...TAIL_LINES].join("\n");
 }
 
-/** Words in the block, for the token-cost assertion its test carries.
+/**
+ * The GUARDRAILS-ONLY block: the privacy rail with none of the tradecraft, for
+ * every agent that does not declare `person-method`. It is deliberately still a
+ * complete, self-explaining block — heading, limits, tail — rather than a
+ * fragment, because it is appended to a conversation on its own and a model
+ * reading a bare paragraph of prohibitions with no frame around it tends to
+ * either quote them at the user or ignore them.
+ * @returns {string}
+ */
+export function personGuardrailsBlock() {
+  return [
+    "PERSON RESEARCH LIMITS — what may and may not be reported about a named individual.",
+    "This is a limit on the answer, not evidence. It contains no facts about anyone.",
+    "",
+    ...GUARDRAIL_LINES,
+    ...TAIL_LINES,
+  ].join("\n");
+}
+
+/** Words in the full block, for the token-cost assertion its test carries.
  * @returns {number} */
 export function personResearchBlockWords() {
   return personResearchBlock().split(/\s+/u).filter(Boolean).length;
+}
+
+/** Words in the guardrails-only block — the cost every OTHER agent pays on a
+ * person turn, which is the number worth watching now.
+ * @returns {number} */
+export function personGuardrailsBlockWords() {
+  return personGuardrailsBlock().split(/\s+/u).filter(Boolean).length;
 }

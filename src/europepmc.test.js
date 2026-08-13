@@ -17,6 +17,7 @@ import {
   europepmcIntent,
   europepmcLadder,
   europepmcLeadIntent,
+  europepmcNamedIntent,
   europepmcPickQuery,
   europepmcSearch,
   europepmcTermKey,
@@ -384,6 +385,38 @@ test("europepmcIntent", async (t) => {
       "vad kostar en biljett till Göteborg",
       "",
     ]) assert.equal(europepmcIntent(s), false, s);
+  });
+});
+
+// The NAMED tier, exported for src/scholar-metrics.js (owner directive,
+// 2026-08-13): Deep Science owns the hosted PubMed corpus and admits this leg
+// to a turn only when the reader names the archive. It is deliberately the
+// archive-name half of the lead gate and NOT the whole of it — NAMED_PHRASE
+// ("the peer-reviewed literature", "den vetenskapliga litteraturen") asks for
+// exactly what the peer-reviewed leg already serves, so widening on it would
+// admit bioRxiv/medRxiv preprints in answer to a request for reviewed work.
+test("europepmcNamedIntent names the archive, not the literature", async (t) => {
+  await t.test("an archive name fires it, and always engages the source too", () => {
+    for (const s of [
+      "search pubmed for mammoth mitogenomes",
+      "what does europe pmc have on aDNA damage",
+      "vad finns på biorxiv om forntida dna",
+      "medrxiv preprints on statin adherence",
+    ]) {
+      assert.equal(europepmcNamedIntent(s), true, s);
+      assert.equal(europepmcIntent(s), true, `${s} — named but does not engage the source`);
+    }
+  });
+
+  await t.test("asking for the literature is not naming the archive", () => {
+    for (const s of [
+      "vad säger den vetenskapliga litteraturen om mammutar",
+      "give me peer-reviewed papers on de-extinction",
+      "what does the latest research say about statins",
+      "hur gammalt är det äldsta forn-DNA:t?",
+      "",
+      null,
+    ]) assert.equal(europepmcNamedIntent(s), false, s);
   });
 });
 

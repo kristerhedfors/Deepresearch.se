@@ -74,7 +74,11 @@ test("arxivRagItem mirrors the live tier's item shape", async (t) => {
     // The date is the SUBMISSION month off the id (2606 → 2026-06), not the
     // stored `d`, which is the last revision — here 2026-07-01. This fixture
     // is itself the bug: a June paper was being shown as July.
-    assert.equal(item.highlights[0], "Ada Lovelace, Alan Turing, Grace Hopper et al. · cs.AI · 2026-06 · arXiv:2606.30668");
+    // …and it LEADS with "Preprint, not peer-reviewed", byte-identically to the
+    // live tier (src/arxiv.js) — the two mappers exist to be indistinguishable
+    // in the numbered source list, and since 2026-08-13 that label is what
+    // stops a peer-review-only agent presenting an arXiv hit as reviewed work.
+    assert.equal(item.highlights[0], "Preprint, not peer-reviewed · Ada Lovelace, Alan Turing, Grace Hopper et al. · cs.AI · 2026-06 · arXiv:2606.30668");
     assert.ok(item.highlights[1].startsWith("Abstract of"));
   });
 

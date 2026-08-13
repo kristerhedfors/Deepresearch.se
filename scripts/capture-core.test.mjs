@@ -33,6 +33,7 @@ import {
   secs,
   stillSpans,
 } from "./capture-core.mjs";
+import { DEFAULT_CHAT_MODE } from "../public/js/chat-mode-core.js";
 
 // A timeline as the driver writes it: samples every `step` ms, with the
 // signature changing only where something happened on screen.
@@ -105,12 +106,17 @@ test("every capturable agent maps to a chat mode the composer has", () => {
     assert.ok(AGENT_MODES[agent], `${agent} has no mode`);
     assert.equal(modeForAgent(agent), AGENT_MODES[agent]);
   }
-  // A typo produces an obviously-wrong run, not a dead harness.
-  assert.equal(modeForAgent("not-an-agent"), "normal");
+  // A typo produces an obviously-wrong run, not a dead harness. The fallback is
+  // the DEFAULT chat mode: it read "normal" until the general research agent was
+  // retired (2026-08-13), and the default is a real domain agent's mode now.
+  assert.equal(modeForAgent("not-an-agent"), DEFAULT_CHAT_MODE);
+  assert.equal(modeForAgent("not-an-agent"), "science");
 });
 
 test("example prompts come from the shipped starter queues", () => {
-  const prompts = examplePrompts("research");
+  // `cyber` in the retired `research` agent's place — the capture matrix names
+  // agents, and the general one no longer has a queue to draw from.
+  const prompts = examplePrompts("cyber");
   assert.ok(prompts.length > 4);
   for (const p of prompts) {
     assert.ok(p.text.length > 20, "a starter must carry enough to act on");
@@ -123,16 +129,22 @@ test("example prompts come from the shipped starter queues", () => {
 });
 
 test("a language filter selects one audience's prompts", () => {
-  const sv = examplePrompts("research", { lang: "sv" });
+  const sv = examplePrompts("cyber", { lang: "sv" });
   assert.ok(sv.length > 0);
   assert.ok(sv.every((p) => p.lang === "sv"));
 });
 
 test("ranked starters are picked before untried ones", () => {
-  const picked = pickPrompts("research", 3);
+  // Asked of a queue that HAS ranks: the retired `research` queue used to be the
+  // one with a rank history deep enough to test against, and the queues that
+  // carry one now are the older modes (introspection, orchestrator,
+  // outrospection, agent-builder). The new domain queues — `cyber`, `scholar` —
+  // are untried by construction, so ranking them is what the starter evaluation
+  // loop is for, not what this test can assume.
+  const picked = pickPrompts("introspection", 3);
   assert.equal(picked.length, 3);
   const ranks = picked.map((p) => p.rank).filter((r) => typeof r === "number");
-  assert.ok(ranks.length > 0, "the research queue has ranked entries, so a pick must use them");
+  assert.ok(ranks.length > 0, "the introspection queue has ranked entries, so a pick must use them");
   assert.deepEqual(ranks, [...ranks].sort((a, b) => b - a), "ranked picks descend");
 });
 
@@ -144,29 +156,29 @@ test("asking for more prompts than the queue holds wraps instead of running dry"
 
 test("the matrix is agent-major so an interrupted batch covers whole agents", () => {
   const runs = expandMatrix({
-    agents: ["research", "introspection"],
+    agents: ["cyber", "introspection"],
     models: ["model-a", "model-b"],
     prompts: {
-      research: [{ id: "r1", text: "one", lang: "en", xp: 1 }],
+      cyber: [{ id: "r1", text: "one", lang: "en", xp: 1 }],
       introspection: [{ id: "i1", text: "two", lang: "en" }],
     },
   });
   assert.deepEqual(
     runs.map((r) => `${r.agent}/${r.model}/${r.starter}`),
-    ["research/model-a/r1", "research/model-b/r1", "introspection/model-a/i1", "introspection/model-b/i1"],
+    ["cyber/model-a/r1", "cyber/model-b/r1", "introspection/model-a/i1", "introspection/model-b/i1"],
   );
-  assert.equal(runs[0].mode, "normal");
+  assert.equal(runs[0].mode, "cyber");
   assert.equal(runs[2].mode, "introspection");
   assert.equal(runs[0].xp, 1);
 });
 
 test("a run slug is filesystem-safe and identifies agent, model and prompt", () => {
-  const slug = captureSlug({ agent: "research", model: "mistralai/Devstral-Small-2505", starter: "res-sv-elpris" });
+  const slug = captureSlug({ agent: "cyber", model: "mistralai/Devstral-Small-2505", starter: "cyb-sv-elpris" });
   assert.match(slug, /^[a-z0-9_-]+$/);
-  assert.ok(slug.includes("research"));
-  assert.ok(slug.includes("res-sv-elpris"));
+  assert.ok(slug.includes("cyber"));
+  assert.ok(slug.includes("cyb-sv-elpris"));
   // Two different models must not collide into one directory.
-  assert.notEqual(slug, captureSlug({ agent: "research", model: "openai/gpt-x", starter: "res-sv-elpris" }));
+  assert.notEqual(slug, captureSlug({ agent: "cyber", model: "openai/gpt-x", starter: "cyb-sv-elpris" }));
 });
 
 // ---------------------------------------------------------------------------

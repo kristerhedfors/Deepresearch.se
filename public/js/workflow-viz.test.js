@@ -12,8 +12,8 @@ import { MAX_PROMPT_PREVIEW } from "./orchestrator-core.js";
 const wf = {
   title: "Compare runtimes",
   agents: [
-    { id: "a", kind: "deep_research", name: "Workers researcher", task: "Research A.", deps: [] },
-    { id: "b", kind: "deep_research", name: "Deno researcher", task: "Research B.", deps: [] },
+    { id: "a", kind: "web_research", name: "Workers researcher", task: "Research A.", deps: [] },
+    { id: "b", kind: "web_research", name: "Deno researcher", task: "Research B.", deps: [] },
     { id: "c", kind: "custom", name: "Critic", task: "Compare.", deps: ["a", "b"] },
   ],
   waves: [["a", "b"], ["c"]],
@@ -44,7 +44,7 @@ test("workflowSvg renders every node with kind label and status class", () => {
   assert.ok(svg.includes("wf-done"));
   assert.ok(svg.includes("wf-running"));
   assert.ok(svg.includes("wf-pending"), "no status → pending");
-  assert.ok(svg.includes("Deep Research"));
+  assert.ok(svg.includes("Web research"));
   assert.ok(svg.includes("1.2s"));
   assert.ok(svg.includes("Compare runtimes"));
 });
@@ -158,7 +158,7 @@ test("swarmRenderState keeps only what the strip draws", () => {
 const inspectWf = {
   title: "Compare runtimes",
   agents: [
-    { id: "a", kind: "deep_research", name: "Workers researcher", task: "Research A.", queries: ["workers runtime", "workers limits"], deps: [] },
+    { id: "a", kind: "web_research", name: "Workers researcher", task: "Research A.", queries: ["workers runtime", "workers limits"], deps: [] },
     { id: "b", kind: "swarm", name: "Local swarm", task: "Weigh it.", swarmSize: 4, deps: [] },
     { id: "c", kind: "custom", name: "Critic", task: "Compare.", persona: "A sceptical reviewer.", deps: ["a", "b"] },
   ],
@@ -189,7 +189,7 @@ test("inspectorModel returns null for an id the plan doesn't have", () => {
 });
 
 test("nodeActivity says what the node is doing at each stage", () => {
-  const dr = { kind: "deep_research" };
+  const dr = { kind: "web_research" };
   assert.match(nodeActivity(dr, {}), /Waiting for its turn/);
   assert.match(nodeActivity(dr, { status: "running" }), /Gathering sources/);
   assert.match(
@@ -211,7 +211,7 @@ test("inspectorHtml shows the live fields and is XSS-safe", () => {
     a: { status: "running", searches: [{ q: "workers runtime", status: "done", results: 8, ms: 1200 }, { q: "workers limits", status: "running" }] },
   }));
   assert.ok(html.includes("Workers researcher"));
-  assert.ok(html.includes("Deep Research"));
+  assert.ok(html.includes("Web research"));
   assert.ok(html.includes("8 results"));
   assert.ok(html.includes("searching…"), "the in-flight query is marked");
   assert.ok(html.includes('data-wf-goto="c"'), "the downstream node is reachable");

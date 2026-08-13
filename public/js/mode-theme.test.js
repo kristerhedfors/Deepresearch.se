@@ -73,8 +73,12 @@ test("MODE_ROOT_CLASSES is every declared root class, once each", () => {
   assert.deepEqual(MODE_ROOT_CLASSES, declared);
   assert.equal(new Set(MODE_ROOT_CLASSES).size, MODE_ROOT_CLASSES.length, "two modes share a root class");
   assert.equal(modeRootClass("science"), "sci-mode");
-  assert.equal(modeRootClass("normal"), null);
-  assert.equal(modeRootClass("nope"), null, "unknown → Normal, which carries none");
+  assert.equal(modeRootClass("cyber"), "cyber-mode");
+  // Every mode declares one now — the general mode, the only descriptor that
+  // ever carried `rootClass: null`, was retired 2026-08-13 — so an unknown id
+  // falls back to the DEFAULT mode's class rather than to no class at all.
+  assert.equal(modeRootClass("normal"), "sci-mode", "the retired id paints the mode that answers for it");
+  assert.equal(modeRootClass("nope"), "sci-mode", "unknown → Deep Science, the default");
 });
 
 test("index.html's parse-time script applies every mode's class and bar tint", () => {
@@ -100,19 +104,25 @@ test("app.css paints a palette for every declared root class", () => {
   }
 });
 
-// The one DARK mode. Its `--text` is near-white, so the composer's default
-// white glass (#composer at .3, and the chips inside it at another .35) put
-// light text on a light chip — 2.58:1, measured on production with
-// tests/theme-contrast.mjs. Every widget that carries text inside the pane
-// needs the dark treatment; this pins that the override exists rather than
+// The DARK modes. Their `--text` is near-white, so the composer's default white
+// glass (#composer at .3, and the chips inside it at another .35) puts light
+// text on a light chip — 2.58:1 for Deep Science, measured on production with
+// tests/theme-contrast.mjs. Every widget that carries text inside the pane needs
+// the dark treatment; this pins that the override exists rather than
 // re-measuring colour, which the audit script does properly in a browser.
-test("the dark Deep Science theme overrides the composer's white glass", () => {
+//
+// Cyber joined the list on 2026-08-13. Listing the dark themes here rather than
+// testing sci-mode alone is the point: a second dark field is exactly the change
+// that reintroduces the original bug one selector at a time.
+test("every dark theme overrides the composer's white glass", () => {
   const css = readFileSync(here("../css/app.css"), "utf8");
-  for (const sel of ["#composer", "#model", "#modesel", "#attach", "#camera", ".att-card"]) {
-    assert.ok(
-      css.includes(`:root.sci-mode ${sel}`),
-      `sci-mode does not override ${sel}, so its near-white text lands on white glass`,
-    );
+  for (const cls of ["sci-mode", "cyber-mode"]) {
+    for (const sel of ["#composer", "#model", "#modesel", "#attach", "#camera", ".att-card"]) {
+      assert.ok(
+        css.includes(`:root.${cls} ${sel}`),
+        `${cls} does not override ${sel}, so its near-white text lands on white glass`,
+      );
+    }
   }
 });
 
@@ -163,7 +173,8 @@ test("every theme's --on-accent clears AA against that theme's --accent", () => 
 });
 
 test("depth slider is an optional theme feature: off for Introspection + SDK + Orchestrator", () => {
-  assert.equal(showsDepthSlider("normal"), true);
+  assert.equal(showsDepthSlider("science"), true);
+  assert.equal(showsDepthSlider("cyber"), true);
   assert.equal(showsDepthSlider("introspection"), false);
   assert.equal(showsDepthSlider("sdk"), false);
   assert.equal(showsDepthSlider("orchestrator"), false);
@@ -172,7 +183,7 @@ test("depth slider is an optional theme feature: off for Introspection + SDK + O
   assert.equal(MODE_THEMES.orchestrator.depthSlider, false);
   // Outrospection answers from the outward feed, not from web research.
   assert.equal(MODE_THEMES.outrospection.depthSlider, false);
-  assert.equal(showsDepthSlider("nope"), true, "unknown → Normal (shows it)");
+  assert.equal(showsDepthSlider("nope"), true, "unknown → Deep Science (shows it)");
 });
 
 test("Orchestrator is the violet baton / balloon-recolour identity", () => {
@@ -188,10 +199,11 @@ test("Orchestrator is the violet baton / balloon-recolour identity", () => {
 
 test("backdrop is a declared axis: graph for Orchestrator, terminal elsewhere", () => {
   assert.equal(backdropKind("orchestrator"), "graph");
-  assert.equal(backdropKind("normal"), "terminal");
+  assert.equal(backdropKind("science"), "terminal");
+  assert.equal(backdropKind("cyber"), "terminal");
   assert.equal(backdropKind("introspection"), "terminal");
   assert.equal(backdropKind("sdk"), "terminal");
-  assert.equal(backdropKind("nope"), "terminal", "unknown → Normal");
+  assert.equal(backdropKind("nope"), "terminal", "unknown → Deep Science");
 });
 
 test("SDK is the Agent Studio plant / green / showcase identity", () => {
@@ -206,10 +218,14 @@ test("SDK is the Agent Studio plant / green / showcase identity", () => {
 });
 
 test("bar tint resolves per mode (the status-bar field color)", () => {
-  assert.equal(barTint("normal"), "#6fc3fd");
+  assert.equal(barTint("science"), "#e8d9a8");
+  assert.equal(barTint("cyber"), "#ff7a86");
   assert.equal(barTint("introspection"), "#ccd2d8");
   assert.equal(barTint("sdk"), "#66cc92");
-  assert.equal(barTint("nope"), "#6fc3fd", "unknown → Normal");
+  assert.equal(barTint("nope"), "#e8d9a8", "unknown → Deep Science, the default");
+  // The Se/rver TIER keeps the sky blue the retired general mode used to carry;
+  // it is a tier reference entry, not a mode anyone can pick.
+  assert.equal(TIER_THEMES.server.bar, "#6fc3fd");
   // Each bar matches nothing but a hex — the descriptor axis test covers shape.
 });
 
@@ -221,29 +237,59 @@ test("introspection wears the titanium balloon: recoloured spinner + slate ✓",
   assert.equal(i.character, "tin");
   // …but its ✓ is titanium slate, not the tier blue — and points at --check-tin
   // so the canvas fold and the CSS .check span agree.
-  assert.notEqual(i.check, MODE_THEMES.normal.check);
+  assert.notEqual(i.check, TIER_THEMES.server.check);
   assert.equal(i.check, "#5f6b78");
   assert.equal(i.checkVar, "--check-tin");
 });
 
-test("normal has no theme class and mounts the balloon", () => {
-  const n = MODE_THEMES.normal;
-  assert.equal(n.rootClass, null);
-  assert.equal(n.tag, null);
-  assert.equal(n.spinner, "balloon");
+// The Cyber agent (2026-08-13). Its ✓ colour lives in THREE places that have to
+// agree — the descriptor here, the CSS custom property it names, and the
+// recoloured balloon in mode-spinner.js that folds into it — because the canvas
+// draws the fold and the stylesheet draws the ✓ that replaces it. It also must
+// NOT reuse Outrospection's --check-red: two modes on one property is how a
+// recolour drifts away from its spinner unnoticed.
+test("Cyber is the crimson operations-room identity, and its ✓ agrees everywhere", () => {
+  const c = MODE_THEMES.cyber;
+  assert.equal(c.rootClass, "cyber-mode");
+  assert.equal(c.label, "Cyber");
+  assert.equal(c.tag, "cyber");
+  assert.equal(c.spinner, "balloon"); // a recolour (mode-spinner.js), not a new figure
+  assert.equal(c.character, "balloon");
+  assert.equal(c.panel, "history");
+  assert.equal(c.backdrop, "terminal");
+  assert.equal(c.depthSlider, true);
+  assert.equal(c.accent, "#b32d3a");
+  assert.equal(barTint("cyber"), "#ff7a86");
+  assert.equal(c.checkVar, "--check-crimson");
+  assert.notEqual(c.checkVar, MODE_THEMES.outrospection.checkVar, "two modes must not share one --check-* property");
+
+  const css = readFileSync(here("../css/app.css"), "utf8");
+  const declared = css.match(/--check-crimson:\s*(#[0-9a-f]{6})/i)?.[1];
+  assert.equal(declared?.toLowerCase(), c.check.toLowerCase(), "app.css --check-crimson must equal the descriptor's check");
+  assert.match(css, /:root\.cyber-mode \.step \.check\s*\{\s*color:\s*var\(--check-crimson\)/);
+
+  const spinner = readFileSync(here("./mode-spinner.js"), "utf8");
+  const spinnerCheck = spinner.match(/export const CYBER_SPINNER = \{[\s\S]*?check:\s*"(#[0-9a-f]{6})"/i)?.[1];
+  assert.equal(spinnerCheck?.toLowerCase(), c.check.toLowerCase(), "CYBER_SPINNER.check must equal the descriptor's check");
 });
 
-test("selectors resolve known modes and fall back to Normal on garbage", () => {
+test("selectors resolve known modes and fall back to Deep Science on garbage", () => {
   assert.equal(spinnerKind("sdk"), "plant");
-  assert.equal(spinnerKind("normal"), "balloon");
+  assert.equal(spinnerKind("science"), "balloon");
+  assert.equal(spinnerKind("cyber"), "balloon");
   assert.equal(spinnerKind("introspection"), "balloon");
-  assert.equal(spinnerKind("nope"), "balloon", "unknown → normal");
+  assert.equal(spinnerKind("nope"), "balloon", "unknown → the default mode");
   assert.equal(spinnerKind(null), "balloon", "defensive");
   assert.equal(checkColor("sdk"), "#1f8a4c");
+  assert.equal(checkColor("cyber"), "#b32d3a");
   assert.equal(modeCharacter("sdk"), "plant");
   assert.equal(panelFlavour("sdk"), "showcase");
-  assert.equal(panelFlavour("normal"), "history");
-  assert.equal(modeTheme(undefined).id, "normal");
+  assert.equal(panelFlavour("cyber"), "history");
+  // The general mode is gone, so garbage resolves to the DEFAULT mode — the
+  // same one chat-mode-core.js resolves it to on the wire. The two falling out
+  // of step would paint one agent's theme over another agent's answers.
+  assert.equal(modeTheme(undefined).id, "science");
+  assert.equal(modeTheme("normal").id, "science", "the retired id resolves, it does not linger");
 });
 
 test("tier reference entries exist and keep Se/cure first", () => {

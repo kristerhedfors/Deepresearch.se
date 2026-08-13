@@ -25,7 +25,7 @@ import { refreshProjects, setActiveProject } from "./projects.js";
 import { initProjectsUi } from "./projects-ui.js";
 import { bashLiteOn, chatModesAvailable, loadSettings, setChatMode } from "./settings.js";
 import { releaseExecSession } from "./exec-env.js";
-import { accountChatMode, adoptServerChatMode, applyChatModeTheme, cachedChatMode } from "./chat-mode.js";
+import { DEFAULT_CHAT_MODE, accountChatMode, adoptServerChatMode, applyChatModeTheme, cachedChatMode } from "./chat-mode.js";
 import {
   claimResumeTarget,
   detachSession,
@@ -503,7 +503,12 @@ openOutrospectionFeed(cachedChatMode());
  * @param {string} mode
  */
 function persistChatMode(mode) {
-  if (!chatModesAvailable() && mode !== "normal") return;
+  // An account without the modes capability may still be shown the DEFAULT mode
+  // (the clamp in account-views.js renderConfigKnobs), so writing that one is
+  // harmless and writing any other would be a capability it does not hold. This
+  // used to read `mode !== "normal"` for the same reason, against the general
+  // mode that used to be the clamp target (retired 2026-08-13).
+  if (!chatModesAvailable() && mode !== DEFAULT_CHAT_MODE) return;
   setChatMode(mode).catch(() => {});
 }
 modeSel.addEventListener("change", () => {
@@ -520,7 +525,7 @@ modeSel.addEventListener("change", () => {
   persistChatMode(mode);
   greetSdkMode(mode);
   // Each mode runs a different agent, so the starter strip has to follow it —
-  // Deep Research openers sitting in Agent Studio would advertise the wrong
+  // Deep Science openers sitting in Agent Studio would advertise the wrong
   // thing entirely.
   starters?.refresh();
   clearOutrospectionFeed();
@@ -1041,7 +1046,7 @@ input.addEventListener("keydown", (e) => {
 // every module was current. If the marker doesn't match, fetch the
 // stylesheet with cache:"reload" (bypasses AND overwrites the cached
 // entry) and swap the link so the fresh rules apply without a reload.
-const CSS_VERSION = "h55";
+const CSS_VERSION = "h56";
 try {
   const seen = getComputedStyle(document.documentElement).getPropertyValue("--css-version").trim();
   if (seen !== CSS_VERSION) {
@@ -1230,10 +1235,11 @@ window.__appReady = true;
 // site with a mode selected and a question ready to ask — the agent-platform
 // docs' "ask the source" links use /?mode=introspection&ask=<question> to drop
 // the reader into the introspection agent with the exact question prefilled.
-// Fail-soft and decoration-adjacent: a non-normal mode needs the modes to be
-// available (the async settings adopt above is authoritative — if the server
-// denies it the mode falls back to normal, but the prefilled question still
-// lands). Never auto-submits unless the link says &go=1.
+// Fail-soft and decoration-adjacent: a link that names anything but the DEFAULT
+// mode needs the modes to be available (the async settings adopt above is
+// authoritative — if the server denies it the mode falls back to the default,
+// but the prefilled question still lands). Never auto-submits unless the link
+// says &go=1.
 // Compute sharing: a sharer who left "Share my compute" on gets this tab
 // lending again (docs/COMPUTE-SHARING.md §6). Sharing is not a Se/cure-only
 // feature — the signed-in app is a perfectly good provider tab, and this is
@@ -1243,13 +1249,18 @@ resumePoolSharing();
 (function applyComposerDeepLink() {
   try {
     const { mode, ask, send } = parseComposerDeepLink(location.search);
-    if (mode && mode !== "normal") {
+    // The DEFAULT mode is applied but neither persisted nor greeted: a link
+    // that lands on it has not asked the reader's account to change agent, and
+    // the retired ids (`?mode=normal`, `?mode=research`) resolve here
+    // (deeplink-core.js), so those old links must not quietly rewrite a stored
+    // pick either. Any other named mode is a deliberate choice and is kept.
+    if (mode && mode !== DEFAULT_CHAT_MODE) {
       const applied = applyChatModeTheme(mode);
       syncModeSelect(applied);
       persistChatMode(applied);
       greetSdkMode(applied);
-    } else if (mode === "normal") {
-      syncModeSelect(applyChatModeTheme("normal"));
+    } else if (mode === DEFAULT_CHAT_MODE) {
+      syncModeSelect(applyChatModeTheme(DEFAULT_CHAT_MODE));
     }
     if (ask) {
       input.value = ask;

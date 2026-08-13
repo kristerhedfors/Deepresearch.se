@@ -274,14 +274,14 @@ test("normalizeQueueStatus tolerates a missing or malformed body", () => {
   const messy = normalizeQueueStatus({
     target: "20",
     unanswered: "6",
-    by_agent: { research: "3", broken: "x" },
-    used: [{ agent: "research", starter: "res-one" }, { agent: "" }, "scholar:sch-two", 7],
+    by_agent: { cyber: "3", broken: "x" },
+    used: [{ agent: "cyber", starter: "res-one" }, { agent: "" }, "scholar:sch-two", 7],
   });
   assert.equal(messy.target, 20);
   assert.equal(messy.unanswered, 6);
-  assert.deepEqual(messy.by_agent, { research: 3 });
+  assert.deepEqual(messy.by_agent, { cyber: 3 });
   assert.deepEqual(messy.used, [
-    { agent: "research", starter: "res-one" },
+    { agent: "cyber", starter: "res-one" },
     { agent: "scholar", starter: "sch-two" },
   ]);
 });
@@ -291,15 +291,15 @@ test("normalizeQueueStatus unwraps a { queue: … } envelope", () => {
 });
 
 test("normalizeQueueStatus does not let an agent id touch the prototype", () => {
-  const status = normalizeQueueStatus(JSON.parse('{"by_agent":{"__proto__":3,"research":1}}'));
-  assert.deepEqual(status.by_agent, { research: 1 });
+  const status = normalizeQueueStatus(JSON.parse('{"by_agent":{"__proto__":3,"cyber":1}}'));
+  assert.deepEqual(status.by_agent, { cyber: 1 });
   assert.equal(Object.getPrototypeOf(status.by_agent), Object.prototype);
 });
 
 test("queueStatusUrl names the agent roster and the target", () => {
   assert.equal(
-    queueStatusUrl("https://example.test", { agents: ["research", "scholar"], target: 20 }),
-    "https://example.test/api/admin/captures/queue-status?agents=research%2Cscholar&target=20",
+    queueStatusUrl("https://example.test", { agents: ["cyber", "scholar"], target: 20 }),
+    "https://example.test/api/admin/captures/queue-status?agents=cyber%2Cscholar&target=20",
   );
   assert.equal(
     queueStatusUrl("https://example.test"),
@@ -318,7 +318,7 @@ test("an unreadable queue status plans a full deck rather than nothing", () => {
 // ---------------------------------------------------------------------------
 
 test("captureName derives the contract's examples", () => {
-  assert.equal(captureName({ agent: "research", starter: "res-sv-elpris" }), "Elpris");
+  assert.equal(captureName({ agent: "cyber", starter: "res-sv-elpris" }), "Elpris");
   assert.equal(captureName({ agent: "scholar", starter: "sch-vitamin-d" }), "Vitamin D");
   assert.equal(captureName({ agent: "introspection", starter: "int-pipeline" }), "Pipeline");
 });
@@ -377,7 +377,7 @@ test("parseCaptureId returns null rather than a wrong id", () => {
 // ---------------------------------------------------------------------------
 
 const EDIT = {
-  dir: "captures/2026-08-11-topup/01-research-res-sv-elpris/research__m__res-sv-elpris",
+  dir: "captures/2026-08-11-topup/01-cyber-res-sv-elpris/cyber__m__res-sv-elpris",
   output: "/tmp/final.mp4",
   poster: "/tmp/poster.jpg",
   shape: "portrait",
@@ -390,9 +390,9 @@ const EDIT = {
   segments: [{ start: 0, end: 1000, kind: "action", speed: 1.25 }],
   probe: { seconds: 8.4, bytes: 3_500_000, width: 1080, height: 1350, fps: 30 },
   meta: {
-    slug: "research__m__res-sv-elpris",
-    agent: "research",
-    mode: "normal",
+    slug: "cyber__m__res-sv-elpris",
+    agent: "cyber",
+    mode: "cyber",
     model: "mistral-small",
     prompt: "Vad påverkar elpriset i Sverige just nu?",
     starter: "res-sv-elpris",
@@ -402,13 +402,13 @@ const EDIT = {
 
 test("buildAddPayload carries everything edit.json provides", () => {
   const payload = buildAddPayload({ edit: EDIT, name: "Sv Elpris", commit: "abc1234" });
-  assert.equal(payload.agent, "research");
-  assert.equal(payload.mode, "normal");
+  assert.equal(payload.agent, "cyber");
+  assert.equal(payload.mode, "cyber");
   assert.equal(payload.model, "mistral-small");
   assert.equal(payload.starter, "res-sv-elpris");
   assert.equal(payload.lang, "sv");
   assert.equal(payload.shape, "portrait");
-  assert.equal(payload.slug, "research__m__res-sv-elpris");
+  assert.equal(payload.slug, "cyber__m__res-sv-elpris");
   assert.equal(payload.duration_ms, 8400);
   assert.equal(payload.source_ms, 54000);
   assert.equal(payload.cut_ms, 30000);
@@ -452,7 +452,7 @@ test("fitMeta drops the segment list before it drops the provenance", () => {
   assert.ok(fitted, "meta was dropped entirely");
   assert.ok(!("segments" in fitted));
   assert.equal(fitted.segments_count, 5000);
-  assert.equal(fitted.meta.agent, "research");
+  assert.equal(fitted.meta.agent, "cyber");
   assert.ok(JSON.stringify(fitted).length <= 20_000);
   // A small report is passed through untouched.
   assert.deepEqual(fitMeta(EDIT), EDIT);
@@ -464,8 +464,8 @@ test("fitMeta drops the segment list before it drops the provenance", () => {
 // ---------------------------------------------------------------------------
 
 const RUN = {
-  agent: "research",
-  mode: "normal",
+  agent: "cyber",
+  mode: "cyber",
   starter: "res-sv-elpris",
   prompt: "Vad påverkar elpriset?",
   lang: "sv",
@@ -479,7 +479,7 @@ test("recordArgs asks for exactly one run at the planned offset", () => {
   const args = recordArgs(RUN, opts, "/tmp/run-01");
   const pair = (flag) => args[args.indexOf(flag) + 1];
   assert.equal(args[0], "tests/capture.mjs");
-  assert.equal(pair("--agents"), "research");
+  assert.equal(pair("--agents"), "cyber");
   assert.equal(pair("--per-agent"), "1");
   assert.equal(pair("--offset"), "3");
   assert.equal(pair("--limit"), "1");
@@ -509,14 +509,14 @@ test("editArgs defaults --min-still to 3500, the activity-bar value", () => {
 // ---------------------------------------------------------------------------
 
 test("parseArgs reads both --flag value and --flag=value", () => {
-  const opts = parseArgs(["--target=6", "--limit", "2", "--dry-run", "--agents=research,scholar"], {
+  const opts = parseArgs(["--target=6", "--limit", "2", "--dry-run", "--agents=cyber,scholar"], {
     env: {},
     now: new Date(2026, 7, 11),
   });
   assert.equal(opts.target, 6);
   assert.equal(opts.limit, 2);
   assert.equal(opts.dryRun, true);
-  assert.deepEqual(opts.agents, ["research", "scholar"]);
+  assert.deepEqual(opts.agents, ["cyber", "scholar"]);
   assert.equal(opts.out, "captures/2026-08-11-topup");
   assert.equal(opts.publish, true);
 });
@@ -532,7 +532,7 @@ test("validateOptions names a bad agent, language and limit", () => {
   assert.ok(errors.some((e) => /Unknown agent/.test(e)));
   assert.ok(errors.some((e) => /Unknown language/.test(e)));
   assert.ok(errors.some((e) => /--limit/.test(e)));
-  assert.deepEqual(validateOptions(parseArgs(["--agents", "research"], { env: {} })), []);
+  assert.deepEqual(validateOptions(parseArgs(["--agents", "cyber"], { env: {} })), []);
 });
 
 // ---------------------------------------------------------------------------

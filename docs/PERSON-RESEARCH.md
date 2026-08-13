@@ -48,6 +48,45 @@ runs the gate, and — when it fires — emits a visible step and appends the bl
 to the last message with `appendToLast`, which adds a new text part so an
 attached screenshot survives.
 
+### 3.0 The split: a privacy RAIL and a domain CAPABILITY (2026-08-13)
+
+The owner directive that made the agent roster specific gave OSINT to the new
+**Cyber** agent, and the obvious edit — moving this whole block behind Cyber's
+declaration — was the wrong one. The gate that fires is `personResearchIntent`,
+and "who is this founder" reaches Deep Science and Introspection too; an agent
+that lost the block would lose the *limits* on reporting a private individual's
+health, ethnicity, personnummer or home address, which is worse than never
+having had the method (invariant 4).
+
+So the block was split in two, and the two halves have different standing:
+
+| Half | What it is | Who gets it |
+|---|---|---|
+| **GUARDRAILS** — `personGuardrailsBlock()` | the privacy rail: the special categories, the personnummer, the home address, the family, face matching, de-anonymising a pseudonymous account | **every** agent, on every firing turn |
+| **METHOD** — PLAN, the source ladder, VERIFY, WRITE IT UP | OSINT tradecraft: how to resolve an identity, which rungs raise a claim to verified, the claim/evidence/confidence table | only an agent declaring the `person-method` context block — today, `cyber` |
+
+The registry row therefore stays `enabled: () => true` and the choice is made
+inside the runner, which reads
+`capHasContext(state.capability, "person-method")` defensively and in the
+narrowing direction: anything that is not an explicit declaration resolves to
+the rail. The full block (`personResearchBlock()`) is byte-identical to what it
+was before the split, so an agent that declares `person-method` sees exactly the
+block it saw the day before.
+
+The activity step says which half applied, because a report written without the
+source ladder is a different artefact and the step is the only place that is
+visible:
+
+| | step | finished step |
+|---|---|---|
+| method | "Applying the person-research method…" | "Person-research method applied" |
+| rail only | "Applying the person-research limits…" | "Person-research limits applied" |
+
+`state.personResearch` carries `{ applied, method, words }` — counters only,
+never the subject and never the question — and `words` now measures whichever
+half ran, so a `chat_logs` reader can tell a truncated context from a missing
+block and the two halves apart at a glance.
+
 The gate is conjunctive. It needs a **research shape** and a **person
 referent**, and either half alone is a different question:
 
@@ -341,6 +380,11 @@ state confidence separately, and never combine the two in a single sentence
 ("high confidence that it probably happened" tells a reader nothing).
 
 ## 8. Guardrails
+
+This is the half every agent gets (§3.0). It is a privacy rail, not domain
+expertise, so it is appended on any firing turn regardless of which agent is
+answering — as its own self-explaining block when the answering agent does not
+declare `person-method`.
 
 The governing test: **report only facts of the kind that would appear in a
 professional profile the subject might publish themselves.**

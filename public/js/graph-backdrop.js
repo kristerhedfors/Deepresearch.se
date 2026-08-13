@@ -3,9 +3,9 @@
 // hovering, slowly rotating wireframe DIRECTED GRAPH drifting faintly behind
 // the chat, the orchestrator root at the top and every sub-agent below it,
 // each node drawn as its kind's wireframe symbol in its kind's color (the
-// balloon blue for Deep Research, TIN's titanium slate for Introspection,
-// the violet diamond for custom specialists; the root is the violet baton
-// star). This is the "graph" implementation of the mode-theme.js `backdrop`
+// balloon blue for the researching kind, TIN's titanium slate for
+// Introspection, the violet diamond for custom specialists; the root is the
+// violet baton star). This is the "graph" implementation of the mode-theme.js `backdrop`
 // axis — the sibling of agent-backdrop.js's "terminal" (drifting shell
 // output); mode-backdrop.js decides which one a mode stands in front of.
 //
@@ -26,14 +26,16 @@ import { AGENT_KINDS } from "./orchestrator-core.js";
 
 // ---- the per-kind wireframe styles ------------------------------------------
 //
-// Colors follow the symbol language: Deep Research nodes wear the Se/rver
-// balloon's blue, Introspection nodes TIN's titanium slate, custom nodes (and
-// the orchestrator root) the mode's baton violet. Failed nodes go the same
-// muted red the workflow view uses.
+// Colors follow the symbol language: the researching kind (`web_research` —
+// the orchestrator's own sub-agent vocabulary, orchestrator-core.js AGENT_KINDS,
+// which is not a chat mode and outlived the retired mode of a similar name)
+// wears the Se/rver balloon's blue, Introspection nodes TIN's titanium slate,
+// custom nodes (and the orchestrator root) the mode's baton violet. Failed
+// nodes go the same muted red the workflow view uses.
 
 export const GRAPH_STYLES = {
   root: { color: "#6d3fc4", glyph: "baton" },
-  deep_research: { color: "#0d4fa0", glyph: "balloon" },
+  web_research: { color: "#0d4fa0", glyph: "balloon" },
   introspection: { color: "#5f6b78", glyph: "tin" },
   // The local swarm: a cluster of small satellites around a hollow centre —
   // the one kind that is MANY models, drawn as many points. Green because it

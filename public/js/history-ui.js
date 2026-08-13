@@ -176,9 +176,14 @@ export function initHistorySidebar(opts = {}) {
   const TRASH_SVG =
     '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>';
 
-  /** The display label for an agent id, from the one shared table. */
+  /** The display label for an agent id, from the one shared table. The
+   * fallback is the DEFAULT mode's label, because that is the agent an
+   * unrecognised id actually gets answered by — a session recorded under the
+   * retired `normal` id, or one written by a newer build. It used to read
+   * "Deep Research", which was the general agent's label and is now the name of
+   * nothing (owner directive, 2026-08-13). */
   function agentLabel(id) {
-    return CHAT_MODE_OPTIONS.find((o) => o.value === id)?.label || "Deep Research";
+    return CHAT_MODE_OPTIONS.find((o) => o.value === id)?.label || CHAT_MODE_OPTIONS[0].label;
   }
 
   /**
@@ -547,9 +552,9 @@ export function initHistorySidebar(opts = {}) {
   // Pin the drawer's ✕ to the screen rect of the header's history button,
   // so on a phone the same tap position opens and closes the drawer (the
   // fixed-position styling lives in app.css). Shared with the project
-  // panel's ✕ — pinPaneClose also corrects for the Introspection / Agent
-  // Studio mode-tag row so the chevron sits at the Deep Research height
-  // in every mode instead of overlapping the "Chat history" head.
+  // panel's ✕ — pinPaneClose also corrects for the header's mode-tag row so
+  // the chevron sits at the same height in every mode instead of overlapping
+  // the "Chat history" head.
   function placeCloseBtn() {
     pinPaneClose(closeBtn);
   }

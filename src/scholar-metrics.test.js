@@ -17,6 +17,7 @@ import {
   fetchProfile,
   parseProfile,
   profileBlock,
+  preprintSources,
   profileId,
   runScholarMetricsEnrichment,
   venueBlock,
@@ -370,5 +371,96 @@ test("a readable profile becomes an attributed context block", async () => {
     assert.equal(state.scholarProfile.works, 2);
   } finally {
     globalThis.fetch = realFetch;
+  }
+});
+
+// ---- the preprint widening (owner directive, 2026-08-13) -------------------
+//
+// Deep Science became the exclusive OWNER of the site's arXiv and PubMed
+// capability when the roster was made specific (src/search-sources.js
+// `requiresContext`, src/literature-exclusivity.test.js). Owning a corpus it
+// could never consult would be ownership in name only — `state.auxOnly` blocked
+// both — so the reader may now ask for the preprint record by name and get it.
+// What must NOT change is the shipped promise: an ordinary turn is the
+// peer-reviewed leg alone, exactly as before.
+
+test("the default turn is peer-reviewed only — the promise, unchanged", async () => {
+  // Every one of these engages the WIDE arxiv/europepmc intent gates (research
+  // phrasing over a scientific topic, a life-science subject), which is most of
+  // what this agent is ever asked. Widening on those gates instead of the
+  // narrow "named" ones would have turned "peer-reviewed only" into
+  // "peer-reviewed plus whatever else matched", which is the whole trap.
+  for (const text of [
+    "what does the latest research say about llm swarm reasoning",
+    "senaste forskningen om språkmodeller",
+    "is intermittent fasting proven to lower blood pressure",
+    "vad säger studierna om statiner och muskelvärk",
+    "which journals publish the top-cited work in computer security",
+  ]) {
+    const { c, state } = ctx(text);
+    await runScholarMetricsEnrichment(c);
+    assert.deepEqual(state.auxOnly, [SCHOLAR_SOURCE_ID], `widened on "${text}"`);
+    // The force and the raised ceiling stay keyed to the peer-reviewed leg.
+    assert.deepEqual(state.forceAux, [SCHOLAR_SOURCE_ID]);
+    assert.deepEqual(state.auxMaxPerRequest, { [SCHOLAR_SOURCE_ID]: SCHOLAR_SEARCHES_PER_REQUEST });
+  }
+});
+
+test("naming the preprint record widens auxOnly to that corpus, and only that one", async () => {
+  const arxiv = await (async () => {
+    const { c, state } = ctx("any arxiv preprints on diffusion transformers?");
+    await runScholarMetricsEnrichment(c);
+    return state;
+  })();
+  assert.deepEqual(arxiv.auxOnly, [SCHOLAR_SOURCE_ID, "arxiv"]);
+  // Forced and capped stay unchanged: the widened source is PERMITTED, not
+  // forced (its own intent gate still has to fire, which the ask that named it
+  // satisfies by construction), and it keeps its own registry ceiling.
+  assert.deepEqual(arxiv.forceAux, [SCHOLAR_SOURCE_ID]);
+  assert.deepEqual(arxiv.auxMaxPerRequest, { [SCHOLAR_SOURCE_ID]: SCHOLAR_SEARCHES_PER_REQUEST });
+
+  const { c, state } = ctx("search pubmed for statin adherence trials");
+  await runScholarMetricsEnrichment(c);
+  assert.deepEqual(state.auxOnly, [SCHOLAR_SOURCE_ID, "europepmc"]);
+});
+
+test("preprintSources: EN and SV name the archives with the same breadth (invariant 6)", () => {
+  // The gates are the sources' own NAMED tiers (arxivNamedIntent /
+  // europepmcNamedIntent), so parity is inherited rather than re-implemented —
+  // but inherited parity is exactly the kind that rots unnoticed, so it is
+  // asserted here as matched pairs. The archive names are proper nouns and
+  // identical in both languages; what differs is the Swedish word for the
+  // record itself.
+  const pairs = [
+    ["any arxiv preprints on diffusion transformers", "finns det förhandstryck på arxiv om diffusionsmodeller", ["arxiv"]],
+    ["is there a preprint on this method", "finns det ett preprint om den här metoden", ["arxiv"]],
+    ["search pubmed for statin adherence trials", "sök i pubmed efter studier om statiner", ["europepmc"]],
+    ["what does biorxiv have on ancient DNA", "vad finns på biorxiv om forntida dna", ["europepmc"]],
+  ];
+  for (const [en, sv, want] of pairs) {
+    assert.deepEqual(preprintSources(en), want, `EN: ${en}`);
+    assert.deepEqual(preprintSources(sv), want, `SV: ${sv}`);
+  }
+  // Both archives at once is both, in registry order.
+  assert.deepEqual(preprintSources("compare the arxiv preprints with what pubmed indexes"), ["arxiv", "europepmc"]);
+});
+
+test("preprintSources: research phrasing is not naming, in either language", () => {
+  for (const text of [
+    "what does the latest research say about statins",
+    "vad säger den senaste forskningen om statiner",
+    "which peer-reviewed studies support this",
+    "vilka vetenskapliga artiklar stöder detta",
+    // The trap this gate must never fall into: `förtryck` is Swedish for
+    // OPPRESSION, not "preprint" (src/arxiv.js records why it was removed from
+    // the explicit tier — feedback #61's failure shape reached through a
+    // dictionary word). A question about human rights must not open the
+    // preprint archive.
+    "politiskt förtryck i Belarus",
+    "förtryck av kvinnor i Iran",
+    "",
+    null,
+  ]) {
+    assert.deepEqual(preprintSources(text), [], `widened on "${text}"`);
   }
 });

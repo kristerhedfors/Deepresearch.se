@@ -48,9 +48,12 @@ test("the orchestrator's declared per-node bounds are the executor's own", () =>
 });
 
 test("an agent that declares no bounds claims none", () => {
-  // The three modes with no Worker-side limits of their own must not invent
-  // numbers — an empty `bounds` is the honest declaration.
-  for (const id of ["research", "outrospection", "secure", "under-construction"]) {
+  // The modes with no Worker-side limits of their own must not invent
+  // numbers — an empty `bounds` is the honest declaration. `cyber` sits here in
+  // the retired general agent's place (owner directive, 2026-08-13): it is the
+  // research phase pointed at a domain, and a domain adds context and gates, not
+  // a round or token ceiling of its own.
+  for (const id of ["cyber", "outrospection", "secure", "under-construction"]) {
     assert.deepEqual(cap(id).bounds, {}, `${id} declares no bounds`);
   }
 });

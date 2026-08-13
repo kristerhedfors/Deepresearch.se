@@ -28,6 +28,7 @@ import { extensionEnrichments } from "./extensions.js";
 import { runImageReadEnrichment } from "./image-read.js";
 import { runIntrospectionEnrichment } from "./introspect.js";
 import { runModelsAgentEnrichment } from "./models-agent.js";
+import { runOwaspContextEnrichment } from "./owasp-context.js";
 import { runPersonResearchEnrichment } from "./person-research.js";
 import { runScholarMetricsEnrichment } from "./scholar-metrics.js";
 
@@ -101,6 +102,27 @@ const CORE_ENRICHMENTS = [
     id: "introspect",
     enabled: (state) => !!state.introspection,
     run: (c) => runIntrospectionEnrichment(c.env, c.log, c.step, c.stepDone, c.conversation, c.state),
+  },
+  {
+    // The OWASP Top 10 reference (src/owasp-context.js): a message asking for a
+    // security assessment gets the relevant OWASP paragraphs — web and LLM,
+    // spread across several categories — appended so findings are classified
+    // against, and quote, the actual standard rather than the model's memory of
+    // it. Core, not an extension: the corpus is a committed artifact of this
+    // deployment, so there is no third party, no secret and no outbound
+    // connection, exactly like the source snapshot above it.
+    //
+    // It ran INSIDE the introspection enrichment until 2026-08-13, which meant
+    // five modes reached it as a side effect of carrying the source snapshot
+    // while exactly one agent declared it. Now the declaration is the gate. It
+    // stays immediately AFTER introspect for two reasons that are both about
+    // preserving today's behaviour for a source-carrying mode: the OWASP block
+    // lands on the message after the source and help blocks, exactly where it
+    // used to, and the query embed introspect stashes is reused rather than
+    // paid for twice.
+    id: "owasp",
+    enabled: (state) => capHasContext(/** @type {any} */ (state).capability, "owasp"),
+    run: (c) => runOwaspContextEnrichment(c),
   },
   {
     // The Models agent (src/models-agent.js): its mode forces hub search on for
@@ -179,6 +201,19 @@ const CORE_ENRICHMENTS = [
     // actually reaching any of them stays the ordinary search pipeline's job.
     // Its GUARDRAILS section is the substantive work — it is what bounds "find
     // everything about this person" to the public professional record.
+    //
+    // THE ONE ROW LEFT UNGATED after the roster change of 2026-08-13, and
+    // deliberately. Its sibling below now follows the Cyber agent's declared
+    // `entity-method`, and the OSINT tradecraft inside THIS block follows
+    // `person-method` — but the choice is made in the runner, not here, because
+    // the block has two halves with different standing. The GUARDRAILS half is
+    // a privacy rail, not a domain capability: personResearchIntent fires on
+    // every agent, and one that has lost the limits on reporting a private
+    // individual's health, ethnicity, personnummer or home address is worse off
+    // than one that never had the method (invariant 4). So the registry keeps
+    // the row unconditional, the runner appends the rail alone when the
+    // capability is absent, and the full protocol when it is declared. The
+    // reasoning in full: public/js/person-research-core.js's header.
     id: "person_research",
     enabled: () => true, // intent decides; the runner is silent on a non-person turn
     run: (c) => runPersonResearchEnrichment(c),
@@ -205,8 +240,18 @@ const CORE_ENRICHMENTS = [
     // about a named individual the two blocks read in that order: the method
     // and its guardrails first, then how to resolve the subject and how big the
     // answer should be. Both firing on one turn is correct, not a double-fire.
+    //
+    // Gated on the resolved agent's declared context block since 2026-08-13:
+    // the dossier scaffold is OSINT tradecraft, and the owner directive of that
+    // date gives OSINT to the Cyber agent. Unlike its neighbour above there is
+    // nothing here to keep unconditional — the block asserts no limit on what
+    // may be reported, it decides how to resolve a subject and how long the
+    // report should be, which is exactly the kind of domain method a
+    // declaration is for. An agent that does not declare it answers an OSINT
+    // question the way it answered every other question, which is a less
+    // careful report and nothing worse.
     id: "entity_research",
-    enabled: () => true, // intent decides; the runner is silent on every other turn
+    enabled: (state) => capHasContext(/** @type {any} */ (state).capability, "entity-method"),
     run: (c) => runEntityResearchEnrichment(c),
     // The scaffold is the SHAPE of the answer, never the topic. Feedback #65
     // is what it cost when the planner could not tell the two apart: a bare

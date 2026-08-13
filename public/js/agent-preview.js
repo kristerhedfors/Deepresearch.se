@@ -26,11 +26,16 @@ function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => map[c]);
 }
 
-/** The chat mode a shipped agent opens in; derived flavours fall back to normal. @param {any} agent */
+/** The chat mode a shipped agent opens in; a derived flavour that declares
+ * none falls back to the DEFAULT mode (chat-mode-core.js DEFAULT_CHAT_MODE —
+ * `science` since the general agent was retired, 2026-08-13), which is where an
+ * unnamed mode is answered anyway. The value goes into a deep link, so naming a
+ * mode that no longer exists would produce a link that silently opens whatever
+ * the reader was already in. @param {any} agent */
 function modeFor(agent) {
   return agent && (agent.mode === "sdk" || agent.mode === "agent-builder") ? "sdk"
     : agent && agent.mode === "introspection" ? "introspection"
-    : "normal";
+    : "science";
 }
 
 /** Render one agent into the stage. @param {any} agent */
@@ -55,7 +60,7 @@ function renderAgent(agent) {
       <p class="tag">${esc(agent.tagline || "")}</p>
       <dl>
         <dt>Platform type</dt><dd>${esc(agent.platform)}-tier</dd>
-        <dt>Chat mode</dt><dd>${esc(agent.mode || "normal")}</dd>
+        <dt>Chat mode</dt><dd>${esc(agent.mode || "science")}</dd>
         <dt>Derives from</dt><dd>${esc(agent.derivesFrom || "baseplate")}</dd>
         <dt>Controls</dt><dd>${resolveControls(agent).map((c) => esc(c.id || c.type)).join(", ")}</dd>
         <dt>Intro / loading</dt><dd>${esc(agent.intro?.kind || "none")} / ${esc(agent.loading?.kind || "none")}</dd>

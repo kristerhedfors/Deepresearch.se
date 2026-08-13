@@ -257,7 +257,7 @@ live URL the user opens and tries in the same session.
 | 22–30 | extensions (incl. exec-engine, vm-toolchain, workspace-fs) | 5 | Leaves; product priority decides. exec-engine is the source-built substrate; workspace-fs is the fast-track file plane (server-tier) |
 | 31 | pair-generator | 6 | Meta — used throughout, listed last |
 | 32 | pair-studio | 6 | The capstone: the generator moved into the product; client-tier builds try out in-UI |
-| 33 | agent-platform | 6 | AgentSpec: an agent defined by its composer controls, animations, theme, examples and share-link quota; the four shipped agents; visual proof + minting (`docs/AGENT-PLATFORM.md`) |
+| 33 | agent-platform | 6 | AgentSpec: an agent defined by its composer controls, animations, theme, examples, share-link quota and its capability block; the ten shipped agents; visual proof + minting (`docs/AGENT-PLATFORM.md`) |
 | 34 | deploy-pipeline | 6 | Deploy the workspace live (same-origin preview / user's own account); server-tier |
 
 ---

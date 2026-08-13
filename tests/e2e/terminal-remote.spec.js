@@ -102,7 +102,7 @@ test("@live terminal pane: a run on a REMOTE execution environment reaches the p
       if (route.request().method() !== "GET") return await route.continue();
       const res = await route.fetch();
       const body = await res.json().catch(() => ({}));
-      await route.fulfill({ response: res, json: { ...body, bash_lite_mcp: true, chat_mode: "normal" } });
+      await route.fulfill({ response: res, json: { ...body, bash_lite_mcp: true, chat_mode: "science" } });
     } catch { /* page closed mid-flight */ }
   });
 
@@ -225,7 +225,7 @@ test("@live terminal pane: a REMOTE environment that cannot be reached says so",
       if (route.request().method() !== "GET") return await route.continue();
       const res = await route.fetch();
       const body = await res.json().catch(() => ({}));
-      await route.fulfill({ response: res, json: { ...body, bash_lite_mcp: true, chat_mode: "normal" } });
+      await route.fulfill({ response: res, json: { ...body, bash_lite_mcp: true, chat_mode: "science" } });
     } catch { /* page closed mid-flight */ }
   });
 

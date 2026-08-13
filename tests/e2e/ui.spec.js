@@ -86,7 +86,7 @@ test("settings panel: cloud storage renders as an always-on disclosure row", asy
   );
 
   // This spec mocks /api/settings itself, so it owns the knob pinning
-  // (its mock omits bash_lite_mcp/chat_mode = sandbox off, Deep Research).
+  // (its mock omits bash_lite_mcp/chat_mode = sandbox off, the default mode).
   await openApp(page, { webSearch: false, budgetS: 15, pinSettings: false });
   await page.click("#accountbtn");
   await page.click("#settingsbtn");
@@ -120,9 +120,13 @@ test("account message center renders without a JS error", async ({ page }) => {
 // the palette, the composer pane and the dropdown text coming from different
 // themes. Booting IN Science and switching away is therefore the case that
 // matters, and it is exactly what a stubbed classList cannot reproduce.
+// Every mode now declares a class: the one entry that mapped to `null` was
+// `normal`, retired with the general agent (2026-08-13). The `.filter(Boolean)`
+// and the `want ? … : []` branch below are kept — they cost nothing and they are
+// what the assertion would need again if a future mode ever ships unthemed.
 const MODE_ROOT_CLASS = {
-  normal: null,
   science: "sci-mode",
+  cyber: "cyber-mode",
   introspection: "dev-mode",
   sdk: "sdk-mode",
   orchestrator: "orch-mode",
@@ -130,7 +134,7 @@ const MODE_ROOT_CLASS = {
   models: "models-mode",
 };
 const ALL_ROOT_CLASSES = Object.values(MODE_ROOT_CLASS).filter(Boolean);
-const MODE_TAGS = ".introspection-tag,.sdk-tag,.orch-tag,.outro-tag,.models-tag,.sci-tag";
+const MODE_TAGS = ".introspection-tag,.sdk-tag,.orch-tag,.outro-tag,.models-tag,.sci-tag,.cyber-tag";
 
 async function themeState(page) {
   return page.evaluate(
@@ -177,15 +181,25 @@ for (const from of Object.keys(MODE_ROOT_CLASS)) {
   });
 }
 
-// The one DARK theme: Deep Science's near-white --text over the composer's
+// The DARK themes: Deep Science's near-white --text over the composer's
 // default white glass measured 2.58:1 on production (tests/theme-contrast.mjs),
 // which is the "white text on white background in the dropdowns" report. The
 // declared fill is not the thing to assert — sci-mode's chips are still white,
 // at .08 rather than .35 — so this composites each element against everything
 // painted behind it and checks the WCAG ratio the reader actually gets.
-test("Deep Science's composer text clears AA over what is painted behind it", async ({ page }) => {
-  await bootSettled(page, () => openApp(page, { webSearch: false, budgetS: 15, chatMode: "science" }));
-  await expect(page.locator("html")).toHaveClass(/sci-mode/);
+//
+// Cyber (2026-08-13) is the second dark field and inherits the same trap
+// exactly, which is why it is measured here rather than trusted to have copied
+// the overrides correctly: a dark theme that forgets one of the six composer
+// selectors ships unreadable and nothing else in the suite notices.
+const DARK_THEMES = [
+  { mode: "science", cls: /sci-mode/, name: "Deep Science" },
+  { mode: "cyber", cls: /cyber-mode/, name: "Cyber" },
+];
+for (const dark of DARK_THEMES) {
+test(`${dark.name}'s composer text clears AA over what is painted behind it`, async ({ page }) => {
+  await bootSettled(page, () => openApp(page, { webSearch: false, budgetS: 15, chatMode: dark.mode }));
+  await expect(page.locator("html")).toHaveClass(dark.cls);
   const ratios = await page.evaluate((sels) => {
     const parse = (c) => {
       const m = String(c).match(/rgba?\(([^)]+)\)/);
@@ -220,6 +234,7 @@ test("Deep Science's composer text clears AA over what is painted behind it", as
     });
   }, ["#modesel", "#model", "#input"]);
   for (const { sel, ratio } of ratios) {
-    expect(ratio, `${sel} reads at ${ratio.toFixed(2)}:1 in Deep Science`).toBeGreaterThanOrEqual(4.5);
+    expect(ratio, `${sel} reads at ${ratio.toFixed(2)}:1 in ${dark.name}`).toBeGreaterThanOrEqual(4.5);
   }
 });
+}
