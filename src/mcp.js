@@ -359,6 +359,97 @@ export function jsonRpcError(id, code, message, data) {
   return { jsonrpc: "2.0", id: id === undefined ? null : id, error };
 }
 
+// ---------------------------------------------------------------------------
+// PROGRESS over SSE — why a long tool call must say something while it works
+// ---------------------------------------------------------------------------
+//
+// `deep_research` runs for as long as its time budget allows: 120 s by default
+// and up to 600 s. Until 2026-08-13 the whole of that was ONE buffered JSON
+// response — zero bytes on the wire from the POST until the pipeline finished.
+// Observed on 2026-08-13 (Workers Logs, host mcp.deepresearch.se): a voice
+// session's two calls ran 86.5 s and 50.5 s, both completed `ok` server-side,
+// and the connector immediately tore the connection down and re-`initialize`d
+// — the signature of a client that gave up while the server was still working.
+// Nothing was logged as an error here because nothing failed here; the failure
+// was entirely on the caller's side of a silent connection.
+//
+// The transport already allows the fix. Streamable HTTP lets the server answer
+// a POSTed request with `text/event-stream` instead of `application/json`, send
+// notifications "before sending the JSON-RPC response", and close the stream
+// after the response (spec 2025-06-18, Transports §"Sending Messages to the
+// Server" 5–6). And progress notifications are what a client uses to know work
+// is happening: the spec's timeout rule says an implementation MAY reset its
+// timeout clock on a progress notification for that request, "as this implies
+// that work is actually happening". So a research call that reports a phase
+// every few seconds stops looking like a hung server.
+//
+// Two things travel on that stream and they are not the same thing:
+//   * SSE COMMENT keepalives (`: keepalive`) — the same trick /api/chat uses,
+//     ignored by every SSE client, which keep the CONNECTION from idling out
+//     in a proxy. Sent whether or not the client asked for progress.
+//   * `notifications/progress` — sent only when the client supplied a
+//     `progressToken`, because the spec forbids referencing a token that was
+//     never provided. This is the half a client's timeout can read.
+//
+// A client that does NOT accept text/event-stream keeps the old buffered JSON
+// response byte for byte. Nothing about the tool dispatch, the envelopes, or
+// the results changes — this is a transport wrapper, and every existing test
+// of the JSON path still describes what those clients get.
+
+// How often the stream says something. Well under the shortest client timeout
+// worth designing for (60 s), and far enough apart that a 600 s research call
+// sends tens of notifications rather than hundreds — the spec asks both sides
+// to rate-limit, and a progress flood is its own kind of broken.
+export const PROGRESS_INTERVAL_MS = 10_000;
+
+// Does this client accept an SSE response? The spec REQUIRES a client to send
+// `Accept: application/json, text/event-stream` on every POST, so in practice
+// this is true — but a header we did not check is a promise we did not verify,
+// and answering SSE to a client that only reads JSON would break it outright.
+/**
+ * @param {string | null | undefined} accept the request's Accept header
+ * @returns {boolean}
+ */
+export function acceptsEventStream(accept) {
+  return typeof accept === "string" && accept.toLowerCase().includes("text/event-stream");
+}
+
+// The progress token from a request's `params._meta.progressToken`, or null.
+// MUST be a string or integer per the spec; anything else is not a token we may
+// echo, so it degrades to "no progress notifications" rather than to a guess.
+/**
+ * @param {any} params the JSON-RPC params object
+ * @returns {string | number | null}
+ */
+export function progressTokenOf(params) {
+  const token = params?._meta?.progressToken;
+  if (typeof token === "string" && token) return token;
+  if (typeof token === "number" && Number.isFinite(token)) return token;
+  return null;
+}
+
+// A `notifications/progress` message. `progress` MUST increase with every
+// notification for the same token — we count elapsed seconds, which does.
+/**
+ * @param {string | number} token
+ * @param {number} progress
+ * @param {number | null} total
+ * @param {string} [message]
+ */
+export function progressNotification(token, progress, total, message) {
+  /** @type {{ progressToken: string | number, progress: number, total?: number, message?: string }} */
+  const params = { progressToken: token, progress };
+  if (typeof total === "number" && Number.isFinite(total)) params.total = total;
+  if (message) params.message = message;
+  return { jsonrpc: "2.0", method: "notifications/progress", params };
+}
+
+// One SSE frame carrying a JSON-RPC message.
+/** @param {unknown} message */
+export function sseFrame(message) {
+  return `data: ${JSON.stringify(message)}\n\n`;
+}
+
 // Validate + shape a parsed JSON-RPC message. Returns
 // { valid, id, method, params, isNotification } or { valid:false, id, error }.
 // A message WITHOUT an `id` is a notification (no response is expected).
@@ -431,13 +522,150 @@ export async function handleMcp(request, env, log, identity, ctx, requestId) {
       return jsonResponse(jsonRpcResult(parsed.id, initializeResult()));
     case "tools/list":
       return jsonResponse(jsonRpcResult(parsed.id, toolsListResult(config)));
-    case "tools/call":
-      return handleToolCall(parsed, env, log, identity, ctx, requestId, config);
+    case "tools/call": {
+      // The ONE method that can run for minutes, and so the one that needs to
+      // say something while it does (see the PROGRESS section above). Every
+      // other method answers in milliseconds and stays plain JSON.
+      const progress = newProgressSink();
+      const run = () => handleToolCall(parsed, env, log, identity, ctx, requestId, config, progress);
+      if (!acceptsEventStream(request.headers.get("accept"))) return run();
+      return streamToolCall(run, progressTokenOf(parsed.params), progress, log);
+    }
     default:
       return jsonResponse(
         jsonRpcError(parsed.id, RPC_METHOD_NOT_FOUND, `Method not found: ${parsed.method}`),
       );
   }
+}
+
+/**
+ * The running phase label a progress notification reports. A plain mutable
+ * holder rather than a callback chain: the pipeline writes the label it just
+ * started, the SSE ticker reads whatever is there when it fires. Nothing
+ * depends on the two being in step, which is the point — a tool that never
+ * writes a label still gets keepalives and elapsed-time progress.
+ *
+ * @typedef {{ label: string, note: (label: string) => void }} ProgressSink
+ * @returns {ProgressSink}
+ */
+function newProgressSink() {
+  const sink = {
+    label: "",
+    /** @param {string} label */
+    note(label) {
+      if (typeof label === "string" && label) sink.label = label;
+    },
+  };
+  return sink;
+}
+
+/**
+ * Run a tool call and answer it as an SSE stream: keepalives and (when the
+ * client supplied a token) progress notifications while it works, then the
+ * JSON-RPC response as the last frame, then close.
+ *
+ * The dispatch is untouched — `run` is exactly the handler the JSON path calls,
+ * and its Response is unwrapped and re-emitted. So a tool-level failure, a
+ * quota refusal and a concurrency refusal all reach the caller through this
+ * stream in the same envelope they always had.
+ *
+ * @param {() => Promise<Response>} run the buffered tool-call handler
+ * @param {string | number | null} token the caller's progressToken, if any
+ * @param {ProgressSink} progress
+ * @param {Logger} log
+ * @returns {Response}
+ */
+function streamToolCall(run, token, progress, log) {
+  const encoder = new TextEncoder();
+  const started = Date.now();
+  const stream = new ReadableStream({
+    start(controller) {
+      let closed = false;
+      /** @param {string} text */
+      const write = (text) => {
+        if (closed) return;
+        try {
+          controller.enqueue(encoder.encode(text));
+        } catch {
+          // The client went away mid-stream. Stop writing; the run itself is
+          // left to finish, exactly as /api/chat leaves a disconnected
+          // pipeline running — the spend is mostly committed by now, and the
+          // chat-log row and usage accounting still want the real result.
+          closed = true;
+        }
+      };
+
+      let ticks = 0;
+      const timer = setInterval(() => {
+        // The comment line keeps the CONNECTION alive for clients and proxies
+        // that count idle bytes; the notification keeps the client's REQUEST
+        // timeout alive. They are different mechanisms and both are wanted.
+        write(": keepalive\n\n");
+        ticks += 1;
+        if (token === null) return;
+        const elapsed = Math.round((Date.now() - started) / 1000);
+        // `progress` must increase every time, so it counts ticks rather than
+        // seconds — two notifications inside the same second would otherwise
+        // repeat a value. No `total`: the time budget bounds the research, not
+        // the call, and reporting a total the run can legitimately overshoot
+        // would draw a progress bar that stalls at 100%.
+        write(sseFrame(progressNotification(token, ticks, null, progressMessage(progress.label, elapsed))));
+      }, PROGRESS_INTERVAL_MS);
+
+      const finish = async () => {
+        try {
+          const response = await run();
+          write(sseFrame(await response.json()));
+        } catch (err) {
+          // handleToolCall answers its own failures as isError results, so
+          // reaching here means something outside the dispatch threw. The
+          // stream is already open and a client waiting on it would hang
+          // forever, so the response must be an error envelope, not silence.
+          const message = (/** @type {any} */ (err))?.message || String(err);
+          log.error("mcp.stream_failed", { error: message });
+          write(sseFrame(jsonRpcError(null, RPC_INTERNAL_ERROR, `Internal error: ${message}`)));
+        } finally {
+          clearInterval(timer);
+          if (!closed) {
+            closed = true;
+            try {
+              controller.close();
+            } catch {
+              /* already closed by the client leaving */
+            }
+          }
+        }
+      };
+      finish();
+    },
+    cancel() {
+      // The client closed the stream. Nothing to unwind here: the interval is
+      // cleared by finish()'s `finally`, and enqueue failures already flip the
+      // writer off.
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "content-type": "text/event-stream; charset=utf-8",
+      "cache-control": "no-cache, no-transform",
+      connection: "keep-alive",
+      "x-accel-buffering": "no",
+    },
+  });
+}
+
+// The human-readable half of a progress notification. The phase label when the
+// pipeline has reported one, elapsed seconds either way — an agent reading this
+// aloud in a voice session should hear something true about what is happening,
+// not a spinner.
+/**
+ * @param {string} label
+ * @param {number} elapsedS
+ * @returns {string}
+ */
+export function progressMessage(label, elapsedS) {
+  return label ? `${label} (${elapsedS}s)` : `Researching… (${elapsedS}s)`;
 }
 
 // tools/call: take a concurrency reservation for the tools that spend real
@@ -477,14 +705,15 @@ export async function handleMcp(request, env, log, identity, ctx, requestId) {
  * @param {ExecutionContext} ctx
  * @param {string} requestId
  * @param {import('./mcp-config.js').McpConfig} config this account's exposure config
+ * @param {ProgressSink} [progress] where a long run reports the phase it is in
  */
-async function handleToolCall(parsed, env, log, identity, ctx, requestId, config) {
+async function handleToolCall(parsed, env, log, identity, ctx, requestId, config, progress) {
   const name = parsed.params?.name;
   // A tool this account does not expose, or one that contacts no provider,
   // takes no slot: dispatchToolCall refuses the former as unknown, and holding
   // a slot for the latter would only deny the caller its own next call.
   const spends = typeof name === "string" && SPENDING_TOOL_NAMES.has(name) && toolExposed(config, name);
-  if (!spends) return dispatchToolCall(parsed, env, log, identity, ctx, requestId, config);
+  if (!spends) return dispatchToolCall(parsed, env, log, identity, ctx, requestId, config, progress);
 
   const reserved = await reserveToolSlot(env, log, identity, requestId);
   if (!reserved.ok) {
@@ -497,7 +726,7 @@ async function handleToolCall(parsed, env, log, identity, ctx, requestId, config
     return jsonResponse(jsonRpcResult(parsed.id, toolResult(inflightLimitToolMessage(reserved), true)));
   }
   try {
-    return await dispatchToolCall(parsed, env, log, identity, ctx, requestId, config);
+    return await dispatchToolCall(parsed, env, log, identity, ctx, requestId, config, progress);
   } finally {
     // EVERY exit path — a returned result, a tool-level failure, a thrown
     // error, an aborted request. A leaked slot is a self-inflicted denial of
@@ -556,8 +785,9 @@ async function reserveToolSlot(env, log, identity, requestId) {
  * @param {ExecutionContext} ctx
  * @param {string} requestId
  * @param {import('./mcp-config.js').McpConfig} config this account's exposure config
+ * @param {ProgressSink} [progress] where a long run reports the phase it is in
  */
-async function dispatchToolCall(parsed, env, log, identity, ctx, requestId, config) {
+async function dispatchToolCall(parsed, env, log, identity, ctx, requestId, config, progress) {
   const { id, params } = parsed;
   const name = params?.name;
   const args = params?.arguments && typeof params.arguments === "object" ? params.arguments : {};
@@ -669,7 +899,7 @@ async function dispatchToolCall(parsed, env, log, identity, ctx, requestId, conf
   const research = resolveResearchArgs(config, args);
 
   try {
-    const text = await runDeepResearch(env, log, identity, requestId, research, question);
+    const text = await runDeepResearch(env, log, identity, requestId, research, question, progress);
     return jsonResponse(jsonRpcResult(id, toolResult(text, false)));
   } catch (err) {
     const message = (/** @type {any} */ (err))?.message || String(err);
@@ -803,9 +1033,12 @@ function errText(err) {
  *   the EFFECTIVE arguments — the caller's, already reconciled with this
  *   account's defaults and override policy (src/mcp-config.js)
  * @param {string} question
+ * @param {ProgressSink} [progress] the phase label an SSE progress
+ *   notification reports; absent on the buffered JSON path, where nothing is
+ *   listening
  * @returns {Promise<string>} the answer text (with a Sources list appended)
  */
-async function runDeepResearch(env, log, identity, requestId, args, question) {
+async function runDeepResearch(env, log, identity, requestId, args, question, progress) {
   if (!env.BERGET_API_TOKEN) {
     throw new Error("Server not configured: BERGET_API_TOKEN secret is missing.");
   }
@@ -905,7 +1138,11 @@ async function runDeepResearch(env, log, identity, requestId, args, question) {
     if (chunk) answer.text += chunk;
     else if (obj.status?.type === "discard_text") answer.text = "";
     else if (obj.error) emittedError = obj.error;
-    // status step/search events are ignored — a v1 non-streaming result.
+    // The step labels are the only part of the status vocabulary that leaves
+    // this module, and only as the human sentence in a progress notification
+    // ("Searching the web (35s)"). The RESULT is still non-streaming: no
+    // partial answer text and no step/search events reach the caller.
+    else if (progress && obj.status?.type === "step_start") progress.note(obj.status.label);
   };
 
   try {

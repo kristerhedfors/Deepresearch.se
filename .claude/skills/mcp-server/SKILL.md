@@ -394,6 +394,70 @@ fail-soft legs, the floor, and the honest miss are pinned. Note the fake
 deliberately scores its LAST candidate below the floor, so a test that wants
 *n* results needs *n+1* rows.
 
+## A long call must not go silent (progress over SSE, 2026-08-13)
+
+`deep_research` runs for as long as its budget allows — 120 s by default, up to
+600 s. Until 2026-08-13 the whole of that was ONE buffered JSON response: not a
+byte left the Worker between the POST and the finished answer. That is what a
+hung server looks like from the outside, and a client cannot tell the two
+apart.
+
+**The incident.** A voice session against `mcp.deepresearch.se` (Workers Logs,
+2026-08-13 05:41–05:43): two `deep_research` calls, 86.5 s and 50.5 s of wall
+time, **both `status: ok`** with `mcp.complete` logged and full answers written
+to `chat_logs` (#1725, #1726). The user's side never got them — the question
+"just got stuck". Seconds after the second one returned, the connector POSTed a
+fresh `initialize` + two `tools/list`: a reconnect, which is what a client does
+after it has given up on a connection. `scripts/chatlogs --errors` was empty and
+`mcp.tool_failed` never fired, because nothing failed HERE. **When a user
+reports a stuck MCP call and the server says `ok`, stop looking for a server
+error and start looking at how long the caller sat in silence.**
+
+**The fix is a transport wrapper, not a pipeline change.** Streamable HTTP lets
+the server answer a POSTed request with `text/event-stream` and send
+notifications before the response (spec 2025-06-18, Transports §"Sending
+Messages to the Server" 5–6), and the timeout rule says a client MAY reset its
+timeout clock on a progress notification "as this implies that work is actually
+happening". So `tools/call` — and only `tools/call`, the one method that can
+run for minutes — is answered on a stream when the client's `Accept` includes
+`text/event-stream`:
+
+- `: keepalive` comment lines every `PROGRESS_INTERVAL_MS` (10 s), the same
+  trick `/api/chat` uses, which keep the CONNECTION from idling out;
+- `notifications/progress` on the same tick, carrying the pipeline's current
+  `step_start` label and elapsed seconds ("Searching the web (35s)") — the half
+  a client's timeout can read;
+- the JSON-RPC response as the last frame, then close.
+
+Four things about the shape are load-bearing:
+
+1. **Progress notifications only when the caller sent a `progressToken`.** The
+   spec forbids referencing a token that was never provided, so no token means
+   keepalives and nothing else. Never invent one.
+2. **`progress` MUST increase every time**, so it counts TICKS, not seconds —
+   two notifications inside one second would otherwise repeat a value. No
+   `total` is sent: the time budget bounds the research, not the call, and a
+   bar that stalls at 100% is worse than no bar.
+3. **The envelopes are untouched.** `run` is the same `handleToolCall` the JSON
+   path calls and its Response is unwrapped and re-emitted, so a tool-level
+   failure, a quota refusal and a concurrency refusal all still arrive as the
+   `isError` results they always were. A client that does not accept SSE gets
+   the buffered JSON byte for byte.
+4. **`initialize` and `tools/list` stay plain JSON.** They answer in
+   milliseconds; streaming them buys nothing and risks a client that reads the
+   body as JSON.
+
+Pinned by `src/mcp-progress.test.js`, which drives the real `handleMcp` with a
+fake index that hangs until the test releases it plus `node:test`'s timer mocks
+— so the ticking is exercised without waiting 10 s per tick.
+
+**What this does NOT fix**, and is the next thing to measure if a stuck call is
+reported again: the answer still arrives in one frame at the end. A client whose
+ceiling is a HARD wall-clock limit rather than an idle timeout will still cut a
+600 s call. If that turns up, the answer is streaming the synthesis text itself,
+which is a protocol question (MCP has no partial-result shape on `tools/call`),
+not another keepalive.
+
 ## Adding or changing a tool
 
 - **Change the deep_research schema:** edit `DEEP_RESEARCH_TOOL` at the top,
