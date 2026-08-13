@@ -9,9 +9,11 @@ description: >-
   vocabulary, the CAPABILITY block (spec 0.2.0 — what an agent DOES: answer phase,
   tool set, context blocks, search/routing policy, gates, bounds, emitted events,
   required knob, sub-agent team) and the `defaults` ROUTING TABLE that maps each
-  chat mode to its default agent, sdk/AGENTS.json (the seven shipped agents:
-  the five defaults research / introspection / agent-builder / orchestrator /
-  outrospection, plus secure and under-construction), the pure core public/js/agent-spec-core.js
+  chat mode to its default agent, sdk/AGENTS.json (the ten shipped agents:
+  the seven defaults scholar (Deep Science) / cyber / introspection /
+  agent-builder / orchestrator / outrospection / models, plus secure,
+  under-construction and the by-id domain agent palaeogenomics — there is no
+  general agent, retired 2026-08-13), the pure core public/js/agent-spec-core.js
   (server façade src/agent-spec.js; sdk/pair-cli.mjs re-exports it), the composer
   renderer + the visual proof (scripts/agent-proof.mjs / proveComposer), example
   generation, and share-link token minting. Also the Agent Builder mode (the
@@ -44,11 +46,25 @@ a non-tool fallback), 3 (`routing.planModel` is a one-member vocabulary), 4 (a
 `client` platform may select nothing marked `serverOnly`) and 6 (a declared gate
 must carry `langs` with both `en` and `sv`).
 
+`context` is the field that decides what an agent may REACH, and since
+2026-08-13 it is executed rather than merely declared: `capHasContext` gates the
+enrichment registry (`src/enrichment.js`) and the search-source registry
+(`src/search-sources.js` `requiresContext` → `sourceAllowed`). That is what makes
+a domain agent a domain — Deep Science holds the literature blocks, Cyber holds
+host intelligence, street imagery, the two OSINT methods and the OWASP corpus,
+and no other agent reaches any of them (`src/cyber-exclusivity.test.js`,
+`src/literature-exclusivity.test.js`). One asymmetry to know: a **null**
+capability keeps every search source, because it means no agent was resolved
+rather than an agent that declared nothing.
+
 The registry's ordered top-level `defaults` table maps each chat mode to the
 agent that IS that mode and names the request flag selecting it; array order is
 precedence. `resolveRequestAgent` walks it in `src/chat.js` and `src/pipeline.js`
 dispatches on the resolved `capability.answerPhase`, so adding a mode is a
-registry edit — plus one dispatch row only if it needs a NEW executor.
+registry edit — plus one dispatch row only if it needs a NEW executor. The
+terminal row is `science` / `scholar`, which is why that spec alone declares
+`requires: []`: a fallback a caller cannot reach falls through to nothing, and
+nothing resolves to a null capability.
 
 `prompts` names a PROMPT SET — a group of system prompts covering some of six
 closed roles (`plan`, `worker`, `answer`, `answer-tools`, `answer-direct`,
@@ -93,17 +109,18 @@ One entry in `sdk/AGENTS.json` (`{ agents: [ … ] }`):
 
 ```jsonc
 {
-  "id": "research",              // lowercase slug, unique
-  "name": "Research",            // display name
+  "id": "scholar",               // lowercase slug, unique
+  "name": "Deep Science",        // display name
   "tagline": "…", "description": "…",
   "platform": "server",          // "client" | "server"  (the tier / platform type)
   "tier": "Se/rver",             // branding label (display only)
   "derivesFrom": "baseplate",    // which agent/base this was copied from (provenance)
-  "mode": "normal",              // a CANONICAL chat mode id, validated against
-                                 // chat-mode.js: normal | introspection | sdk |
-                                 // orchestrator | outrospection. "agent-builder"
-                                 // is NOT accepted here — it survives only as the
-                                 // Agent Studio spec's `id` and as a deep-link alias
+  "mode": "science",             // a CANONICAL chat mode id, validated against
+                                 // chat-mode.js: science | cyber | introspection |
+                                 // sdk | orchestrator | outrospection | models.
+                                 // "agent-builder" is NOT accepted here — it
+                                 // survives only as the Agent Studio spec's `id`
+                                 // and as a deep-link alias; `normal` is retired
   "theme": { "--agent-accent": "#3b82f6", … },   // CSS custom properties
   "intro":   { "kind": "fade", "durationMs": 400 },
   "loading": { "kind": "pipeline-phases", "messages": ["Triaging…", …] },
@@ -114,7 +131,7 @@ One entry in `sdk/AGENTS.json` (`{ agents: [ … ] }`):
     { "type": "depth-slider", "min": 0, "max": 3, "default": 1, "ticks": ["Quick","Standard","Deep","Exhaustive"] },
     { "type": "toggle", "id": "web_search", "label": "Web search", "default": true },
     { "type": "attachments", "max": 5 },
-    { "type": "mode-select", "modes": ["normal","introspection","sdk","orchestrator","outrospection"] },
+    { "type": "mode-select", "modes": ["science","cyber","introspection","sdk","orchestrator","outrospection","models"] },
     { "type": "send-button" }
   ],
   "examples": ["…"], "generateExamples": true,
@@ -170,7 +187,7 @@ axis per chat mode.
 
 | Piece | File |
 |---|---|
-| The seven shipped agents + the `defaults` routing table | `sdk/AGENTS.json` |
+| The ten shipped agents + the `defaults` routing table | `sdk/AGENTS.json` |
 | Pure core | `public/js/agent-spec-core.js` (+ tests `…test.js`) |
 | Server façade | `src/agent-spec.js` |
 | CLI commands | `sdk/pair-cli.mjs` (`agents`, `agent <id>`) |

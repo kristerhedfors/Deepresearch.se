@@ -1,14 +1,15 @@
 ---
 name: orchestrator-mode
-description: Load when working on ORCHESTRATOR MODE — the violet entry in the chat-mode dropdown (Deep Research / Deep Science / Introspection / Agent Studio / Orchestrator / Outrospection / Models) that runs a request as a planned team of SUB-AGENTS working in the background, with the workflow shown live — or when touching src/orchestrator.js (runOrchestration), public/js/orchestrator-core.js (the plan schema/waves/prompts pure core), public/js/workflow-viz.js (the sub-agent graph view), public/js/graph-backdrop.js / mode-backdrop.js (the rotating wireframe workflow-graph BACKGROUND and the backdrop-axis dispatch), the orchestrator_mode chat field, the workflow/agent_update SSE events, or the orch-mode violet theme. Also load when extending the sub-agent KIND vocabulary, adding a new agent-BACKDROP kind (mode-theme.js backdrop axis / AgentSpec backdrop field), or debugging a workflow that planned badly, hung, or lost nodes.
+description: Load when working on ORCHESTRATOR MODE — the violet entry in the chat-mode dropdown (Deep Science / Cyber / Introspection / Agent Studio / Orchestrator / Outrospection / Models) that runs a request as a planned team of SUB-AGENTS working in the background, with the workflow shown live — or when touching src/orchestrator.js (runOrchestration), public/js/orchestrator-core.js (the plan schema/waves/prompts pure core), public/js/workflow-viz.js (the sub-agent graph view), public/js/graph-backdrop.js / mode-backdrop.js (the rotating wireframe workflow-graph BACKGROUND and the backdrop-axis dispatch), the orchestrator_mode chat field, the workflow/agent_update SSE events, or the orch-mode violet theme. Also load when extending the sub-agent KIND vocabulary, adding a new agent-BACKDROP kind (mode-theme.js backdrop axis / AgentSpec backdrop field), or debugging a workflow that planned badly, hung, or lost nodes.
 ---
 
 # Orchestrator mode — sub-agents in the background (2026-07-24)
 
-The fourth chat mode: the user's request is decomposed by a JSON PLAN phase
-into a small team of sub-agents — each a Deep Research node (planned Exa
-queries + a sourced brief), an Introspection node (retrieved own-source
-excerpts), or a fully custom specialist (persona + instructions) — executed
+The fourth chat mode to ship: the user's request is decomposed by a JSON PLAN
+phase into a small team of sub-agents — each a **web research** node (planned
+Exa queries + a sourced brief), an Introspection node (retrieved own-source
+excerpts), a `swarm` node, or a fully custom specialist (persona +
+instructions) — executed
 by the Worker in parallel waves, then merged into one streamed answer. The
 workflow itself is a first-class UI element: a live graph of the team.
 
@@ -34,7 +35,10 @@ workflow itself is a first-class UI element: a live graph of the team.
 ## The pieces
 
 - `public/js/orchestrator-core.js` — the shared PURE core (Node-tested):
-  `AGENT_KINDS` (closed vocabulary — `deep_research`, `introspection`
+  `AGENT_KINDS` (closed vocabulary — `web_research` (renamed from
+  `deep_research` on 2026-08-13, when the general agent whose name it had
+  borrowed was retired; the role was always the specific one — search the open
+  web, write a sourced brief), `introspection`
   (`needsSource`, downgraded to custom without a snapshot), `swarm`
   (`needsSwarm`, downgraded the same way without a swarm-capable browser),
   `custom`),
@@ -42,7 +46,7 @@ workflow itself is a first-class UI element: a live graph of the team.
   cycles, caps at `MAX_AGENTS`=6 / `MAX_WAVES`=3), `workflowWaves`,
   `orchestratorPlanPrompt` (EN+SV: "svara på svenska…"), `agentTaskPrompt`,
   `mergeAgentResults`, and the `workflow`/`agentUpdateEvent` SSE shapes.
-- `src/orchestrator.js` — the executor: plan → waves → merge. deep_research
+- `src/orchestrator.js` — the executor: plan → waves → merge. `web_research`
   nodes run their PLANNED queries (`agent.queries`, decided by the plan
   phase — no per-node model call) through the same Exa path/events/source
   registry as the pipeline under `MAX_ORCH_SEARCHES`; introspection nodes
@@ -115,7 +119,7 @@ workflow itself is a first-class UI element: a live graph of the team.
 - **The graph backdrop** (`public/js/graph-backdrop.js`): Orchestrator's
   AGENT BACKGROUND — a hovering, slowly rotating wireframe directed graph
   behind the chat (root baton star + one wireframe symbol per sub-agent:
-  balloon blue = deep_research, TIN slate = introspection, violet diamond =
+  balloon blue = web_research, TIN slate = introspection, violet diamond =
   custom), fed the live team by stream.js and showing per-node status
   (pulse/✓/✕). Built solely on `space-core.js`'s rotY/projectPoint — add no
   dependencies. It is the "graph" value of the generalized `backdrop` axis

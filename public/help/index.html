@@ -256,13 +256,17 @@
       <li><b>Attachments</b> — images and documents, read in your browser, and
         flagged before you send if they carry hidden metadata.
         See <a href="#input">the input area</a>.</li>
-      <li><b>Other assistants than Deep Research</b> — the chat-mode dropdown
-        swaps in Introspection (answers from this site's own source code),
-        Agent Studio (turns a description into a small published app),
-        Orchestrator (plans a team of sub-agents and runs them), and
-        Outrospection (answers from the outward feed of what everyone else
-        shipped). They are bundled examples of what this platform carries, not
-        separate products. See <a href="#input">the input area</a>.</li>
+      <li><b>Seven assistants, each with its own subject</b> — the chat-mode
+        dropdown swaps between Deep Science (the peer-reviewed literature, and
+        the one you start in), Cyber (security and open-source intelligence),
+        Introspection (answers from this site's own source code), Agent Studio
+        (turns a description into a small published app), Orchestrator (plans a
+        team of sub-agents and runs them), Outrospection (answers from the
+        outward feed of what everyone else shipped) and Models (browse and
+        enable models). There is no general-purpose one: each names a subject,
+        and what each can reach is written down rather than assumed. They are
+        bundled examples of what this platform carries, not separate products.
+        See <a href="#input">the input area</a>.</li>
       <li><b>Quizzes</b> — ask to be quizzed on anything and the answer
         becomes an interactive quiz. See <a href="#quizzes">quizzes</a>.</li>
       <li><b>A Linux machine in the tab</b> — the experimental execution
@@ -517,8 +521,12 @@
         back automatically. Your choice is remembered in this browser.</li>
       <li><b>Chat mode</b> (the dropdown beside the model selector) — picks
         <i>which assistant</i> answers, and repaints the app in that mode's
-        colour. <b>Deep Research</b> (blue) is the ordinary research
-        pipeline described on this page. <b>Introspection</b> (titanium)
+        colour. <b>Deep Science</b> (parchment gold) is where you start: it
+        answers only from peer-reviewed publications and does not search the
+        open web at all. <b>Cyber</b> (crimson) is security and open-source
+        intelligence — what a host exposes, what a place looks like from the
+        street, and the OWASP reference when you ask for an assessment.
+        <b>Introspection</b> (titanium)
         answers from this site's own source code instead of the web.
         <b>Agent Studio</b> (green) turns a description into a small
         published app of your own. <b>Orchestrator</b> (violet) plans a team
@@ -527,11 +535,15 @@
         mirror image: instead of this site's own source it answers from the
         outward feed of what everyone <i>else</i> shipped, and only from
         articles that feed actually holds — you can read the same feed at
-        <a href="/outrospect/">Outrospection</a>. The last four are bundled
+        <a href="/outrospect/">Outrospection</a>. <b>Models</b> (amber) is
+        where you browse every model this deployment can reach, priced, and
+        turn one on for your account. They are bundled
         examples of what this
-        platform can carry rather than separate products; switching back to
-        Deep Research at any time restores the normal behaviour, and your
-        pick is remembered in this browser.</li>
+        platform can carry rather than separate products. There is no
+        general-purpose mode to switch back to: each one names a subject, and
+        the research it can reach follows from that — so a street address named
+        in Deep Science is not looked up, and the scientific corpora are not
+        searched from Cyber. Your pick is remembered in this browser.</li>
       <li><b>Attachments can carry more than their visible content.</b>
         Photos often embed where and when they were taken and what device
         took them; Word documents can carry the author's name, edit
@@ -723,7 +735,10 @@
         so the answer can use and cite it. Only the IP or hostname itself is
         ever sent to Shodan, never your question or anything about your
         account, and only when your message actually names a host. It works
-        whether or not web search is on.</li>
+        whether or not web search is on. The switch is your consent to reach
+        Shodan at all; which assistant may use it is a separate matter, and
+        today only <b>Cyber</b> can — so a hostname named in another mode is
+        not looked up even with the switch on.</li>
       <li><b>Google Maps &amp; Street View</b> (off by default) — when on, if a
         question names a street address (or you attach a photo carrying GPS
         location), the site looks it up on
@@ -738,7 +753,9 @@
         answer. Only the address itself (or a photo's coordinates) is ever sent
         to Google, never your whole question or anything about your account, and
         only when your message actually names an address. It works whether or
-        not web search is on.</li>
+        not web search is on. As with Shodan above, the switch is your consent
+        to reach Google at all; only the <b>Cyber</b> assistant may use it, so
+        an address named in another mode is not looked up.</li>
       <li><b>Feedback</b> (no switch) — feedback is given straight from the
         chat: start a message with the word <b>“feedback”</b> (for example
         “feedback: the map view was cut off”) and, instead of researching it,
@@ -791,12 +808,14 @@
         enterprise-only Exa feature we don't currently have); see
         "Sensitive topics" above for the two-step workflow.</li>
       <li><b>Shodan lookups</b>: only if you turn on <b>Shodan host
-        intelligence</b> in Settings (off by default). Then, when a message
+        intelligence</b> in Settings (off by default) <i>and</i> you are in the
+        <b>Cyber</b> assistant. Then, when a message
         names an IP or hostname, that IP/hostname alone is sent to Shodan to
         fetch its public infrastructure record, never your question or
         anything identifying you.</li>
       <li><b>Google Maps lookups</b>: only if you turn on <b>Google Maps &amp;
-        Street View</b> in Settings (off by default). Then, when a message names
+        Street View</b> in Settings (off by default) <i>and</i> you are in the
+        <b>Cyber</b> assistant. Then, when a message names
         a street address (or you attach a located photo), that address alone
         (or the photo's coordinates) is sent to Google Maps Platform to fetch
         the place, its Street View coverage and a road map, never your whole

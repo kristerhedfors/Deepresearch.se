@@ -274,7 +274,17 @@ describe("never throws, whatever it is handed", () => {
   }
 
   test("no state bag: the block is still appended", async () => {
+    // No state means no capability, so it is the privacy RAIL that lands —
+    // which is the right way round: the half a caller gets when the platform
+    // knows nothing about it is the half that limits the answer.
     const { out } = await run(FIRES, { state: null });
+    assert.ok(lastText(out).includes("public professional information only"));
+  });
+
+  test("a frozen state bag: the block is still appended", async () => {
+    // The counters are a WRITE to request state; module scope is strict, so a
+    // frozen bag throws on the assignment. The block must survive it.
+    const { out } = await run(FIRES, { state: Object.freeze({ ...CYBER }) });
     assert.ok(lastText(out).includes("LADDER RULE"));
   });
 
@@ -292,7 +302,7 @@ describe("never throws, whatever it is handed", () => {
       throw new Error("the person-research enrichment must never reach the network");
     };
     try {
-      const { out } = await run(FIRES);
+      const { out } = await run(FIRES, { state: { ...CYBER } });
       assert.ok(lastText(out).includes("PERSON RESEARCH METHOD"));
     } finally {
       globalThis.fetch = real;

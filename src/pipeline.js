@@ -755,7 +755,7 @@ async function runWithoutSearch(ctx) {
   // (searchOffPrompt's sourceless depth ladder; default "standard" is the
   // long-standing byte-identical prompt).
   await streamCompletion(ctx, [
-    { role: "system", content: phasePrompt(ctx.state, "direct", "answer-search-off")({ hasShell: !!ctx.shellBlock, hasSource: !!ctx.hasSource, reportTier: ctx.state.plan.reportTier, spaceScene: ctx.spaceScene, demoSurface: ctx.demoSurface }) },
+    { role: "system", content: phasePrompt(ctx.state, "direct", "answer-search-off")({ hasShell: !!ctx.shellBlock, hasSource: !!ctx.hasSource, reportTier: ctx.state.plan.reportTier, spaceScene: ctx.spaceScene, demoSurface: ctx.demoSurface, capability: ctx.state.capability }) },
     ...shellReplyMessages(ctx.shellBlock),
     ...withImageNudge(ctx.conversation),
   ]);
@@ -921,7 +921,7 @@ async function runDirectReply(ctx) {
     // webSearchOn: this branch produced no sources, and without the knob's
     // actual value the model has been observed explaining that away by
     // inventing an off toggle (prompts.js SEARCH_ON_BUT_UNUSED_NOTE).
-    { role: "system", content: phasePrompt(ctx.state, "research", "answer-direct")({ hasShell: !!ctx.shellBlock, hasSource: !!ctx.hasSource, spaceScene: ctx.spaceScene, demoSurface: ctx.demoSurface, webSearchOn: ctx.state.webSearch !== false }) },
+    { role: "system", content: phasePrompt(ctx.state, "research", "answer-direct")({ hasShell: !!ctx.shellBlock, hasSource: !!ctx.hasSource, spaceScene: ctx.spaceScene, demoSurface: ctx.demoSurface, webSearchOn: ctx.state.webSearch !== false, capability: ctx.state.capability }) },
     ...shellReplyMessages(ctx.shellBlock),
     ...withImageNudge(ctx.conversation),
   ]);
@@ -1001,7 +1001,7 @@ async function runSourceResearchTools(ctx, snapshot, auxBlock = "") {
   const startedAt = Date.now();
   const result = await anthropicToolRun(ctx.env, {
     model: ctx.model,
-    system: phasePrompt(ctx.state, "source-research", "answer-tools")({ externalSources: !!auxBlock }),
+    system: phasePrompt(ctx.state, "source-research", "answer-tools")({ externalSources: !!auxBlock, capability: ctx.state.capability }),
     userContent: userText,
     // The snapshot readers, reached through the agent's declared tool CLASSES
     // (src/tool-sets.js) rather than imported. The shipped introspection spec
@@ -1649,7 +1649,7 @@ async function runSourceResearch(ctx) {
   ctx.step("synth", "Writing report…");
   const synthStartedAt = Date.now();
   await streamCompletion(ctx, [
-    { role: "system", content: phasePrompt(ctx.state, "source-research", "answer")({ externalSources: !!auxBlock }) },
+    { role: "system", content: phasePrompt(ctx.state, "source-research", "answer")({ externalSources: !!auxBlock, capability: ctx.state.capability }) },
     {
       role: "user",
       content: ctx.imageParts.length ? [{ type: "text", text: synthText }, ...ctx.imageParts] : synthText,

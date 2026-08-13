@@ -146,8 +146,10 @@ Three traps, all paid for on the first live run:
 - **The chat mode does not stick by itself.** The `dr_chat_mode` pin makes the
   dropdown already read the wanted mode, so a set-and-return leaves
   `/api/settings` free to revert it — silently recording THE WRONG AGENT. An
-  Agent Studio run that fell back to Deep Research prints code as prose and
-  builds nothing, and the clip looks fine unless you read the composer.
+  Agent Studio run that fell back to the default mode prints code as prose and
+  builds nothing, and the clip looks fine unless you read the composer. The
+  fallback is Deep Science since 2026-08-13, which makes a slipped pin louder
+  rather than quieter.
   `selectMode` holds the value and fails the run instead.
 
 ## The activity timeline — why cutting dead air works here at all

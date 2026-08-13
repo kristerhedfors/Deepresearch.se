@@ -34,7 +34,7 @@ visit and that stores into D1. Both halves import the SAME pure core
 façade, the browser directly, the script in Node. The delta is the product; the
 merge decides what is new.
 
-## Outrospection MODE — the fifth chat mode (2026-07-25)
+## Outrospection MODE — the fifth chat mode to ship (2026-07-25)
 
 The feed is also an ANSWERING surface: the `outrospection` entry in the chat
 dropdown (newsprint theme, `outro-mode`). It is introspection's mirror in

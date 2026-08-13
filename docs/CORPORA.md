@@ -30,6 +30,23 @@ rather than keyword, then reranked with a cross-encoder. Neither holds full
 text, so a question whose answer lives in a paper's methods section and never
 in its abstract cannot be answered from these corpora at all.
 
+### 1.1 Who can reach them
+
+Since 2026-08-13 the corpora belong to specific agents rather than to any turn
+whose wording matched a keyword. Ownership is declared in each agent's
+capability block and enforced at the search-source registry, so it is one line
+of data rather than a rule spread through the pipeline:
+
+| Corpus | Declared as | Reachable from |
+|---|---|---|
+| arXiv | `literature-arxiv` | **Deep Science** only, and only when the reader names the preprint record |
+| PubMed | `literature-pubmed` | **Deep Science**, and **Palaeogenomics** — for which the life-science record is the only literature leg |
+
+Both doors stay open to **`POST /mcp`**, which has no concept of an agent: a
+request that resolved no agent keeps every source. That is deliberate, and it is
+why the `literature_*` MCP tools and the ground-truth batteries still reach both
+corpora unchanged.
+
 ---
 
 ## 2. arXiv — a dense band plus topic-shaped tails

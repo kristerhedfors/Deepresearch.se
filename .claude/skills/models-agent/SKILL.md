@@ -22,13 +22,13 @@ description: >
 
 # The Models agent
 
-The sixth chat mode (`models`, amber). Every other agent answers ON a model;
+The sixth chat mode to ship (`models`, amber). Every other agent answers ON a model;
 this one answers ABOUT them, and owns their whole life on the platform.
 
 ## The shape, in one paragraph
 
 It is **not a new executor.** Its answer phase is the ordinary `research` one,
-so a sixth mode needed no row in `src/pipeline.js` `ANSWER_PHASE_RUNNERS`. What
+so it needed no row in `src/pipeline.js` `ANSWER_PHASE_RUNNERS`. What
 it adds is one pre-pipeline enrichment (`src/models-agent.js`, registered in
 `src/enrichment.js` `CORE_ENRICHMENTS`) that forces Hub search on via the
 generic `state.forceAux` seam, raises the hub's per-request search ceiling via

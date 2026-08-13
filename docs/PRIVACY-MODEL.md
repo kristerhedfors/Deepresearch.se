@@ -55,6 +55,20 @@ Outbound requests to third parties carry the minimum (a query, a
 coordinate, a host), never the conversation, filename, or account
 identity.
 
+**Which agent may send them at all** narrowed on 2026-08-13, when the
+roster became specific. Outward-facing intelligence — host lookups and
+street-level imagery, the two egress-heavy enrichments — belongs to the
+**Cyber** agent alone, declared as the `host-intel` and `street-imagery`
+capability blocks and enforced by `capHasContext`. The per-account
+knobs (`shodan_mcp`, `google_maps`) did not go away; the two are ANDed,
+and they answer different questions. The knob is the account's CONSENT
+to reach a third party at all — still opt-in, still default OFF, still
+the same `/api/settings` contract. The capability is which agent may
+use that consent. So consenting once no longer means every agent's turn
+can spend it: an address named in a Deep Science turn reaches Google
+nowhere, whatever the knob says. Nothing about WHAT leaves changed —
+still a host, still a coordinate, never the question.
+
 **Browser-local answer routes on Se/rver.** Two Se/rver sends never
 reach `/api/chat` at all, so they produce no `chat_logs` row and no
 provider call from the server: (1) introspection's PRIVATE route — the

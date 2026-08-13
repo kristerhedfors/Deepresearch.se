@@ -7,8 +7,9 @@ description: >-
   integrated"), or when debugging why an existing source never fires or its
   results never show up. The end-to-end playbook: choosing the integration
   shape, intent routing, the triage-prompt layer, API client design,
-  registry/diversity wiring, SSE visibility, and the validation protocol
-  (unit tests → live probes → bench A/B → ledger).
+  registry/diversity wiring, SSE visibility, the `requiresContext` declaration
+  that decides WHICH AGENT may consult the source at all (2026-08-13), and the
+  validation protocol (unit tests → live probes → bench A/B → ledger).
 ---
 
 # Integrating a new deep-research source
@@ -47,6 +48,18 @@ Two established shapes — pick by what the source contributes:
   labeled context block appended to the conversation before any model
   call. Needs an **opt-in knob** (`src/settings.js`) when it sends
   user-adjacent data to a third party or costs money per call.
+
+**Then decide WHO may reach it** (2026-08-13). Both shapes can name a
+`CONTEXT_BLOCKS` id the answering agent has to declare — `requiresContext` on a
+search-source entry, `contextBlock` on an extension descriptor — and both are
+read generically, so no orchestrator file learns which source a block belongs
+to. Declare one when the source is a DOMAIN's, not the platform's: the three
+literature legs are Deep Science's, host intelligence and street imagery are
+Cyber's. Leave it off and the source runs for every agent, exactly as every
+source did before the field existed. Two rules go with it: name the block for
+the capability rather than the vendor, and remember that a NULL capability keeps
+every source — it means no agent was resolved (`POST /mcp`, or a registry that
+will not load), which is not the same claim as an agent that declared nothing.
 
 If the source is billed per call, mirror Exa's cost accounting
 (`costMultiplier` pattern in `budget.js`/`chat.js`) — never silently
@@ -183,7 +196,8 @@ Consequences:
 - Pre-pipeline ENRICHMENTS (the knob-gated, third-party shape — Shodan,
   Google Maps) are a DIFFERENT seam and, since 2026-07-25, an **extension**,
   not core (CLAUDE.md invariant 7): one descriptor in `src/extensions.js`
-  plus the service's own runner module. `enrichment.js` names no service and
+  plus the service's own runner module, and since 2026-08-13 a `contextBlock`
+  ANDed with the knob. `enrichment.js` names no service and
   `pipeline.js` calls `runEnrichments()` once. Per-request state goes in that
   extension's own slice of `state.ext` — never new top-level `state` fields,
   and never a field in `validation.js` or `types.d.ts`. See

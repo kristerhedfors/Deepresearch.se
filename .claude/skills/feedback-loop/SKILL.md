@@ -23,8 +23,8 @@ whose text opens with the word "feedback" (`feedbackIntent`, EN+SV — e.g.
 shows the user's own words) is routed by the research pipeline into
 the **feedback case** (`src/pipeline.js` `runFeedbackCapture`) instead of being
 researched. The gate is evaluated ABOVE the executor-phase dispatch, so it works
-in every chat mode — Deep Research, Introspection, Agent Studio, Orchestrator,
-Outrospection — which is what feedback #26 asked for after Orchestrator visibly
+in every chat mode — Deep Science, Cyber, Introspection, Agent Studio,
+Orchestrator, Outrospection, Models — which is what feedback #26 asked for after Orchestrator visibly
 planned a sub-agent team over a report. `src/slash.test.js` keeps it that way by
 discovering the modes rather than listing them. That replies with a **canned acknowledgment** (owner directive,
 2026-07-24: user feedback is NEVER run through an LLM — the deterministic

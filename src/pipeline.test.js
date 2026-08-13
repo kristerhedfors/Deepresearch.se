@@ -630,9 +630,13 @@ describe("the web-search knob gates Exa only — depth still runs over other sou
     assert.match(sourceResearch, /\(auxBlock \? `\$\{auxBlock\}\\n\\n` : ""\)/);
     // The answer prompt is told external sources exist — otherwise its flat
     // "there are no external sources to cite" discards what we just fetched.
-    assert.match(sourceResearch, /"source-research", "answer"\)\(\{ externalSources: !!auxBlock \}\)/);
+    // The `externalSources` field is what this test is about; the options object
+    // has since grown `capability` (2026-08-13), which is pinned separately in
+    // src/cyber-exclusivity.test.js, so match the one field rather than the
+    // whole literal.
+    assert.match(sourceResearch, /"source-research", "answer"\)\(\{[^}]*externalSources: !!auxBlock/);
     const tools = src.slice(src.indexOf("async function runSourceResearchTools"), src.indexOf("export const MAX_SDK_TOOL_ROUNDS"));
-    assert.match(tools, /"source-research", "answer-tools"\)\(\{ externalSources: !!auxBlock \}\)/);
+    assert.match(tools, /"source-research", "answer-tools"\)\(\{[^}]*externalSources: !!auxBlock/);
   });
 
   test("a mode may raise a source's per-request search ceiling, generically", () => {

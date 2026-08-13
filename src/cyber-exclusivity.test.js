@@ -28,6 +28,8 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { AGENTS_PATH, CONTEXT_BLOCKS, GATE_IDS, resolveCapability } from "./agent-spec.js";
+import { DEFAULT_PROMPT_SET } from "../public/js/agent-spec-core.js";
+import { PROMPT_BUILDERS } from "./prompt-sets.js";
 import { EXTENSIONS } from "./extensions.js";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -155,5 +157,69 @@ describe("the extension registry agrees with the specs", () => {
   test("both of today's extensions are accounted for", () => {
     // Stops the loop above passing because the registry emptied.
     assert.deepEqual(EXTENSIONS.map((e) => e.contextBlock).sort(), ["host-intel", "street-imagery"]);
+  });
+});
+
+describe("the capability actually REACHES the prompt layer", () => {
+  // A declaration that nothing reads is the failure mode this whole change
+  // exists to remove, and the prompt layer nearly shipped with it. Every
+  // capability-aware prompt builder — the grounded capabilities note, the OWASP
+  // assessment note, the search-source vocabulary spliced into triage and gap —
+  // takes an optional `capability`, and for a while NOTHING passed it: the
+  // builders were tested directly, the tests were green, and on the real
+  // request path every filter was inert. A non-Cyber agent would have gone on
+  // advertising host intelligence it could no longer run.
+  //
+  // So this pins the WIRING rather than the behaviour, by reading the source —
+  // the same technique src/agent-bounds.test.js uses to pin that every bound
+  // constant reaches capBound. It is deliberately crude: it cannot be satisfied
+  // by a mock, and it fails the moment someone adds a phase that forgets the
+  // field.
+  const pipelineSrc = readFileSync(new URL("./pipeline.js", import.meta.url), "utf8");
+
+  test("every capability-AWARE phase prompt is passed the capability", () => {
+    // Which builders care is DERIVED, not listed: a prompt builder is
+    // capability-aware exactly when its parameter list destructures
+    // `capability`. So this cannot go stale by someone making a fifth builder
+    // capability-aware and forgetting to add it here — the test finds it, and
+    // then fails until pipeline.js passes the field.
+    //
+    // The pairing is (phase → its default prompt set → the bound builder),
+    // which is the shipped mapping; an agent may name a different set, but the
+    // call site is the same one either way.
+    const calls = [...pipelineSrc.matchAll(/phasePrompt\(ctx\.state,\s*"([\w-]+)",\s*"([\w-]+)"\)\(\{([^}]*)\}\)/g)];
+    assert.ok(calls.length >= 5, `expected the shipped phase prompts, found ${calls.length}`);
+    let checked = 0;
+    for (const [whole, phase, role, opts] of calls) {
+      const set = DEFAULT_PROMPT_SET[phase] || phase;
+      const builder = PROMPT_BUILDERS[set]?.[role];
+      assert.ok(builder, `no builder bound for (${set}, ${role})`);
+      // The PARAMETER LIST only. Testing the whole function text matches the
+      // word inside a prompt's own English — the build prompt talks about what
+      // an agent's capability block is — which read as "capability-aware" and
+      // failed a builder that takes no such option.
+      const params = String(builder).split("=>")[0];
+      if (!/\bcapability\b/.test(params)) continue; // not capability-aware
+      checked++;
+      assert.match(
+        opts,
+        /capability:\s*ctx\.state\.capability/,
+        `a capability-aware phase prompt is built without the run's capability:\n  ${whole.slice(0, 160)}`,
+      );
+    }
+    // Guards the loop against passing because nothing matched.
+    assert.ok(checked >= 4, `expected at least four capability-aware phase prompts, checked ${checked}`);
+  });
+
+  test("the planning phases pass it too", () => {
+    // triagePrompt and gapPrompt take it through JsonPromptOpts, so they are
+    // spelled differently and would slip past the matcher above. They are the
+    // ones that decide whether triage is taught a search source's query
+    // vocabulary, which is the difference between planning queries for a leg
+    // that will run and planning them for one that cannot.
+    for (const phase of ["triagePrompt", "gapPrompt"]) {
+      assert.ok(pipelineSrc.includes(phase), `${phase} is not called from pipeline.js any more`);
+    }
+    assert.match(pipelineSrc, /capability:\s*(state|ctx\.state)\.capability/);
   });
 });

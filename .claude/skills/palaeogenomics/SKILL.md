@@ -44,6 +44,19 @@ setting. If you are adding another domain agent, this is the seam to copy: the
 platform cost is one registry entry, one `CONTEXT_BLOCKS` member, one `GATE_IDS`
 member and one enrichment row.
 
+**It became the general rule on 2026-08-13.** The owner directive that made the
+roster specific moved `capability.context` from declared to EXECUTED, and this
+agent's seam is what the rest was built on. Two things follow for this agent
+specifically. Its literature leg is now declared too — `literature-pubmed`, on
+the spec — and the search-source registry enforces it (`requiresContext` →
+`sourceAllowed`). And that declaration is the one explicit PRESERVATION in the
+division of the corpora: Deep Science owns arXiv and PubMed outright, and
+palaeogenomics keeps the life-science leg because Europe PMC is its only
+literature source and the field does not publish on arXiv. It does NOT get
+`literature-arxiv`, which is asserted by name in
+`src/literature-exclusivity.test.js` along with the evalsets that depend on the
+sharing (`tests/evalsets/palaeogenomics.json`, `tests/needles/*-pubmed.json`).
+
 ## The rule that governs every edit here: the two legs stay apart
 
 - *"How does ancient DNA degrade over time?"* → **literature**. Europe PMC
@@ -289,7 +302,8 @@ does NOT support population-genetic inference.
 | Piece | Where |
 |---|---|
 | Agent spec | `sdk/AGENTS.json` → `palaeogenomics` |
-| Context block / gate vocabulary | `public/js/agent-spec-core.js` → `CONTEXT_BLOCKS["ancient-samples"]` (serverOnly), `GATE_IDS["ancient-sample"]` |
+| Context block / gate vocabulary | `public/js/agent-spec-core.js` → `CONTEXT_BLOCKS["ancient-samples"]` and `CONTEXT_BLOCKS["literature-pubmed"]` (both serverOnly), `GATE_IDS["ancient-sample"]` |
+| Corpus ownership guard | `src/literature-exclusivity.test.js` — pins `literature-pubmed` shared with Deep Science, and `literature-arxiv` withheld |
 | Capability reader | `capHasContext` (façade `src/agent-spec.js`) |
 | Enrichment registration | `src/enrichment.js` → `CORE_ENRICHMENTS` entry `aadr` |
 | Search source registration | `src/search-sources.js` → entry `europepmc` |
