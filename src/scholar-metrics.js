@@ -12,6 +12,17 @@
 //     request, because capSearch composes by narrowing in both directions —
 //     that is the whole "nothing but peer-reviewed literature" guarantee, and
 //     it is three declarations rather than a promise in a prompt.
+//
+//     ONE widening, added 2026-08-13 with the owner directive that made the
+//     agent roster specific: this agent is now the sole owner of the arXiv and
+//     PubMed capability (sdk/AGENTS.json declares `literature-arxiv` and
+//     `literature-pubmed` on it; src/search-sources.js `requiresContext`
+//     enforces that no other agent holds them). So when — and only when — the
+//     reader NAMES the preprint record, `auxOnly` widens to include it
+//     (`preprintSources` below). The default turn is byte-identical to what it
+//     always was, and anything the preprint leg returns is labelled a preprint
+//     in the context the model reads, so the answer cannot pass one off as
+//     reviewed work.
 //  2. **Reads a Google Scholar AUTHOR PROFILE** when the message carries one,
 //     from the robots-ALLOWED `/citations?user=` page: name, affiliation,
 //     verified email domain, h-index, i10-index, total citations, and the
@@ -40,12 +51,64 @@
 
 import { appendToLast, lastUserText } from "./conversation.js";
 import { loadVenues, topVenues } from "./scholar-venues.js";
+import { arxivNamedIntent } from "./arxiv.js";
+import { europepmcNamedIntent } from "./europepmc.js";
 
 /** @typedef {import('./types.js').Conversation} Conversation */
 /** @typedef {import('./enrichment.js').EnrichmentCtx} EnrichmentCtx */
 
 /** The source id this agent is built around (src/search-sources.js). */
 export const SCHOLAR_SOURCE_ID = "scholar";
+
+/** The two literature legs Deep Science OWNS but does not use by default
+ * (owner directive, 2026-08-13 — the agent roster became specific and the
+ * corpora were divided among the agents built on them; sdk/AGENTS.json declares
+ * `literature-arxiv` and `literature-pubmed` on this agent and the registry's
+ * `requiresContext` enforces that nobody else holds them). They are admitted to
+ * a turn only by `preprintSources` below. */
+const ARXIV_SOURCE_ID = "arxiv";
+const EUROPEPMC_SOURCE_ID = "europepmc";
+
+/**
+ * The literature sources this ASK opens up beyond the peer-reviewed leg, in
+ * registry order — empty for almost every turn.
+ *
+ * The promise in this agent's tagline is peer-reviewed sources only, and the
+ * default turn keeps it exactly as it always did: `auxOnly` is the scholar leg
+ * alone. What changed on 2026-08-13 is ownership, not the default — Deep
+ * Science became the only agent that can reach arXiv or PubMed at all, and an
+ * owner of a corpus that can never consult it owns nothing. So the reader may
+ * ask for the preprint record BY NAME and get it:
+ *
+ *   "any arxiv preprints on diffusion transformers"  → + arxiv
+ *   "vad säger förhandstrycken om …"                 → + arxiv
+ *   "search pubmed for statin adherence trials"      → + europepmc
+ *
+ * …and nothing else does. The two gates are the NAMED tiers of the sources'
+ * own modules (`arxivNamedIntent`, `europepmcNamedIntent`), not their wide
+ * `intent` gates: those fire on any research phrasing over a scientific topic,
+ * which is most of what this agent is ever asked, and widening on them would
+ * turn "peer-reviewed only" into "peer-reviewed plus whatever else matched".
+ * Reusing the sources' own vocabulary is also what keeps invariant 6 true here
+ * without a third bilingual word list to maintain.
+ *
+ * Everything arriving from the preprint leg is LABELLED a preprint in the
+ * context the model reads — arXiv's item mapper leads its metadata line with
+ * "Preprint, not peer-reviewed" (both tiers, src/arxiv.js + src/arxiv-rag.js)
+ * and Europe PMC has always annotated its PPR records the same way
+ * (europepmc.js `provenance`) — so an answer cannot present a preprint as
+ * reviewed work even when the reader asked for both.
+ *
+ * @param {string} asked the latest user message
+ * @returns {string[]}
+ */
+export function preprintSources(asked) {
+  /** @type {string[]} */
+  const extra = [];
+  if (arxivNamedIntent(asked)) extra.push(ARXIV_SOURCE_ID);
+  if (europepmcNamedIntent(asked)) extra.push(EUROPEPMC_SOURCE_ID);
+  return extra;
+}
 
 /** Per-request ceiling on peer-reviewed searches. Higher than the registry
  * default for the same reason the Models agent raises the Hub's: with the web
@@ -337,14 +400,28 @@ export function venueBlock(table, cat, rows) {
 export async function runScholarMetricsEnrichment(c) {
   const { env, log, state, conversation } = c;
 
+  const asked = lastUserText(conversation);
+
   // (1) The agent's identity, applied every turn whatever the message says.
   // Core reads all three generically (pipeline.js) and learns nothing about
   // which source this is.
+  //
+  // `forceAux` stays the peer-reviewed leg ALONE: forcing runs a source whether
+  // or not the message engages it, and that is only ever true of the leg this
+  // agent is built on. The widened ids below are permitted, not forced — each
+  // still has to satisfy its own intent gate in planAuxSource, which the ask
+  // that named it does by construction.
   /** @type {any} */ (state).forceAux = [SCHOLAR_SOURCE_ID];
-  /** @type {any} */ (state).auxOnly = [SCHOLAR_SOURCE_ID];
+  // …and `auxOnly` is the peer-reviewed leg plus whatever preprint record the
+  // reader named outright (preprintSources — the default is the bare
+  // [SCHOLAR_SOURCE_ID] this agent has always used).
+  /** @type {any} */ (state).auxOnly = [SCHOLAR_SOURCE_ID, ...preprintSources(asked)];
+  // The raised ceiling stays keyed to the peer-reviewed leg only. A widened
+  // source keeps its own registry cap (and the leading ceiling if the ask named
+  // it as THE place to look) — this agent leaning harder on its own source is
+  // not a reason to lean harder on a corpus it just borrowed for one turn.
   /** @type {any} */ (state).auxMaxPerRequest = { [SCHOLAR_SOURCE_ID]: SCHOLAR_SEARCHES_PER_REQUEST };
 
-  const asked = lastUserText(conversation);
   /** @type {string[]} */
   const blocks = [];
 

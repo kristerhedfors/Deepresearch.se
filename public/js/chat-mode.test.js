@@ -10,6 +10,7 @@ import { MODE_ROOT_CLASSES, MODE_THEMES } from "./mode-theme.js";
 import {
   CHAT_MODES,
   CHAT_MODE_KEY,
+  CYBER_MODE_CLASS,
   SCI_MODE_CLASS,
   SDK_MODE_CLASS,
   adoptServerChatMode,
@@ -30,28 +31,39 @@ function stubStorage() {
 }
 
 test("normalizeChatMode clamps junk to the fallback", () => {
-  assert.deepEqual(CHAT_MODES, ["normal", "science", "introspection", "sdk", "orchestrator", "outrospection", "models"]);
+  assert.deepEqual(CHAT_MODES, ["science", "cyber", "introspection", "sdk", "orchestrator", "outrospection", "models"]);
   assert.equal(normalizeChatMode("science"), "science");
+  assert.equal(normalizeChatMode("cyber"), "cyber");
   assert.equal(normalizeChatMode("models"), "models");
   assert.equal(normalizeChatMode("orchestrator"), "orchestrator");
   assert.equal(normalizeChatMode("outrospection"), "outrospection");
   assert.equal(normalizeChatMode("sdk"), "sdk");
-  assert.equal(normalizeChatMode("swe"), "normal"); // retired mode clamps to normal
-  assert.equal(normalizeChatMode("hax"), "normal");
+  assert.equal(normalizeChatMode("swe"), "science"); // retired mode clamps to the default
+  assert.equal(normalizeChatMode("hax"), "science");
+  // `normal` is RETIRED rather than unknown (chat-mode-core.js
+  // RETIRED_CHAT_MODES), so it resolves to its successor even when the caller
+  // passes "" as the fallback to ask "did this name a mode at all?".
+  assert.equal(normalizeChatMode("normal"), "science");
+  assert.equal(normalizeChatMode("normal", ""), "science");
+  assert.equal(normalizeChatMode("hax", ""), "");
   assert.equal(normalizeChatMode(undefined, "introspection"), "introspection");
 });
 
-test("cachedChatMode: the cached pick, else normal", () => {
+test("cachedChatMode: the cached pick, else the default mode", () => {
   const store = stubStorage();
-  assert.equal(cachedChatMode(), "normal"); // nothing cached — the safe default
+  assert.equal(cachedChatMode(), "science"); // nothing cached — the safe default
   store.set(CHAT_MODE_KEY, "sdk");
   assert.equal(cachedChatMode(), "sdk");
+  store.set(CHAT_MODE_KEY, "cyber");
+  assert.equal(cachedChatMode(), "cyber");
+  store.set(CHAT_MODE_KEY, "science");
+  assert.equal(cachedChatMode(), "science"); // an explicit default pick is stored, not absent
   store.set(CHAT_MODE_KEY, "normal");
-  assert.equal(cachedChatMode(), "normal"); // an explicit Normal pick is stored, not absent
+  assert.equal(cachedChatMode(), "science"); // a browser cached before 2026-08-13
   store.set(CHAT_MODE_KEY, "junk");
-  assert.equal(cachedChatMode(), "normal"); // a junk cache clamps rather than throwing
+  assert.equal(cachedChatMode(), "science"); // a junk cache clamps rather than throwing
   delete globalThis.localStorage;
-  assert.equal(cachedChatMode(), "normal"); // no storage at all — fail-soft
+  assert.equal(cachedChatMode(), "science"); // no storage at all — fail-soft
 });
 
 test("applyChatModeTheme: exactly one theme class per mode; persist opt-out honored", () => {
@@ -66,10 +78,15 @@ test("applyChatModeTheme: exactly one theme class per mode; persist opt-out hono
     assert.equal(store.get(CHAT_MODE_KEY), "introspection");
     applyChatModeTheme("sdk");
     assert.deepEqual([...classes], [SDK_MODE_CLASS]); // sdk replaces dev-mode — one class only
+    applyChatModeTheme("cyber");
+    assert.deepEqual([...classes], [CYBER_MODE_CLASS]);
+    // No mode leaves the root bare any more: the general mode was the only
+    // descriptor with `rootClass: null` and it is retired (2026-08-13), so its
+    // id now paints the default mode's class like every other retired value.
     applyChatModeTheme("normal");
-    assert.deepEqual([...classes], []);
+    assert.deepEqual([...classes], [SCI_MODE_CLASS]);
     applyChatModeTheme("sdk", { persist: false });
-    assert.equal(store.get(CHAT_MODE_KEY), "normal"); // read-only apply
+    assert.equal(store.get(CHAT_MODE_KEY), "science"); // read-only apply
   } finally {
     delete globalThis.document;
   }
@@ -107,6 +124,7 @@ test("applyChatModeTheme: every mode→mode switch lands on exactly its own clas
     // And every class the registry declares is one this module can clear.
     assert.deepEqual([...MODE_ROOT_CLASSES].sort(), [...new Set(MODE_ROOT_CLASSES)].sort());
     assert.ok(MODE_ROOT_CLASSES.includes(SCI_MODE_CLASS));
+    assert.ok(MODE_ROOT_CLASSES.includes(CYBER_MODE_CLASS));
   } finally {
     delete globalThis.document;
   }
@@ -118,10 +136,14 @@ test("adoptServerChatMode: the server's stored mode wins and is cached", () => {
   // A mode picked on another device replaces this browser's cache.
   assert.equal(adoptServerChatMode({ chat_mode: "orchestrator" }), "orchestrator");
   assert.equal(store.get(CHAT_MODE_KEY), "orchestrator");
-  // The server has already clamped to normal when the modes are unavailable, so
-  // an explicit normal is adopted like any other mode — no downgrade rule here.
-  assert.equal(adoptServerChatMode({ chat_mode: "normal" }), "normal");
-  assert.equal(store.get(CHAT_MODE_KEY), "normal");
+  // The server has already clamped to the DEFAULT mode when the modes are
+  // unavailable, so an explicit default is adopted like any other mode — no
+  // downgrade rule here. A stored `normal` from before the retirement adopts as
+  // the successor rather than being ignored.
+  assert.equal(adoptServerChatMode({ chat_mode: "science" }), "science");
+  assert.equal(store.get(CHAT_MODE_KEY), "science");
+  assert.equal(adoptServerChatMode({ chat_mode: "normal" }), "science");
+  assert.equal(store.get(CHAT_MODE_KEY), "science");
 });
 
 test("adoptServerChatMode: a payload with no mode leaves the cached pick alone", () => {
@@ -136,6 +158,8 @@ test("adoptServerChatMode: a payload with no mode leaves the cached pick alone",
 
 test("storeChatMode normalizes before storing", () => {
   const store = stubStorage();
-  assert.equal(storeChatMode("junk"), "normal");
-  assert.equal(store.get(CHAT_MODE_KEY), "normal");
+  assert.equal(storeChatMode("junk"), "science");
+  assert.equal(store.get(CHAT_MODE_KEY), "science");
+  assert.equal(storeChatMode("cyber"), "cyber");
+  assert.equal(store.get(CHAT_MODE_KEY), "cyber");
 });

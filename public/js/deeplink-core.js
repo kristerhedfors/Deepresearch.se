@@ -8,15 +8,21 @@
 // from the project itself. Kept I/O-free and Node-tested (deeplink-core.test.js);
 // app.js does the DOM side effects from what this returns.
 
-/** Canonical chat-mode ids (mirror chat-mode.js CHAT_MODES — all six). */
-export const DEEPLINK_MODES = ["normal", "science", "introspection", "sdk", "orchestrator", "outrospection", "models"];
+/** Canonical chat-mode ids (mirror chat-mode-core.js CHAT_MODES — all seven). */
+export const DEEPLINK_MODES = ["science", "cyber", "introspection", "sdk", "orchestrator", "outrospection", "models"];
 
 /** Friendly aliases → canonical mode id, so links can read naturally. The
  * `agent-builder` entry is the AgentSpec's name for the `sdk` mode
  * (sdk/AGENTS.json) — the spec vocabulary and the app's mode ids meet here. */
 const MODE_ALIASES = {
-  normal: "normal",
-  research: "normal",
+  // The two RETIRED words for the general agent (2026-08-13). They keep
+  // resolving — to Deep Science, the mode that inherited the fallback — because
+  // a deep link is the one surface that outlives the roster: every `?mode=normal`
+  // link written into a document, a chat log or somebody's bookmarks would
+  // otherwise fall to `null` and open whatever mode the reader happened to be
+  // in. Same reasoning as chat-mode-core.js RETIRED_CHAT_MODES on the wire.
+  normal: "science",
+  research: "science",
   introspection: "introspection",
   introspect: "introspection",
   source: "introspection",
@@ -40,8 +46,8 @@ const MODE_ALIASES = {
   // Deep Science (2026-07-31). The Swedish forms ship WITH the English ones
   // rather than "later" (invariant 6) — a link is exactly the deterministic
   // routing surface the rule is about, and a Swedish reader given a Swedish
-  // link that silently opens Deep Research is the failure feedback #22 already
-  // recorded once for outrospection.
+  // link that silently opens the wrong agent is the failure feedback #22
+  // already recorded once for outrospection.
   science: "science",
   scholar: "science",
   "deep-science": "science",
@@ -54,13 +60,50 @@ const MODE_ALIASES = {
   artiklar: "science",
   forskningsartiklar: "science",
   "referentgranskad": "science",
+  // Cyber (2026-08-13), bilingual from the first commit for the same reason.
+  // The vocabulary covers the three ways this agent gets named — the field
+  // ("cyber", "säkerhet"), the discipline ("osint", "underrättelser"), and the
+  // work ("recon", "spaning", "sårbarhet") — with the Swedish side matching the
+  // English breadth form for form, definite forms included, rather than a token
+  // "säkerhet" standing in for six English words.
+  cyber: "cyber",
+  cybersecurity: "cyber",
+  security: "cyber",
+  infosec: "cyber",
+  appsec: "cyber",
+  osint: "cyber",
+  recon: "cyber",
+  reconnaissance: "cyber",
+  vulnerability: "cyber",
+  // Each Swedish form is also listed ASCII-folded (ä→a, å→a), because a URL is
+  // typed and pasted across keyboards that do not have those letters and a
+  // percent-encoded one is retyped wrong at least as often as it is copied.
+  cybersäkerhet: "cyber",
+  cybersakerhet: "cyber",
+  säkerhet: "cyber",
+  sakerhet: "cyber",
+  säkerheten: "cyber",
+  sakerheten: "cyber",
+  informationssäkerhet: "cyber",
+  informationssakerhet: "cyber",
+  "it-säkerhet": "cyber",
+  "it-sakerhet": "cyber",
+  underrättelser: "cyber",
+  underrattelser: "cyber",
+  spaning: "cyber",
+  sårbarhet: "cyber",
+  sarbarhet: "cyber",
+  sårbarheter: "cyber",
+  sarbarheter: "cyber",
 };
 
-// NOTE (2026-07-31): the aliases ABOVE this block are English-only, which is an
-// invariant-6 gap that predates the science entry and is deliberately not fixed
-// here — widening six mode vocabularies is its own change with its own parity
-// tests, not a rider on adding a mode. Recorded so it is a known debt rather
-// than an oversight nobody wrote down.
+// NOTE (2026-07-31, still true 2026-08-13): the aliases ABOVE the science block
+// are English-only, which is an invariant-6 gap that predates the science entry
+// and is deliberately not fixed here — widening five mode vocabularies is its
+// own change with its own parity tests, not a rider on adding a mode. The two
+// modes ADDED since (science, cyber) shipped bilingual, so the debt is bounded
+// and shrinking rather than growing. Recorded so it is a known debt rather than
+// an oversight nobody wrote down.
 
 /** Cap on a prefilled question — long enough for a real ask, bounded for safety. */
 export const MAX_ASK_CHARS = 2000;

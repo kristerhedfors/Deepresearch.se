@@ -56,7 +56,7 @@ import {
 } from "./validation.js";
 import { extensionLogMeta, resolveExtensionState } from "./extensions.js";
 import { bashLiteEnabled, chatModesAvailable, extensionEnabledMap, memoryEnabled, storedChatMode } from "./settings.js";
-import { modeCarriesSource, resolveBodyChatMode, routingNeedsRegistry } from "./chat-modes.js";
+import { DEFAULT_CHAT_MODE, modeCarriesSource, resolveBodyChatMode, routingNeedsRegistry } from "./chat-modes.js";
 import { lastUserMessage, lastUserText, textOf } from "./conversation.js";
 import { buildSlugOk } from "./build-pub.js";
 import { normalizeSwarmCapability } from "./orchestrator-api.js";
@@ -89,14 +89,20 @@ import { runMemoryExtraction } from "./memory.js";
  *   searches for itself). Anything else — including absent — means the
  *   site-configured backend; an admin can pin that with search.allow_user_choice
  * @property {string} [chat_mode] WHICH MODE answers this request — one of
- *   chat-mode-core.js CHAT_MODES ("normal" | "introspection" | "sdk" |
- *   "orchestrator" | "outrospection" | "models"). The single mode field, and the
- *   preferred one: it outranks the per-mode booleans below, an unknown value is
- *   ignored rather than failing the request, and a non-normal mode is honored
- *   only when the modes are available to the caller (a signed-in account or the
- *   break-glass operator). Absent → the account's stored pick, else "normal"
+ *   chat-mode-core.js CHAT_MODES ("science" | "cyber" | "introspection" | "sdk"
+ *   | "orchestrator" | "outrospection" | "models"). The single mode field, and
+ *   the preferred one: it outranks the per-mode booleans below, an unknown value
+ *   is ignored rather than failing the request, and a mode other than the
+ *   default is honored only when the modes are available to the caller (a
+ *   signed-in account or the break-glass operator). Absent → the account's
+ *   stored pick, else the default, "science". The retired id "normal" — the
+ *   general Deep Research turn, removed 2026-08-13 — still resolves, to
+ *   "science" (chat-mode-core.js RETIRED_CHAT_MODES), so callers written against
+ *   the old vocabulary keep working; what they get is a literature-first agent
+ *   rather than an open-web one, because there is no longer a general agent to
+ *   fall back to
  * @property {boolean} [developer_mode] OFF-ONLY override: `false` forces this
- *   request to "normal" — plain web research, no source enrichment, no mode —
+ *   request to the DEFAULT mode — no source enrichment, no picked mode —
  *   whatever `chat_mode`, the mode flags or the stored pick say. It never
  *   ENABLES anything (the incognito pattern). Retained as a documented promise
  *   to callers written before `chat_mode` existed; `true` does nothing
@@ -368,7 +374,7 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
     log.warn("agent_spec.refused", { problems: inline.problems.slice(0, 5) });
   }
   const routed = inline.agent
-    ? { mode: inline.agent.mode || "normal", agent: inline.agent, capability: inline.capability, addressed: true }
+    ? { mode: inline.agent.mode || DEFAULT_CHAT_MODE, agent: inline.agent, capability: inline.capability, addressed: true }
     : routingNeedsRegistry(body, enrich.chatMode)
       ? resolveRequestAgent(await loadAgentRegistry(env), body, granted, enrich.chatMode)
       : null;
@@ -1244,8 +1250,8 @@ function newRequestState(model, jsonModel, webSearch, budgetS, extras = {}) {
     // is what every shipped agent declares anyway.
     promptSet: extras.promptSet || null,
     // The resolved capability of the agent answering this request, or null when
-    // no registry was consulted (the MCP channel, an unreadable snapshot, a
-    // plain Deep Research turn that never needed one). Read through the
+    // no registry was consulted (the MCP channel, which has no concept of an
+    // agent, or an unreadable snapshot). Read through the
     // narrowing accessors in agent-spec-core.js — never destructured directly —
     // so every consumer keeps the platform constant as both its default and its
     // ceiling.

@@ -320,7 +320,7 @@ export function pushFailure(list, record) {
  */
 function fallbackPlan(ctx) {
   const task = (/** @type {any} */ (ctx).cleanLastUser || ctx.lastUser || "Answer the user's request.").slice(0, 600);
-  const kind = ctx.state.webSearch ? "deep_research" : "custom";
+  const kind = ctx.state.webSearch ? "web_research" : "custom";
   return {
     title: "",
     agents: [{ id: "researcher", kind: /** @type {any} */ (kind), name: "Researcher", task, persona: "", queries: [], deps: [] }],
@@ -329,7 +329,7 @@ function fallbackPlan(ctx) {
 
 /**
  * Run ONE node: gather its kind-specific grounding (web searches for
- * deep_research, retrieved source excerpts for introspection, nothing for
+ * web_research, retrieved source excerpts for introspection, nothing for
  * custom), then one buffered completion on the user's chosen model. The
  * node's text NEVER streams into the chat — only the final merge does.
  * @param {PipelineCtx} ctx
@@ -352,7 +352,7 @@ async function runAgentNode(ctx, plan, agent, results, searchBudget, token = { c
     }));
 
   let grounding = "";
-  if (agent.kind === "deep_research") grounding = await runNodeSearches(ctx, agent, searchBudget);
+  if (agent.kind === "web_research") grounding = await runNodeSearches(ctx, agent, searchBudget);
   if (agent.kind === "swarm") {
     // A swarm node the browser did NOT deliver (the device dropped out, every
     // member failed, or the client never ran the pre-pass). It is still a
@@ -440,7 +440,7 @@ export function nodeTextSink(token) {
 }
 
 /**
- * The deep_research node's search leg: run the node's PLANNED queries (from
+ * The web_research node's search leg: run the node's PLANNED queries (from
  * the plan phase — no per-node model call) through the same Exa path, events
  * and source registry as the main pipeline, under one workflow-wide budget.
  * Skipped entirely when the web-search knob is off (the knob's one meaning —

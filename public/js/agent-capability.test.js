@@ -53,7 +53,7 @@ import {
   validateCapability,
 } from "./agent-spec-core.js";
 import { showsDepthSlider, backdropKind } from "./mode-theme.js";
-import { MODE_REQUEST_FLAGS } from "./chat-mode-core.js";
+import { DEFAULT_CHAT_MODE, MODE_REQUEST_FLAGS } from "./chat-mode-core.js";
 import { MAX_AGENTS, MAX_WAVES, MAX_NODE_QUERIES, MAX_ORCH_SEARCHES } from "./orchestrator-core.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -92,7 +92,7 @@ test("every mode-select offers only real chat modes", () => {
       }
     }
   }
-  const bad = spec({ controls: [{ type: "prompt-input" }, { type: "mode-select", modes: ["normal", "agent-builder"] }] });
+  const bad = spec({ controls: [{ type: "prompt-input" }, { type: "mode-select", modes: ["science", "agent-builder"] }] });
   assert.ok(validateAgentSpec(bad).some((p) => p.includes('mode-select offers "agent-builder"')));
 });
 
@@ -100,15 +100,24 @@ test("every mode-select offers only real chat modes", () => {
 
 test("the defaults table covers every chat mode, in chat.js precedence order", () => {
   const reg = realRegistry();
-  assert.deepEqual(reg.defaults.map((r) => r.mode), ["sdk", "orchestrator", "outrospection", "models", "introspection", "science", "normal"]);
-  // Every mode except `normal` names a request flag; `normal` (flag null) is the
-  // terminal fallback. Introspection got `introspection_mode` in 2026-07-26's
-  // collapse — before that it was the only mode with no way to ask for it by
-  // name, which is what made it the derived leftover of the developer_mode knob.
+  assert.deepEqual(reg.defaults.map((r) => r.mode), ["sdk", "orchestrator", "outrospection", "models", "introspection", "cyber", "science"]);
+  // EVERY row names a request flag now — there is no `flag: null` row any more.
+  // Until 2026-08-13 the last row was `normal` → the general research agent,
+  // reachable by no flag at all, which is what "terminal fallback" meant: the
+  // pass that walks the flagless rows. Retiring the general agent retired that
+  // pass with it (nothing is flagless), and Deep Science took the terminal seat
+  // — reached through the MODE pass, because a request always arrives with the
+  // mode its caller already resolved (src/chat.js hands `enrich.chatMode` in,
+  // and resolveBodyChatMode clamps an unavailable one to DEFAULT_CHAT_MODE).
+  // Introspection got `introspection_mode` in 2026-07-26's collapse — before
+  // that it was the only mode with no way to ask for it by name, which is what
+  // made it the derived leftover of the developer_mode knob.
   assert.deepEqual(
     reg.defaults.map((r) => r.flag),
-    ["sdk_mode", "orchestrator_mode", "outrospection_mode", "models_mode", "introspection_mode", "science_mode", null],
+    ["sdk_mode", "orchestrator_mode", "outrospection_mode", "models_mode", "introspection_mode", "cyber_mode", "science_mode"],
   );
+  assert.equal(reg.defaults.some((r) => !r.flag), false, "no row is reachable without being asked for by name");
+  assert.equal(reg.defaults.at(-1).mode, DEFAULT_CHAT_MODE, "the last row is the default mode's — the terminal one");
   // The flags and their order agree with the shared mode table, which is what
   // src/chat.js actually resolves a request's mode against.
   assert.deepEqual(

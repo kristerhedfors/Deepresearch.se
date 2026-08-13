@@ -261,7 +261,7 @@ export function nodeActivity(agent, st = {}, searches = []) {
   const open = searches.filter((s) => s?.status !== "done").length;
   if (open) return `Searching the web — ${open} quer${open === 1 ? "y" : "ies"} still running.`;
   if (st.prompt) return "Writing its brief from the prompt below.";
-  if (agent?.kind === "deep_research") return "Gathering sources for its task.";
+  if (agent?.kind === "web_research") return "Gathering sources for its task.";
   if (agent?.kind === "introspection") return "Retrieving the matching excerpts from this site's own source.";
   return "Working on its task.";
 }

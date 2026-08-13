@@ -372,7 +372,7 @@ export interface Settings {
   bash_lite_mcp: boolean;
   /**
    * The account's picked chat mode — one of public/js/chat-mode-core.js
-   * CHAT_MODES, default "normal". Replaced the `developer_mode` boolean knob
+   * CHAT_MODES, default "science". Replaced the `developer_mode` boolean knob
    * (2026-07-26): the mode is the unit that selects how a request is answered,
    * and everything else — the source enrichment, the answer phase, the theme —
    * is derived from it.

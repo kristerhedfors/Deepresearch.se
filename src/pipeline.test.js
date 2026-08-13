@@ -564,11 +564,16 @@ describe("the web-search knob gates Exa only — depth still runs over other sou
     // "auxiliary source gates" block below) — an enrichment block that merely
     // NAMES a source must not silently lead the request.
     assert.match(leading, /const ids = leadSourceIds\(ctx\.gateLastUser\);/);
+    // …and a source the ANSWERING AGENT may not consult at all (the registry's
+    // `requiresContext`, owner directive 2026-08-13) cannot lead it: after the
+    // roster split an agent with no arXiv capability still MATCHED "search
+    // arxiv for …", stood the web leg down on it, and answered with no sources.
+    assert.match(leading, /const allowed = ids\.filter\(\(id\) => \{[\s\S]*sourceAllowed\(state, source\);/);
     // …and a source the request narrowed away (state.auxOnly — the Deep
     // Science agent restricting itself to the peer-reviewed leg) cannot lead
     // it either: a lead planAuxSource will then refuse to plan would stand the
     // web leg down and spend the wave on nothing.
-    assert.match(leading, /state\)\.auxOnly;\n\s*return Array\.isArray\(only\) && only\.length \? ids\.filter\(/);
+    assert.match(leading, /state\)\.auxOnly;\n\s*return Array\.isArray\(only\) && only\.length \? allowed\.filter\(/);
     assert.doesNotMatch(leading, /arxiv|\bhf\b|hugging|scholar/i);
   });
 
@@ -579,10 +584,16 @@ describe("the web-search knob gates Exa only — depth still runs over other sou
     // state's forceAux list — a mode built AROUND a source (the Hugging Face
     // agent) must not fall through to a sourceless answer just because the
     // message didn't happen to name the hub. The aux half is still subject to
-    // the agent's own auxSources declaration, which outranks a forced source.
+    // the agent's own auxSources declaration, which outranks a forced source —
+    // and, since the roster split (owner directive 2026-08-13), to the agent's
+    // right to consult that source AT ALL (`sourceAllowed`, the registry's
+    // `requiresContext`). Without that first test a source the answering agent
+    // may not use still drags the turn through triage, a search wave and the
+    // gap rounds before planAuxSource refuses to plan it — the whole pipeline
+    // paid to reach the answer this branch would have written immediately.
     assert.match(
       src,
-      /if \(!policy\.web\) \{[\s\S]*if \(!ctx\.hasSource && !\(policy\.auxSources && SEARCH_SOURCES\.some\(\(s\) => forcedAux\.includes\(s\.id\) \|\| s\.intent\(ctx\.gateLastUser\)\)\)\) \{[\s\S]*return runWithoutSearch\(ctx\);/,
+      /if \(!policy\.web\) \{[\s\S]*if \(!ctx\.hasSource && !\(policy\.auxSources && SEARCH_SOURCES\.some\(\(s\) => sourceAllowed\(state, s\) && \(forcedAux\.includes\(s\.id\) \|\| s\.intent\(ctx\.gateLastUser\)\)\)\)\) \{[\s\S]*return runWithoutSearch\(ctx\);/,
     );
   });
 

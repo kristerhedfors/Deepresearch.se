@@ -475,13 +475,20 @@ test("arxivMapEntry", async (t) => {
     const item = arxivMapEntry(arxivParseFeed(FEED)[0]);
     assert.equal(item.url, "https://arxiv.org/abs/2605.10698v1");
     assert.equal(item.title, "The Bystander Effect in Multi-Agent Reasoning: Quantifying Cognitive Loafing");
-    assert.equal(item.highlights[0], "Dahlia Shehata, Ming Li · cs.MA · 2026-05-11 · arXiv:2605.10698v1");
+    // The line LEADS with what the record is. arXiv is a preprint server, and
+    // since 2026-08-13 the one agent that can search it is the one whose whole
+    // promise is peer-reviewed work (src/scholar-metrics.js preprintSources) —
+    // so a hit that did not say "preprint" in the material the model reads
+    // could be presented as a reviewed paper. The wording is shared with the
+    // dense tier and with Europe PMC's PPR annotation (dense-rag.js
+    // PREPRINT_LABEL), so both arXiv tiers look identical in the source list.
+    assert.equal(item.highlights[0], "Preprint, not peer-reviewed · Dahlia Shehata, Ming Li · cs.MA · 2026-05-11 · arXiv:2605.10698v1");
     assert.ok(item.highlights[1].includes("Multi-agent systems"));
   });
 
   await t.test("abbreviates author lists past three", () => {
     const item = arxivMapEntry(arxivParseFeed(FEED)[1]);
-    assert.ok(item.highlights[0].startsWith("Ruohao Li, Hongjun Liu, Leyi Zhao et al."));
+    assert.ok(item.highlights[0].startsWith("Preprint, not peer-reviewed · Ruohao Li, Hongjun Liu, Leyi Zhao et al."));
   });
 
   await t.test("junk in → null out, never a throw", () => {

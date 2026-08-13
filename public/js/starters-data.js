@@ -81,7 +81,7 @@
 // says is not there — as well as showing them a code they never asked about.
 
 /** Registry format version — bumped when an entry's shape changes. */
-export const STARTERS_VERSION = "1.1.0";
+export const STARTERS_VERSION = "1.2.0";
 
 /**
  * Aspect vocabularies, per agent. Documentation rather than enforcement — the
@@ -90,12 +90,15 @@ export const STARTERS_VERSION = "1.1.0";
  * quietly becoming twenty rephrasings of its author's favourite question.
  */
 export const ASPECTS = {
-  research: [
-    "recency-news", "sv-civic", "consumer-sv", "product-compare", "health-evidence",
-    "policy-regulation", "tech-compare", "science-numbers", "contested", "osint-security",
-    "geo-place", "ml-models", "explainer", "market-finance", "howto",
-    "unanswerable", "multihop", "climate-energy", "space", "local-sv",
-  ],
+  // The `research` queue and its aspect vocabulary went out on 2026-08-13 with
+  // the general agent they belonged to. Their openers were written FOR a
+  // catch-all — "the most significant developments in open-source AI", "compare
+  // these two products" — and a catch-all is exactly what the roster no longer
+  // has. They are deliberately not re-keyed onto another agent: a starter is a
+  // promise about what THIS agent is good at, and putting a general question on
+  // Deep Science or Cyber would make both of them lie on their own empty screen.
+  // The security-flavoured ones are superseded by the `cyber` queue, which was
+  // written for that agent rather than inherited by it.
   secure: [
     "privacy-posture", "key-handling", "local-models", "browser-crypto", "threat-model",
     "workspace-share", "offline", "search-grant", "tier-compare", "data-exposure",
@@ -149,6 +152,10 @@ export const ASPECTS = {
     "quota", "sv-purpose", "team", "events", "model-routing",
     "sv-controls", "derive", "publish", "validate", "naming",
   ],
+  cyber: [
+    "attack-surface", "cve-triage", "domain-osint", "geo-recon", "owasp-appsec",
+    "threat-intel", "dns-certs", "tech-posture", "incident-breach", "hardening",
+  ],
 };
 
 /**
@@ -163,58 +170,6 @@ export const STARTERS = {
     // the way the logs lean: news and Swedish practical questions are the
     // real front door, not the polished multi-hop benchmark questions.
     // =====================================================================
-    research: [
-      // Rewritten after run 2026-07-26T07-34-22-617Z scored the original 2.10.
-      // It had asked for "the most significant developments in open-source AI
-      // from the past month" — broad enough that the pipeline retrieved 24
-      // sources and then cited around them, which the judge correctly read as
-      // unsupported. A recency starter needs a narrow enough subject that the
-      // sources it finds are the sources it needs. Unranked until re-run.
-      { id: "res-news-tech", xp: 1, lang: "en", aspect: "recency-news",
-        text: "Which language models released in the last few months can be self-hosted on a single GPU, and what hardware does each one actually need?" },
-      { id: "res-sv-ranta", xp: 2, lang: "sv", aspect: "sv-civic", rank: 4.25, evidence: "2026-07-26T07-34-22-617Z",
-        text: "Hur har Riksbankens styrränta utvecklats det senaste året, och vilka skäl har Riksbanken själv angett för de senaste besluten?" },
-      { id: "res-sv-elpris", xp: 3, lang: "sv", aspect: "sv-civic", rank: 4.4, evidence: "2026-07-26T07-34-22-617Z",
-        text: "Varför skiljer sig elpriserna mellan norra och södra Sverige, och vilka faktorer driver skillnaden mellan elområdena?" },
-      { id: "res-compare-edge", xp: 4, lang: "en", aspect: "tech-compare", rank: 4, evidence: "2026-07-26T07-34-22-617Z",
-        text: "Compare Cloudflare Workers, Deno Deploy and Fly.io for a low-latency streaming API: cold starts, CPU limits, pricing and where each one hurts." },
-      { id: "res-health-glp1", xp: 5, lang: "en", aspect: "health-evidence",
-        text: "Beyond weight loss, what do recent large trials show about GLP-1 receptor agonists and cardiovascular outcomes — and where do the trials disagree?" },
-      { id: "res-policy-aiact", xp: 6, lang: "en", aspect: "policy-regulation",
-        text: "What are the key application dates of the EU AI Act's obligations, and which ones affect a small company shipping an LLM product in Europe?" },
-      { id: "res-sv-konsument", xp: 7, lang: "sv", aspect: "consumer-sv",
-        text: "Jag behöver en drivrem till en åkgräsklippare men vet bara modellnamnet — hur tar jag reda på rätt reservdel och var den finns att köpa i Sverige?" },
-      { id: "res-product-watch", xp: 8, lang: "en", aspect: "product-compare",
-        text: "Which affordable automatic watches are the closest homages to the Rolex Explorer II, and how do the movements and finishing actually differ?" },
-      { id: "res-numbers-transistor", xp: 9, lang: "en", aspect: "science-numbers",
-        text: "Roughly how many transistors are in a current flagship consumer GPU, and how does that compare with a flagship chip from ten years ago?" },
-      { id: "res-contested-remote", xp: 10, lang: "en", aspect: "contested",
-        text: "Does the evidence say remote work raises or lowers productivity? Show me where the studies genuinely conflict and why their methods differ." },
-      { id: "res-osint-surface", xp: 11, lang: "en", aspect: "osint-security",
-        text: "Map the public attack surface of a domain I name: which services are exposed, what the banners reveal, and which findings actually matter." },
-      { id: "res-ml-models", xp: 12, lang: "en", aspect: "ml-models",
-        text: "Which openly licensed language models released recently can run on a single consumer GPU, and how do they compare on quality per gigabyte?" },
-      { id: "res-explainer-demon", xp: 13, lang: "en", aspect: "explainer",
-        text: "Explain the 1940s criticality accidents at Los Alamos: what physically happened, what the safety failures were, and what changed afterwards." },
-      { id: "res-market-cloud", xp: 14, lang: "en", aspect: "market-finance",
-        text: "Explain the financial position of a major cloud provider's AI buildout: the capital commitments, how they are being funded, and the risks analysts flag." },
-      { id: "res-sv-recept", xp: 15, lang: "sv", aspect: "howto",
-        text: "Jag vill baka bullar på havregrynsgröt som blivit över. Hur påverkar gröten degen, och vad behöver jag ändra i ett vanligt bullrecept?" },
-      { id: "res-unanswerable", xp: 16, lang: "en", aspect: "unanswerable",
-        text: "What are the confirmed specifications and release date of the Nordström Quantum Processor Z-500? If it does not exist, say so plainly." },
-      { id: "res-multihop-export", xp: 17, lang: "en", aspect: "multihop",
-        text: "How have export controls on advanced semiconductors reshaped where the largest contract chip manufacturers are building fabs, and which decisions are confirmed?" },
-      { id: "res-climate-budget", xp: 18, lang: "en", aspect: "climate-energy",
-        text: "What do the most recent major climate assessments say about the remaining carbon budget for 1.5°C, and how much do their estimates differ?" },
-      { id: "res-sv-lokal", xp: 19, lang: "sv", aspect: "local-sv",
-        text: "Vad har hänt i Stockholm den senaste veckan som faktiskt påverkar vardagen — trafik, bostäder, kommunala beslut? Sammanfatta med källor." },
-      { id: "res-geo-place", xp: 20, lang: "en", aspect: "geo-place",
-        text: "Tell me about a street address I give you: what is at that location, what the surroundings look like, and what the area is known for." },
-      { id: "res-space", xp: 21, lang: "en", aspect: "space",
-        text: "Which missions are currently operating on or around Mars, what is each one doing right now, and what was the most recent significant finding?" },
-      { id: "res-sv-halsa", xp: 22, lang: "sv", aspect: "health-evidence",
-        text: "Vad säger aktuell forskning om måttligt kaffedrickande och hälsa, och var är forskarna oense om slutsatserna?" },
-    ],
 
     // =====================================================================
     // secure — the never-cloud tier. Its starters do double duty: they must
@@ -725,6 +680,83 @@ export const STARTERS = {
       { id: "sch-citation-bias", xp: 259, lang: "en", aspect: "method-critique",
         text: "What is the evidence that citation counts measure impact rather than visibility, and who has tried to separate the two?" },
     ],
+    // =====================================================================
+    // cyber — the cybersecurity / OSINT agent. It answers with the ordinary
+    // deep-research pipeline, but the capabilities it can reach for are the
+    // ones no other agent has: Shodan host intelligence, Maps and Street View
+    // read as geospatial reconnaissance, the entity/person research cores,
+    // and the OWASP reference corpus.
+    //
+    // The editorial line these follow, and it is the one that matters for
+    // this agent specifically: every opener is DEFENSIVE or ANALYTIC. It
+    // asks what is exposed, what a finding proves, what an attacker did, or
+    // what to do about it — never "get me into X". A starter is shown to
+    // every visitor including the first one who wonders what this agent is
+    // for, so the first impression has to be a research question, not a
+    // request for an operation. Where a starter needs a target it asks the
+    // visitor to name one ("a domain I name") rather than shipping a real
+    // organisation's name on a stranger's opening screen.
+    //
+    // The second rule follows from the pipeline: a question whose answer is
+    // one scan result is a worse opener than one that has to be pieced
+    // together from several public sources and then judged. So the openers
+    // that name a capability (banners, certificate transparency, Street View
+    // imagery) also ask where that evidence MISLEADS — which is the part a
+    // research pipeline can do and a scanner cannot.
+    //
+    // Unranked — no eval battery has scored this queue yet (a rank cites the
+    // run that produced it).
+    // =====================================================================
+    cyber: [
+      { id: "cyb-attack-surface", xp: 260, lang: "en", aspect: "attack-surface",
+        text: "I will name a domain — enumerate the internet-facing services behind it from public scan data, and rank what you find by how much each exposure actually matters." },
+      { id: "cyb-sv-exponerade", xp: 261, lang: "sv", aspect: "attack-surface",
+        text: "Hur många industriella styrsystem ligger öppet exponerade mot internet i Sverige, och vad säger publika skanningsdata om läget jämfört med grannländerna?" },
+      { id: "cyb-banner-inference", xp: 262, lang: "en", aspect: "attack-surface",
+        text: "How much can a service banner really tell you about a host's software version and patch level, and where does that inference most often mislead a defender?" },
+      { id: "cyb-cve-exploitable", xp: 263, lang: "en", aspect: "cve-triage",
+        text: "A critical CVE just landed in a widely deployed edge appliance. Explain what an exposed instance actually risks, and how a defender confirms whether theirs is affected." },
+      { id: "cyb-sv-cve", xp: 264, lang: "sv", aspect: "cve-triage",
+        text: "Hur bedömer jag om en nypublicerad sårbarhet är verkligt utnyttjbar i vår miljö, och vilka källor är pålitliga när leverantören och forskarna säger olika saker?" },
+      { id: "cyb-kev-catalogue", xp: 265, lang: "en", aspect: "cve-triage",
+        text: "What does CISA's Known Exploited Vulnerabilities catalogue tell a defender that a CVSS score does not, and how should it change the order things get patched in?" },
+      { id: "cyb-org-footprint", xp: 266, lang: "en", aspect: "domain-osint",
+        text: "Build the public footprint of an organisation I name — domains, cloud tenants, job ads, code repositories — and say what each source proves and what it only suggests." },
+      { id: "cyb-sv-bolag", xp: 267, lang: "sv", aspect: "domain-osint",
+        text: "Vad går att ta reda på om ett svenskt bolags IT-miljö enbart ur öppna källor, och var går gränsen innan kartläggningen börjar handla om personuppgifter?" },
+      { id: "cyb-street-view-site", xp: 268, lang: "en", aspect: "geo-recon",
+        text: "Using map and Street View imagery for an address I give you, describe the site's physical security: entrances, cameras, fencing, and where the public boundary runs." },
+      { id: "cyb-sv-gata", xp: 269, lang: "sv", aspect: "geo-recon",
+        text: "Vad avslöjar kartor och gatubilder om skalskyddet vid en adress jag anger, och hur gamla är bilderna som slutsatserna i så fall vilar på?" },
+      { id: "cyb-owasp-top10", xp: 270, lang: "en", aspect: "owasp-appsec",
+        text: "Walk me through the current OWASP Top 10: what each category means with a concrete example, and which ones moved since the previous edition and why." },
+      { id: "cyb-sv-owasp", xp: 271, lang: "sv", aspect: "owasp-appsec",
+        text: "Vilka av OWASP:s tio vanligaste brister träffar oftast ett API-först byggt system, och vad ska en kodgranskare konkret leta efter?" },
+      { id: "cyb-sv-ssrf", xp: 272, lang: "sv", aspect: "owasp-appsec",
+        text: "Förklara SSRF mot molnleverantörernas metadatatjänster: hur utnyttjas det i praktiken, vilka skydd håller, och vad rekommenderar OWASP i dag?" },
+      { id: "cyb-threat-actor", xp: 273, lang: "en", aspect: "threat-intel",
+        text: "Profile a named ransomware group from public reporting: the initial-access techniques it favours, the tooling it reuses, and which claims rest on a single vendor." },
+      { id: "cyb-sv-tiber", xp: 274, lang: "sv", aspect: "threat-intel",
+        text: "Hur går ett TIBER-EU-test till i praktiken, vem beställer det, och vad skiljer den rapporten från ett vanligt penetrationstest?" },
+      { id: "cyb-sv-hotbild", xp: 275, lang: "sv", aspect: "threat-intel",
+        text: "Sammanställ hotbilden mot svensk kommunal sektor det senaste året: vilka angreppssätt återkommer, och vilka källor är värda att lita på?" },
+      { id: "cyb-ct-logs", xp: 276, lang: "en", aspect: "dns-certs",
+        text: "How do certificate transparency logs expose an organisation's internal hostnames, and what should that change about the way staging environments get named?" },
+      { id: "cyb-sv-subdomaner", xp: 277, lang: "sv", aspect: "dns-certs",
+        text: "Hur kartlägger jag alla subdomäner till en domän jag anger med bara publika källor, och vilken av metoderna missar mest?" },
+      { id: "cyb-sv-bankid", xp: 278, lang: "sv", aspect: "tech-posture",
+        text: "Hur ser säkerhetsmodellen bakom BankID ut, vilka angrepp har faktiskt förekommit mot den, och hur har de bemötts?" },
+      { id: "cyb-posture-tech", xp: 279, lang: "en", aspect: "tech-posture",
+        text: "Assess the security track record of a technology I name: its CVE history, how fast fixes actually ship, and whether the defaults are safe out of the box." },
+      { id: "cyb-breach-postmortem", xp: 280, lang: "en", aspect: "incident-breach",
+        text: "Take a major breach disclosed in the past year and reconstruct the chain from initial access to impact, separating what was confirmed from what the press assumed." },
+      { id: "cyb-sv-intrang", xp: 281, lang: "sv", aspect: "incident-breach",
+        text: "Vad hände tekniskt vid ett större dataintrång mot en svensk aktör nyligen, och vilka slutsatser drog de själva offentligt efteråt?" },
+      { id: "cyb-sv-atgarder", xp: 282, lang: "sv", aspect: "hardening",
+        text: "Vilka säkerhetsåtgärder ger störst effekt för ett mindre svenskt bolag utan eget säkerhetsteam, och i vilken ordning bör de införas?" },
+      { id: "cyb-mfa-phishing", xp: 283, lang: "en", aspect: "hardening",
+        text: "Which multi-factor methods genuinely resist phishing, and what does the evidence show about how attackers get past the weaker ones in real incidents?" },
+    ],
   },
 };
 
@@ -784,15 +816,6 @@ export const CANDIDATES = [
     note: "Swedish + a demand for consequence rather than a list. The 2.35-scoring starters both produced lists." },
 
   // --- research: aspects declared but unfilled, and shapes the battery missed
-  { id: "cand-res-followup", xp: 187, agent: "research", aspect: "multihop", lang: "en",
-    text: "I am buying a used electric car in Sweden. Tell me what actually determines battery health, how to check it before buying, and what it costs to replace.",
-    note: "A real purchase decision with three chained sub-questions — the shape chat_logs shows people actually bring." },
-  { id: "cand-res-sv-myndighet", xp: 188, agent: "research", aspect: "sv-civic", lang: "sv",
-    text: "Vad gäller för att överklaga ett kommunalt beslut i Sverige, vilka tidsfrister finns, och vart skickar man överklagandet?",
-    note: "Swedish civic procedure — the aspect that scored best (4.4/4.25) but has only two starters." },
-  { id: "cand-res-conflict", xp: 189, agent: "research", aspect: "contested", lang: "en",
-    text: "Give me the strongest evidence on both sides of whether ultra-processed food causes harm beyond calories, and say which side is currently better supported.",
-    note: "Tests whether the pipeline will commit to a verdict after presenting a genuine conflict, or hedge." },
 
   // --- introspection: the diagram case scored lowest (3.70) ----------------
   { id: "cand-int-draw-privacy", xp: 190, agent: "introspection", aspect: "diagram", lang: "en",
@@ -867,12 +890,6 @@ export const CANDIDATES = [
     note: "The attachment path is where a privacy claim is easiest to get subtly wrong. 'Byte by byte' leaves no room for a reassuring summary." },
 
   // --- research: shapes the queue under-serves ------------------------------
-  { id: "cand-res-cannot", xp: 204, agent: "research", aspect: "unanswerable", lang: "en",
-    text: "What will the Riksbank's policy rate be in December next year? Tell me straight if that is not knowable, and what the best available proxy is.",
-    note: "The queue has one unanswerable starter. This one baits a confident forecast and rewards refusing it — the opposite of what most starters reward." },
-  { id: "cand-res-sv-jamfor", xp: 205, agent: "research", aspect: "consumer-sv", lang: "sv",
-    text: "Jag ska välja mellan att hyra och köpa en lägenhet i Göteborg de närmaste fem åren. Räkna på det med aktuella siffror och säg vad som lönar sig.",
-    note: "Swedish consumer decision that needs live numbers AND arithmetic on them. The research queue's Swedish entries mostly ask for facts, not a calculation." },
 
   // --- introspection: ask it to be specific about its own weak spots --------
   { id: "cand-int-sv-arkitektur", xp: 206, agent: "introspection", aspect: "sv-arch", lang: "sv",

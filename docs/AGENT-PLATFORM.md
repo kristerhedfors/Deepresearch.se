@@ -28,16 +28,19 @@ links down to the subsystem docs and then to the source; and use the **"ask the
 source"** links (§9) to put any question straight to the introspection agent,
 which answers from the project's own code.
 
-> **Status (2026-07-25, spec 0.2.0):** the definition layer, the **seven**
+> **Status (2026-08-13, spec 0.2.0):** the definition layer, the **ten**
 > shipped agents, the composer renderer, the visual proof, the CLI, the live
 > preview surface, and the metered share-link **mint** are **wired and tested**.
 > The mint reuses the existing Se/rver-token subsystem verbatim (no new crypto,
-> no new meter — §8). New in 0.2.0: the **capability block** (§3.1) and the
-> **routing table** (§4) — the site's five default chat modes are now
-> registry entries, `/api/chat` dispatches on the phase a spec declares, and
-> every phase speaks in the prompt set its agent names.
-> The project is experimental research into how far a useful assistant can be
-> pushed toward *provable* privacy, not a finished product.
+> no new meter — §8). From 0.2.0: the **capability block** (§3.1) and the
+> **routing table** (§4) — the site's seven default chat modes are registry
+> entries, `/api/chat` dispatches on the phase a spec declares, and every phase
+> speaks in the prompt set its agent names. Since 2026-08-13 the roster is
+> SPECIFIC and has no general member: the `normal` mode and its `research`
+> agent are retired, Deep Science is the default and terminal fallback, Cyber
+> is new, and `capability.context` is executed rather than merely declared
+> (§3.2). The project is experimental research into how far a useful assistant
+> can be pushed toward *provable* privacy, not a finished product.
 
 ---
 
@@ -66,24 +69,42 @@ Both levels are **data**. Deriving a new agent is: copy one spec, change those
 fields, validate. No code change — including for what it does, as long as it
 selects an answer phase the platform already implements.
 
-## 2. The nine agents we ship
+## 2. The ten agents we ship
 
 Each is one entry in [`sdk/AGENTS.json`](../sdk/AGENTS.json) — reference specs
-that exist to be copied. **Six are the DEFAULT agents**, one per Se/rver chat
+that exist to be copied. **Seven are the DEFAULT agents**, one per Se/rver chat
 mode; two are the client-tier archetype and the template; and one — Palaeogenomics
 — is a DERIVED agent bound to no mode at all, reachable only by id.
 
+The roster is **specific, and has no general member** (owner directive,
+2026-08-13). Until that date the first row was *Research*, mode `normal`,
+labeled "Deep Research": the catch-all every unrouted request fell back to, and
+the one agent defined by what it did *not* specialise in. It is retired. Every
+agent below names a domain, and a request naming none lands on Deep Science
+rather than on a catch-all — so the terminal fallback now carries a policy
+(literature-first, `search.web: false`) where it used to carry open-web
+research. Old clients, stored settings, share links and the eval harnesses still
+sending `normal` resolve through `RETIRED_CHAT_MODES`
+([`public/js/chat-mode-core.js`](../public/js/chat-mode-core.js)).
+
+The first six rows are the dropdown, in dropdown order.
+
 | Agent | Mode | Tier | What it is |
 |---|---|---|---|
-| **Research** | `normal` | Se/rver | The full signed-in deep-research assistant. The whole pipeline, the full model catalog, cloud storage, quotas. |
-| **Introspection** | `introspection` | Se/rver | The site read from the inside — answers from its own deployed source and docs, natively with tools or through the deterministic read loop. |
+| **Deep Science** | `science` | Se/rver | The peer-reviewed record, and nothing else — `search.web: false` is structural, so no request can switch the open web back on. Merges OpenAlex, Europe PMC's reviewed slice, Semantic Scholar, the hosted PubMed index and (where licensed) Google Scholar's own ranking, then keeps only records carrying positive evidence of peer review. **The default agent and the terminal fallback**, which is why its spec is the one mode default declaring `requires: []`. Spec id `scholar` ([`SCHOLAR.md`](SCHOLAR.md)). |
+| **Cyber** | `cyber` | Se/rver | Cybersecurity and OSINT. The one agent that may reach the platform's outward-facing intelligence: host intelligence for a named host, IP or organization; street-level imagery and place resolution read as reconnaissance; the OWASP Top 10 for web and for LLM applications as real reference text; and the two OSINT methods — subject disambiguation, and the depth-scaled dossier scaffold whose deepest tier is shaped like a TIBER-EU targeted threat-intelligence report. |
+| **Introspection** | `introspection` | Se/rver | The site read from the inside — answers from its own deployed source and docs, natively with tools or through the deterministic read loop. Keeps the OWASP block too: a security assessment *of this platform* is its turn. |
 | **Agent Studio** | `sdk` | Se/rver | The mode that *builds* agents (spec id `agent-builder`): describe a flavour, it distils this site into it and publishes it live. |
 | **Orchestrator** | `orchestrator` | Se/rver | A planned team of sub-agents run in parallel waves, merged into one answer. One kind runs *outside* the server: a `swarm` node reasons with many tiny Bonsai models at once in the user's own browser ([`SWARM-REASONING.md`](SWARM-REASONING.md)). |
 | **Outrospection** | `outrospection` | Se/rver | Introspection's mirror image — answers from the standing outward feed of what everyone else shipped. |
 | **Models** | `models` | Se/rver | The agent whose subject is the models themselves, and the lifecycle it owns: discovered → evaluated → enabled. It holds the live catalog of every model this deployment can reach across every provider, with each one's price and its verification checklist — and enabling one puts it in every mode's dropdown. |
 | **Secure** | — | Se/cure | The never-cloud tier — runs wholly in your browser, server in no data path, sealed local state. |
 | **Under Construction** | — | Se/cure | A placeholder — the minimal viable agent (composer + send + an honest notice). The template you copy to start a new one. |
-| **Palaeogenomics** | — | Se/rver | Ancient DNA: the published literature (Europe PMC) and a structured query over 20,927 published ancient individuals, kept as two separate legs. Bound to **no chat mode** — addressed by id, `defaults` untouched — and the worked example of a DOMAIN agent that costs the platform one registry entry and one vocabulary member. Its sample block is enabled by the spec's declared `context`, not by a knob ([`PALAEOGENOMICS.md`](PALAEOGENOMICS.md)). |
+| **Palaeogenomics** | — | Se/rver | Ancient DNA: the published literature (Europe PMC) and a structured query over 20,927 published ancient individuals, kept as two separate legs. Bound to **no chat mode** — addressed by id, `defaults` untouched — and the worked example of a DOMAIN agent that costs the platform one registry entry and one vocabulary member. Its sample block is enabled by the spec's declared `context`, not by a knob; the same declaration is what keeps it the one agent besides Deep Science holding `literature-pubmed` ([`PALAEOGENOMICS.md`](PALAEOGENOMICS.md)). |
+
+`derivesFrom` used to point at `research` on every server-tier spec. With the
+general agent gone they point at `baseplate` — the Platform SDK module — which
+is the honest ancestor now that there is nothing general left to inherit from.
 
 The **Agent Studio** is where the platform folds back on itself — it is the
 [`pair-studio`](../sdk/skills/pair-studio/SKILL.md) module made real: prompt →
@@ -125,13 +146,13 @@ message thread behind the same key field.
 
 Four different lists get confused for one another, so here they are side by
 side. The agent list is not the chat-mode dropdown and not the tier split, even
-though six of its entries are now bound to a mode (§4).
+though seven of its entries are now bound to a mode (§4).
 
 | The list | Where it lives | What it is | Its entries |
 |---|---|---|---|
 | **Tiers** | the product | The two halves of the platform, split by where the data goes | Se/cure (client, server in no data path), Se/rver (signed-in, cloud) |
-| **Chat modes** | `public/js/chat-mode-core.js` `CHAT_MODES` (re-exported by `chat-mode.js`, façade `src/chat-modes.js`), mirrored in `public/js/mode-theme.js` | What the pipeline *does* with a turn — picked in the dropdown | `normal` (Deep Research), `introspection`, `sdk` (Agent Studio), `orchestrator`, `outrospection`, `models` (Models) |
-| **Agents** | `sdk/AGENTS.json` | Reference AgentSpecs — templates to copy | Research, Introspection, Agent Studio, Orchestrator, Outrospection, Models, Secure, Under Construction, Palaeogenomics |
+| **Chat modes** | `public/js/chat-mode-core.js` `CHAT_MODES` (re-exported by `chat-mode.js`, façade `src/chat-modes.js`), mirrored in `public/js/mode-theme.js` | What the pipeline *does* with a turn — picked in the dropdown | `science` (Deep Science), `cyber` (Cyber), `introspection`, `sdk` (Agent Studio), `orchestrator`, `outrospection`, `models` (Models) |
+| **Agents** | `sdk/AGENTS.json` | Reference AgentSpecs — templates to copy | Deep Science, Cyber, Introspection, Agent Studio, Orchestrator, Outrospection, Models, Secure, Under Construction, Palaeogenomics |
 | **Routes** | `public/js/stream.js` `sendMessage` | Where a send is *computed* — not chosen directly, inferred from the model pick and the knobs | server pipeline (`/api/chat`), on-device (`ondevice::` Bonsai), private introspection (own key, browser-direct) |
 
 The fourth row is the one with no user-facing name, and the omission caused a
@@ -144,14 +165,16 @@ that lives in the server pipeline is absent — see §2.2.
 The relationships, in one line each:
 
 - **An agent picks a tier**, via `platform` (`"client"` = Se/cure,
-  `"server"` = Se/rver). The specs named *Research* and *Secure* are just the
-  reference agent for each tier — the tier is the platform half, the agent is
-  one flavour running on it. Se/cure is **not** an agent under Se/rver: its
-  defining property is structural (the server is in no data path), and a
-  client-platform spec cannot opt into a server data path (PA-4).
+  `"server"` = Se/rver). *Secure* is the reference agent for the client tier —
+  the tier is the platform half, the agent is one flavour running on it. Se/cure
+  is **not** an agent under Se/rver: its defining property is structural (the
+  server is in no data path), and a client-platform spec cannot opt into a
+  server data path (PA-4). The Se/rver tier no longer has a corresponding
+  general reference agent; *Deep Science* is its default, and it is a domain
+  agent like every other.
 - **An agent picks a mode**, via the `mode` field and the `mode-select`
-  control; all six ids are selectable, and leaving `mode` unset is legal too —
-  that is what makes `palaeogenomics` and `scholar` reachable by id alone. Since spec 0.2.0 it also picks an
+  control; all seven ids are selectable, and leaving `mode` unset is legal too —
+  that is what makes `palaeogenomics` reachable by id alone. Since spec 0.2.0 it also picks an
   **answer phase**, via `capability.answerPhase` (§3.1) — so a spec can reach
   any execution semantics the platform already implements, and the `defaults`
   table (§4) is what binds a mode to the agent that IS it. What a spec still
@@ -228,8 +251,8 @@ completeness, and no shipped spec declares it, for the same reason.
 
 The regression guard is `src/slash.test.js`, which discovers the executor
 phases from the dispatch table and the mode booleans from `chat.js` rather than
-listing them: a seventh agent, a fourth answer phase or a sixth mode that ships
-without the commands fails a test that names it.
+listing them: a new agent, a new answer phase or a new mode that ships without
+the commands fails a test that names it.
 
 
 ## 3. The AgentSpec
@@ -240,13 +263,14 @@ the short version:
 
 ```jsonc
 {
-  "id": "research", "name": "Research", "tagline": "…",
+  "id": "scholar", "name": "Deep Science", "tagline": "…",
   "platform": "server",              // "client" | "server" — the tier
-  "mode": "normal",                  // a CANONICAL chat mode id, validated against
-                                     // chat-mode.js: normal | introspection | sdk |
-                                     // orchestrator | outrospection | models. "agent-builder"
-                                     // is NOT accepted here — it survives only as the
-                                     // Agent Studio spec's `id` and as a deep-link alias
+  "mode": "science",                 // a CANONICAL chat mode id, validated against
+                                     // chat-mode.js: science | cyber | introspection |
+                                     // sdk | orchestrator | outrospection | models.
+                                     // "agent-builder" is NOT accepted here — it survives
+                                     // only as the Agent Studio spec's `id` and as a
+                                     // deep-link alias. `normal` is retired (2026-08-13)
   "theme": { "--agent-accent": "#3b82f6", … },
   "intro":   { "kind": "fade" },
   "loading": { "kind": "pipeline-phases", "messages": ["Triaging…", …] },
@@ -258,7 +282,7 @@ the short version:
     { "type": "depth-slider", "min": 0, "max": 3, "default": 1, "ticks": ["Quick","Standard","Deep","Exhaustive"] },
     { "type": "toggle", "id": "web_search", "label": "Web search", "default": true },
     { "type": "attachments" },
-    { "type": "mode-select", "modes": ["normal","introspection","sdk","orchestrator","outrospection","models"] }
+    { "type": "mode-select", "modes": ["science","cyber","introspection","sdk","orchestrator","outrospection","models"] }
   ],
   "examples": ["…"], "generateExamples": true,
   "quota": { "window": "day", "requests": 50, "credits": null },
@@ -303,14 +327,16 @@ does, and it is what makes a default agent expressible as a spec at all:
                                      // (null = the answer phase's own set)
   "tools": [],                       // source-read | sdk-plan | build-publish | shell
   "toolFallback": "none",            // read-loop | file-blocks | none
-  "context": ["source-snapshot"],    // which retrieval block is injected
+  "context": ["source-snapshot"],    // which retrieval blocks are injected — and,
+                                     // since 2026-08-13, which corpora and which
+                                     // third-party intelligence the agent may reach
   "search": { "web": true, "auxSources": false, "maxQueries": 6 },
   "routing": { "planModel": "json-default", "answerModel": "user" },
   "gates": [{ "id": "lens", "langs": ["en","sv"] }],
   "bounds": { "maxTokens": 2048, "timeoutMs": 150000 },
   "emits": ["step","search","workflow","agent_update"],
   "requires": ["developer_mode"],  // the non-default modes are available here
-  "team": { "kinds": ["research","introspection"], "maxAgents": 6, "maxWaves": 3 }
+  "team": { "kinds": ["scholar","cyber","introspection"], "maxAgents": 6, "maxWaves": 3 }
 }
 ```
 
@@ -346,18 +372,43 @@ is rejected at validation. The binding is pinned by identity against
 
 ### 3.2 Reading a capability at run time
 
-A declared field only matters if something reads it. Three accessors in the
-pure core do, and all three NARROW:
+A declared field only matters if something reads it. Four accessors in the
+pure core do, and all four NARROW:
 
 | Accessor | Reads | Rule |
 |---|---|---|
 | `capBound(cap, key, limit)` | `bounds` | `limit` is both the default and the ceiling |
 | `capSearch(cap, requested)` | `search` | the agent's ceiling ANDed with the request, both directions |
 | `capHasTool(cap, class)` | `tools` | resolved through `src/tool-sets.js` in registry order |
+| `capHasContext(cap, block)` | `context` | a block runs only for an agent that declared it; a null capability declares none |
 
 An absent, malformed or over-large declaration resolves to the platform's own
 value. The worst a hostile capability block can do is make its own agent do
 less.
+
+**`context` became executed on 2026-08-13**, and that is the architectural
+change behind the specific roster. It used to be declared-and-pinned: the specs
+listed their retrieval blocks and a test checked the vocabulary, but nothing on
+the request path read the list, so a block ran because a mode flag, a knob or a
+keyword gate said so. Now `capHasContext` is the gate at two seams:
+
+- **the enrichment registry** ([`src/enrichment.js`](../src/enrichment.js)) —
+  the ancient-sample corpus, the Scholar metrics leg, the OWASP reference and
+  the person-research *method* each run only for an agent that declared the
+  matching block;
+- **the search-source registry** ([`src/search-sources.js`](../src/search-sources.js))
+  — a source entry may name a `requiresContext` block, and `sourceAllowed` in
+  the pipeline honours it generically, so arXiv, Europe PMC and the
+  peer-reviewed leg belong to the agents that declared them and to no others.
+
+Fail-soft cuts the other way here than elsewhere, deliberately: a **null**
+capability means *no agent was resolved*, not *an agent declared nothing*, so
+every source still runs. That is the `POST /mcp` channel (which has no concept
+of an agent) and any deployment whose registry will not load — invariant 2.
+Declaring nothing, by contrast, is a real declaration and blocks the gated
+blocks.
+
+Still declared-and-pinned rather than read: `gates`, `emits` and `team`.
 
 One rule is easy to get wrong and has its own test: **a capability governs the
 phase it names, and no other.** Introspection declares `search.web: false`

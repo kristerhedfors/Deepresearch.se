@@ -24,14 +24,14 @@ import { MAX_LOGGED_FAILURES, nodeFailureRecord, nodeTextSink, pushFailure, with
 
 test("nodeFailureRecord names the node, the wave (1-based) and the failure class", () => {
   const rec = nodeFailureRecord(
-    { id: "market-scan", kind: "deep_research" },
+    { id: "market-scan", kind: "web_research" },
     1, // 0-based index → the SECOND wave
     new Error("Berget API error (500): upstream unavailable"),
     12_345,
   );
   assert.deepEqual(rec, {
     id: "market-scan",
-    kind: "deep_research",
+    kind: "web_research",
     wave: 2,
     class: "upstream",
     ms: 12345,
