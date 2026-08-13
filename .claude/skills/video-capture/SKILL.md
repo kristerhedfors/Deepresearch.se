@@ -17,8 +17,8 @@ description: >-
   matrix over the shipped example prompts, the activity timeline that is what
   makes cutting dead air possible at all, the ffmpeg settings LinkedIn actually
   plays (and the three that make a clip render as a black rectangle or refuse
-  to start), the speed/cut knobs, and the admin swipe deck where a capture is
-  liked or sent back with feedback.
+  to start), the speed/cut knobs, and the admin review FEED where every capture
+  is scrolled through and any one liked, sent back with feedback, or undone.
 ---
 
 # Capturing the site on video
@@ -98,7 +98,7 @@ beat.
 (`res-sv-elpris` → "Elpris" — the agent prefix and the language marker are
 noise, not name), shown beside its `#CAP-<id>` number so a clip can be asked
 for out loud. The derivation lives once, in `public/js/captures-core.js`'s
-`starterName`; the harness, the top-up, the server and the deck all call it.
+`starterName`; the harness, the top-up, the server and the feed all call it.
 `scripts/captures --name <id> "…"` improves any one by hand.
 
 **Shapes.** `--shape portrait|square|landscape|raw` sets the CSS viewport AND
@@ -250,9 +250,10 @@ scripts/captures --add "$(jq '{label:("Capture " + (.meta.slug // "")), agent:.m
 scripts/captures --upload <id> "$CAP/final.mp4"
 scripts/captures --poster <id> "$CAP/poster.jpg"
 
-scripts/captures                      # the unreviewed deck, as text
+scripts/captures                      # the unreviewed queue, as text
 scripts/captures --status needs_work  # the RE-SHOOT list: what came back with feedback
 scripts/captures --review 12 feedback "the sources scroll past too fast"
+scripts/captures --undo 12            # take the last verdict back — the mis-swipe
 ```
 
 The row is created before the bytes are uploaded (`video_key` stays null until
@@ -261,26 +262,41 @@ orphaned R2 object nobody can find.
 
 Metadata lives in D1 (`captures`, `capture_reviews`); the MP4 and the poster
 live in R2 under `captures/<id>/`. The video endpoint implements real HTTP
-Range, because the whole point is a `<video>` element being scrubbed in a
-deck.
+Range, because the whole point is a `<video>` element being scrubbed on a
+card.
 
-**The swipe deck** is its own admin-gated page at **`/captures/`** — reached
+**The review feed** is its own admin-gated page at **`/captures/`** — reached
 from the account panel's admin row, beside "Admin interface". (It lived inside
 `/admin` until 2026-08-10; the owner moved it up a level because reviewing a
-run is not an ops task. It is no longer in `src/panels.js`, on purpose.) One
-card at a time: the clip, the agent, the model, the prompt it answered, and
-the facts that describe the edit (size, length, speed, how much was cut).
+run is not an ops task. It is no longer in `src/panels.js`, on purpose.) Every
+capture in the open list is on the page, one under the next: the clip, the
+agent, the model, the prompt it answered, and the facts that describe the edit
+(size, length, speed, how much was cut).
+
+It was a one-card-at-a-time DECK until 2026-08-13, when the owner said what
+was wrong with it: *"I can see only the next in queue — I want to scroll
+through all of them north to south and swipe or review any one of my choice"*,
+plus *"revert the one I just swiped right"*. The gesture math did not change;
+what changed is that the reviewer picks the clip, and a verdict is reversible.
 
 - **Swipe right → like.** Posts `{verdict:"like"}`, the capture becomes
-  `liked`, the deck advances.
-- **Swipe left → feedback.** The card flies out and a **feedback input field
-  takes its place**, with the capture's title above it so the reviewer knows
-  what they are writing about. Nothing is posted until Send. The server
-  *requires* a note on a `feedback` verdict — a left swipe with no words is
-  not a review, it is a shrug — so the field is the mechanism, not decoration.
-- Arrow keys and two explicit buttons do the same two things. A gesture must
-  never be the only way to act: this page is used with a mouse as often as a
-  thumb.
+  `liked`, and the card **stays where it is** wearing the verdict.
+- **Swipe left → feedback.** A **note field opens inside the card**, under the
+  clip it is about. Nothing is posted until Send. The server *requires* a note
+  on a `feedback` verdict — a left swipe with no words is not a review, it is
+  a shrug — so the field is the mechanism, not decoration.
+- **Undo.** A filed card carries "↩︎ Undo the 👍": `DELETE
+  …/captures/:id/review` deletes the review row, un-counts the like and
+  reverts the status (to the verdict before it, or to the queue). This is why
+  a filed card is not removed — there would be nothing left to undo against.
+- Arrow keys and two explicit buttons do the same two things, and matter more
+  on a feed than they did on a deck: nobody drags fifty cards with a mouse.
+  The keys act on the focused card, else the first unfiled one in view.
+- All four lists are the same reviewable feed. Changing your mind about a clip
+  you already filed IS reviewing it.
+- **Clips mount lazily**, 600px ahead of the fold. Fifty `preload="metadata"`
+  videos on page open is fifty range requests, and on a phone that is a feed
+  that will not scroll.
 
 Feedback lands as a `capture_reviews` row and shows in
 `scripts/captures --status needs_work?format=text`, which is what a Claude
@@ -308,7 +324,7 @@ npm run capture:edit -- --all captures/<date> --speed 1.25 --wait speed --min-st
 
 # 4. publish and review
 scripts/captures --upload …          # per clip
-open https://deepresearch.se/captures/   # the swipe deck
+open https://deepresearch.se/captures/   # the review feed
 ```
 
 ## Reading a clip without watching it
@@ -335,7 +351,7 @@ passed — the frame and the metadata disagreed, and the frame was right.
 The per-frame luma is what settles a "blank frame" report, and it settled this
 one against the obvious reading: **every near-white frame in all three clips
 was at the HEAD (t=0.00–0.65 s, YAVG ≈ 235), none at the tail.** The blank was
-the page-load white flash, reached because the deck's `<video>` had `loop` set
+the page-load white flash, reached because the card's `<video>` had `loop` set
 and wrapped to t=0 the instant the clip ended. Fixed by ending on the last
 frame with an explicit replay button (`public/js/captures.js`), but the general
 lesson is the one worth keeping: *a report about where something appears in a
@@ -368,7 +384,7 @@ or the row will lie about the next re-shoot.
   confusing failure for something that has nothing to do with ffmpeg.
 - **You cannot verify MP4 PLAYBACK in Playwright's Chromium.** It ships
   without proprietary codecs, so `canPlayType('video/mp4; codecs="avc1.42E01E"')`
-  returns `''` and the deck's `<video>` fails with
+  returns `''` and the card's `<video>` fails with
   `DEMUXER_ERROR_NO_SUPPORTED_STREAMS`. This looks exactly like a corrupt
   upload and is not one — verified 2026-08-10 by fetching the served bytes and
   finding them sha256-identical to the local encode, which `ffprobe` read as
@@ -379,7 +395,7 @@ or the row will lie about the next re-shoot.
 - **Playwright's bundled ffmpeg is not a substitute.**
   `/opt/pw-browsers/ffmpeg-*/ffmpeg-linux` exists and runs, so it is tempting.
   It ships **libvpx only** — it can cut a webm but cannot produce H.264, which
-  is the one codec the deck and LinkedIn both need.
+  is the one codec the feed and LinkedIn both need.
 - **Playwright only flushes the video file on `context.close()`.** A run that
   returns without closing its context leaves a zero-byte `raw.webm`. The
   harness closes in a `finally` for that reason — keep it there.
@@ -407,11 +423,11 @@ or the row will lie about the next re-shoot.
 | `tests/capture.mjs` | The Playwright driver. Records, samples, writes the three sidecars; runs the Agent Studio gate. |
 | `tests/app-e2e.mjs` | The generated app's end-to-end test: `exerciseApp` (on camera) + the pure `gradeApp`. |
 | `scripts/capture-edit.mjs` | Plan → ffmpeg → `final.mp4` + `poster.jpg` + `edit.json`. |
-| `src/captures.js` | D1 + R2 + `/api/admin/captures*`, including the like/feedback verdict. |
-| `public/js/captures-core.js` | Pure swipe/deck logic (thresholds, tilt, hints, formatting). |
+| `src/captures.js` | D1 + R2 + `/api/admin/captures*`, including the like/feedback verdict and its undo. |
+| `public/js/captures-core.js` | Pure swipe/feed logic (thresholds, tilt, hints, per-card state, formatting). |
 | `public/captures/index.html` | The `/captures/` page shell (admin-gated in `src/index.js`). |
-| `public/css/captures.css` | Its styles, incl. the deck (moved out of `admin.css` when the page split off). |
-| `public/js/captures.js` | The deck UI that drives that page. |
+| `public/css/captures.css` | Its styles, incl. the feed (moved out of `admin.css` when the page split off). |
+| `public/js/captures.js` | The feed UI that drives that page. |
 | `scripts/captures` | The CLI over the admin API — publish, list, review. |
 | `docs/VIDEO-CAPTURE.md` | The reference: file formats, API surface, field-by-field. |
 | `references/ffmpeg-recipes.md` | Recipes beyond the default pipeline (captions, music, GIF, side-by-side). |

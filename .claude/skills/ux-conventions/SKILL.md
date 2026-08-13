@@ -1525,3 +1525,54 @@ and it costs a motivated reader a round of feedback to tell you.
 from was removed on 2026-08-03. The shape it left behind: a state-labelled
 toggle whose lit style tracks the state, and a `wireScenes`-style
 feature-detected control that hides itself when the capability is absent.
+
+---
+
+## UX-28 — A review queue is a list the reviewer scrolls and chooses from; a filed item stays put with an undo
+
+**Rule.** When the UI asks someone to work through a set of items — captures to
+review, findings to triage, a batch of anything — it shows **all of them, in
+one scrollable column, every one actionable**. It does not serve the next one
+and hide the rest. And when an item is filed, it **keeps its place** wearing
+what was decided, with a control that **takes that decision back**. It is not
+removed from the page.
+
+**Why.** Two costs, both invisible from inside the change that introduces a
+one-at-a-time deck. The first is that the order stops being the reviewer's:
+they came to look at a particular clip, or to skip four they are not ready to
+judge, and a deck answers "later" to all of it. The second is that a fast
+gesture with a permanent effect and no way back will eventually be made by
+accident — the owner's report was exactly these two, in one sentence: *"I can
+see only the next in queue… I want to scroll through all of them north to
+south and swipe or review any one of my choice. Also revert the one I just
+swiped right."* (2026-08-13). A filed card that vanishes also takes the
+reader's position in the scroll with it, and leaves nothing on screen to undo
+against — which is why the two halves of this rule are one rule.
+
+**The mechanics (match all of these):**
+
+1. **Every row renders, every card acts.** No "top card" variant: the same
+   gesture, the same buttons and the same inline error line on all of them.
+2. **A verdict updates ONE card in place**, from the row the server sends
+   back — never a re-render of the list. Re-rendering scrolls the reviewer's
+   place away, which on a long list is the same defect as removing the card.
+3. **Undo is server-side and total.** It deletes the record of the verdict, not
+   just its display: any counter it bumped is un-bumped and the item's state
+   reverts to what it was. A status-only revert leaves the row saying two
+   different things.
+4. **Filed still reads as filed** at a glance — a quieter card, an edge marked
+   in the verdict's colour — so scrolling a long list still shows what is left
+   to do without reading a badge on each one.
+5. **Vertical drags are never verdicts** (`touch-action: pan-y` plus the
+   direction test). On a list the thumb crosses every card on the way down.
+6. **Keyboard and buttons act on the card in view**, focused first: a gesture
+   cannot be the only way to act, and on a long list it is not even the usual
+   way — nobody drags fifty cards with a mouse.
+7. **Media mounts lazily** (IntersectionObserver, ahead of the fold). Showing
+   everything is only an improvement if the page still scrolls.
+
+**Canonical implementation:** the capture review feed —
+`public/js/captures.js` (`render` → `buildCard` → `refreshCard`,
+`observeCards`, `undoVerdict`) over the pure `public/js/captures-core.js`
+(`cardState`, `pendingCount`, `undoLabel`), server side
+`src/captures.js` (`undoReviewState`, `DELETE /api/admin/captures/:id/review`).

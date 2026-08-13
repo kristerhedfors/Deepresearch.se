@@ -1,7 +1,7 @@
 // Unit tests for the video-capture review surface (src/captures.js): the
 // create/patch/review/version validators (including THE product rule — a
 // feedback swipe without a note is a 400), the status/verdict vocabulary, the
-// projection contract the swipe deck reads, ?format=text, the Range parser
+// projection contract the review feed reads, ?format=text, the Range parser
 // behind the <video> element, and the handler end to end over a fake D1.
 //
 // The queue-v2 half is here too: the thread of versions (allocation, older
@@ -37,6 +37,7 @@ import {
   projectCaptureReview,
   projectCaptureVersion,
   syntheticVersionRow,
+  undoReviewState,
   validateCaptureCreate,
   validateCapturePatch,
   validateCaptureReview,
@@ -73,6 +74,39 @@ test("every verdict has a symbol and drives exactly one status", () => {
   assert.equal(VERDICT_SYMBOLS.feedback, "✍️");
   assert.equal(VERDICT_STATUS.like, "liked");
   assert.equal(VERDICT_STATUS.feedback, "needs_work");
+});
+
+test("undoReviewState: the last verdict comes off, the one before it stands", () => {
+  // Pure half of the undo (owner directive, 2026-08-13). Read the three rules
+  // straight off the assertions: only the LAST verdict, the status comes from
+  // what REMAINS, and a like is un-counted rather than left on the row.
+  const like = { id: 7, verdict: "like" };
+  const fb = { id: 6, verdict: "feedback" };
+
+  const only = undoReviewState([like], { likes: 1 });
+  assert.deepEqual(only, { review_id: 7, verdict: "like", status: "new", likes: 0, clear_answered: true });
+
+  const second = undoReviewState([fb, like], { likes: 1 });
+  assert.equal(second?.status, "needs_work", "the verdict before it is restored");
+  assert.equal(second?.clear_answered, false, "this capture HAS been answered");
+
+  // Undoing a feedback leaves the like counter alone.
+  assert.equal(undoReviewState([like, fb], { likes: 1 })?.likes, 1);
+});
+
+test("undoReviewState: nothing to undo, and junk that must not throw", () => {
+  // The endpoint turns null into a 404 with a sentence in it, so this is the
+  // difference between "there was no verdict" and a silent no-op.
+  assert.equal(undoReviewState([], { likes: 0 }), null);
+  assert.equal(undoReviewState(null, {}), null);
+  assert.equal(undoReviewState([{ verdict: "like" }], {}), null, "a row with no id cannot be deleted");
+  // A verdict this module does not know reads as feedback (the one that does
+  // not touch the counter) — the same rule projectCaptureReview follows.
+  assert.equal(undoReviewState([{ id: 1, verdict: "shrug" }], { likes: 2 })?.verdict, "feedback");
+  assert.equal(undoReviewState([{ id: 1, verdict: "shrug" }], { likes: 2 })?.likes, 2);
+  // The counter floors at zero: a row whose likes were reset by hand must not
+  // go negative when its verdict is taken back.
+  assert.equal(undoReviewState([{ id: 1, verdict: "like" }], { likes: 0 })?.likes, 0);
 });
 
 test("normalizeCaptureStatus accepts only the lifecycle enums", () => {
@@ -430,7 +464,7 @@ test("validateCaptureReview: only the two verdicts", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Projection — the contract the swipe deck reads
+// Projection — the contract the review feed reads
 // ---------------------------------------------------------------------------
 
 const ROW = {
@@ -850,6 +884,14 @@ function fakeDb(seed = [], seedVersions = []) {
             if (row) applySet(row, updV[1], binds);
             return {};
           }
+          // ONE review row, by its own id — the undo. Matched before the
+          // by-capture delete below, which would otherwise read a review id as
+          // a capture id and wipe the wrong thread.
+          if (/^DELETE FROM capture_reviews WHERE id = \?/.test(this._sql)) {
+            const i = reviews.findIndex((r) => r.id === binds[0]);
+            if (i >= 0) reviews.splice(i, 1);
+            return {};
+          }
           if (/^DELETE FROM capture_reviews/.test(this._sql)) {
             for (let i = reviews.length - 1; i >= 0; i--) if (reviews[i].capture_id === binds[0]) reviews.splice(i, 1);
             return {};
@@ -1008,6 +1050,56 @@ test("POST /captures/:id/review — a LEFT swipe without a note is a 400 and wri
   assert.equal(sent.json.capture.status, "needs_work");
   assert.equal(sent.json.capture.likes, 0); // feedback never bumps the counter
   assert.equal(sent.json.capture.reviews[0].note, "the answer is unreadable at 2x");
+});
+
+test("DELETE /captures/:id/review — the undo puts a mis-swiped clip back on the queue", async () => {
+  // The directive this serves (2026-08-13): "revert the one I just swiped
+  // right". A right swipe is a fast gesture with a permanent effect, so the
+  // whole of it has to come back — the row, the counter and the status.
+  const db = fakeDb([{ label: "one" }]);
+  await call(db, "POST", "/api/admin/captures/1/review", { verdict: "like" });
+  assert.equal(db.captures[0].status, "liked");
+  assert.ok(db.captures[0].answered_at, "the first verdict stamps answered_at");
+
+  const undone = await call(db, "DELETE", "/api/admin/captures/1/review");
+  assert.equal(undone.res.status, 200);
+  assert.equal(undone.json.undone.verdict, "like");
+  assert.equal(undone.json.capture.status, "new", "back on the queue");
+  assert.equal(undone.json.capture.likes, 0, "the like is un-counted, not just hidden");
+  assert.deepEqual(undone.json.capture.reviews, [], "the verdict is gone from the thread");
+  // The stamp is cleared ONLY here — with no verdict left it describes
+  // something that did not happen, and leaving it would keep this capture out
+  // of the top-up's unanswered count forever.
+  assert.equal(undone.json.capture.answered_at, null);
+  assert.equal(undone.json.capture.answered, false);
+  assert.equal(db.reviews.length, 0);
+});
+
+test("DELETE /captures/:id/review — only the LAST verdict, restoring the one before it", async () => {
+  const db = fakeDb([{ label: "one" }]);
+  await call(db, "POST", "/api/admin/captures/1/review", { verdict: "feedback", note: "too fast" });
+  await call(db, "POST", "/api/admin/captures/1/review", { verdict: "like" });
+  assert.equal(db.captures[0].status, "liked");
+
+  const undone = await call(db, "DELETE", "/api/admin/captures/1/review");
+  assert.equal(undone.json.capture.status, "needs_work", "the verdict before it stands again");
+  assert.equal(undone.json.capture.likes, 0);
+  assert.equal(undone.json.capture.reviews.length, 1);
+  assert.equal(undone.json.capture.reviews[0].note, "too fast");
+  // Undo is for the swipe just made, not a way to erase a clip's history: the
+  // thread is the whole input to the re-record loop. The stamp stays, because
+  // this capture HAS been answered.
+  assert.ok(undone.json.capture.answered_at);
+});
+
+test("DELETE /captures/:id/review — nothing to undo is a 404, not a silent no-op", async () => {
+  const db = fakeDb([{ label: "one" }]);
+  const nothing = await call(db, "DELETE", "/api/admin/captures/1/review");
+  assert.equal(nothing.res.status, 404);
+  assert.match(nothing.json.error, /nothing to undo/i);
+  assert.equal(db.captures[0].status, "new");
+  // And an undo on a capture that does not exist is the module's usual 404.
+  assert.equal((await call(db, "DELETE", "/api/admin/captures/99/review")).res.status, 404);
 });
 
 test("the byte endpoints answer 503 without R2, and the metadata board still works", async () => {

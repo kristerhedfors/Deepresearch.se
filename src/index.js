@@ -849,7 +849,7 @@ async function routeAuthed(request, env, url, log, identity, ctx, requestId) {
     return serveAsset(request, env);
   }
 
-  // CAPTURE REVIEWS (/captures/) — the video-capture swipe deck. It was a
+  // CAPTURE REVIEWS (/captures/) — the video-capture review feed. It was a
   // panel section on /admin until 2026-08-10, when the owner moved it up a
   // level: watching a recorded research run and filing it right (keep) or left
   // (feedback) is a review task, not an ops task, so it gets its own door.
