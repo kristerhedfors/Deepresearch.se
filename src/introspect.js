@@ -340,9 +340,23 @@ export async function runIntrospectionEnrichment(env, log, step, stepDone, conve
   // query text so a reader that retrieves for something else falls through to
   // its own embed rather than silently ranking against the wrong vector.
   const qvec = await embedQuery(env, log, queryText);
+  // THE TURN'S RETRIEVAL CONTEXT, stashed for the enrichments that retrieve
+  // after this one (today: src/owasp-context.js). It carries the user texts and
+  // the query as this runner SAW them — before any block was appended — and the
+  // vector they were embedded into.
+  //
+  // Both halves matter, and the second one is the subtle half. Every enrichment
+  // appends to the last user message, so a runner that recomputes its own query
+  // from the conversation it is handed reads the PREVIOUS runner's block as
+  // part of the user's question: retrieval would rank against a source excerpt,
+  // and an intent gate would fire on vocabulary the site injected rather than
+  // on anything the user typed (`securityAssessmentIntent` matches a bare
+  // "owasp", which the injected source can easily contain). Whichever
+  // retrieval-using enrichment runs FIRST therefore owns the turn's query, and
+  // the rest read it from here.
   try {
-    /** @type {any} */ (state).retrievalQuery = queryText;
-    /** @type {any} */ (state).retrievalQvec = qvec;
+    const s = /** @type {any} */ (state);
+    if (!s.retrieval) s.retrieval = { texts, query: queryText, qvec };
   } catch {
     // A frozen state costs one extra embedding call downstream, nothing else.
   }

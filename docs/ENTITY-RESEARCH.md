@@ -79,7 +79,7 @@ screenshot survives.
 this document describes — subject disambiguation plus the depth-scaled dossier
 scaffold — is one of the capabilities the new `cyber` agent owns exclusively. It
 is declared as the context block **`entity-method`**
-(`public/js/agent-spec-core.js` `CONTEXT_BLOCKS`) and listed in that agent's
+(`public/js/agent-spec-core.js` `CONTEXT_BLOCKS`), listed in that agent's
 `capability.context` in `sdk/AGENTS.json`, and read at the registry row:
 
 ```js

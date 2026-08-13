@@ -171,28 +171,17 @@ export async function retrieveOwasp(env, log, qvec, query) {
 }
 
 /**
- * The query embed for this turn. Reuses the vector the introspection enrichment
- * already computed for the SAME query text when there is one (it runs first in
- * the registry and stashes it), so a source-carrying mode still pays for exactly
- * one embedding call the way it did when this branch lived inside that runner.
- * An agent that does not carry the source — `cyber` above all — embeds here,
- * which is one call it could not otherwise make at all.
- *
- * Null (never a throw) on empty input, no stash, or any failure; retrieval then
- * takes the lexical path, which needs no embedder.
+ * Embed the query (e5 asymmetric prefix). Null (never a throw) on empty input
+ * or any failure; retrieval then takes the lexical path, which needs no
+ * embedder at all.
  * @param {Env} env
  * @param {Logger} log
- * @param {any} state
  * @param {string} query
  * @returns {Promise<Float32Array | null>}
  */
-async function embedQuery(env, log, state, query) {
+async function embedQuery(env, log, query) {
   try {
     if (!query.trim()) return null;
-    // Same query text, same vector — the reuse is only valid because both
-    // runners retrieve for retrievalQuery(userTexts), and it is checked rather
-    // than assumed so a future change to either side degrades to a fresh embed.
-    if (state?.retrievalQvec && state?.retrievalQuery === query) return state.retrievalQvec;
     const { vectors } = await embedTexts(env, [QUERY_PREFIX + query.slice(0, 2000)]);
     const qvec = vectors && vectors[0];
     return qvec && qvec.length ? qvec : null;
@@ -211,6 +200,36 @@ async function embedQuery(env, log, state, query) {
  */
 function userTexts(conversation) {
   return conversation.filter((m) => m.role === "user").map((m) => textOf(m.content));
+}
+
+/**
+ * THE TURN'S RETRIEVAL CONTEXT — the user texts, the query derived from them,
+ * and the vector it was embedded into, computed ONCE per request by whichever
+ * retrieval-using enrichment runs first (src/introspect.js when a mode carries
+ * the source; this runner otherwise).
+ *
+ * This exists because every enrichment appends its block to the last user
+ * message. A runner that recomputes its own query from the conversation it is
+ * handed therefore reads the PREVIOUS runner's block as part of the user's
+ * question — which here would be doubly wrong: the retrieval would rank OWASP
+ * paragraphs against an excerpt of this repository's own source, and the
+ * security-assessment gate would fire on a bare "owasp" the source injected
+ * rather than on anything the user typed.
+ *
+ * Fail-soft in both directions: no stash (this row ran first, or a frozen
+ * state) means compute it here, which is exactly the behaviour before the stash
+ * existed; a stash that is present is trusted only for the fields it actually
+ * carries.
+ * @param {any} state
+ * @param {Conversation} conversation
+ * @returns {{ texts: string[], query: string, qvec: Float32Array | null }}
+ */
+function retrievalContext(state, conversation) {
+  const stash = /** @type {any} */ (state)?.retrieval;
+  const texts = Array.isArray(stash?.texts) && stash.texts.length ? stash.texts : userTexts(conversation);
+  const query = typeof stash?.query === "string" && stash.query ? stash.query : retrievalQuery(texts);
+  const qvec = stash?.qvec && stash.query === query ? stash.qvec : null;
+  return { texts, query, qvec };
 }
 
 /**
@@ -233,25 +252,36 @@ export async function runOwaspContextEnrichment(c) {
     return /** @type {any} */ (conversation || []);
   }
 
-  /** @type {string[]} */
-  let texts = [];
+  // The texts and the query come from the turn's retrieval context (above), not
+  // from a fresh read of the conversation this runner was handed — see its
+  // header for why that distinction is load-bearing. `query` carries the same
+  // back-reference resolution the source retrieval uses: a bare "try again"
+  // names no subject, so it retrieves for the question it points back at.
+  /** @type {{ texts: string[], query: string, qvec: Float32Array | null }} */
+  let ctx;
   try {
-    texts = userTexts(conversation);
+    ctx = retrievalContext(c.state, conversation);
   } catch {
     return conversation;
   }
-  if (!texts.length) return conversation;
-  if (!texts.some((t) => securityAssessmentIntent(t))) return conversation;
+  if (!ctx.texts.length) return conversation;
+  if (!ctx.texts.some((t) => securityAssessmentIntent(t))) return conversation;
 
   const env = /** @type {any} */ (c.env) || {};
   const log = c.log || { info() {}, warn() {}, error() {}, debug() {} };
-  // The same back-reference resolution the source retrieval uses: a bare "try
-  // again" names no subject, so it retrieves for the question it points back at.
-  const queryText = retrievalQuery(texts);
+  const queryText = ctx.query;
 
   c.step?.(OWASP_CONTEXT_ID, "Retrieving the OWASP Top 10 reference…");
 
-  const qvec = await embedQuery(env, log, c.state, queryText);
+  const qvec = ctx.qvec || (await embedQuery(env, log, queryText));
+  // Stash it for anything that retrieves after this row — on a Cyber turn there
+  // is no source enrichment ahead of it, so this row is the one that owns the
+  // turn's query.
+  try {
+    const s = /** @type {any} */ (c.state);
+    if (s && !s.retrieval) s.retrieval = { texts: ctx.texts, query: queryText, qvec };
+  } catch { /* a frozen state costs one extra embed downstream, nothing else */ }
+
   const { retrieved, sources, mode } = await retrieveOwasp(env, log, qvec, queryText);
   const block = buildOwaspReferenceBlock(retrieved, sources);
   const cats = [...new Set(retrieved.map((r) => String(r.p).split(" ")[0]))];

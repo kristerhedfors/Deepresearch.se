@@ -17,6 +17,8 @@ import test, { describe } from "node:test";
 import {
   PERSON_RESEARCH_ID,
   personReferent,
+  personGuardrailsBlock,
+  personGuardrailsBlockWords,
   personResearchBlock,
   personResearchBlockWords,
   personResearchIntent,
@@ -483,6 +485,88 @@ describe("the methodology block", () => {
     // The one property the tail promises. Names in it would make the guidance
     // itself a source, which is exactly what USING THIS BLOCK forbids.
     assert.ok(!/\bJane\b|\bJohn\b|\bDoe\b/.test(block));
+  });
+});
+
+// ---- the guardrails-only block ----------------------------------------------
+//
+// The split of 2026-08-13. The OSINT tradecraft (PLAN, the SOURCE LADDER,
+// VERIFY, WRITE IT UP) follows the Cyber agent's declared `person-method`
+// context block; the GUARDRAILS are a PRIVACY RAIL and stay on every agent,
+// because the gate that fires is personResearchIntent and "who is this founder"
+// reaches every agent there is. An agent that lost the rail would be worse off
+// than one that never had the method (CLAUDE.md invariant 4).
+
+describe("the guardrails-only block", () => {
+  const full = personResearchBlock();
+  const rail = personGuardrailsBlock();
+
+  test("is a constant, like its full sibling", () => {
+    assert.equal(personGuardrailsBlock(), rail);
+    assert.equal(personGuardrailsBlockWords(), rail.split(/\s+/u).filter(Boolean).length);
+  });
+
+  test("carries EVERY prohibition and both positive obligations", () => {
+    // The list is the reason the rail is unconditional, so it is asserted here
+    // in full rather than by spot check — a prohibition quietly moved into the
+    // method half would silently stop applying to every non-Cyber agent.
+    for (const forbidden of [
+      /public professional information only/i,
+      /profile the subject might publish themselves/,
+      /home address/,
+      /personal phone/,
+      /personal email/,
+      /national identity number \(personnummer, SSN\)/,
+      /family, relationships or children/,
+      /ethnicity, health, religion, politics, sexuality/,
+      /ASSEMBLING facts whose combination would disclose one/,
+      /exact date of birth/,
+      /criminal, litigation or credit history/,
+      /de-anonymisation of a pseudonymous account/,
+      /face matching or reverse image search/,
+      /non-public systems or paywalled records/,
+      /no contact with the subject or their colleagues under any pretext/,
+      /a founder is not automatically a public figure/,
+      /need the subject's comment before anyone acts on them/,
+      /never infer character, competence or motive/,
+      /never read a gap in the record as a red flag/,
+    ]) {
+      assert.match(rail, forbidden);
+    }
+  });
+
+  test("carries NONE of the tradecraft", () => {
+    for (const heading of ["PLAN.", "SOURCE LADDER", "LADDER RULE", "MEDIA AND CREATOR SUBJECTS",
+      "VERIFY.", "WRITE IT UP."]) {
+      assert.equal(rail.includes(heading), false, `the rail must not carry ${heading}`);
+    }
+  });
+
+  test("is self-explaining — its own heading and the house tail", () => {
+    assert.match(rail, /^PERSON RESEARCH LIMITS/);
+    assert.match(rail, /This is a limit on the answer, not evidence/);
+    assert.match(rail, /USING THIS BLOCK:/);
+    assert.ok(rail.trim().endsWith("let the report show the difference."));
+  });
+
+  test("shares its text with the full block rather than duplicating it", () => {
+    // One source of truth: the guardrail paragraph and the tail are the SAME
+    // strings in both blocks, so a wording change cannot apply to one half only.
+    const guardrails = rail.split("\n").find((l) => l.startsWith("GUARDRAILS"));
+    assert.ok(guardrails && full.includes(guardrails));
+    const tail = rail.slice(rail.indexOf("USING THIS BLOCK:"));
+    assert.ok(full.includes(tail));
+  });
+
+  test("is far cheaper than the full block — it rides on every agent", () => {
+    const words = personGuardrailsBlockWords();
+    assert.ok(words >= 180, `rail is ${words} words — too thin to carry the limits`);
+    assert.ok(words <= 400, `rail is ${words} words — it costs this on every person turn, on every agent`);
+    assert.ok(words < personResearchBlockWords());
+  });
+
+  test("names no individual and asserts no fact about anyone", () => {
+    assert.ok(!/\bJane\b|\bJohn\b|\bDoe\b/.test(rail));
   });
 });
 
