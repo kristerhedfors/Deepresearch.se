@@ -120,8 +120,9 @@ may select nothing server-only; a declared gate must carry EN and SV), and
 CHARACTERIZES the mode routing, including the acceptance test that a sixth
 agent added only as registry data routes with no code change —
 `agent-registry.js` (the per-binding registry cache, every failure path
-degrading to null, and the guard that keeps the snapshot off the plain
-Deep Research turn's hot path), `prompt-sets.js` (the prompt-set binding,
+degrading to null, and both load routes — the small dedicated
+`public/introspect/agents.json` artifact first, the source snapshot as the
+fallback), `prompt-sets.js` (the prompt-set binding,
 identity-checked against the shipped builders so a re-pointed prompt fails
 the suite rather than a request, plus totality: no state can leave a phase
 without a prompt), `agent-link.js` (the share-link mint against a mocked
@@ -1271,10 +1272,13 @@ instead of erroring.
 > made `cachedChatMode()` default to **introspection**, so specs asserting
 > the ordinary chat surface were driving a different mode; the mode collapse
 > (2026-07-26) removed that failure mode at the root — there is one mode
-> value now, and it defaults to Deep Research. `openApp` patches the
-> `/api/settings` GET to `bash_lite_mcp: false, chat_mode: "normal"` and
-> pins the matching `dr_chat_mode` cache; pass `{ sandbox: true }` to opt
-> back in, or `{ chatMode: "introspection" }` to drive another mode. A spec that
+> value now. `openApp` patches the `/api/settings` GET to
+> `bash_lite_mcp: false, chat_mode: "science"` and pins the matching
+> `dr_chat_mode` cache; pass `{ sandbox: true }` to opt back in, or
+> `{ chatMode: "introspection" }` to drive another mode. The default was
+> `"normal"` until the general agent was retired (2026-08-13); a spec needing
+> open-web research now has to name a mode, because Deep Science does not
+> search the web. A spec that
 > mocks `/api/settings` ITSELF must pass `{ pinSettings: false }` — routes
 > match last-registered-first, so `openApp`'s handler would shadow it.
 

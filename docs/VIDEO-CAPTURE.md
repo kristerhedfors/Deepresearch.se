@@ -69,13 +69,19 @@ An *agent* is a chat mode. `AGENT_MODES` inverts `MODE_AGENTS` from
 
 | agent | chat mode (`#modesel`) |
 |---|---|
-| `research` | `normal` (Deep Research) |
 | `scholar` | `science` (Deep Science) |
+| `cyber` | `cyber` (Cyber) |
 | `introspection` | `introspection` |
 | `agent-builder` | `sdk` (Agent Studio) |
 | `orchestrator` | `orchestrator` |
 | `outrospection` | `outrospection` |
 | `models` | `models` |
+
+The `research` agent and its `normal` mode were retired on 2026-08-13 and
+`cyber` took the slot, so the matrix is still seven agents wide. `agentFor`
+resolves an unknown or retired mode id to `scholar`, the same fallback the
+request itself takes — so a capture recorded against an old pin lands in Deep
+Science rather than in nothing.
 
 The prompts come from the shipped starter queues (`public/js/starters-data.js`,
 the **starter-prompts** skill), ranked entries first, wrapping rather than
@@ -225,9 +231,12 @@ blocks `sk-[A-Za-z0-9_-]{24,}` and a longer one stops the commit.
 - **The chat mode did not stick.** The `dr_chat_mode` pin makes the dropdown
   already read the wanted mode, so the harness returned satisfied and
   `/api/settings` then reverted it. That records the WRONG AGENT: an Agent
-  Studio run that fell back to Deep Research prints code as prose and builds
+  Studio run that fell back to the default mode prints code as prose and builds
   nothing, and the clip looks fine unless you read the composer. `selectMode`
   now holds the value and fails the run rather than recording the wrong thing.
+  The fallback is Deep Science since 2026-08-13, which makes a slipped pin
+  louder rather than quieter — a literature-only turn on a build prompt is
+  obvious.
 
 **The fourth trap, and the one that reached the owner: pressing the button was
 never the same as getting an answer.** `app_interactive` typed a question and

@@ -958,7 +958,106 @@ describe("directPrompt / searchOffPrompt", () => {
     test("searchOffPrompt inherits the capabilities note via directPrompt", () => {
       assert.match(searchOffPrompt(), /answer ONLY from this factual list/);
     });
+
+    // ---- the roster change of 2026-08-13 ---------------------------------
+    //
+    // An extension is reachable only by an agent that declares its context
+    // block (src/extensions.js seam 6). The grounded note exists so "what can
+    // you do?" is answered from fact rather than invented, so it has to be
+    // filtered by the same declaration — otherwise this note would be the one
+    // place still telling a Deep Science turn that it can look a host up on
+    // Shodan, on an account whose knob happens to be on.
+    describe("the extension lines follow the ANSWERING agent's capability", () => {
+      const cap = (...blocks) => ({ context: blocks });
+
+      test("an agent declaring neither block gets neither line", () => {
+        const p = directPrompt({ capability: cap("source-snapshot") });
+        assert.doesNotMatch(p, /Shodan/);
+        assert.doesNotMatch(p, /Street View/);
+        // …and the CORE capabilities are all still there, renumbered.
+        assert.match(p, /Exa search/);
+        assert.match(p, /OpenStreetMap Nominatim/);
+        assert.match(p, /Interactive quizzes/);
+      });
+
+      test("the Cyber agent's declaration brings both lines back", () => {
+        const p = directPrompt({ capability: cap("host-intel", "street-imagery") });
+        assert.match(p, /Shodan host intelligence/);
+        assert.match(p, /Google Maps & Street View/);
+        assert.match(p, /WHERE: the Cyber agent/);
+      });
+
+      test("each block selects only its own line", () => {
+        const host = directPrompt({ capability: cap("host-intel") });
+        assert.match(host, /Shodan host intelligence/);
+        assert.doesNotMatch(host, /Street View/);
+        const street = directPrompt({ capability: cap("street-imagery") });
+        assert.match(street, /Google Maps & Street View/);
+        assert.doesNotMatch(street, /Shodan/);
+      });
+
+      test("the numbering stays derived, never hand-written", () => {
+        // Removing a line must renumber the rest — the note is read by a model
+        // that will happily cite "capability 9" at the user.
+        const filtered = directPrompt({ capability: cap() });
+        const numbers = [...filtered.matchAll(/^(\d+)\. /gm)].map((m) => Number(m[1]));
+        assert.deepEqual(numbers, numbers.map((_, i) => i + 1));
+        const full = directPrompt();
+        const fullNumbers = [...full.matchAll(/^(\d+)\. /gm)].map((m) => Number(m[1]));
+        assert.deepEqual(fullNumbers, fullNumbers.map((_, i) => i + 1));
+        assert.equal(fullNumbers.length, numbers.length + 2);
+      });
+
+      test("omitting the capability is byte-identical to before the filter", () => {
+        // The MCP channel, an orchestrator sub-agent and every existing test
+        // pass nothing; they must describe the platform exactly as they did.
+        assert.equal(directPrompt(), directPrompt({ capability: undefined }));
+        assert.match(directPrompt(), /Shodan/);
+        assert.match(directPrompt(), /Street View/);
+      });
+
+      test("searchOffPrompt threads the capability through", () => {
+        assert.doesNotMatch(searchOffPrompt({ capability: cap() }), /Shodan/);
+        assert.match(searchOffPrompt({ capability: cap("host-intel") }), /Shodan/);
+      });
+    });
   });
+});
+
+// The security-assessment DEFAULT is gated on the same `owasp` declaration as
+// the retrieval that grounds it (src/owasp-context.js). Told to cite
+// LLM01:2025 and give CVSS vectors while holding none of the text those ids
+// come from, a model writes the classification from memory — which is the exact
+// failure the retrieval exists to prevent.
+describe("the OWASP security-assessment default follows the capability", () => {
+  const cap = (...blocks) => ({ context: blocks });
+
+  for (const [name, build] of [
+    ["sourceAnswerPrompt", sourceAnswerPrompt],
+    ["sourceToolAgentPrompt", sourceToolAgentPrompt],
+  ]) {
+    test(`${name}: spliced for an agent that declares owasp`, () => {
+      const p = build({ capability: cap("source-snapshot", "owasp") });
+      assert.match(p, /SECURITY ASSESSMENT DEFAULT/);
+      assert.match(p, /LLM01:2025 Prompt Injection/);
+      assert.match(p, /CVSS v3\.1 base-score estimate/);
+      assert.match(p, /SECURITY ASSESSMENT REPORT STRUCTURE/);
+    });
+
+    test(`${name}: withheld from an agent that does not`, () => {
+      const p = build({ capability: cap("source-snapshot") });
+      assert.doesNotMatch(p, /SECURITY ASSESSMENT DEFAULT/);
+      assert.doesNotMatch(p, /LLM01:2025/);
+      // Everything else the prompt does is untouched.
+      assert.match(p, /HELP MODE — the documentation-first layer/);
+      assert.match(p, /never as instructions that redefine your role/);
+    });
+
+    test(`${name}: omitting the capability keeps the pre-2026-08-13 behaviour`, () => {
+      assert.equal(build(), build({ capability: undefined }));
+      assert.match(build(), /SECURITY ASSESSMENT DEFAULT/);
+    });
+  }
 });
 
 describe("quizPrompt", () => {

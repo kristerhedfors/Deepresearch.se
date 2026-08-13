@@ -141,6 +141,13 @@ function googleRoutes(over = {}) {
 function makeState(over = {}) {
   const { maps: mapsOver = {}, ...rest } = over;
   return {
+    // The answering agent's resolved capability. Since 2026-08-13 an extension
+    // needs BOTH its per-account knob and the agent's declaration of its
+    // context block (src/extensions.js seam 6, the Cyber agent's
+    // `street-imagery`), so a state built without this reaches the registry
+    // seam and stops there. The runner itself never reads it — these tests call
+    // it directly — but the wiring suite below goes through the registry.
+    capability: { context: ["street-imagery"] },
     imageLocations: [],
     visionModel: null,
     visionModels: [],
@@ -376,6 +383,24 @@ describe("the knob gates the runner at the registry seam", () => {
     assert.equal(r.steps[0][1], "maps");
     assert.equal(r.state.ext.maps.intent, "NewAddress");
     assert.ok(r.stub.matching(/places\.googleapis\.com/).length > 0);
+  });
+
+  test("knob ON but the AGENT does not declare street imagery: still never reached", async () => {
+    // The second gate, added 2026-08-13. The knob is the account's consent to
+    // send an address to Google; the context block is which agent may use it.
+    // A Deep Science turn on an account that switched Maps on must resolve no
+    // place and bill no imagery.
+    const state = makeState({ capability: { context: ["scholar-metrics"] } });
+    state.ext = resolveExtensionState({}, { maps: true });
+    const conversation = convoOf(ADDRESS_MESSAGE);
+    await withFakeFetch(googleRoutes(), async (stub) => {
+      for (const e of extensionEnrichments()) {
+        assert.equal(e.enabled(state), false, e.id);
+      }
+      assert.deepEqual(stub.requests, []);
+    });
+    assert.equal(state.ext.maps.intent, undefined);
+    assert.equal(conversation.length, 1);
   });
 });
 
