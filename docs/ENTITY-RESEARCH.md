@@ -80,19 +80,25 @@ this document describes — subject disambiguation plus the depth-scaled dossier
 scaffold — is one of the capabilities the new `cyber` agent owns exclusively. It
 is declared as the context block **`entity-method`**
 (`public/js/agent-spec-core.js` `CONTEXT_BLOCKS`) and listed in that agent's
-`capability.context` in `sdk/AGENTS.json`. The mechanism is the one the
-ancient-sample corpus and the Scholar metrics leg already use:
-`capHasContext(state.capability, "entity-method")` at the registry row, so no
-mode flag and no settings toggle is involved and removing the agent from
-`sdk/AGENTS.json` removes the capability.
+`capability.context` in `sdk/AGENTS.json`, and read at the registry row:
 
-> Status note (2026-08-13): the declaration is in the registry and the
-> vocabulary; the registry row in `src/enrichment.js` still reads
-> `enabled: () => true`, so on the tree as it stands the method block is
-> appended for any agent whose turn matches the gate. Its sibling
-> `person_research` is the pattern to follow — that row is deliberately
-> unconditional too, and the split is made inside the runner (see
-> `docs/PERSON-RESEARCH.md`).
+```js
+enabled: (state) => capHasContext(state.capability, "entity-method"),
+```
+
+So the row's old `enabled: () => true` is gone. No mode flag and no settings
+toggle is involved, and removing the agent from `sdk/AGENTS.json` removes the
+capability. The intent gate still decides inside the runner, which is why an
+agent that holds the block is silent on every non-dossier turn.
+
+Nothing here is kept unconditional, and that is the difference from its
+neighbour. The person-research block asserts a **limit** on what may be reported
+about a human being, so losing it makes an answer worse than never having had it
+(`docs/PERSON-RESEARCH.md` §3.0). This block asserts no limit — it decides how to
+resolve a subject and how long the report should be, which is exactly the kind
+of domain method a declaration is for. An agent that does not declare it answers
+an OSINT question the way it answered every other question: a less careful
+report, and nothing worse.
 
 A firing turn emits the SSE step `entity_research` ("Applying the
 entity-research method…", then "Entity-research method applied") whose finished

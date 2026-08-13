@@ -72,8 +72,10 @@ never learn which agent or which service it belongs to:
 
 - **Enrichments** — `src/enrichment.js`, one row per capability:
   `enabled: (state) => capHasContext(state.capability, "<block>")`. That is how
-  `owasp` runs, and it is the pattern the ancient-sample corpus and the Scholar
-  metrics leg already used.
+  `owasp` and `entity_research` run, and it is the pattern the ancient-sample
+  corpus and the Scholar metrics leg already used. The extension rows get the
+  same treatment generically through `extensionEnrichments()`, which ANDs the
+  descriptor's `enabled` with `capHasContext(state.capability, e.contextBlock)`.
 - **Search sources** — `src/search-sources.js`, the `requiresContext` field on
   a registry entry, honoured by `sourceAllowed` in `src/pipeline.js`. Cyber
   declares no literature block, so the literature legs do not fire for it.
@@ -178,12 +180,16 @@ claim that rots silently: nothing fails when a future spec quietly adds
 the shipped registry and asserts which agents declare each block, so widening
 ownership is a deliberate edit to a named assertion instead of an accident.
 
-> Status note (2026-08-13): the guards are specified as
-> `src/cyber-exclusivity.test.js` and its literature sibling
-> `src/literature-exclusivity.test.js` (the latter is already referenced from
-> `src/search-sources.js` and `src/scholar-metrics.js`). Verify they are present
-> before relying on them; if a suite is missing, that is the first thing to
-> write, not a reason to skip the check.
+The literature half of the same idea is `src/literature-exclusivity.test.js`,
+which is the model to copy: it asserts the pairing from **both** ends — exactly
+which agents may hold each block, and what a real resolved capability can
+actually reach — and it pins the fail-soft null-capability hole on purpose.
+
+> Status note (2026-08-13): `src/cyber-exclusivity.test.js` is named by
+> `src/extensions.test.js` (the uniqueness assertion on `contextBlock` exists so
+> that guard can work) but was not in the tree when this skill was written.
+> Check for it; if it is still missing, writing it is the first thing to do, not
+> a reason to skip the check.
 
 Also check, when changing anything here:
 
