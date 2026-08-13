@@ -50,7 +50,7 @@ import {
 // A minimal well-formed create body, spread and overridden per test.
 const CREATE = {
   label: "Deep Research answers a geothermal question",
-  agent: "research",
+  agent: "cyber",
   model: "mistral-small",
   prompt: "How much of Iceland's electricity comes from geothermal?",
   duration_ms: 8_400,
@@ -130,11 +130,11 @@ test("shape and wait mode: absent stays null, unknown falls back", () => {
 
 test("captureSlug derives a readable, filesystem-safe identity", () => {
   assert.equal(
-    captureSlug({ agent: "research", model: "Mistral Small 3.1", starter: "geo-01" }),
-    "research__mistral-small-3-1__geo-01",
+    captureSlug({ agent: "cyber", model: "Mistral Small 3.1", starter: "geo-01" }),
+    "cyber__mistral-small-3-1__geo-01",
   );
   // No starter: the label stands in, so a hand-made row still has an identity.
-  assert.equal(captureSlug({ agent: "research", model: "m", label: "A clip!" }), "research__m__a-clip");
+  assert.equal(captureSlug({ agent: "cyber", model: "m", label: "A clip!" }), "cyber__m__a-clip");
   assert.equal(captureSlug({ agent: "", model: "", starter: "" }), "capture");
   assert.ok(captureSlug({ agent: "a".repeat(200), model: "b".repeat(200) }).length <= CAPTURE_CAPS.slug);
 });
@@ -150,7 +150,7 @@ test("captureTag spells the increasing series the way the owner says it", () => 
 });
 
 test("deriveCaptureName derives a short name from the starter id, no network, no model", () => {
-  assert.equal(deriveCaptureName({ agent: "research", starter: "res-sv-elpris" }), "Elpris");
+  assert.equal(deriveCaptureName({ agent: "cyber", starter: "res-sv-elpris" }), "Elpris");
   assert.equal(deriveCaptureName({ agent: "scholar", starter: "sch-vitamin-d" }), "Vitamin D");
   assert.equal(deriveCaptureName({ agent: "introspection", starter: "int-pipeline" }), "Pipeline");
   // Capped at four words, however long the id is.
@@ -165,7 +165,7 @@ test("deriveCaptureName derives a short name from the starter id, no network, no
 
 test("deriveCaptureName falls back to the prompt, and is never empty", () => {
   assert.equal(
-    deriveCaptureName({ agent: "research", prompt: "how much geothermal electricity does Iceland use" }),
+    deriveCaptureName({ agent: "cyber", prompt: "how much geothermal electricity does Iceland use" }),
     "how much geothermal electricity",
   );
   assert.equal(deriveCaptureName({}), "Untitled capture");
@@ -207,7 +207,7 @@ test("validateCaptureCreate: the happy path trims, defaults the slug, keeps the 
     ...CREATE,
     label: "  A clip  ",
     starter: "geo-01",
-    mode: "normal",
+    mode: "cyber",
     lang: "en",
     shape: "square",
     source_ms: 41_000,
@@ -222,7 +222,7 @@ test("validateCaptureCreate: the happy path trims, defaults the slug, keeps the 
   });
   assert.equal(v.error, undefined);
   assert.equal(v.entry.label, "A clip");
-  assert.equal(v.entry.slug, "research__mistral-small__geo-01");
+  assert.equal(v.entry.slug, "cyber__mistral-small__geo-01");
   assert.equal(v.entry.shape, "square");
   assert.equal(v.entry.wait_mode, "speed");
   assert.equal(v.entry.speed, 1.5);
@@ -369,8 +369,8 @@ test("projectCaptureVersion returns each version's own edit report", () => {
 test("captureQueueStatus counts the deficit against the target of twenty", () => {
   assert.equal(CAPTURE_QUEUE_TARGET, 20);
   const rows = [
-    { agent: "research", starter: "res-a", status: "new" },
-    { agent: "research", starter: "res-b", status: "new" },
+    { agent: "cyber", starter: "res-a", status: "new" },
+    { agent: "cyber", starter: "res-b", status: "new" },
     { agent: "scholar", starter: "sch-a", status: "liked" },
     { agent: "scholar", starter: "sch-b", status: "needs_work" },
     { agent: "introspection", starter: "int-a", status: "new" },
@@ -379,7 +379,7 @@ test("captureQueueStatus counts the deficit against the target of twenty", () =>
   assert.equal(s.target, 20);
   assert.equal(s.unanswered, 3); // only `new` is on the deck
   assert.equal(s.deficit, 17);
-  assert.deepEqual(s.by_agent, { research: 2, introspection: 1 });
+  assert.deepEqual(s.by_agent, { cyber: 2, introspection: 1 });
   // A full deck asks for nothing, and never a negative number.
   assert.equal(captureQueueStatus(new Array(25).fill({ agent: "a", status: "new" })).deficit, 0);
   assert.equal(captureQueueStatus([], { target: 4 }).deficit, 4);
@@ -387,21 +387,21 @@ test("captureQueueStatus counts the deficit against the target of twenty", () =>
 
 test("captureQueueStatus's `used` list is every (agent, starter) already captured", () => {
   const rows = [
-    { agent: "research", starter: "res-a", status: "new" },
-    { agent: "research", starter: "res-a", status: "archived" }, // same pair, once
-    { agent: "research", starter: "res-b", status: "liked" }, // answered but SPOKEN FOR
+    { agent: "cyber", starter: "res-a", status: "new" },
+    { agent: "cyber", starter: "res-a", status: "archived" }, // same pair, once
+    { agent: "cyber", starter: "res-b", status: "liked" }, // answered but SPOKEN FOR
     { agent: "scholar", starter: "res-a", status: "new" }, // same starter, other agent
-    { agent: "research", starter: null, status: "new" }, // nothing to de-duplicate on
+    { agent: "cyber", starter: null, status: "new" }, // nothing to de-duplicate on
   ];
   const s = captureQueueStatus(rows);
   assert.deepEqual(s.used, [
-    { agent: "research", starter: "res-a" },
-    { agent: "research", starter: "res-b" },
+    { agent: "cyber", starter: "res-a" },
+    { agent: "cyber", starter: "res-b" },
     { agent: "scholar", starter: "res-a" },
   ]);
   // Named agents with nothing in the queue read as a gap, not an absent key.
-  const seeded = captureQueueStatus(rows, { agents: ["research", "scholar", "orchestrator"] });
-  assert.deepEqual(seeded.by_agent, { research: 2, scholar: 1, orchestrator: 0 });
+  const seeded = captureQueueStatus(rows, { agents: ["cyber", "scholar", "orchestrator"] });
+  assert.deepEqual(seeded.by_agent, { cyber: 2, scholar: 1, orchestrator: 0 });
   // An agent id is data off a row: it must be a counter, never a prototype.
   const poisoned = captureQueueStatus([{ agent: "__proto__", starter: "x", status: "new" }]);
   assert.equal(poisoned.by_agent.__proto__, 1);
@@ -471,10 +471,10 @@ const ROW = {
   id: 7,
   created_at: 1_700_000_000_000,
   updated_at: 1_700_000_001_000,
-  slug: "research__mistral-small__geo-01",
+  slug: "cyber__mistral-small__geo-01",
   label: "Geothermal",
-  agent: "research",
-  mode: "normal",
+  agent: "cyber",
+  mode: "cyber",
   model: "mistral-small",
   prompt: "How much of Iceland's electricity comes from geothermal?",
   starter: "geo-01",
@@ -532,7 +532,7 @@ test("projectCapture survives null/absent optional columns", () => {
     updated_at: 0,
     slug: "s",
     label: "L",
-    agent: "research",
+    agent: "cyber",
     model: "m",
     prompt: "p",
     status: "new",
@@ -614,8 +614,8 @@ test("formatCapturesText renders the run, the prompt, the edit and every note", 
   const txt = formatCapturesText([p]);
   assert.match(txt, /── #CAP-7 \[new\] Geothermal/);
   assert.match(txt, /THREAD: v1 · UNANSWERED/);
-  assert.match(txt, /RUN: research · mistral-small/);
-  assert.match(txt, /mode normal/);
+  assert.match(txt, /RUN: cyber · mistral-small/);
+  assert.match(txt, /mode cyber/);
   assert.match(txt, /PROMPT: How much of Iceland/);
   assert.match(txt, /EDIT: 8s final · 41s recorded · 30s cut · 1\.5x · waits speed/);
   assert.match(txt, /VIDEO: \/api\/admin\/captures\/7\/video \(3 MB\) · 1080x1350 · poster/);
@@ -697,8 +697,8 @@ function fakeDb(seed = [], seedVersions = []) {
     commit_sha: null,
     version: 1,
     answered_at: null,
-    agent: "research",
-    mode: "normal",
+    agent: "cyber",
+    mode: "cyber",
     model: "m",
     prompt: "p",
     starter: null,
@@ -945,9 +945,9 @@ async function call(db, method, path, body, extraEnv = {}) {
 
 test("GET /captures lists newest first; ?queue=1 is the un-swiped deck", async () => {
   const db = fakeDb([
-    { label: "one", status: "liked", agent: "research", model: "a" },
+    { label: "one", status: "liked", agent: "cyber", model: "a" },
     { label: "two", status: "new", agent: "scholar", model: "b" },
-    { label: "three", status: "new", agent: "research", model: "b" },
+    { label: "three", status: "new", agent: "cyber", model: "b" },
   ]);
   const all = await call(db, "GET", "/api/admin/captures");
   assert.equal(all.res.status, 200);
@@ -957,7 +957,7 @@ test("GET /captures lists newest first; ?queue=1 is the un-swiped deck", async (
   const queue = await call(db, "GET", "/api/admin/captures?queue=1");
   assert.deepEqual(queue.json.captures.map((c) => c.label), ["three", "two"]);
 
-  const byAgent = await call(db, "GET", "/api/admin/captures?agent=research&status=new");
+  const byAgent = await call(db, "GET", "/api/admin/captures?agent=cyber&status=new");
   assert.deepEqual(byAgent.json.captures.map((c) => c.label), ["three"]);
 
   const byModel = await call(db, "GET", "/api/admin/captures?model=b");
@@ -1450,8 +1450,8 @@ test("the FIRST verdict stamps answered_at and no later one moves it", async () 
 
 test("GET /captures/queue-status reports the deficit, the spread and the used pairs", async () => {
   const db = fakeDb([
-    { label: "a", agent: "research", starter: "res-a", status: "new" },
-    { label: "b", agent: "research", starter: "res-b", status: "liked" },
+    { label: "a", agent: "cyber", starter: "res-a", status: "new" },
+    { label: "b", agent: "cyber", starter: "res-b", status: "liked" },
     { label: "c", agent: "scholar", starter: "sch-a", status: "new" },
   ]);
   const s = await call(db, "GET", "/api/admin/captures/queue-status");
@@ -1460,17 +1460,17 @@ test("GET /captures/queue-status reports the deficit, the spread and the used pa
   assert.equal(s.json.target, 20);
   assert.equal(s.json.unanswered, 2);
   assert.equal(s.json.deficit, 18);
-  assert.deepEqual(s.json.by_agent, { research: 1, scholar: 1 });
+  assert.deepEqual(s.json.by_agent, { cyber: 1, scholar: 1 });
   // Newest first, like every other list here. A liked capture's prompt is
   // still spoken for — the top-up must not silently re-record it as if it
   // were new.
   assert.deepEqual(s.json.used, [
     { agent: "scholar", starter: "sch-a" },
-    { agent: "research", starter: "res-b" },
-    { agent: "research", starter: "res-a" },
+    { agent: "cyber", starter: "res-b" },
+    { agent: "cyber", starter: "res-a" },
   ]);
 
-  const seeded = await call(db, "GET", "/api/admin/captures/queue-status?target=3&agents=research,orchestrator");
+  const seeded = await call(db, "GET", "/api/admin/captures/queue-status?target=3&agents=cyber,orchestrator");
   assert.equal(seeded.json.target, 3);
   assert.equal(seeded.json.deficit, 1);
   assert.equal(seeded.json.by_agent.orchestrator, 0);

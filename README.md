@@ -55,23 +55,32 @@ which tools it may reach under Settings → MCP server ([setup
 instructions](https://mcp.deepresearch.se/)).
 
 The chat itself has seven **modes**, each a pre-bundled agent over the same
-platform: Deep Research (the default), Deep Science (answering only from the
-peer-reviewed literature, with citations annotated by the venue's own h5-index
-where Google Scholar ranks it), Introspection (the site answering
-questions about its own deployed source), Agent Studio (distilling this site
-into a new agent or platform and publishing it live), Orchestrator (one plan
-phase decomposing a request into a team of sub-agents run in parallel waves),
-Outrospection (answers from an outward feed of what everyone else is building)
-and Models (browsing an open model catalog, priced, and enabling models per
-account).
+platform, and every one of them names a domain — there is no general mode:
+Deep Science (the default; answers only from the peer-reviewed literature, with
+citations annotated by the venue's own h5-index where Google Scholar ranks it),
+Cyber (cybersecurity and OSINT — what a host exposes, what a place looks like
+from the street, and the OWASP reference for an assessment), Introspection (the
+site answering questions about its own deployed source), Agent Studio
+(distilling this site into a new agent or platform and publishing it live),
+Orchestrator (one plan phase decomposing a request into a team of sub-agents run
+in parallel waves), Outrospection (answers from an outward feed of what everyone
+else is building) and Models (browsing an open model catalog, priced, and
+enabling models per account).
+
+Each mode's agent declares what it may reach, and the platform enforces the
+declaration rather than trusting a keyword to route well: the scientific
+corpora belong to Deep Science, the outward-facing intelligence belongs to
+Cyber, and a request that names no mode is answered by Deep Science.
 
 ```
 browser / PWA / MCP client ── Google OIDC session ──> Worker (src/index.js)
     ├── static UI            public/ (env.ASSETS)
     ├── POST /api/chat       src/chat.js → src/pipeline.js
+    │     ├── agent routing  src/agent-registry.js (sdk/AGENTS.json) → the turn's capability
     │     ├── LLMs           src/providers.js → berget.js | anthropic.js | openai.js | hf-inference.js
     │     ├── web search     src/exa.js | src/websearch-cf.js
-    │     │                  (+ src/search-sources.js: hf.js, arxiv.js, europepmc.js, scholar.js)
+    │     │                  (+ src/search-sources.js: hf.js, arxiv.js, europepmc.js, scholar.js
+    │     │                     — the literature legs gated on the agent's declared context)
     │     └── enrichments    src/enrichment.js (via src/extensions.js: shodan.js, maps-enrichment.js)
     ├── POST /mcp            src/mcp.js (deep_research + literature_* + sdk_* tools; MCP key or session)
     ├── POST /api/exec/*     src/exec-container.js (DREE/1 → one container per session)
@@ -126,9 +135,11 @@ builds an entire DeepResearch.se-like **platform**.
 
 - **DeepResearch Agents SDK** — build an individual **agent**: a flavour of this
   platform defined by its chat-input-pane controls, intro and loading
-  animations, colour theme, example questions, and the quota a shared link
-  carries. An agent is data, not code (`sdk/AGENTS.json`,
-  `public/js/agent-spec-core.js`) — copy one spec, change those five things,
+  animations, colour theme, example questions, the quota a shared link carries,
+  and — its **capability block** — what the agent may actually reach: which
+  answer phase runs, which retrieval blocks and corpora it may consult, its
+  search and routing policy. An agent is data, not code (`sdk/AGENTS.json`,
+  `public/js/agent-spec-core.js`) — copy one spec, change those fields,
   validate. This SDK is built for its two home surfaces: **Agent Studio** (the
   chat mode that turns a description into a published agent at `/app/<slug>/`,
   through its direct build tools `write_file`/`publish_app`) and the
@@ -146,14 +157,14 @@ builds an entire DeepResearch.se-like **platform**.
 
 Both SDKs are wired into the app. Their shared core `public/js/sdk-core.js`
 (server façade `src/sdk-tools.js`) powers **Agent Studio**, the green chat mode
-alongside Deep Research and Introspection, which distils this site — the Se/cure
-tier above all — into either a new individual agent *or* an entire new platform,
-and publishes it live at `/app/<slug>/`. The CLI, the server pipeline
+alongside Deep Science, Cyber and Introspection, which distils this site — the
+Se/cure tier above all — into either a new individual agent *or* an entire new
+platform, and publishes it live at `/app/<slug>/`. The CLI, the server pipeline
 (`src/pipeline.js`), and the `/mcp` `sdk_*` tools all read that one manifest
 core, so they stay in sync by construction.
 
 - **`docs/AGENT-PLATFORM.md`** — the Agents SDK reference: the AgentSpec, the
-  four shipped agents, the visual proof, and the metered share-link token.
+  ten shipped agents, the visual proof, and the metered share-link token.
 - **`docs/DISTILLSDK.md`** — the Platform SDK reference: the platform
   abstraction, capability classes, contracts PA-1…PA-10, the full module
   catalog, the CLI, and the implementation order.

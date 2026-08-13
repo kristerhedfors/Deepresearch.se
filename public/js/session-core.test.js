@@ -54,7 +54,7 @@ function regOf(...recs) {
 
 /** A session with an in-flight answer started `ago` ms before NOW. */
 function withPending(sid, { ago = 1000, held = null, heldAt = NOW, now = NOW } = {}) {
-  const rec = blankSession({ sid, agent: "normal", now });
+  const rec = blankSession({ sid, agent: "science", now });
   return {
     ...rec,
     pending: { convId: "c-" + sid, requestId: "r-" + sid, startedAt: now - ago, model: "m", budgetS: 60, webSearch: true },
@@ -176,10 +176,10 @@ describe("parseRegistry / serializeRegistry", () => {
   });
 
   test("round-trips records and drops individually unreadable ones", () => {
-    const reg = regOf(blankSession({ sid: "s1", agent: "normal", now: NOW }));
+    const reg = regOf(blankSession({ sid: "s1", agent: "science", now: NOW }));
     const back = parseRegistry(serializeRegistry(reg));
     assert.deepEqual(Object.keys(back.sessions), ["s1"]);
-    assert.equal(back.sessions.s1.agent, "normal");
+    assert.equal(back.sessions.s1.agent, "science");
 
     const mixed = JSON.stringify({
       v: SESSION_SCHEMA_V,
@@ -193,7 +193,7 @@ describe("parseRegistry / serializeRegistry", () => {
 
 describe("registry mutators are immutable", () => {
   test("putSession / dropSession / touchSession never mutate their input", () => {
-    const rec = blankSession({ sid: "s1", agent: "normal", now: NOW });
+    const rec = blankSession({ sid: "s1", agent: "science", now: NOW });
     const reg = regOf(rec);
     const snapshot = serializeRegistry(reg);
 
@@ -209,7 +209,7 @@ describe("registry mutators are immutable", () => {
   });
 
   test("touchSession stamps updatedAt and cannot rewrite the id", () => {
-    const reg = regOf(blankSession({ sid: "s1", agent: "normal", now: NOW }));
+    const reg = regOf(blankSession({ sid: "s1", agent: "science", now: NOW }));
     const next = touchSession(reg, "s1", { agent: "sdk", sid: "hacked" }, NOW + 500);
     assert.equal(getSession(next, "s1").agent, "sdk");
     assert.equal(getSession(next, "s1").sid, "s1");
@@ -218,19 +218,19 @@ describe("registry mutators are immutable", () => {
   });
 
   test("dropSession on a missing session returns the same registry", () => {
-    const reg = regOf(blankSession({ sid: "s1", agent: "normal", now: NOW }));
+    const reg = regOf(blankSession({ sid: "s1", agent: "science", now: NOW }));
     assert.equal(dropSession(reg, "nope"), reg);
   });
 });
 
 describe("the lease", () => {
   test("a session is held only while its heartbeat is fresh", () => {
-    const rec = { ...blankSession({ sid: "s1", agent: "normal", now: NOW }), heldBy: "tabA", heldAt: NOW };
+    const rec = { ...blankSession({ sid: "s1", agent: "science", now: NOW }), heldBy: "tabA", heldAt: NOW };
     assert.equal(sessionHeld(rec, NOW), true);
     assert.equal(sessionHeld(rec, NOW + LEASE_STALE_MS - 1), true);
     assert.equal(sessionHeld(rec, NOW + LEASE_STALE_MS), false); // gone quiet → orphaned
     // A record nobody claimed is never held.
-    assert.equal(sessionHeld(blankSession({ sid: "s2", agent: "normal", now: NOW }), NOW), false);
+    assert.equal(sessionHeld(blankSession({ sid: "s2", agent: "science", now: NOW }), NOW), false);
     assert.equal(sessionHeld(null, NOW), false);
   });
 
@@ -241,7 +241,7 @@ describe("the lease", () => {
   });
 
   test("heartbeat refuses to beat for a session another live tab took over", () => {
-    const reg = regOf({ ...blankSession({ sid: "s1", agent: "normal", now: NOW }), heldBy: "tabB", heldAt: NOW });
+    const reg = regOf({ ...blankSession({ sid: "s1", agent: "science", now: NOW }), heldBy: "tabB", heldAt: NOW });
     // tabA lost the session to tabB ("take over here"); its next beat must not
     // steal it back, or the lease would stop being single-writer.
     const after = heartbeat(reg, "s1", "tabA", NOW + 1000);
@@ -252,14 +252,14 @@ describe("the lease", () => {
   });
 
   test("only the holder may release", () => {
-    const reg = claimSession(regOf(blankSession({ sid: "s1", agent: "normal", now: NOW })), "s1", "tabA", NOW);
+    const reg = claimSession(regOf(blankSession({ sid: "s1", agent: "science", now: NOW })), "s1", "tabA", NOW);
     assert.equal(getSession(releaseSession(reg, "s1", "tabB", NOW), "s1").heldBy, "tabA");
     assert.equal(getSession(releaseSession(reg, "s1", "tabA", NOW), "s1").heldBy, null);
   });
 
   test("anySessionHeld ignores this tab's own leases", () => {
     const reg = regOf(
-      { ...blankSession({ sid: "s1", agent: "normal", now: NOW }), heldBy: "tabA", heldAt: NOW },
+      { ...blankSession({ sid: "s1", agent: "science", now: NOW }), heldBy: "tabA", heldAt: NOW },
     );
     assert.equal(anySessionHeld(reg, NOW), true);
     assert.equal(anySessionHeld(reg, NOW, "tabA"), false); // only ourselves
@@ -277,7 +277,7 @@ describe("attachDecision", () => {
   });
 
   test("this tab reloading always retakes its own session", () => {
-    const reg = claimSession(regOf(blankSession({ sid: "s1", agent: "normal", now: NOW })), "s1", "tabA", NOW);
+    const reg = claimSession(regOf(blankSession({ sid: "s1", agent: "science", now: NOW })), "s1", "tabA", NOW);
     assert.deepEqual(attachDecision({ reg, sid: "s1", tabId: "tabA", now: NOW + 1 }), {
       action: "attach",
       holder: "tabA",
@@ -285,7 +285,7 @@ describe("attachDecision", () => {
   });
 
   test("a session another live tab holds reports `held` with the holder", () => {
-    const reg = claimSession(regOf(blankSession({ sid: "s1", agent: "normal", now: NOW })), "s1", "tabA", NOW);
+    const reg = claimSession(regOf(blankSession({ sid: "s1", agent: "science", now: NOW })), "s1", "tabA", NOW);
     // The owner's rule: offer a choice (new session / take over), never silent
     // co-editing of one workspace.
     assert.deepEqual(attachDecision({ reg, sid: "s1", tabId: "tabB", now: NOW + 1 }), {
@@ -295,7 +295,7 @@ describe("attachDecision", () => {
   });
 
   test("an orphaned session is free to attach to", () => {
-    const reg = claimSession(regOf(blankSession({ sid: "s1", agent: "normal", now: NOW })), "s1", "tabA", NOW);
+    const reg = claimSession(regOf(blankSession({ sid: "s1", agent: "science", now: NOW })), "s1", "tabA", NOW);
     assert.deepEqual(attachDecision({ reg, sid: "s1", tabId: "tabB", now: NOW + LEASE_STALE_MS + 1 }), {
       action: "attach",
       holder: null,
@@ -354,7 +354,7 @@ describe("resumeTarget — THE multi-tab fix", () => {
   });
 
   test("a session with no pending answer resumes nothing", () => {
-    const reg = regOf(blankSession({ sid: "s1", agent: "normal", now: NOW }));
+    const reg = regOf(blankSession({ sid: "s1", agent: "science", now: NOW }));
     assert.equal(resumeTarget({ reg, sid: "s1", tabId: "tabA", now: NOW }), null);
   });
 
@@ -373,7 +373,7 @@ describe("resumeTarget — THE multi-tab fix", () => {
   test("an attached tab never reaches for ANOTHER session's answer", () => {
     // s1 (ours) has nothing; s2 has a fresh orphaned answer. Rule 1 is absolute:
     // an attached tab gets its own session's answer or none.
-    const reg = regOf(blankSession({ sid: "s1", agent: "normal", now: NOW }), withPending("s2"));
+    const reg = regOf(blankSession({ sid: "s1", agent: "science", now: NOW }), withPending("s2"));
     assert.equal(resumeTarget({ reg, sid: "s1", tabId: "tabA", now: NOW }), null);
   });
 });
@@ -381,8 +381,8 @@ describe("resumeTarget — THE multi-tab fix", () => {
 describe("pruneRegistry", () => {
   test("forgets unheld idle sessions", () => {
     const reg = regOf(
-      { ...blankSession({ sid: "fresh", agent: "normal", now: NOW }), updatedAt: NOW },
-      { ...blankSession({ sid: "idle", agent: "normal", now: NOW }), updatedAt: NOW - SESSION_IDLE_MS - 1 },
+      { ...blankSession({ sid: "fresh", agent: "science", now: NOW }), updatedAt: NOW },
+      { ...blankSession({ sid: "idle", agent: "science", now: NOW }), updatedAt: NOW - SESSION_IDLE_MS - 1 },
     );
     const after = pruneRegistry(reg, NOW);
     assert.deepEqual(Object.keys(after.sessions), ["fresh"]);
@@ -391,7 +391,7 @@ describe("pruneRegistry", () => {
   test("never evicts a held session or one with a collectable answer", () => {
     const ancient = NOW - SESSION_IDLE_MS - 1;
     const reg = regOf(
-      { ...blankSession({ sid: "held", agent: "normal", now: NOW }), updatedAt: ancient, heldBy: "tabA", heldAt: NOW },
+      { ...blankSession({ sid: "held", agent: "science", now: NOW }), updatedAt: ancient, heldBy: "tabA", heldAt: NOW },
       { ...withPending("busy"), updatedAt: ancient },
     );
     // Losing either would lose real work, so an idle sweep must skip both.
@@ -401,7 +401,7 @@ describe("pruneRegistry", () => {
   test("over the cap it drops the least recently updated droppable sessions", () => {
     let reg = emptyRegistry();
     for (let i = 0; i < MAX_SESSIONS + 3; i++) {
-      reg = putSession(reg, { ...blankSession({ sid: "s" + i, agent: "normal", now: NOW }), updatedAt: NOW + i });
+      reg = putSession(reg, { ...blankSession({ sid: "s" + i, agent: "science", now: NOW }), updatedAt: NOW + i });
     }
     const after = pruneRegistry(reg, NOW + MAX_SESSIONS + 3);
     assert.equal(Object.keys(after.sessions).length, MAX_SESSIONS);
@@ -424,7 +424,7 @@ describe("pruneRegistry", () => {
 describe("listSessions", () => {
   test("newest activity first, annotated with held/busy", () => {
     const reg = regOf(
-      { ...blankSession({ sid: "a", agent: "normal", now: NOW }), updatedAt: NOW - 100 },
+      { ...blankSession({ sid: "a", agent: "science", now: NOW }), updatedAt: NOW - 100 },
       { ...withPending("b"), agent: "sdk", updatedAt: NOW, heldBy: "tabA", heldAt: NOW },
     );
     const list = listSessions(reg, NOW);
@@ -434,7 +434,7 @@ describe("listSessions", () => {
   });
 
   test("carries no message-derived text (privacy invariant 4)", () => {
-    const reg = regOf({ ...withPending("a"), agent: "normal" });
+    const reg = regOf({ ...withPending("a"), agent: "science" });
     const keys = Object.keys(listSessions(reg, NOW)[0]).sort();
     // ids, agent, flags and a timestamp — no title, no filename, no text.
     assert.deepEqual(keys, ["agent", "busy", "convId", "held", "sid", "updatedAt"]);

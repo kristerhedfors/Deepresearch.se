@@ -11,6 +11,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { loadSourceSnapshot, runIntrospectionEnrichment } from "./introspect.js";
+import { runOwaspContextEnrichment } from "./owasp-context.js";
 
 const noopLog = { debug() {}, info() {}, warn() {}, error() {} };
 
@@ -168,38 +169,63 @@ test("runIntrospectionEnrichment: dense retrieval surfaces relevant chunks (mock
   }
 });
 
-test("runIntrospectionEnrichment: a security-assessment ask injects the OWASP reference block + stashes it in state", async () => {
-  // A one-doc OWASP corpus (snapshot-shaped) + a rag index pointing at its chunk
-  // 0, and a mocked embed aligned to that vector — the same shape the real
-  // artifacts have, so this exercises the whole security-assessment branch.
+// ---- the OWASP reference, lifted out of this runner on 2026-08-13 -----------
+//
+// The retrieval used to be a branch at the end of runIntrospectionEnrichment,
+// so it was gated on `state.introspection` — a MODE — while exactly one agent
+// declared it. It is now its own enrichment row (src/owasp-context.js) gated on
+// the agent's declared `owasp` context block, because the Cyber agent runs the
+// plain research phase and would otherwise have had to load the whole source
+// snapshot to reach twenty pages of a public standard.
+//
+// These tests stayed in this file: the corpus/index freshness check below is
+// here, the ASSETS fixture is here, and the thing most worth pinning is that
+// the two runners still compose into the SAME conversation a source-carrying
+// mode always produced.
+
+/** A one-doc OWASP corpus (snapshot-shaped) + a rag index pointing at its chunk
+ * 0 — the same shape the real artifacts have. */
+async function owaspFixtures() {
   const { int8ToB64, quantizeInt8, chunkSourceText } = await import("../public/js/introspect-core.js");
   const docText = "A Prompt Injection Vulnerability occurs when user prompts alter the LLM's behavior in unintended ways. ".repeat(3);
-  const owaspCorpus = {
-    v: 1, digest: "owaspdigest01", count: 1, bytes: docText.length,
-    files: [{ p: "LLM01:2025 Prompt Injection", s: docText.length, t: docText }],
-    sources: { "LLM01:2025 Prompt Injection": { cat: "LLM01", family: "llm", year: "2025", title: "Prompt Injection", url: "https://genai.owasp.org/llmrisk/llm01-prompt-injection/" } },
-  };
   // chunk 0 must resolve (matches the corpus chunking) for retrieval to return it.
   assert.ok(chunkSourceText(docText).length >= 1);
-  const owaspRag = {
-    v: 1, model: "e5", dims: 3, target: 1400, overlap: 200,
-    vectors: [int8ToB64(quantizeInt8(Float32Array.of(0, 1, 0)))],
-    map: [{ p: "LLM01:2025 Prompt Injection", ci: 0 }],
+  return {
+    owaspCorpus: {
+      v: 1, digest: "owaspdigest01", count: 1, bytes: docText.length,
+      files: [{ p: "LLM01:2025 Prompt Injection", s: docText.length, t: docText }],
+      sources: { "LLM01:2025 Prompt Injection": { cat: "LLM01", family: "llm", year: "2025", title: "Prompt Injection", url: "https://genai.owasp.org/llmrisk/llm01-prompt-injection/" } },
+    },
+    owaspRag: {
+      v: 1, model: "e5", dims: 3, target: 1400, overlap: 200,
+      vectors: [int8ToB64(quantizeInt8(Float32Array.of(0, 1, 0)))],
+      map: [{ p: "LLM01:2025 Prompt Injection", ci: 0 }],
+    },
   };
+}
+
+/** The enrichment ctx the OWASP runner takes (src/enrichment.js EnrichmentCtx). */
+function owaspCtx(env, conversation, state, s) {
+  return { env, log: noopLog, emit() {}, step: s.step, stepDone: s.stepDone, conversation, state };
+}
+
+/** An agent declaring the OWASP reference — `cyber` and `introspection` both do. */
+const OWASP_CAP = { context: ["owasp"] };
+
+test("runOwaspContextEnrichment: a security-assessment ask injects the OWASP reference block + stashes it in state", async () => {
+  const { owaspCorpus, owaspRag } = await owaspFixtures();
   const realFetch = globalThis.fetch;
   globalThis.fetch = async () => jsonRes({ data: [{ embedding: [0, 1, 0] }], model: "e5" });
   try {
     const s = steps();
-    const state = /** @type {any} */ ({ introspection: true, introspectionCount: 0 });
-    const out = await runIntrospectionEnrichment(
+    const state = /** @type {any} */ ({ capability: OWASP_CAP });
+    const out = await runOwaspContextEnrichment(/** @type {any} */ (owaspCtx(
       makeEnv({ berget: true, owaspCorpus, owaspRag }),
-      noopLog, s.step, s.stepDone,
-      /** @type {any} */ (convo("do a security assessment of this site")),
+      convo("do a security assessment of this site"),
       state,
-    );
+      s,
+    )));
     const text = /** @type {any} */ (out[out.length - 1]).content;
-    // Both blocks land on the last user message.
-    assert.match(text, /--- Introspection: deepresearch\.se source/);
     assert.match(text, /--- OWASP Top 10 reference/);
     assert.match(text, /LLM01:2025 Prompt Injection — https:\/\/genai\.owasp\.org/);
     assert.match(text, /Prompt Injection Vulnerability occurs/); // the quoted OWASP text
@@ -212,19 +238,95 @@ test("runIntrospectionEnrichment: a security-assessment ask injects the OWASP re
   }
 });
 
-test("runIntrospectionEnrichment: a NON-security dev-mode ask injects NO OWASP block", async () => {
+test("runOwaspContextEnrichment: a NON-security ask injects NO OWASP block", async () => {
+  const { owaspCorpus, owaspRag } = await owaspFixtures();
   const realFetch = globalThis.fetch;
   globalThis.fetch = async () => jsonRes({ data: [{ embedding: [0, 1, 0] }], model: "e5" });
   try {
     const s = steps();
-    const state = /** @type {any} */ ({ introspection: true, introspectionCount: 0 });
+    const state = /** @type {any} */ ({ capability: OWASP_CAP });
+    const conversation = /** @type {any} */ (convo("how do the pipeline phases work?"));
+    const out = await runOwaspContextEnrichment(/** @type {any} */ (owaspCtx(
+      makeEnv({ berget: true, owaspCorpus, owaspRag }), conversation, state, s,
+    )));
+    // Silent: the same array back, no step, no state (the enrichment contract).
+    assert.equal(out, conversation);
+    assert.equal(state.owaspBlock, undefined);
+    assert.deepEqual(s.started, []);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test("runOwaspContextEnrichment: reuses the query embed introspection already paid for", async () => {
+  // The reason the row runs immediately AFTER introspect. A source-carrying
+  // mode asking for an assessment must still make exactly ONE embedding call
+  // between the two runners, which is what it cost when this was one branch.
+  const { owaspCorpus, owaspRag } = await owaspFixtures();
+  const realFetch = globalThis.fetch;
+  let embeds = 0;
+  globalThis.fetch = async () => {
+    embeds += 1;
+    return jsonRes({ data: [{ embedding: [0, 1, 0] }], model: "e5" });
+  };
+  try {
+    const s = steps();
+    const env = makeEnv({ berget: true, owaspCorpus, owaspRag });
+    const ask = "do a security assessment of this site";
+    const state = /** @type {any} */ ({ introspection: true, introspectionCount: 0, capability: OWASP_CAP });
+    const afterSource = await runIntrospectionEnrichment(env, noopLog, s.step, s.stepDone, /** @type {any} */ (convo(ask)), state);
+    assert.equal(embeds, 1, "introspection embedded the query once");
+    const out = await runOwaspContextEnrichment(/** @type {any} */ (owaspCtx(env, afterSource, state, s)));
+    assert.equal(embeds, 1, "the OWASP row reused that vector rather than embedding again");
+    // …and the composed conversation is what a source mode always produced:
+    // the source block first, the OWASP reference after it, on one message.
+    const text = /** @type {any} */ (out[out.length - 1]).content;
+    assert.match(text, /--- Introspection: deepresearch\.se source/);
+    assert.match(text, /--- OWASP Top 10 reference/);
+    assert.ok(text.indexOf("--- Introspection") < text.indexOf("--- OWASP Top 10 reference"));
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test("runOwaspContextEnrichment: a missing corpus degrades to an honest empty step (invariant 2)", async () => {
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => jsonRes({ data: [{ embedding: [0, 1, 0] }], model: "e5" });
+  try {
+    const s = steps();
+    const state = /** @type {any} */ ({ capability: OWASP_CAP });
+    const conversation = /** @type {any} */ (convo("do a security assessment of this site"));
+    // makeEnv() 404s the OWASP corpus unless one is supplied.
+    const out = await runOwaspContextEnrichment(/** @type {any} */ (owaspCtx(
+      makeEnv({ berget: true }), conversation, state, s,
+    )));
+    assert.equal(out, conversation);
+    assert.equal(state.owaspBlock, undefined);
+    assert.match(s.done[0], /OWASP reference unavailable/);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test("runIntrospectionEnrichment no longer injects the OWASP block itself", async () => {
+  // The lift, pinned from the other side: a security-assessment ask in a
+  // source-carrying mode gets the source and NOTHING OWASP-shaped out of this
+  // runner, whatever the corpus says. If the branch ever came back, the block
+  // would reach five modes again while one agent declared it.
+  const { owaspCorpus, owaspRag } = await owaspFixtures();
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => jsonRes({ data: [{ embedding: [0, 1, 0] }], model: "e5" });
+  try {
+    const s = steps();
+    const state = /** @type {any} */ ({ introspection: true, introspectionCount: 0, capability: OWASP_CAP });
     const out = await runIntrospectionEnrichment(
-      makeEnv({ berget: true, owaspCorpus: { v: 1, count: 1, files: [{ p: "x", s: 1, t: "y" }], sources: {} }, owaspRag: { v: 1, model: "e5", dims: 3, target: 1400, overlap: 200, vectors: [], map: [] } }),
+      makeEnv({ berget: true, owaspCorpus, owaspRag }),
       noopLog, s.step, s.stepDone,
-      /** @type {any} */ (convo("how do the pipeline phases work?")),
+      /** @type {any} */ (convo("do a security assessment of this site")),
       state,
     );
     const text = /** @type {any} */ (out[out.length - 1]).content;
+    assert.match(text, /--- Introspection: deepresearch\.se source/);
     assert.doesNotMatch(text, /OWASP Top 10 reference/);
     assert.equal(state.owaspBlock, undefined);
   } finally {
