@@ -179,6 +179,37 @@ export function projectColdMs(rec, anchor = { bytes: null, opens: null, ms: 8573
   return Math.round(anchor.ms * Math.max(byteShare, openShare));
 }
 
+/**
+ * Find a REAL CPython ELF to use as the baseline.
+ *
+ * `command -v python3` is not good enough, and this bit us for real: the
+ * capture harness (scripts/pygram-capture/) installs a `python3` SHIM early on
+ * PATH, so the first hit is an 8,971-byte shell script. Measuring that as "the
+ * baseline" produced a comparison against a wrapper — 30 file opens, and a
+ * projected cold cost of 330 seconds — which is worse than no baseline, because
+ * it looks like a number.
+ *
+ * So: walk every `python3` on PATH, follow symlinks, and take the first one
+ * `file` calls an ELF. Honours PYTHON_BIN when set.
+ */
+export function findRealCPython(pathEnv = process.env.PATH || "", override = process.env.PYTHON_BIN) {
+  const candidates = [];
+  if (override) candidates.push(override);
+  for (const dir of pathEnv.split(":").filter(Boolean)) {
+    for (const name of ["python3", "python"]) candidates.push(join(dir, name));
+  }
+  for (const cand of candidates) {
+    if (!existsSync(cand)) continue;
+    // Follow the symlink chain — /usr/bin/python3 is usually a link, and
+    // measuring a 40-byte symlink as the interpreter is a nonsense reading.
+    const real = spawnSync("readlink", ["-f", cand], { encoding: "utf8" }).stdout.trim() || cand;
+    if (!existsSync(real)) continue;
+    const out = spawnSync("file", ["-L", real], { encoding: "utf8" }).stdout || "";
+    if (classifyElf(out).isElf) return real;
+  }
+  return null;
+}
+
 function pad(s, n) {
   s = String(s);
   return s.length >= n ? s : s + " ".repeat(n - s.length);
@@ -216,10 +247,9 @@ function main() {
 
   const records = bins.map((b) => measure(b));
   if (compare) {
-    const py = spawnSync("sh", ["-c", "command -v python3"], { encoding: "utf8" }).stdout.trim();
-    // Follow the symlink chain — measuring /usr/bin/python3 as a 40-byte
-    // symlink would be a comically wrong size reading.
-    if (py) records.push(measure(spawnSync("readlink", ["-f", py], { encoding: "utf8" }).stdout.trim() || py));
+    const py = findRealCPython();
+    if (py) records.push(measure(py));
+    else console.error("warning: no real CPython binary found on PATH — skipping the baseline");
   }
 
   if (wantJson) {

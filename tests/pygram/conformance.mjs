@@ -275,8 +275,12 @@ function main() {
   const verbose = args.includes("--verbose") || args.includes("-v");
 
   const python = process.env.PYTHON_BIN || "python3";
-  const pygram = process.env.PYGRAM_BIN || "";
-  const havePygram = pygram && existsSync(resolve(pygram));
+  // Each entry runs in its own temp cwd (see runOne), so a RELATIVE binary path
+  // would be resolved against that temp dir and fail with ENOENT. Make it
+  // absolute here, once, rather than in the hot loop.
+  const pygramArg = process.env.PYGRAM_BIN || "";
+  const pygram = pygramArg && pygramArg.includes("/") ? resolve(pygramArg) : pygramArg;
+  const havePygram = !!pygram && existsSync(pygram);
 
   let corpus = loadCorpus();
   if (onlyTag) corpus = corpus.filter((e) => e.tags.includes(onlyTag));
@@ -284,7 +288,8 @@ function main() {
   if (!corpus.length) {
     console.error("no corpus entries found — expected tests/pygram/seed-corpus.jsonl or corpus.jsonl");
     console.error("(the capture harness in scripts/pygram-capture/ fills the second one)");
-    process.exit(2);
+    process.exitCode = 2;
+    return;
   }
 
   const results = [];
@@ -315,8 +320,11 @@ function main() {
   const plan = buildPlan(results);
 
   if (wantJson) {
+    // NOT process.exit(): stdout is ASYNC when piped, and exiting here
+    // truncated this report mid-object. Set the code and let the process drain.
     console.log(JSON.stringify({ mode: havePygram ? "conformance" : "reference-only", counts, plan, coverage: tagCoverage(results), results }, null, 2));
-    process.exit(counts.MISMATCH || refBroken ? 1 : 0);
+    process.exitCode = counts.MISMATCH || refBroken ? 1 : 0;
+    return;
   }
 
   if (!havePygram) {
@@ -324,10 +332,11 @@ function main() {
     if (refBroken) {
       console.log(`${refBroken} entries have a stale expect_stdout:`);
       for (const r of results.filter((x) => x.verdict === "STALE")) console.log(`  ${r.id}  (${r.file})`);
-      process.exit(1);
+      process.exitCode = 1;
+      return;
     }
     console.log("corpus is consistent with the system CPython.");
-    process.exit(0);
+    return;
   }
 
   if (!planOnly) {
@@ -360,7 +369,7 @@ function main() {
     console.log("nothing unsupported — the corpus is fully covered.");
   }
 
-  process.exit(counts.MISMATCH || refBroken ? 1 : 0);
+  process.exitCode = counts.MISMATCH || refBroken ? 1 : 0;
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) main();

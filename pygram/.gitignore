@@ -1,0 +1,11 @@
+# Build output. `scripts/pygram-build.sh` reproduces all of this from pinned
+# sources, so none of it belongs in git — and the binary alone is ~345 KB, in a
+# repo whose whole point is that streamed bytes are expensive.
+build/
+
+# Vendored/checked-out third-party trees the build fetches (musl, MicroPython).
+# Pinned by the build script; never committed.
+.cache/
+vendor/
+micropython/
+musl-*/

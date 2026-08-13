@@ -10,15 +10,21 @@
 // pinned below.
 
 import { test } from "node:test";
+import { spawnSync } from "node:child_process";
 import assert from "node:assert/strict";
 
 import {
   DEFAULT_BUDGET,
   classifyElf,
   evaluate,
+  findRealCPython,
   parseStraceOpens,
   projectColdMs,
 } from "./pygram-gate.mjs";
+
+import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const STATIC_I386 =
   "/tmp/t32: ELF 32-bit LSB executable, Intel 80386, version 1 (GNU/Linux), statically linked, BuildID[sha1]=1404e7, for GNU/Linux 3.2.0, not stripped";
@@ -144,6 +150,29 @@ test("evaluate reports an unmeasurable open count as skipped rather than passing
   const opens = checks.find((c) => c.name === "file opens");
   assert.equal(opens.skipped, true);
   assert.match(opens.got, /unmeasured/);
+});
+
+test("the baseline skips a python3 SHIM and finds the real CPython ELF", () => {
+  // The regression, and it happened for real. scripts/pygram-capture/ installs
+  // a `python3` shell-script shim early on PATH to capture invocations. A
+  // baseline resolved by `command -v python3` therefore measured an 8,971-byte
+  // shell script: 30 file opens and a projected cold cost of 330 SECONDS. That
+  // is worse than having no baseline, because it looks like a number.
+  const shimDir = mkdtempSync(join(tmpdir(), "pygram-shim-"));
+  const shim = join(shimDir, "python3");
+  writeFileSync(shim, "#!/bin/sh\nexec /usr/bin/python3 \"$@\"\n");
+  chmodSync(shim, 0o755);
+
+  // Shim dir FIRST on PATH, exactly as the capture harness arranges it.
+  const found = findRealCPython(`${shimDir}:/usr/bin:/bin`, undefined);
+  assert.notEqual(found, shim, "the shell-script shim must never be taken as the baseline");
+  if (found) {
+    const out = spawnSync("file", ["-L", found], { encoding: "utf8" }).stdout || "";
+    assert.equal(classifyElf(out).isElf, true, "whatever is returned must be a real ELF");
+  }
+
+  // With nothing resolvable at all it returns null rather than a wrong answer.
+  assert.equal(findRealCPython("/nonexistent-dir", undefined), null);
 });
 
 test("projectColdMs scales on the worse of bytes and opens, and refuses to guess without data", () => {
