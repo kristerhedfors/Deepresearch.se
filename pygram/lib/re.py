@@ -4,11 +4,16 @@
 # constructs re1.5 would silently mis-compile. See pygram/lib/README.md.
 import ure as _re
 
+NOFLAG = 0
+T = TEMPLATE = 1
 I = IGNORECASE = 2
+L = LOCALE = 4
 M = MULTILINE = 8
 S = DOTALL = 16
+U = UNICODE = 32
 X = VERBOSE = 64
 A = ASCII = 256
+DEBUG = 128
 
 
 class error(Exception):
@@ -198,7 +203,7 @@ class Match:
 
 
 class Pattern:
-    def __init__(self, pattern, flags=0):
+    def __init__(self, pattern, flags=0, _notrim=False):
         native, names, anchored, dollar = _prep(pattern, flags)
         self.pattern = pattern
         self.flags = flags
@@ -206,7 +211,17 @@ class Pattern:
         self._r = _re.compile(native)
         self._names = names
         self._anchored = anchored
-        self._dollar = dollar
+        self._dollar = dollar and not _notrim
+        self._full = None
+
+    def fullmatch(self, string):
+        if self._full is None:
+            # `(?:…)$` is non-capturing, so group numbering is unchanged; the
+            # trailing-newline trim is suppressed because CPython's fullmatch
+            # has to consume the newline too.
+            self._full = Pattern("(?:" + self.pattern + ")$", self.flags, True)
+            self._full._names = self._names
+        return self._full.match(string)
 
     def search(self, string):
         for m in _find(self, string):
@@ -387,6 +402,10 @@ def search(pattern, string, flags=0):
 
 def match(pattern, string, flags=0):
     return compile(pattern, flags).match(string)
+
+
+def fullmatch(pattern, string, flags=0):
+    return compile(pattern, flags).fullmatch(string)
 
 
 def findall(pattern, string, flags=0):

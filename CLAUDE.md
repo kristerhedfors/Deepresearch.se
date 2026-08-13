@@ -437,6 +437,7 @@ Debugging & live verification:
 - **on-device-trace** — remote-debugging device-only bugs (iOS PWA) via build stamp + copyable on-device event trace.
 - **sandbox-debug** — the sandbox boot-hang playbook: debug switches, the `boot_stage` timeline, the stall watchdog.
 - **sandbox-perf-eval** — measuring how long sandbox commands take: the cold/warm battery + agent-turn trace, and the two traps (cross-origin auth kills the boot; the 30 s ceiling destroys the VM).
+- **pygram** — the minimal Python-subset runtime for the sandbox (`docs/PYGRAM.md`): why `python3` costs 8573 ms cold there and pygram opens zero files, the two gates (build shape + CPython conformance, where MISMATCH is fatal and UNSUPPORTED is just the build order), the capture harness that grows the corpus from real invocations by itself, the musl-i386 build, and the six traps already paid for — a bare `lib/` in .gitignore that swallowed the whole frozen stdlib, tracebacks on stdout poisoning pipelines, and a strace parser whose bug inverted into a perfect score.
 
 Feedback, boards & testing loops:
 
