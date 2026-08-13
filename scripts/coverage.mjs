@@ -69,6 +69,7 @@ export const TEST_GLOBS = [
   "scripts/*.test.mjs",
   "scripts/*/*.test.mjs",
   "tests/*.test.js",
+  "tests/pygram/*.test.mjs",
 ];
 
 /**
