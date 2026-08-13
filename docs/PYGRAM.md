@@ -66,7 +66,7 @@ Secondary, checked locally and cheaply in CI:
 
 | gate | target | how it is checked |
 |---|---|---|
-| stripped static binary size | < 400 KB | `node scripts/pygram-gate.mjs` |
+| stripped static binary size | ≤ 700 KB | `node scripts/pygram-gate.mjs` |
 | file-opens on `-c 'pass'` | ≤ 3 | same, via `strace -f -e trace=file` |
 | linked shared objects | 0 | same, `file` reports "statically linked" |
 | corpus conformance | 100% of Tier 0 | `npm run pygram:conformance` |
@@ -90,10 +90,18 @@ Twenty-two files opened, seven more probed and missed, sixty-five stat calls —
 each one a lookup that in the VM crosses a network. That is the 8573 ms.
 
 The 703 KB figure is also a warning: that is glibc-static with **no interpreter
-in it at all**, already over the 400 KB gate. The same empty program against
-musl on x86-64 is 18,688 B. So a musl-based static build is not a preference,
-it is a precondition — `docs/PYGRAM-RESEARCH.md` owns finding a workable
-i386+musl toolchain.
+in it at all**. The same empty program against musl is 18,688 B on x86-64 and
+13,020 B on i386. So a musl-based static build is not a preference, it is a
+precondition, and `docs/PYGRAM-RESEARCH.md` §2.1 has the working i386 musl
+build — from source, in this container, in under a minute, no Docker and no
+cross toolchain.
+
+That measurement also retired the original 400 KB size gate. It was set before
+the floor was known and was unreachable for anything that speaks Python: an
+empty `main` is 635,744 B under glibc-static i386, and Berry — a complete,
+mature dynamic-language VM with **neither `re` nor `json`** — compiles to
+365,660 B. **The gate is 700 KB**, set against the measured 541,688 B
+MicroPython prototype with room for the frozen shims.
 
 ### The toolchain works here, which makes the gate cheap
 
@@ -109,92 +117,101 @@ entry is executed by **both** system CPython and pygram, and the stdout, stderr
 and exit code must match. A subset runtime that silently disagrees with Python
 is worse than no runtime, because the agent will not notice.
 
-## 3. Where the cost actually goes, and what that means for the daemon
+## 3. The implementation, and the daemon that was asked for
 
-The owner asked for a daemon to cut startup. The honest analysis, which
-`docs/PYGRAM-RESEARCH.md` is measuring properly:
+**Decided (2026-08-13, `docs/PYGRAM-RESEARCH.md` §6): pygram is a MicroPython
+unix-port variant** — static, musl, i386, with a frozen pygram stdlib and
+`sys.path` pinned to `['.frozen']`. A shallow variant, so tracking upstream
+stays a rebase rather than a merge.
 
-A cold run pays **image streaming + interpreter init**. A warm run pays
-**exec floor + process spawn + interpreter init**. A daemon removes interpreter
-init and (after the first call) the page-in of the interpreter's own text — it
-cannot remove the 50–85 ms exec floor, because the client still arrives as a
-`/bin/sh -c` from JS.
+The two alternatives were considered and rejected on measurement, not taste:
 
-So the daemon's value depends entirely on how large interpreter init is once
-the binary is small and static. If a static pygram initialises in single-digit
-milliseconds, the daemon saves single-digit milliseconds against an 85 ms floor
-and is **not worth its risk** for startup alone. The research pass reports the
-real number before we build it.
+- **A purpose-built C interpreter for the corpus.** The most appealing option on
+  paper, and the corpus is narrow enough that it is not absurd. Berry is the
+  control experiment: a complete, mature dynamic-language VM with a frozen
+  stdlib, written by people optimising for exactly this, lands at 365,660 B —
+  only 32% below MicroPython's 541,688 B, which already speaks Python and
+  already has `re` and `json`. A couple of hundred KB, against writing *and then
+  owning* a tokenizer, parser, bytecode VM, GC, regex engine and JSON parser,
+  plus matching CPython closely enough that generated one-liners do not silently
+  produce wrong answers. In a VM whose exec floor is 50–85 ms, that size
+  difference is worth roughly 150 ms. It does not buy back the risk.
+- **Stripping CPython.** Looks like the safe option and is not. 6.6 MB before
+  stripping, dynamically linked against 3.1 MB of libraries, and a stdlib that
+  lives as files on disk — which is the actual source of the 8573 ms. One cheap
+  win is worth stealing regardless: **`-S` cuts CPython's startup file syscalls
+  109 → 63**, so while `python3` remains in the image the agent prompt should
+  prefer `python3 -S -c`.
 
-The daemon does have two independent justifications that survive regardless:
+### 3a. The daemon does not earn its keep, and the mechanism it needs is broken
 
-1. **Warm state across a pipeline.** An agent turn is often several python
-   steps over the same data. A resident process can hold parsed data between
-   calls instead of re-reading and re-parsing it — that is a *capability* win,
-   not a startup win.
-2. **Paying the page-in once** for whatever part of pygram is genuinely large.
+The daemon was an explicit requirement — a resident runtime to cut startup — so
+it was measured before being dropped rather than argued away. Three findings,
+in order of force:
 
-### 3a. The risk the daemon carries here, which is specific and real
+**There is nothing left to save.** A fork server's entire product is
+"interpreter initialisation, amortised". Measured, pygram's interpreter init is
+**0.96 ms against a 0.92 ms empty-C-program floor**. A zygote would amortise
+0.04 ms. Meanwhile every one-liner still arrives as `execInSandbox` →
+`/bin/sh -c`, whose **50–85 ms floor a daemon cannot touch** — a socket
+round-trip from a thin client sits *inside* that envelope, not instead of it.
+The daemon would be optimising roughly 0.05% of the cost.
 
-The VM is **single-threaded**. `public/js/sandbox.js` already documents a case
-where a background process racing the foreground wedged the VM
-(`chat_logs #522`: an over-budget file seed "keeps extracting in the background
-— CheerpX can't kill it", and running a command during it wedged). `execInSandbox`
-now has explicit wait-and-wedge-detect machinery to survive that.
+**The mechanism is not functional in this guest.**
+`docs/SANDBOX-PERFORMANCE.md` records a direct probe: `timeout 2 sleep 60`,
+`timeout -s KILL 2 sleep 60`, and an explicit `kill -9` on a known PID **all
+fail** — "signal delivery and process termination are not functional in the
+CheerpX guest". A fork server's core loop is fork, wait, reap, forward signals.
+Half of that does not work. It would also die with the VM on every
+`resetSandbox`, needing constant re-establishment, and a resident background
+process is the exact shape that wedged the single-threaded VM in `chat_logs
+#522`.
 
-A resident `pygramd` is exactly the shape that caused that incident. It should
-be safe — a daemon blocked in `accept()` consumes no CPU — but "should be" is
-not what this codebase accepts for the sandbox. **Two things must be verified
-live before a daemon ships:**
+**It is the right fix for the wrong binary.** A zygote is genuinely the correct
+answer *for CPython*: 8573 ms cold against 87 ms warm is precisely the profile
+it repairs. But it repairs it by keeping a 9.7 MiB working set resident in a VM
+whose memory is the browser's, and it does nothing about the first boot.
+Shipping a 541 KB static binary removes the problem instead of amortising it.
 
-- that a detached process started by one `cx.run` is still alive and schedulable
-  during a later `cx.run` (plausible from the seed behaviour, unverified);
-- that an idle `pygramd` measurably does not slow the foreground.
+**So pygram ships daemonless, and `pygramd` is not built.** The design is
+recorded in §4 because the decision should be reversible on evidence rather
+than re-derived. Revisit it if — and only if — a measurement shows interpreter
+init appearing in a real trace: a future workload running many one-liners
+inside one `execInSandbox` batch, or a pygram whose initialisation grows
+expensive (a large frozen corpus, a loaded index). Neither is true today.
 
-Until both are verified, pygram ships **daemonless**, and the daemon is a
-separate follow-up change behind its own flag. The daemonless path must be good
-enough on its own; the daemon is an optimisation, not the design.
+## 4. The `pygramd` design, recorded but not built
 
-## 4. The daemon protocol (`pygramd`), when we get there
+Kept so that reversing §3a means reading a design rather than rediscovering
+one. A zygote, the shape Android's zygote and preforked application servers
+use: pay initialisation once in a parent, `fork()` per request so children
+inherit the initialised heap copy-on-write.
 
-A zygote/fork-server, the same shape Android's zygote and preforked CGI use.
-
-```
-pygram -c 'print(1)'        # the client: tiny, static, no interpreter in it
-   └─ connect /run/pygram.sock
-      └─ send request frame
-         └─ pygramd forks a child that is already initialised
-            └─ child dup2s the passed fds, chdir, runs, exits
-               └─ daemon reports the exit status back
-```
-
-The request frame carries, and the forked child must faithfully adopt, all of:
+The request frame would carry, and the forked child would have to faithfully
+adopt, all of:
 
 | field | why it must be passed |
 |---|---|
-| `argv` | the program and its arguments |
+| `argv` | the program and its arguments, `argv[0]` included |
 | `cwd` | one-liners use relative paths constantly |
-| `env` | `PATH`, `HOME`, and anything the script reads |
+| `env` | inheriting the daemon's env silently changes `PATH`, `HOME`, locale |
 | stdin/stdout/stderr | **passed as file descriptors over `SCM_RIGHTS`**, not proxied |
 | umask | file-creating scripts |
+| signal handlers and mask | inherited across `fork`, so they must be reset in the child |
 
-Passing the three fds over the unix socket rather than relaying bytes through
-the daemon is the load-bearing choice: it keeps pipes, redirections and tty
-detection (`sys.stdout.isatty()`) behaving exactly as they do for a normal
-process, and it means the ~1.1 MB/s output path is not doubled.
+Passing the three fds over the socket rather than relaying bytes through the
+daemon is the load-bearing choice: it keeps pipes, redirections and
+`sys.stdout.isatty()` behaving exactly as they do for a normal process, and it
+avoids doubling the ~1.1 MB/s output path. The reply frame carries the wait
+status so the thin client can exit with the right code — an agent loop branches
+on exit codes, so getting these wrong is a correctness bug.
 
-The reply frame carries the wait status, so the client can `exit()` with the
-right code — an agent loop branches on exit codes, so getting these wrong is a
-correctness bug, not a cosmetic one.
-
-**Failure is always soft.** If the socket is missing, refused, stale, or the
-protocol version does not match, the client runs the program **in-process** and
-says nothing. A daemon that can break a command is worse than no daemon. The
-client therefore has to contain a full interpreter anyway — which means the
-daemon saves initialisation, not code size.
-
-Signals, `SIGPIPE` in a shell pipeline, and orphan reaping are the parts of this
-design most likely to be got wrong; they get their own tests.
+**Failure would always be soft.** Socket missing, refused, stale, or a protocol
+version mismatch ⇒ the client runs the program in-process and says nothing. A
+daemon that can break a command is worse than no daemon. Which means the client
+must contain a full interpreter anyway — so the daemon could only ever save
+initialisation, never size. Given that initialisation measures 0.96 ms, that
+observation is most of §3a on its own.
 
 ## 5. Delivery path into the sandbox
 
@@ -274,14 +291,16 @@ every change.
 
 | # | piece | artifact | state |
 |---|---|---|---|
-| 1 | implementation survey, ranked on cold-block cost | `docs/PYGRAM-RESEARCH.md` | in progress |
-| 2 | capture harness + corpus growth | `scripts/pygram-capture/`, `tests/pygram/corpus.jsonl` | in progress |
-| 3 | subset spec + seed corpus | `docs/PYGRAM-SUBSET.md`, `tests/pygram/seed-corpus.jsonl` | in progress |
-| 4 | charter + daemon design | this file | drafted |
-| 5 | interpreter core + conformance runner | `pygram/` | blocked on 1 and 3 |
-| 6 | live cold/warm measurement in the real VM | `tests/e2e/sandbox-perf.spec.js` case | blocked on 5 |
-| 7 | image delivery, staged | `scripts/build-sandbox-image.sh` | blocked on 6 |
-| 8 | `pygramd`, behind a flag, after live verification of §3a | `pygram/daemon/` | blocked on 6 |
+| 1 | implementation survey, ranked on cold cost | `docs/PYGRAM-RESEARCH.md` | **done** — MicroPython variant, musl, i386 |
+| 2 | subset spec + seed corpus | `docs/PYGRAM-SUBSET.md`, `tests/pygram/seed-corpus.jsonl` | **done** — 139 entries, tiered |
+| 3 | conformance runner + build gate | `tests/pygram/conformance.mjs`, `scripts/pygram-gate.mjs` | **done** — both proven against stubs |
+| 4 | charter | this file | **done** |
+| 5 | capture harness + corpus growth | `scripts/pygram-capture/` | in progress |
+| 6 | the variant + build | `pygram/`, `scripts/pygram-build.sh` | in progress |
+| 7 | the frozen shim stdlib | `pygram/lib/` | in progress |
+| 8 | live cold/warm measurement in the real VM | `tests/e2e/sandbox-perf.spec.js` case | blocked on 6 |
+| 9 | image delivery, staged | `scripts/build-sandbox-image.sh` | blocked on 8 |
+| — | `pygramd` | — | **not being built** — §3a |
 
 ## 9. What would make this project wrong
 
@@ -299,3 +318,21 @@ Recorded up front so it can be checked rather than argued:
   make pygram a liability rather than an optimisation.
 
 Each of these is measurable, and each has a gate above that would catch it.
+
+### What pygram does not fix, stated plainly
+
+Cold **VM boot** still dominates a sandbox turn. The agent trace in
+`docs/SANDBOX-PERFORMANCE.md` shows 24.4 s of boot against 290 ms of commands,
+so pygram improves a real but **secondary** term. It is worth doing because it
+is cheap, because 8.5 s is a large secondary term that can cross the 30 s
+ceiling and destroy the VM, and because removing CPython takes 27.0 MiB and 16
+shared-library dependencies out of an image whose entire design goal is to be
+small and to stream without stalling — which helps the boot too. It is not
+worth doing on a claim that it makes the sandbox fast, and no user-facing copy
+should say that.
+
+The other honest gap is `subprocess`. It appears nowhere in this repository, so
+excluding it is evidence-backed (`docs/PYGRAM-SUBSET.md` §5) — but a subset
+runtime aliased as `python3` will meet it eventually, and the answer is exit 90
+plus a stated non-goal in `bashAgentPrompt`, so the agent hoists the command
+into its own bash block rather than being silently misled.

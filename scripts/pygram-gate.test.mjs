@@ -104,6 +104,18 @@ test("parseStraceOpens ignores non-file syscalls and empty input", () => {
   assert.equal(parseStraceOpens("").openCount, 0);
 });
 
+test("the size budget is set against the measured floor, not a round number", () => {
+  // 400 KB was the original guess and it was unreachable: an empty `main` is
+  // 635,744 B under glibc-static i386, and Berry — a full dynamic-language VM
+  // with neither `re` nor `json` — is 365,660 B. The gate has to admit the
+  // 541,688 B MicroPython prototype plus room for the frozen shims, and still
+  // reject a CPython-scale binary. docs/PYGRAM-RESEARCH.md §2.2, §6.
+  assert.equal(DEFAULT_BUDGET.maxBytes, 700_000);
+  const passes = (bytes) => evaluate({ bin: "x", exists: true, probeOk: true, isStatic: true, bytes, opens: 1 }, DEFAULT_BUDGET).pass;
+  assert.equal(passes(541_688), true, "the measured prototype must fit");
+  assert.equal(passes(6_639_992), false, "a CPython-scale binary must not");
+});
+
 test("evaluate fails a binary that is too big, dynamic, or opens too much", () => {
   const bad = { bin: "x", exists: true, probeOk: true, isStatic: false, bytes: 9_000_000, opens: 22 };
   const { pass, checks } = evaluate(bad, DEFAULT_BUDGET);

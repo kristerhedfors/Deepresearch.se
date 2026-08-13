@@ -35,8 +35,17 @@ import { join } from "node:path";
 // The budgets from docs/PYGRAM.md §2. These are targets that a build must meet,
 // not observations — if a candidate cannot meet them the right response is to
 // argue the number in the doc, not to quietly raise it here.
+//
+// maxBytes was 400 KB until the floor was actually measured
+// (docs/PYGRAM-RESEARCH.md §2.2, §6): an empty `main` costs 635,744 B under
+// glibc-static on i386 and 13,020 B under musl-static, and Berry — a complete
+// dynamic-language VM with NEITHER `re` nor `json` — lands at 365,660 B. 400 KB
+// was unreachable for anything that speaks Python. 700 KB is set against the
+// measured 541,688 B prototype, leaving room for the frozen shims. The gate is
+// only meaningful on a musl build; glibc would spend 91% of it on an empty
+// program.
 export const DEFAULT_BUDGET = {
-  maxBytes: 400_000,
+  maxBytes: 700_000,
   maxOpens: 3,
   mustBeStatic: true,
 };
