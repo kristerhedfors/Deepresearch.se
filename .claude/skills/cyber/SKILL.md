@@ -176,20 +176,23 @@ than erroring the chat (invariant 2).
 
 Exclusivity is a claim about *every other agent*, which is exactly the kind of
 claim that rots silently: nothing fails when a future spec quietly adds
-`host-intel`. So it is pinned by test rather than by prose — a suite that walks
-the shipped registry and asserts which agents declare each block, so widening
-ownership is a deliberate edit to a named assertion instead of an accident.
+`host-intel` to Deep Science — the enrichment simply starts running there, the
+grounded capabilities note starts advertising it, and the roster is general
+again by accident.
 
-The literature half of the same idea is `src/literature-exclusivity.test.js`,
-which is the model to copy: it asserts the pairing from **both** ends — exactly
-which agents may hold each block, and what a real resolved capability can
-actually reach — and it pins the fail-soft null-capability hole on purpose.
+**`src/cyber-exclusivity.test.js`** pins it, over the SHIPPED registry rather
+than a fixture: the four blocks Cyber owns alone (`entity-method`,
+`person-method`, `host-intel`, `street-imagery`) are asserted declared by
+`cyber` and by no other agent, and `owasp` is asserted shared with
+`introspection` and nothing else. Each assertion names the capability it
+switches on, so a reader who finds the suite failing can see what the other
+agent just gained. Widening ownership is then a deliberate edit to a named
+assertion with the reason recorded beside it.
 
-> Status note (2026-08-13): `src/cyber-exclusivity.test.js` is named by
-> `src/extensions.test.js` (the uniqueness assertion on `contextBlock` exists so
-> that guard can work) but was not in the tree when this skill was written.
-> Check for it; if it is still missing, writing it is the first thing to do, not
-> a reason to skip the check.
+Its literature sibling is `src/literature-exclusivity.test.js`, worth reading
+for the shape: it asserts the pairing from **both** ends — which agents may hold
+each block, and what a real resolved capability can actually reach — and pins
+the fail-soft null-capability hole on purpose.
 
 Also check, when changing anything here:
 
