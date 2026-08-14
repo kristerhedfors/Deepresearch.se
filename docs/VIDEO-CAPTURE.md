@@ -774,6 +774,30 @@ page: a group that opens onto nothing teaches the reader to stop opening it.
 4. With no transcript, loads the composer with the same question under the same
    agent and model — which is what the link's own wording promised.
 
+**Which agent it lands in, and the three ways that used to go wrong**
+(2026-08-14 — reported as *"link from video capture to rerun chat does not land
+on the correct agent"*, all three fixed in the same change):
+
+- **The row did not know its mode.** `captureChatSeed` read the `mode` column
+  and nothing else, and the documented `--add` recipe never sent one — so five
+  published Cyber clips carried `agent: "cyber"` with `mode: null` and moved
+  the agent nowhere at all. The seed now DERIVES the mode from the agent id
+  when the column is empty (`modeForAgentId`, the strict direction of
+  `MODE_AGENTS` — §3.1's table read the other way), which repairs those rows on
+  read, with no migration. `validateCaptureCreate` derives it on write too, and
+  the recipe in `scripts/captures` now sends `mode:.meta.mode`. Null survives
+  only for an agent that genuinely has no mode (`secure`, a tier), and then the
+  reader's current agent is left alone rather than snapped to the default.
+- **Half a switch.** The link applied the theme and the dropdown but not the
+  agent backdrop, the starter strip, the Models board or the Outrospection
+  feed, so a reopened run sat in one agent wearing the previous one's surfaces.
+  `app.js`'s `enterChatMode` now does the whole switch, and the dropdown, the
+  `/?capture=` link and the `/?mode=` deep link all go through it.
+- **A race with boot.** `adoptServerChatMode` applies the ACCOUNT's agent when
+  `/api/settings` resolves; the capture link applied its own from a fetch
+  started later. Whichever landed last won, silently. The link now waits for
+  the settings adopt to settle before it applies anything.
+
 **Whose content this is.** A capture's prompt is a shipped starter (synthetic
 by construction — §3.1) and its answer is this pipeline's own output, recorded
 by the operator. Nothing in this path reads `chat_logs`, and nothing in it may

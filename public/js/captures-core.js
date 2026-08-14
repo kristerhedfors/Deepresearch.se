@@ -21,7 +21,12 @@
 // other half of the same directive ("revert the one I just swiped right").
 //
 // Nothing here may touch `document`, `window`, `fetch` or the clock: the test
-// runner imports this file in bare Node.
+// runner imports this file in bare Node. It imports NOTHING, either — the
+// admin-only /captures/ page reaches this module, and src/captures-page.test.js
+// walks that whole graph asserting every file in it is off the public asset
+// allowlist. An import of a deliberately-public module (starters-core.js, say)
+// fails that guard by construction, which is why the agent→mode fallback this
+// file used to want lives in src/captures.js's projectCapture instead.
 
 /** @typedef {"like"|"feedback"} Verdict */
 /** @typedef {{ id:number|string, verdict?:string, note?:string|null, created_at?:number }} Review */
@@ -79,6 +84,17 @@ function field(v) {
     return Number.isFinite(n) ? n : null;
   }
   return null;
+}
+
+/**
+ * A stored chat-mode id, trimmed — "" for anything that is not a non-empty
+ * string, so a row with `mode: null`, `""` or `"   "` falls through to the
+ * agent-derived one instead of pinning the app to nothing.
+ * @param {unknown} v
+ * @returns {string}
+ */
+function cleanMode(v) {
+  return typeof v === "string" ? v.trim() : "";
 }
 
 // ---- the gesture constants -------------------------------------------------
@@ -1061,10 +1077,21 @@ export function captureChatSeed(c, messages) {
     // nobody knows the provenance of.
     title: tag ? `${tag} · ${name}` : name,
     prompt,
-    // The agent the run was recorded under. Null leaves the tab's current
-    // agent alone rather than snapping it to the default — the same rule
-    // stream.js applies to a conversation record with no `chatMode`.
-    mode: typeof (/** @type {any} */ (src).mode) === "string" && /** @type {any} */ (src).mode.trim() ? /** @type {any} */ (src).mode.trim() : null,
+    // THE AGENT THE RUN WAS RECORDED UNDER — the one field a reopened capture
+    // cannot afford to get wrong: a Cyber run continued under Deep Science is a
+    // different agent answering the follow-up, and nothing on screen says so.
+    // Null leaves the tab's current agent alone rather than snapping it to the
+    // default — the same rule stream.js applies to a conversation record with
+    // no `chatMode`.
+    //
+    // A row whose `mode` column is empty has it DERIVED FROM ITS AGENT before
+    // it ever reaches here (src/captures.js `projectCapture`), because the
+    // documented publish recipe left `mode` out of its payload until
+    // 2026-08-14 and five published Cyber clips reached D1 with `mode: null` —
+    // every one of them opening in whichever agent the reader was already in.
+    // The derivation is upstream and not here only because this file must stay
+    // import-free (see the header); it is not optional.
+    mode: cleanMode(/** @type {any} */ (src).mode) || null,
     model: typeof (/** @type {any} */ (src).model) === "string" ? /** @type {any} */ (src).model.trim() : "",
     lang: typeof (/** @type {any} */ (src).lang) === "string" && /** @type {any} */ (src).lang.trim() ? /** @type {any} */ (src).lang.trim() : null,
     messages: msgs,

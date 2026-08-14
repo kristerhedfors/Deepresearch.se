@@ -33,7 +33,7 @@
 // records a small CSS viewport (the site lays out in its narrow, large-type
 // mode) and upscales with lanczos. Legibility beats sharpness in a feed.
 
-import { MODE_AGENTS, resolveQueue } from "../public/js/starters-core.js";
+import { AGENT_MODES, MODE_AGENTS, resolveQueue } from "../public/js/starters-core.js";
 import { STARTERS } from "../public/js/starters-data.js";
 import { DEFAULT_CHAT_MODE } from "../public/js/chat-mode-core.js";
 
@@ -220,14 +220,16 @@ const mb = (bytes) => Math.round((bytes / (1024 * 1024)) * 10) / 10;
 // ---------------------------------------------------------------------------
 //
 // "Selected agents" is the product-facing word; the wire calls it a CHAT MODE.
-// MODE_AGENTS (starters-core.js) is the one mapping, so inverting it here
-// keeps the capture harness pointed at the same agent ids the starter registry
-// and sdk/AGENTS.json use. An agent with no mode of its own (`secure`, which
+// MODE_AGENTS (starters-core.js) is the one mapping and it owns BOTH directions
+// (AGENT_MODES is derived from it there), so the capture harness stays pointed
+// at the same agent ids the starter registry and sdk/AGENTS.json use — and the
+// app reopening a recorded run reads the mode out of the same table this
+// harness recorded it with. An agent with no mode of its own (`secure`, which
 // is a TIER rather than a dropdown entry) is reachable by naming its mode
 // explicitly.
 
 /** @type {Record<string, string>} agent id -> chat mode id */
-export const AGENT_MODES = Object.fromEntries(Object.entries(MODE_AGENTS).map(([mode, agent]) => [agent, mode]));
+export { AGENT_MODES };
 
 /** Agents the capture harness can drive from the Se/rver composer. */
 export const CAPTURABLE_AGENTS = Object.values(MODE_AGENTS);

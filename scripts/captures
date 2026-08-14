@@ -13,7 +13,7 @@
 #
 # --add prints the new id (and the two upload URLs). The whole edit report can
 # ride along as a "meta" object — edit.json is exactly that shape:
-#   scripts/captures --add "$(jq '{label:("Capture " + (.meta.slug // "")), agent:.meta.agent, model:.meta.model, prompt:.meta.prompt, starter:.meta.starter, lang:.meta.lang, shape:.shape, duration_ms:.output_ms, source_ms:.source_ms, cut_ms:.cut_ms, speed:.speed, wait_mode:.wait_mode, width:.probe.width, height:.probe.height, size_bytes:.probe.bytes, meta:.}' <dir>/edit.json)"
+#   scripts/captures --add "$(jq '{label:("Capture " + (.meta.slug // "")), agent:.meta.agent, mode:.meta.mode, model:.meta.model, prompt:.meta.prompt, starter:.meta.starter, lang:.meta.lang, shape:.shape, duration_ms:.output_ms, source_ms:.source_ms, cut_ms:.cut_ms, speed:.speed, wait_mode:.wait_mode, width:.probe.width, height:.probe.height, size_bytes:.probe.bytes, meta:.}' <dir>/edit.json)"
 #
 # Publishing a whole batch in a loop needs the id back as DATA, not prose.
 # --json goes BEFORE --add or after the payload, never between: --add takes the
