@@ -128,6 +128,49 @@ path to `['.frozen']` cut a workload from 56 syscalls to 26. Verify with
 `strace` after any variant change — this is exactly the pathology the project
 exists to avoid, and it is invisible without measuring.
 
+## 4a. Optimising it further — what is left, and what is settled
+
+The 2026-08-14 pass took the binary 390,456 → 304,440 B (−22%) with 0 MISMATCH
+throughout. `docs/PYGRAM.md` §8a has the full table. What matters when you come
+back to this:
+
+**Opens are at zero and cannot improve.** A six-module import costs 13 syscalls
+and no file syscalls at all. Cold cost tracks bytes and opens, so **bytes are
+the only lever left** — check `size -A` before theorising about anything else.
+
+**The wins were dead weight, not tuning.** `.eh_frame` was 51,644 B of DWARF
+unwind tables that nothing could read (MicroPython raises through setjmp, and
+`nm` shows zero `_Unwind`/`__cxa`/`backtrace` symbols); `--gc-sections` does not
+collect `.eh_frame`, so it survives size passes while looking legitimate. Then
+`framebuf` + `uctypes` at 9,789 B. **The test for cutting a module is not "is it
+in the corpus" but "does CPython have it"** — conformance is defined against
+CPython, so a MicroPython-only module can never appear in a MATCHing entry.
+That is why `framebuf`/`uctypes`/`micropython` went and `heapq` stayed despite
+zero corpus references.
+
+**LTO is on, and it is the one flag that is also a correctness risk.** It buys
+16,384 B and 16% workload speed, but LTO across setjmp/longjmp is the classic
+miscompile and that is exactly how MicroPython raises. The six `nlr-*`
+seed-corpus entries exist for this. If you bump MicroPython or change LTO flags,
+those are the entries to watch.
+
+**Settled negatives — do not re-run these:** disabling computed goto (saves
+4,096 B, costs 0.14 ms per program, break-even at ~37 programs per session);
+cutting `complex` (the `1j` literal escapes the exit-90 contract and closing it
+costs a port-patch hunk); `ld.lld` (cannot consume GCC's GIMPLE LTO plugin);
+`ld.gold --icf=safe` (folds 14 bytes and forbids `-z noseparate-code`); `-Oz`
+(a clang flag, not GCC).
+
+**Two traps when measuring.** File size is quantised to the 4,096 B page, so
+unrelated changes all report −4,096 B and one of them may have moved 2,100 B —
+use `size -A`. And a synthetic heavy workload overstates VM speed by ~10× against
+the real corpus; time the 340 corpus programs, not a benchmark you wrote.
+
+Rebuilding after a **config** change needs the generated headers dropped —
+`rm -rf pygram/.build/micropython/ports/unix/build-pygram` — or a stale
+`moduledefs.h` keeps a disabled module in the builtin table and the link fails
+on `undefined reference to mp_module_framebuf`.
+
 ## 5. Traps already paid for
 
 Each of these cost real time and each would recur.
