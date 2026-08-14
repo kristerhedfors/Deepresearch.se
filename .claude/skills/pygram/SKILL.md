@@ -5,11 +5,14 @@ description: >-
   in-browser CheerpX sandbox (docs/PYGRAM.md). Triggers: "build pygram", "run
   the pygram gates", "why is python slow in the sandbox", "add a module to
   pygram", "the conformance run has mismatches", "grow the python corpus",
-  anything touching pygram/, scripts/pygram-build.sh, scripts/pygram-gate.mjs,
-  scripts/pygram-capture/, or tests/pygram/. Covers the cost model that
-  justifies the project, the two gates and how to read them, the capture
-  harness that grows the corpus by itself, and the six traps already paid for —
-  including a .gitignore that silently swallowed the whole frozen stdlib and a
+  "benchmark pygram", "did that change make pygram slower", "what does the
+  ordered dict cost", anything touching pygram/, scripts/pygram-build.sh,
+  scripts/pygram-gate.mjs, scripts/pygram-bench.mjs, scripts/pygram-capture/,
+  or tests/pygram/. Covers the cost model that justifies the project, the two
+  gates and how to read them, the STOCK-MICROPYTHON CONTROL and the performance
+  benchmark that measures what our variant costs, the capture harness that
+  grows the corpus by itself, and the eight traps already paid for — including
+  a .gitignore that silently swallowed the whole frozen stdlib and a
   measurement bug that inverted into a pass.
 ---
 
@@ -80,6 +83,53 @@ node tests/pygram/conformance.mjs                    # reference-only: is the CO
 **That is the build order.** Re-run after each module — the counts shift as
 features land, because an entry is only ever blocked by the first thing the
 interpreter hits.
+
+## 2b. The third measurement — what our variant COSTS
+
+The two gates answer "is the shape right" and "is the answer right". Neither
+answers "what did our changes cost", and pygram's own timings cannot: a number
+with nothing to divide by is not a measurement. So there is a **control** —
+stock MicroPython, same pinned commit, same musl-i386 toolchain, unpatched, no
+frozen pygram stdlib.
+
+```bash
+bash scripts/pygram-build.sh --stock   # → pygram/build/micropython-stock
+npm run pygram:bench                   # the table
+npm run pygram:bench:record            # ... appended to docs/PYGRAM-BENCH-LEDGER.md
+node scripts/pygram-bench.mjs --case dict --repeats 25   # one group, harder
+```
+
+**Run it after any variant or patch change, any addition to `pygram/lib/`, and
+any bump of the MicroPython pin** — and before/after any change made in order to
+be faster, since that is the only way to know whether it was. It is **not in
+CI**: a wall-clock benchmark on a shared runner measures the runner. CI keeps
+the deterministic half (size, opens, conformance), which catches the changes
+that would move the timings anyway.
+
+Four things about how it reads, each of which is a way to get it wrong:
+
+- **The verdict is the floor-subtracted MIN ratio**, pygram/stock. Noise on a
+  shared box is one-sided — it can only add time — so the minimum is the least
+  biased estimate. The median is printed beside it, and a row where the two
+  disagree by >25% is marked `!` and **is not a finding**.
+- **Startup is subtracted from every workload.** `-c 'pass'` is ~0.9 ms for both
+  builds; without subtracting it a 3 ms workload reads as a 4 ms one.
+- **`unsupported` is data.** Stock has no `re.findall`, no match `.start()`, no
+  `Counter` — those are the frozen stdlib. The run records the reason and
+  continues. `ERROR` is the other thing and should be chased.
+- **Decompose before blaming a subsystem.** `re-sub-ascii` is 10.9× — and
+  `ure.sub` — the NATIVE sub, reached without our shim — is **0.68×**. So the
+  gap is `pygram/lib/re.py`'s Python `_subn`, not the engine underneath it. Note
+  the engines are not byte-identical: our patch edits `lib/re1.5/charclass.c` to
+  make `\w` unicode-aware, so this pair isolates *shim vs no shim*, not
+  *patched vs unpatched engine*. A case pair like this is worth adding whenever
+  a shim wraps something in C.
+
+Standing results (2026-08-14, first entry in the ledger): startup at parity;
+the ordered-dict quadratic at 2.1× / 4.0× / 7.7× / 9.4× for 1k/5k/10k/20k keys
+and **12.4× on lookup**; `json.dumps` 3.8× from the same cause; exact float repr
+1.9× with its fixed-precision control at 0.86×; `\w` on non-ASCII 1.84×, which
+is not a clean cost because the two builds match different amounts of text.
 
 ## 3. The corpus grows by itself — do not hand-write entries
 
@@ -201,6 +251,17 @@ Each of these cost real time and each would recur.
   littering the repo, and so pygram cannot read back a file CPython created).
   That makes `PYGRAM_BIN=pygram/build/pygram` resolve against the temp dir.
   Resolve to absolute once.
+- **Regenerate the introspection artifacts AFTER staging, not before, whenever
+  a change ADDS a file.** The bundlers enumerate TRACKED files, so running all
+  four before `git add` silently skips the new ones: the committed snapshot
+  described 1089 files while the working tree had 1092, `npm test` passed
+  locally because the artifacts and the untracked files were consistent right up
+  until the commit made them tracked, and CI failed on both drift tests. Editing
+  an existing file does not have this failure mode, which is why it takes a
+  while to bite. Also note the snapshot indexes `docs/` and `.claude/skills/`,
+  not just `src/` and `public/js/` — a docs-only or skill-only edit stales it
+  too, and the fix is always all four bundlers, never editing an artifact.
+
 - **`process.exit()` truncates piped stdout.** Node's stdout is async on a pipe,
   so `--json` was cut mid-object. Set `process.exitCode` and return.
 
