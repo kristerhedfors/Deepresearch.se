@@ -7,6 +7,33 @@ QUOTE_NONNUMERIC = 2
 QUOTE_NONE = 3
 
 
+# Keywords CPython's csv accepts that this shim does NOT implement, each with
+# the value its behaviour already matches. A caller passing the matching value
+# is asking for what it already does, so that is allowed; any other value is
+# asking for behaviour that is not here.
+#
+# Silently swallowing these in **kw is the bug this table exists to close:
+# csv.writer(f, quoting=csv.QUOTE_ALL) used to write a,b where CPython writes
+# "a","b" — at exit 0, with nothing on stderr.
+_KW_UNIMPLEMENTED = (
+    ("quoting", QUOTE_MINIMAL),
+    ("dialect", "excel"),
+    ("doublequote", True),
+    ("skipinitialspace", False),
+    ("strict", False),
+    ("escapechar", None),
+)
+
+
+def _check_kw(kw):
+    for name, matches_our_behaviour in _KW_UNIMPLEMENTED:
+        if name in kw and kw[name] != matches_our_behaviour:
+            raise NotImplementedError(
+                "pygram: unsupported: argument: csv(" + name + ")"
+            )
+
+
+
 class Error(Exception):
     pass
 
@@ -56,6 +83,7 @@ def _parse(s, delim, quote):
 
 
 def reader(f, delimiter=",", quotechar='"', **kw):
+    _check_kw(kw)
     buf = ""
     for line in f:
         buf += line
@@ -92,6 +120,7 @@ class DictReader:
 
 class _Writer:
     def __init__(self, f, delimiter=",", quotechar='"', lineterminator="\r\n", **kw):
+        _check_kw(kw)
         self._f = f
         self.delimiter = delimiter
         self.quotechar = quotechar

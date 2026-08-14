@@ -44,6 +44,25 @@ MICROPY_VFS_LFS2 = 0
 # .py files on disk is a stdlib fetched over a WebSocket one file at a time.
 FROZEN_MANIFEST ?= $(VARIANT_DIR)/manifest.py
 
+# Freeze the shim stdlib WITHOUT bytecode line-number tables. Every frozen scope
+# otherwise carries a code-info block of line deltas; there are 2,282 B of them
+# across 346 scopes. At -O3, py/emitbc.c's mp_emit_bc_set_source_line() returns
+# early and they are not emitted.
+#
+# This applies to the FROZEN stdlib only. The user's own script is still compiled
+# at runtime with mp_optimise_value == 0, so its tracebacks, its line numbers,
+# its asserts and its __debug__ are all untouched — which is what makes this
+# cheap. The single observable cost is that a traceback frame INSIDE a frozen
+# shim now reads `File "json.py", line 1` instead of the true line.
+#
+# THE LATENT TRAP: any -O level also deletes `assert` statements and sets
+# __debug__ False in the frozen modules. pygram/lib contains zero of both today
+# (grep, and independently proven by -O1 and -O2 producing byte-identical
+# output), so nothing is being deleted. If a future shim adds an assert, -O3
+# will silently remove it — the smoke checks in scripts/pygram-build.sh pin the
+# user-code half of this so the distinction cannot rot unnoticed.
+MPY_CROSS_FLAGS += -O3
+
 # manifest.py globs this directory rather than naming modules, so the shim
 # stdlib in pygram/lib can grow without any build file changing. It has to
 # arrive as an environment variable: makemanifest.py's $(VAR) substitution is
@@ -79,6 +98,42 @@ COPT = -Os -DNDEBUG
 # musl has no __stack_chk_fail_local, and the guard is pointless in a binary
 # whose whole input is a program the caller already controls.
 CFLAGS += -fno-stack-protector
+
+# Position-INdependent code, switched off. gcc 13.3 on Ubuntu ships with
+# `-fPIE [enabled]` by default (`gcc -Q --help=common` says so) and the musl-gcc
+# wrapper is a thin `gcc -m32` that does not turn it off — so every translation
+# unit was compiled position-independent even though the link has always produced
+# a non-PIE ELF of type EXEC loaded at a fixed 0x08048000. Nothing ever used the
+# position independence; it was pure overhead, and on i386 it is charged twice:
+# a GOT base pointer eats a register on the most register-starved ISA in common
+# use, and every const aggregate holding a pointer is demoted out of .rodata into
+# a relocated section. Measured: .data.rel.ro 20,992 B -> 4 B.
+#
+# -no-pie at link time alone does nothing here; the saving is entirely
+# compile-side, which is why both flags are set.
+CFLAGS  += -fno-pie
+LDFLAGS += -no-pie
+
+# i386 codegen, five independent levers on a register-starved ISA. Leave-one-out
+# .text deltas, measured: -mpreferred-stack-boundary=2 -4,480 (the default aligns
+# every call frame to 16 bytes for SSE spills this build never makes — `objdump`
+# finds zero movaps/movapd/movdqa in the artifact), -fomit-frame-pointer -2,320
+# (frees %ebp as a general register), -falign-*=1 -992 (no NOP padding between
+# functions and branch targets; alignment buys pipeline throughput that a
+# WebSocket-streamed cold start does not care about), -fmerge-all-constants -448
+# text and -1,280 rodata, -fno-math-errno -96.
+#
+# These must be passed at LINK as well as compile: -flto defers code generation
+# to link time, so a codegen flag that appears only in CFLAGS is silently ignored.
+#
+# They compose with -fno-pie at 96.5% — the two attack different registers
+# (%ebx/GOT versus %ebp/stack frame), so the pair is worth 18,940 B of sections
+# against 19,628 B if the savings were fully independent. Only 688 B overlap.
+PYGRAM_CODEGEN := -fomit-frame-pointer -fmerge-all-constants -fno-math-errno \
+                  -mpreferred-stack-boundary=2 \
+                  -falign-functions=1 -falign-jumps=1 -falign-loops=1 -falign-labels=1
+CFLAGS  += $(PYGRAM_CODEGEN)
+LDFLAGS += $(PYGRAM_CODEGEN)
 # <<< SHARED TOOLCHAIN BLOCK
 
 # DWARF unwind tables, deleted. MicroPython raises through setjmp/longjmp (the
@@ -128,6 +183,17 @@ LDFLAGS += -flto=4 -Os
 # Section sizes (`size -A`) are the fine-grained truth; the file size is what the
 # gate measures because it is what the sandbox actually streams.
 LDFLAGS += -Wl,-z,noseparate-code
+
+# PT_GNU_RELRO, deleted for the same reason. RELRO is applied by the DYNAMIC
+# LINKER, which re-mprotects the relocated region read-only after startup — and
+# this binary is static, so there is no ld.so and nobody ever applies it.
+# Confirmed rather than assumed: `strace -e trace=mprotect` on a run shows ZERO
+# mprotect calls. All the segment did was force page-congruent padding between
+# the read-only and read-write LOADs.
+#
+# Like its sibling above this is PURE PADDING, so its saving is not additive —
+# re-measure it after any other change rather than carrying the number forward.
+LDFLAGS += -Wl,-z,norelro
 
 # MEASURED AND REJECTED, so it is not re-tried every time someone reads this
 # file and has the same idea:

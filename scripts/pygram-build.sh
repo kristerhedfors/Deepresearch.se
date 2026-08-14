@@ -490,6 +490,42 @@ check "unsupported module: stdout untouched" \
 check "a module CPython lacks too still exits 1" \
     "$("$OUT" -c 'import PIL' >/dev/null 2>&1; echo $?)" "1"
 
+# The SHIM half of the same contract, and it was broken from the day the shims
+# were written until 2026-08-14: `pygram_exit_not_implemented()` is reached from
+# py/runtime.c's mp_raise_NotImplementedError(), which is C — so a shim raising
+# NotImplementedError from PYTHON produced exit 1 and a traceback instead of the
+# contractual 90 and one line. A caller branching on 90 never fired for ANY
+# shim-level gap. All three execution paths are pinned because they do not share
+# a handler: -c and a script file leave through shared/runtime/pyexec.c, a
+# program on STDIN leaves through main.c's handle_uncaught_exception().
+check "shim unsupported exits 90 (-c)" \
+    "$("$OUT" -c 'import re; re.findall(r"\d+", "a1", re.VERBOSE)' >/dev/null 2>&1; echo $?)" "90"
+check "shim unsupported: one stderr line" \
+    "$("$OUT" -c 'import re; re.findall(r"\d+", "a1", re.VERBOSE)' 2>&1 >/dev/null)" \
+    "pygram: unsupported: argument: re(VERBOSE)"
+check "shim unsupported: stdout untouched" \
+    "$("$OUT" -c 'import re; re.findall(r"\d+", "a1", re.VERBOSE)' 2>/dev/null | wc -c | tr -d ' ')" "0"
+check "shim unsupported exits 90 (file)" \
+    "$(printf 'import re\nre.findall(r"\\d+", "a1", re.VERBOSE)\n' > "$WORK/u.py"; "$OUT" "$WORK/u.py" >/dev/null 2>&1; echo $?)" "90"
+check "shim unsupported exits 90 (stdin)" \
+    "$(printf 'import re\nre.findall(r"\\d+", "a1", re.VERBOSE)\n' | "$OUT" - >/dev/null 2>&1; echo $?)" "90"
+check "csv silently-swallowed kwarg exits 90" \
+    "$("$OUT" -c 'import csv, io; csv.writer(io.StringIO(), quoting=csv.QUOTE_ALL)' >/dev/null 2>&1; echo $?)" "90"
+# The other direction: hijacking a program's OWN NotImplementedError would be a
+# worse bug than the one being fixed.
+check "a program's own NotImplementedError still exits 1" \
+    "$("$OUT" -c 'raise NotImplementedError("mine")' >/dev/null 2>&1; echo $?)" "1"
+
+# mpy-cross -O3 drops line numbers from the FROZEN stdlib only. The user's own
+# script is still compiled at runtime at optimise level 0, so if either of these
+# breaks, -O3 has started reaching code it must not touch.
+check "user code keeps its line numbers" \
+    "$(printf 'x = 1\ny = 2\nraise ValueError("b")\n' > "$WORK/l.py"; "$OUT" "$WORK/l.py" 2>&1 >/dev/null | grep -c 'line 3')" "1"
+check "assert still fires in user code" \
+    "$("$OUT" -c 'assert 1 == 2' >/dev/null 2>&1; echo $?)" "1"
+check "__debug__ is True in user code" \
+    "$("$OUT" -c 'print(__debug__)')" "True"
+
 # The stdout/stderr split. A traceback on stdout means a failing
 # `pygram ... | wc -l` counts the traceback and `pygram ... > f` writes the
 # error into the file — a pipeline silently ingesting garbage, which is exactly

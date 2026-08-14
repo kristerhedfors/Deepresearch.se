@@ -404,6 +404,107 @@ gone, not merely reduced. Since cold cost tracks bytes and opens, and opens are
 0, **bytes are the only lever left** — which is why this pass is entirely a
 size pass.
 
+## 8b. The second optimisation pass (2026-08-14), and the bug it uncovered
+
+A six-lane survey of what was left took the binary from 304,440 B to
+**269,124 B — a further 11.6%, and 33.7% below the original 390,456 B**. Adding
+corpus entries for two suspected silent divergences then exposed a defect in the
+fallback contract that had been present since the frozen shims were written.
+
+### The size work
+
+| change | file size | mechanism |
+|---|---|---|
+| after §8a | 304,440 B | — |
+| `-fno-pie` / `-no-pie` | −12,288 B | `.data.rel.ro` 20,992 → 4 B |
+| i386 codegen pack | −8,192 B | stack boundary, frame pointer, alignment padding |
+| `-Wl,-z,norelro` | −1,440 B | inert segment; **0** `mprotect` calls at runtime |
+| `MPY_CROSS_FLAGS += -O3` | −2,592 B | frozen bytecode line-number tables |
+| `main.c` `fprintf` → `mp_printf` | −11,604 B | musl's whole `vfprintf` engine |
+| contract fix + 4 corpus entries | +800 B | see below — bought deliberately |
+| **total** | **269,124 B** | **−35,316 B** |
+
+**gcc had been compiling every translation unit position-independent.** Ubuntu's
+gcc 13.3 defaults to `-fPIE` and the musl-gcc wrapper does not turn it off, so
+the build paid for position independence it never used — the link has always
+produced a non-PIE `EXEC` at a fixed `0x08048000`. On i386 that is charged twice:
+a GOT base pointer consumes a register on the most register-starved ISA in common
+use, and every const aggregate holding a pointer is demoted out of `.rodata`.
+
+**Two lanes each found a ~29 KB stack and neither knew about the other's headline
+flag.** `-fno-pie` and the codegen pack turned out to compose at 96.5% — they
+attack different registers (`%ebx`/GOT versus `%ebp`/stack frame) — so the
+combination is worth more than either lane claimed. Combinations get measured
+here, never summed.
+
+**Two lines of `fprintf` were holding ~9.5 KB of musl.** `main.c` was the only
+remaining caller of libc's `fprintf`, which drags in `vfprintf`, `printf_core`,
+`fmt_fp` and the long-double helpers — in a binary that already links
+`py/formatfloat.c` for its own float formatting. `MICROPY_USE_INTERNAL_PRINTF`
+supplies `printf` but not `fprintf`, which is how they survived.
+
+### The bug: the fallback contract only ever worked from C
+
+Adding corpus entries for `re.VERBOSE` and `csv.writer(quoting=…)` — both of
+which the shims declared as constants and then silently ignored, returning `[]`
+where CPython returns `['1','22']`, at **exit 0** — showed something worse than
+the two divergences themselves.
+
+`pygram_exit_not_implemented()` is reached from `py/runtime.c`'s
+`mp_raise_NotImplementedError()`, **a C function**. The frozen shims raise
+`NotImplementedError` from *Python* (`re._unsupported()`), which never passes
+through it. So every shim-level gap — regex backreferences, named-group
+references, `{n,m}` on a group — exited **1 with a multi-line traceback** instead
+of **90 with one greppable line**. The message was right and everything around it
+was wrong, so a caller branching on 90 to retry with real `python3` had never
+fired for any of them.
+
+The fix routes a `NotImplementedError` carrying the `pygram: unsupported: `
+marker into the same exit-90 path. Two things about it are worth keeping:
+
+- **It needs two call sites, and that was found by deleting one.** `-c` and a
+  script file surface their exception through `shared/runtime/pyexec.c`; a
+  program piped on **stdin** comes out through `main.c`'s
+  `handle_uncaught_exception()`. Removing either silently returns that path to
+  exit 1. All three are now pinned in the build's smoke checks.
+- **A program's own `NotImplementedError` must not be hijacked.** Only the marker
+  prefix triggers the 90; anything else keeps its traceback and exit 1. That is
+  pinned too, because getting it wrong would be a worse bug than the one fixed.
+
+The shims now refuse the whole class rather than the two instances: `re` rejects
+any flag it does not implement by name, and `csv` rejects any keyword whose value
+differs from the behaviour it actually has. Conformance went 195/13/0 →
+**195 MATCH / 17 UNSUPPORTED / 0 MISMATCH** — the four new entries are honest
+coverage gaps instead of silent wrong answers.
+
+### Rejected, with the measurement
+
+- **UPX** (−123,388 B at `-9`, −142,936 B with LZMA) is the largest number in the
+  survey and still wrong. The stub opens `/proc/self/exe`, so **file opens go
+  0 → 1** and the project's central metric dies; it needs a third-party binary in
+  CI that rewrites the shipped ELF; and it pays decompression on every run
+  against a 50–85 ms exec floor.
+- **`-mregparm=3`** (−4,944 B of `.text`) segfaults on every program. musl's i386
+  `memcpy` is hand-written assembly reading `0xc(%esp)`, and rebuilding musl with
+  the flag cannot fix it — 69 `.s` files are cdecl by construction. Fixing it
+  means forking musl and losing the tarball-by-SHA-256 provenance.
+- **Stripping docstrings from `pygram/lib`** saves **0 B**, not "a little":
+  `mpy-cross` hard-sets `MICROPY_ENABLE_DOC_STRING=0`, so the parser discards
+  them already. There are only 268 docstring bytes in the whole shim stdlib.
+- **Dropping the six least-used frozen modules** saves 4,096 B for MATCH 195 →
+  188. Every one is a real CPython module, so it is coverage sold for one page.
+
+### What this pass does not change
+
+pygram still is not deployed — the sandbox image is not built, so `/api/sandbox-image`
+serves the third-party WebVM disk and nothing here reaches a user yet. Both
+numbers below are projections from the gate's model, not measurements:
+504 ms → 347 ms. Against a **24.4 s cold VM boot**, this whole pass is worth
+about 46 ms of a sandbox turn. Two pending decisions would change its value more
+than any flag: transport compression on the image would halve every byte saved
+(the 35,316 B here is 17,329 B under `gzip -9`), and implementing the recorded
+`sandbox.prefetch` directive would remove per-file cold cost altogether.
+
 ## 9. What would make this project wrong
 
 Recorded up front so it can be checked rather than argued:
