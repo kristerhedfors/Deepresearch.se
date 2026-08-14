@@ -138,7 +138,8 @@ and trimming — never for cutting.
 `deployed_digest`, `intro`, `budget_s`, `search`, `started_at`, `ended_at`,
 `durationMs`, `ok`, `error`, and — for an Agent Studio run only — `app_e2e`
 (§3.5). Plus what the run VERIFICATION GATE saw: `verdict`, `observed` and
-`frames` (§3.6).
+`frames` (§3.6). And, since 2026-08-14, **`chat`** — the conversation itself
+(§3.3a), which is what lets the published clip link back to a live chat.
 
 **`endframe.png`** and, for a run that walked to a published app,
 **`chatframe.png`** — the last frame as a still. §3.6.
@@ -171,6 +172,34 @@ Three of those exist for the review queue rather than for the edit:
 
 A batch also writes `batch.json` at the root: the options used plus one row
 per run.
+
+### 3.3a `chat` — the run itself, so the video links to a chat
+
+> *"Link from captured agent videos to the actual chat so one can continue and
+> explore from there."* — owner directive, 2026-08-14
+
+A clip used to be a dead end. It showed a research run answering, and the run
+died with the browser that recorded it: no way to open the answer, follow it
+up, or check a citation in it. So the driver now reads the finished
+conversation off the page and writes it into `meta.json` as `chat`:
+`[{role, content}]`, user and assistant turns only.
+
+**It reads the RAW messages, not the screen.** `window.__DR_TRANSCRIPT`
+(`public/js/stream.js` `conversationTranscript`) returns a copy of the message
+array the conversation was built from. Scraping the DOM instead would give the
+words and lose every citation URL — an answer is markdown, and by the time it
+is on screen the links are elements — and the citations are exactly what
+somebody following "continue this chat" wants to explore. The DOM read is kept
+as a fallback for a deploy older than the hook; it is lossy, and honestly so.
+
+**It happens before the Agent Studio walk.** An `agent-builder` run navigates
+the page to the published app (§3.5); after that there is no chat left to
+read. The transcript is taken at the same moment as the end state, and the
+`finally` block re-reads only when the first read never happened.
+
+A run whose transcript could not be read still publishes. `chat` is omitted
+rather than emptied, the row's `has_chat` is false, and the card offers to ask
+the question again instead of promising a conversation that is not there.
 
 ### 3.4 No intro in a recording
 
@@ -512,7 +541,8 @@ restores that; `--poster-at <ms>` overrides both).
 
 Three D1 tables: `captures` (one row per clip — identity, the run it came
 from, the current cut's numbers, `name`, `commit_sha`, `version`,
-`answered_at`, `status`, `likes`), `capture_versions` (one row per CUT, so an
+`answered_at`, `status`, `likes`, and `chat_json`: the recorded conversation,
+§6.6), `capture_versions` (one row per CUT, so an
 older version is retained rather than overwritten) and `capture_reviews` (one
 row per verdict — the thread). Media lives in R2 at
 `captures/<id>/v<version>/{video.mp4,poster.jpg}`. Metadata and media are
@@ -542,9 +572,11 @@ Admin-gated, under `/api/admin/captures` (`src/captures.js`, dispatched from
 | `GET` | `/api/admin/captures` | List. `?queue=1` is the unreviewed queue; also `status`, `agent`, `model`, `q`, `limit`, `format=text`. |
 | `POST` | `/api/admin/captures` | Create the metadata row; returns the upload URLs. |
 | `GET` | `/api/admin/captures/:id` | One capture with its reviews. |
-| `PATCH` | `/api/admin/captures/:id` | `{label?, name?, status?, ref?, commit_sha?}`. |
+| `PATCH` | `/api/admin/captures/:id` | `{label?, name?, status?, ref?, commit_sha?, chat?}`. |
 | `DELETE` | `/api/admin/captures/:id` | Row, reviews, version rows, every R2 key. |
 | `GET` | `/api/admin/captures/queue-status` | What the top-up reads: `{target, unanswered, deficit, by_agent, used}`. |
+| `GET` | `/api/admin/captures/chats` | The recorded runs, named — what the chat-history drawer's own group lists. Naming columns only; never the transcripts. |
+| `GET` | `/api/admin/captures/:id/chat` | THE RUN as a reopenable conversation (§6.6). Always 200, `resumable` says whether there is a transcript. |
 | `PUT` | `/api/admin/captures/:id/video` | Raw MP4 bytes → the CURRENT version's key. |
 | `PUT` | `/api/admin/captures/:id/poster` | Raw JPEG bytes → the current version's poster. |
 | `GET` | `/api/admin/captures/:id/video` | The current version, with real HTTP Range support. |
@@ -554,6 +586,12 @@ Admin-gated, under `/api/admin/captures` (`src/captures.js`, dispatched from
 | `PUT`/`GET` | `/api/admin/captures/:id/versions/:v/{video,poster}` | One specific cut; Range preserved. |
 | `POST` | `/api/admin/captures/:id/review` | The verdict: `{verdict:"like"\|"feedback", note?}`. |
 | `DELETE` | `/api/admin/captures/:id/review` | Undo the last verdict — the row goes, a like is un-counted, the capture reverts. 404 when there is none. |
+
+`chat` on `PATCH` is the other backfill: every clip published before
+2026-08-14 was recorded without a transcript, and one that could not be filled
+in afterwards is one that never gets the link. `null` clears it. Everything
+else about a recording stays un-editable — a wrong fact means re-capturing,
+not rewriting the record.
 
 `commit_sha` on `PATCH` is for BACKFILL — the recorder stamps it at capture
 time and nothing in the normal path edits it — and is validated as a hex sha
@@ -698,6 +736,50 @@ was wrong with it — the same producer→verdict→producer shape as the try-it
 queue (`docs/DECISION-BOARD-LOOPS.md`, the **testable-interaction-points**
 skill) and the feature board. `src/admin-boards.js` carries the entry so the
 board is discoverable in one call.
+
+### 6.6 From the clip back into the chat
+
+The clip is one end of the link; this is the other. Two doors, one path
+(`public/js/capture-chat.js`):
+
+**The card's link.** Every capture on the review feed carries one, under its
+facts row. With a transcript it reads **"💬 Continue this chat"**; without one
+— every clip recorded before 2026-08-14 — it reads **"💬 Ask this again"**,
+because "continue" over an empty history is a promise the app cannot keep. It
+opens `/?capture=<id>` in a new tab: a card halfway down a queue of twenty is a
+place, and following a link out of it loses the reviewer's position.
+
+**The drawer's own expandable.** *"Let those recorded chats appear in admin's
+chat history panel under its own expandable."* A **Recorded runs** group sits
+in the left chat-history drawer, collapsed, listing the recent captures by
+`#CAP-<id>` and name. It is hidden entirely — not shown empty — for anyone
+whose session cannot read the admin captures API, and it asks that API once per
+page: a group that opens onto nothing teaches the reader to stop opening it.
+
+**What opening one does** (`openCaptureChat`):
+
+1. Applies the capture's **agent** first. A recorded Cyber run continued under
+   Deep Science is a different agent answering the follow-up, with nothing on
+   screen to say the mode moved.
+2. Looks for the reader's own copy at the stable id `capture-<id>`. If they
+   have opened this capture before and asked follow-ups, **their** conversation
+   comes back — a capture is a starting point, not a document that keeps
+   overwriting the work done from it. That stable id is also why following the
+   same link twice does not produce two entries in the drawer.
+3. Otherwise writes the recorded conversation into local encrypted history
+   (same store, same encryption, same drawer as the reader's own chats) and
+   opens it. Its `createdAt` is **when the run was recorded**, not when it was
+   opened, so a sitting spent opening old captures does not bury the reader's
+   recent chats.
+4. With no transcript, loads the composer with the same question under the same
+   agent and model — which is what the link's own wording promised.
+
+**Whose content this is.** A capture's prompt is a shipped starter (synthetic
+by construction — §3.1) and its answer is this pipeline's own output, recorded
+by the operator. Nothing in this path reads `chat_logs`, and nothing in it may
+start doing so: a full-visibility interaction log is not consent to replay
+somebody's conversation into a video, a drawer, or a stranger's screen
+(privacy invariant 4).
 
 ## 7. Honesty about the footage
 

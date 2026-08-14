@@ -246,6 +246,18 @@ input, select, textarea {
   white-space: pre-wrap; overflow-wrap: anywhere;
 }
 .cap-facts { margin: 0; font-variant-numeric: tabular-nums; }
+/* The way back into the run the clip recorded. A quiet link rather than a
+   button: filing the capture is what the card is FOR, and an action styled
+   like the verdict buttons would compete with the gesture the page exists to
+   collect. It still gets a comfortable tap target — this is reviewed on a
+   phone, between two swipe zones. */
+.cap-chat { margin: .4rem 0 0; }
+.cap-chat-link {
+  display: inline-block; padding: .2rem 0;
+  font-size: .8rem; font-weight: 600; color: var(--accent);
+  text-decoration: none; border-bottom: 1px solid currentColor;
+}
+.cap-chat-link:hover, .cap-chat-link:focus-visible { text-decoration: none; opacity: .8; }
 .cap-review { margin: .35rem 0 0; font-size: .8rem; color: var(--muted); overflow-wrap: anywhere; }
 
 /* The drag overlays. Opacity is set from JS (swipeHint's progress), so they

@@ -35,6 +35,15 @@
 //    between a genuinely fresh capture and a re-cut that came back around,
 //    which is the one thing a status alone cannot say.
 //
+// A CLIP LINKS BACK TO ITS CHAT (owner directive, 2026-08-14: "link from
+// captured agent videos to the actual chat so one can continue and explore
+// from there"). The recorder reads the finished conversation off the page and
+// files it in `chat_json`; `/:id/chat` hands it back as a seed the app reopens
+// at `/?capture=<id>`, where it lands in the reader's own history and can be
+// continued. Everything recorded before this keeps working: no transcript
+// means `resumable: false`, and the link opens the composer with the same
+// agent, model and question rather than pretending to restore a chat.
+//
 // Each capture also carries a number from an increasing series (`id`, written
 // `#CAP-12`), a short few-word `name` derived with no model call, and the
 // `commit_sha` it was recorded at — without which a clip is un-reproducible
@@ -63,6 +72,9 @@
 //   GET    /api/admin/captures/queue-status   what the top-up needs: the
 //                                         deficit against the target of 20 and
 //                                         every (agent, starter) already used
+//   GET    /api/admin/captures/chats      the recorded runs, named — what the
+//                                         chat-history drawer's own group lists
+//   GET    /api/admin/captures/:id/chat   THE RUN as a reopenable conversation
 //   POST   /api/admin/captures            create the metadata row; the 201
 //                                         carries the two upload URLs
 //   GET    /api/admin/captures/:id        one capture (reviews + versions)
@@ -84,7 +96,7 @@
 import { getDb } from "./db.js";
 import { jsonResponse, textResponse } from "./http.js";
 import { cleanStr, likePattern } from "./chatlog.js";
-import { captureTag, starterName } from "../public/js/captures-core.js";
+import { captureChatSeed, captureTag, normalizeChatMessages, starterName } from "../public/js/captures-core.js";
 
 // Re-exported, not mirrored: `captureTag` is the SAME function the deck
 // renders with, so the number on a card and the number in `?format=text`
@@ -102,7 +114,8 @@ export { captureTag };
  *   height?: number | null, size_bytes: number, video_key?: string | null,
  *   poster_key?: string | null, status: string, likes: number, ref?: string | null,
  *   name?: string | null, commit_sha?: string | null, version?: number | null,
- *   answered_at?: number | null, meta_json?: string | null }} CaptureRow
+ *   answered_at?: number | null, meta_json?: string | null,
+ *   chat_json?: string | null }} CaptureRow
  */
 /**
  * A D1 `capture_reviews` row.
@@ -165,6 +178,13 @@ export const CAPTURE_CAPS = {
   // Reviews read back per capture. A clip with more than this many verdicts
   // is a clip nobody is deciding about.
   reviews: 100,
+  // The recorded conversation, serialized. Larger than `meta` because this is
+  // the answer itself — a deep-research reply with its sources runs to tens of
+  // thousands of characters, and a transcript truncated to fit would reopen as
+  // a chat that stops mid-sentence. The MESSAGE-level bounds are the real
+  // shape (captures-core.js CHAT_CAPS); this is the ceiling on what those
+  // bounds serialize to.
+  chat: 120_000,
 };
 
 // Lifecycle. `new` = not yet swiped (the deck). A 👍 moves it to `liked`
@@ -402,7 +422,7 @@ export function deriveCaptureName(run) {
  *   shape: string | null, duration_ms: number, source_ms: number, cut_ms: number,
  *   speed: number, wait_mode: string | null, width: number | null, height: number | null,
  *   size_bytes: number, commit_sha: string | null, ref: string | null,
- *   meta_json: string | null } }}
+ *   meta_json: string | null, chat_json: string | null } }}
  */
 export function validateCaptureCreate(body) {
   if (!body || typeof body !== "object") return { error: "Request body must be a JSON object." };
@@ -446,7 +466,13 @@ export function validateCaptureCreate(body) {
       // is reproducing the run.
       commit_sha: cleanStr(body.commit_sha, CAPTURE_CAPS.commit),
       ref: cleanStr(body.ref, CAPTURE_CAPS.ref),
-      meta_json: serializeMeta(body.meta),
+      meta_json: serializeMeta(withoutChat(body.meta)),
+      // The conversation the clip shows, when the recorder read one off the
+      // page. OPTIONAL, and deliberately not an error when it is missing: a
+      // capture whose transcript could not be read is still a publishable clip
+      // (it just links to the composer rather than to the chat), and failing
+      // the create would throw away the recording over its footnote.
+      chat_json: serializeChat(chatFrom(body)),
     },
   };
 }
@@ -465,7 +491,7 @@ export function validateCaptureCreate(body) {
  *   commit_sha: string | null, model: string | null, duration_ms: number,
  *   source_ms: number, cut_ms: number, speed: number, wait_mode: string | null,
  *   width: number | null, height: number | null, size_bytes: number,
- *   note: string | null, meta_json: string | null } }}
+ *   note: string | null, meta_json: string | null, chat_json: string | null } }}
  */
 export function validateCaptureVersion(body) {
   if (!body || typeof body !== "object") return { error: "Request body must be a JSON object." };
@@ -486,9 +512,98 @@ export function validateCaptureVersion(body) {
       // What this cut was meant to fix — usually the previous version's
       // feedback note, carried forward so the thread reads as a conversation.
       note: cleanStr(body.note, CAPTURE_CAPS.note),
-      meta_json: serializeMeta(body.meta),
+      meta_json: serializeMeta(withoutChat(body.meta)),
+      // A re-cut that came from a NEW RECORDING carries a new conversation,
+      // and the capture's chat has to follow the footage — otherwise the card
+      // plays v2 and opens v1's chat, the same class of lie as a version
+      // quoting the previous cut's grading (#CAP-22). Null when this cut is
+      // only a re-EDIT of the same run: the caller sent no transcript, and the
+      // one already on the row is still the right one (see the COALESCE).
+      chat_json: serializeChat(chatFrom(body)),
     },
   };
+}
+
+// THE RECORDED CONVERSATION, serialized for `chat_json`.
+//
+// Unlike the edit report this is NOT opaque: it is normalised through the same
+// pure core the client reopens it with (captures-core.js), so a transcript
+// that reaches the column is already the shape stream.js can restore. A
+// transcript that normalises to nothing is stored as NULL rather than as `[]`
+// — "this capture has no chat" is one fact, and it should have one
+// representation whatever the caller sent.
+/** @param {unknown} chat @returns {string | null} */
+function serializeChat(chat) {
+  const messages = normalizeChatMessages(chat);
+  if (!messages.length) return null;
+  try {
+    const json = JSON.stringify(messages);
+    return json && json.length <= CAPTURE_CAPS.chat ? json : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * THE TRANSCRIPT, wherever the uploader put it.
+ *
+ * `chat` at the top level is the intended place. The other two are where it
+ * ACTUALLY arrives from the documented publish recipe, which posts the whole
+ * edit report as `meta: .` — and edit.json embeds meta.json (with its `chat`)
+ * under its own `meta` key. Reading all three is not tolerance for sloppiness;
+ * it is what stops a correct-looking publish from silently filing a clip with
+ * no chat behind it.
+ * @param {any} body
+ * @returns {unknown}
+ */
+function chatFrom(body) {
+  if (!body || typeof body !== "object") return null;
+  if ("chat" in body) return body.chat;
+  const meta = body.meta;
+  if (meta && typeof meta === "object") {
+    if (Array.isArray(meta.chat)) return meta.chat;
+    if (meta.meta && typeof meta.meta === "object" && Array.isArray(meta.meta.chat)) return meta.meta.chat;
+  }
+  return null;
+}
+
+/**
+ * The edit report with the transcript taken OUT of it.
+ *
+ * Load-bearing, not tidiness: `CAPTURE_CAPS.meta` is 20 kB and a research
+ * answer alone is bigger than that, so a report carrying the chat serializes
+ * past the cap and `serializeMeta` drops THE WHOLE REPORT — the segments, the
+ * ffprobe result, the run verdict — silently, in exchange for a transcript
+ * that has its own column. The chat is stored once, here it is removed.
+ * @param {unknown} meta
+ * @returns {unknown}
+ */
+function withoutChat(meta) {
+  if (!meta || typeof meta !== "object" || Array.isArray(meta)) return meta;
+  const m = /** @type {any} */ ({ ...meta });
+  delete m.chat;
+  if (m.meta && typeof m.meta === "object" && !Array.isArray(m.meta)) {
+    m.meta = { ...m.meta };
+    delete m.meta.chat;
+  }
+  return m;
+}
+
+/**
+ * `chat_json` → the messages, or []. Same fail-soft posture as parseMeta: a
+ * column written by an older build, half-written by a failed upload, or
+ * holding something that is not an array must render as "no transcript"
+ * rather than 500 the card that asked for it.
+ * @param {string | null | undefined} json
+ * @returns {{ role: string, content: string }[]}
+ */
+function parseChat(json) {
+  if (!json) return [];
+  try {
+    return normalizeChatMessages(JSON.parse(json));
+  } catch {
+    return [];
+  }
 }
 
 // The edit report rides along as an opaque blob — this module reads none of
@@ -550,8 +665,24 @@ export function validateCapturePatch(body) {
       patch.commit_sha = sha.toLowerCase();
     }
   }
+  // BACKFILL, and the one recording fact that IS editable after the event.
+  // The transcript is not a description of the run, it is a copy of it, and a
+  // copy can be attached later: every capture published before 2026-08-14 was
+  // recorded without one, and a clip whose chat cannot be filled in afterwards
+  // is a clip that never gets the link. `null` clears it — a transcript read
+  // off a run that went wrong is worth removing, and there has to be a way.
+  if ("chat" in body) {
+    if (body.chat === null) patch.chat_json = null;
+    else {
+      const chat = serializeChat(body.chat);
+      if (!chat) {
+        return { error: "chat must be a non-empty array of {role, content} messages (roles: user, assistant), or null." };
+      }
+      patch.chat_json = chat;
+    }
+  }
   if (!Object.keys(patch).length) {
-    return { error: "Nothing to update — send label, name, status, ref and/or commit_sha." };
+    return { error: "Nothing to update — send label, name, status, ref, commit_sha and/or chat." };
   }
   return { patch };
 }
@@ -587,6 +718,14 @@ export function videoUrl(id) {
 /** @param {number} id */
 export function posterUrl(id) {
   return `/api/admin/captures/${id}/poster`;
+}
+
+/** Where the recorded conversation is read from. The app's own
+ * `/?capture=<id>` link is what a HUMAN follows (captures-core.js
+ * captureChatUrl); this is the endpoint that link's boot handler fetches.
+ * @param {number} id */
+export function chatUrl(id) {
+  return `/api/admin/captures/${id}/chat`;
 }
 
 // The per-version URLs. The unversioned pair above always serves the CURRENT
@@ -759,6 +898,14 @@ export function projectCapture(row, versions) {
     has_poster: !!row.poster_key,
     video_url: videoUrl(row.id),
     poster_url: posterUrl(row.id),
+    // THE CHAT BEHIND THE CLIP. The messages themselves are NOT on the list
+    // projection — twenty cards would each carry a full research answer, which
+    // is a megabyte of feed nobody reads. What every surface needs is the two
+    // facts here: whether a transcript exists (so the link can promise to
+    // CONTINUE the chat rather than only re-ask the question) and where to
+    // open it. The transcript itself is one GET away, at chat_url.
+    has_chat: !!row.chat_json,
+    chat_url: chatUrl(row.id),
     meta: parseMeta(row.meta_json),
     reviews: [],
     ...(versions ? { versions: versions.map((v) => projectCaptureVersion(v, version)) } : {}),
@@ -1180,6 +1327,52 @@ export async function handleAdminCaptures(request, env, url, log) {
     return jsonResponse(status);
   }
 
+  // GET /api/admin/captures/chats — THE RECORDED RUNS, as the chat-history
+  // drawer's own group lists them (public/js/capture-chats.js).
+  //
+  // A separate endpoint rather than a flag on the list above, for one reason
+  // that decides it: this one is opened on every history-drawer refresh by a
+  // pane that is mostly about the reader's own conversations, so it must stay
+  // small. It selects the naming columns only — never `meta_json`, never
+  // `chat_json` — so the group costs a few hundred bytes whatever the deck
+  // holds. `has_chat` still comes back, because it is what says whether a row
+  // reopens a conversation or only a question, and that is computable from the
+  // column's nullness without reading it.
+  //
+  // Ordered newest first and bounded: the drawer shows the recent runs, and
+  // the review feed at /captures/ is where the whole archive lives.
+  if (path === "/chats" && method === "GET") {
+    const p = url.searchParams;
+    const limit = Math.min(Math.max(Number(p.get("limit")) || 30, 1), 200);
+    const { results } = await db
+      .prepare(
+        `SELECT id, created_at, slug, label, name, agent, mode, model, prompt, starter, lang,
+           status, chat_json IS NOT NULL AS has_chat
+         FROM captures ORDER BY id DESC LIMIT ?`,
+      )
+      .bind(limit)
+      .all();
+    const captures = (/** @type {any[]} */ (results || [])).map((r) => ({
+      id: r.id,
+      tag: captureTag(r.id),
+      created_at: r.created_at,
+      slug: r.slug,
+      label: r.label,
+      name: r.name || null,
+      agent: r.agent,
+      mode: r.mode || null,
+      model: r.model,
+      prompt: r.prompt,
+      starter: r.starter || null,
+      lang: r.lang || null,
+      status: r.status,
+      // D1 answers a boolean expression with 0/1, not a JS boolean.
+      has_chat: !!r.has_chat,
+      chat_url: chatUrl(r.id),
+    }));
+    return jsonResponse({ captures, count: captures.length });
+  }
+
   // POST /api/admin/captures — the metadata row. The bytes follow in two
   // separate PUTs, whose URLs the response hands back so the uploader never
   // has to build them.
@@ -1193,13 +1386,13 @@ export async function handleAdminCaptures(request, env, url, log) {
       .prepare(
         `INSERT INTO captures (created_at, updated_at, slug, label, name, agent, mode, model, prompt, starter,
            lang, shape, duration_ms, source_ms, cut_ms, speed, wait_mode, width, height, size_bytes,
-           commit_sha, version, answered_at, status, likes, ref, meta_json)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, NULL, 'new', 0, ?, ?)`,
+           commit_sha, version, answered_at, status, likes, ref, meta_json, chat_json)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, NULL, 'new', 0, ?, ?, ?)`,
       )
       .bind(
         now, now, e.slug, e.label, e.name, e.agent, e.mode, e.model, e.prompt, e.starter,
         e.lang, e.shape, e.duration_ms, e.source_ms, e.cut_ms, e.speed, e.wait_mode,
-        e.width, e.height, e.size_bytes, e.commit_sha, e.ref, e.meta_json,
+        e.width, e.height, e.size_bytes, e.commit_sha, e.ref, e.meta_json, e.chat_json,
       )
       .run();
     const id = /** @type {number} */ (res.meta?.last_row_id);
@@ -1220,7 +1413,7 @@ export async function handleAdminCaptures(request, env, url, log) {
   // the per-version media /:id/versions/:v/(video|poster). Matched separately
   // so an unknown tail still 404s instead of being read as a sub-path.
   const verMatch = path.match(/^\/(\d+)\/versions\/(\d+)\/(video|poster)$/);
-  const idMatch = verMatch ? null : path.match(/^\/(\d+)(\/video|\/poster|\/review|\/versions)?$/);
+  const idMatch = verMatch ? null : path.match(/^\/(\d+)(\/video|\/poster|\/review|\/versions|\/chat)?$/);
   const match = verMatch || idMatch;
   if (!match) return jsonResponse({ error: "Not found." }, 404);
   const capture = await getCapture(db, Number(match[1]));
@@ -1334,6 +1527,19 @@ export async function handleAdminCaptures(request, env, url, log) {
     return getMedia(request, env, capture.id, capture.poster_key || posterKey(capture.id), "image/jpeg", false);
   }
 
+  // GET …/chat — THE RUN, as a conversation the app can reopen.
+  //
+  // Always 200, never 404 on a missing transcript. A capture recorded before
+  // transcripts existed still answers with its prompt, agent and model, and
+  // `resumable: false` is what tells the caller which of the two it got — the
+  // app opens a loaded composer instead of a restored chat. A 404 here would
+  // make "this clip is older" indistinguishable from "this clip is gone", and
+  // the link on the card would have to guess.
+  if (sub === "/chat" && method === "GET") {
+    const chat = captureChatSeed(projectCapture(capture), parseChat(capture.chat_json));
+    return jsonResponse({ chat });
+  }
+
   // GET …/versions — the thread on its own, newest first.
   if (sub === "/versions" && method === "GET") {
     const versions = await listVersions(db, capture);
@@ -1384,6 +1590,7 @@ export async function handleAdminCaptures(request, env, url, log) {
       .prepare(
         `UPDATE captures SET version = ?, commit_sha = ?, model = ?, duration_ms = ?, source_ms = ?,
            cut_ms = ?, speed = ?, wait_mode = ?, width = ?, height = ?, size_bytes = ?, meta_json = ?,
+           chat_json = COALESCE(?, chat_json),
            video_key = NULL, poster_key = NULL, status = 'new', updated_at = ? WHERE id = ?`,
       )
       .bind(
@@ -1397,6 +1604,13 @@ export async function handleAdminCaptures(request, env, url, log) {
         // published without a report gets NULL rather than inheriting one: "no
         // report for this cut" is honest, the previous cut's report is not.
         e.meta_json ?? null,
+        // COALESCE, deliberately the opposite rule from the report above: a
+        // re-EDIT of the same footage answers with no transcript and must keep
+        // the chat the recording actually produced, while a re-RECORDING sends
+        // one and replaces it. A NULL here would leave a re-cut clip linking to
+        // nothing for the sake of consistency with a column that means
+        // something else.
+        e.chat_json ?? null,
         now, capture.id,
       )
       .run();

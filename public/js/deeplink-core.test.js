@@ -5,6 +5,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  parseCaptureLink,
   parseComposerDeepLink,
   buildComposerDeepLink,
   DEEPLINK_MODES,
@@ -102,4 +103,32 @@ test("build → parse round-trips", () => {
   const u2 = buildComposerDeepLink({ mode: "nope", ask: "x" });
   assert.ok(!u2.includes("mode="));
   assert.deepEqual(DEEPLINK_MODES, ["science", "cyber", "introspection", "sdk", "orchestrator", "outrospection", "models"]);
+});
+
+// ---- the capture link ------------------------------------------------------
+
+test("parseCaptureLink reads /?capture=<id>", () => {
+  assert.deepEqual(parseCaptureLink("?capture=12"), { id: 12 });
+  assert.deepEqual(parseCaptureLink("?mode=cyber&capture=7"), { id: 7 });
+});
+
+test("parseCaptureLink refuses anything that is not a capture id", () => {
+  // Whatever comes back from here becomes a fetch against the admin API, so
+  // "not an id" has to mean null rather than a coerced number: `?capture=1e3`
+  // and `?capture=12abc` are links somebody typed or mangled, not captures.
+  for (const bad of ["?capture=abc", "?capture=0", "?capture=-3", "?capture=1e3", "?capture=12abc", "?capture=", "?capture=1.5", ""]) {
+    assert.equal(parseCaptureLink(bad).id, null, bad);
+  }
+});
+
+test("parseCaptureLink never throws", () => {
+  assert.deepEqual(parseCaptureLink(null), { id: null });
+  assert.deepEqual(parseCaptureLink(undefined), { id: null });
+});
+
+test("a capture link and a composer link do not read each other", () => {
+  // The two parsers are deliberately separate: a composer link PREFILLS a
+  // question, a capture link restores a whole conversation and its agent.
+  assert.equal(parseCaptureLink("?ask=hello").id, null);
+  assert.equal(parseComposerDeepLink("?capture=12").ask, null);
 });

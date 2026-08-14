@@ -60,6 +60,8 @@ import {
   NOTE_MAX,
   QUEUE_TARGET,
   activeVersion,
+  captureChatLink,
+  captureChatUrl,
   captureFacts,
   captureHeadline,
   captureThread,
@@ -98,7 +100,7 @@ const MOUNT_MARGIN = "600px 0px";
  *   prompt?: string, status?: string, commit_sha?: string|null, version?: number,
  *   answered?: boolean, answered_at?: number|null, versions?: any[],
  *   has_video?: boolean, has_poster?: boolean, video_url?: string, poster_url?: string,
- *   reviews?: any[] }} Capture
+ *   has_chat?: boolean, chat_url?: string, reviews?: any[] }} Capture
  */
 
 /** Module state — one feed at a time; the page is a singleton. */
@@ -455,6 +457,9 @@ function cardBody(c, index, total) {
   const facts = factsRow(c);
   if (facts) body.appendChild(facts);
 
+  const chat = chatLink(c);
+  if (chat) body.appendChild(chat);
+
   // The whole thread, on every card that has one. In the deck this was a
   // needs-work-only detail; in a feed the reviewer arrives at a card cold and
   // the notes are what say why it looks the way it does.
@@ -498,6 +503,42 @@ function headlineInto(node, c) {
   }
   if (name) node.appendChild(el("span", "cap-name", name));
   return node;
+}
+
+/**
+ * THE LINK BACK TO THE CHAT — the half of a capture that was missing until
+ * 2026-08-14 (owner directive: "link from captured agent videos to the actual
+ * chat so one can continue and explore from there"). A clip shows a research
+ * run answering; this is what turns the answer back into a conversation the
+ * reviewer can push further — check a citation, ask the follow-up the clip
+ * suggests, try the same question against another model.
+ *
+ * An anchor, not a button: it opens the app, and the review feed is a page the
+ * reviewer is working down. `target="_blank"` for exactly that reason — a card
+ * halfway through a queue of twenty is a place, and following a link out of it
+ * loses the reader's position in the feed.
+ *
+ * The wording is not decoration either: a clip recorded before transcripts
+ * existed offers to ask the question again rather than to continue a chat that
+ * is not there (captures-core.js captureChatLink).
+ *
+ * @param {Capture} c
+ * @returns {HTMLElement|null} null when the capture has no id to link to
+ */
+function chatLink(c) {
+  const href = captureChatUrl(c);
+  if (!href) return null;
+  const { text, title } = captureChatLink(c);
+  const p = el("p", "cap-chat");
+  const a = document.createElement("a");
+  a.className = "cap-chat-link";
+  a.href = href;
+  a.target = "_blank";
+  a.rel = "noopener";
+  a.textContent = text;
+  a.title = title;
+  p.appendChild(a);
+  return p;
 }
 
 /**

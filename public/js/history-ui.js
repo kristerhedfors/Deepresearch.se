@@ -19,6 +19,7 @@ import {
   undecryptableConversations,
 } from "./history-store.js";
 import { initPipelineMap, syncPipelineMap } from "./pipeline-map.js";
+import { renderCaptureChatGroup } from "./capture-chat.js";
 import { pinPaneClose, renderProjectsList } from "./projects-ui.js";
 import { loadSettings, settingsLoaded, storageAvailable } from "./settings.js";
 import { applyLoadedConversation, currentConversationId } from "./stream.js";
@@ -103,6 +104,15 @@ export function initHistorySidebar(opts = {}) {
     renderShowcase();
     list.innerHTML = '<p class="muted">Loading…</p>';
     renderProjectsList().catch(() => {});
+    // RECORDED RUNS — the chats behind the captured agent videos, in their own
+    // expandable (owner directive, 2026-08-14). Fire-and-forget beside the
+    // projects list for the same reason: this pane's job is the reader's own
+    // conversations, and neither an admin-only group nor a slow fetch may hold
+    // that up. The group hides itself when the endpoint says nothing.
+    const capbox = document.getElementById("capturechats");
+    if (capbox instanceof HTMLElement) {
+      renderCaptureChatGroup(capbox, () => close()).catch(() => { capbox.hidden = true; });
+    }
     const items = await listConversations();
     // Project conversations live inside their project's panel — the main
     // list shows plain chats only, so nothing appears twice.
@@ -140,7 +150,7 @@ export function initHistorySidebar(opts = {}) {
     // 2026-07-08 debugging marathon: it costs one muted line and turns
     // any user screenshot into a build/data report — see the
     // on-device-trace skill before removing it.
-    parts.push(`[h21 · ${plain.length} here${items.length - plain.length ? ` + ${items.length - plain.length} in projects` : ""}${skipped ? ` + ${skipped} unreadable` : ""}${pullBit}${cssBit()}]`);
+    parts.push(`[h57 · ${plain.length} here${items.length - plain.length ? ` + ${items.length - plain.length} in projects` : ""}${skipped ? ` + ${skipped} unreadable` : ""}${pullBit}${cssBit()}]`);
     baseNote = parts.join(" ");
     updateNote();
   }
@@ -150,7 +160,7 @@ export function initHistorySidebar(opts = {}) {
   // handshake) is old while this module is current. A mismatched
   // stylesheet gets one force-refresh per page load, and the stamp
   // shows what was seen so the state is visible in any report.
-  const CSS_WANT = "h21";
+  const CSS_WANT = "h57";
   let cssFixTried = false;
   function cssBit() {
     let seen = "";

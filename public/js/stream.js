@@ -242,6 +242,27 @@ export function conversationStarted() {
 }
 
 /**
+ * The conversation on screen, as `[{role, content}]` — a COPY, so a caller
+ * cannot mutate the array the next send is built from.
+ *
+ * Exposed on `window` (below) for ONE consumer: the video recorder
+ * (tests/capture.mjs), which files the run it just recorded with the clip so
+ * the video can link back to a chat the viewer continues from. It reads the
+ * RAW text rather than the DOM because the rendered answer is markdown that
+ * has already become elements — a transcript scraped off the page loses every
+ * citation URL, which is exactly the half of a research answer somebody
+ * following the link wants to explore.
+ *
+ * This exposes nothing a script on this page could not already read off the
+ * screen (same origin, same DOM), and it is a getter returning a copy rather
+ * than the live array. Same shape as `window.__DR_SANDBOX` in sandbox.js.
+ * @returns {Array<{role: string, content: any}>}
+ */
+export function conversationTranscript() {
+  return history.map((m) => ({ role: m.role, content: m.content }));
+}
+
+/**
  * One-time wiring from app.js.
  * @param {(force?: boolean) => void} scrollFn  auto-follow scroll callback
  * @param {{onHistoryChange?: (id: string) => void}} [opts]  fires after every persist/delete
@@ -249,6 +270,16 @@ export function conversationStarted() {
 export function initStream(scrollFn, opts = {}) {
   scrollDown = scrollFn;
   onHistoryChange = opts.onHistoryChange || onHistoryChange;
+  // The recorder's read hook. Wired here rather than at module scope so it
+  // exists only in a real app boot (the unit tests import this module in bare
+  // Node, where there is no window at all).
+  try {
+    if (typeof window !== "undefined") {
+      /** @type {any} */ (window).__DR_TRANSCRIPT = conversationTranscript;
+    }
+  } catch {
+    /* a sandboxed frame with no window access — the recorder falls back to the DOM */
+  }
 }
 
 // The id of the conversation currently on screen, or null for a fresh,
