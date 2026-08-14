@@ -221,6 +221,72 @@ Rebuilding after a **config** change needs the generated headers dropped —
 `moduledefs.h` keeps a disabled module in the builtin table and the link fails
 on `undefined reference to mp_module_framebuf`.
 
+## 4b. The contract only ever worked from C — check this first
+
+**The single most important thing found in the 2026-08-14 passes.**
+`pygram_exit_not_implemented()` hangs off `py/runtime.c`'s
+`mp_raise_NotImplementedError()`, which is **C**. The frozen shims raise
+`NotImplementedError` from **Python**, so every shim-level gap exited **1 with a
+traceback** instead of **90 with one line** — the message was right and the exit
+code, the channel and the line count were all wrong. Nothing caught it because
+the corpus had no entry for a shim gap.
+
+Three rules follow, and each cost a build to learn:
+
+- **Two call sites are required.** `-c` and a script FILE leave through
+  `shared/runtime/pyexec.c`; a program on **stdin** leaves through `main.c`'s
+  `handle_uncaught_exception()`. Deleting either silently returns that path to
+  exit 1. Found by removing one and watching stdin break.
+- **Only the marker prefix may trigger the 90.** A program's own
+  `NotImplementedError` must keep its traceback and exit 1. Hijacking it would be
+  worse than the original bug.
+- **A shim that declares a constant must honour it or refuse it.** `re.VERBOSE`
+  and `csv`'s `quoting=` were declared and ignored, returning wrong answers at
+  exit 0. The shims now reject the whole class — any unimplemented `re` flag by
+  name, any `csv` keyword whose value differs from actual behaviour. When adding
+  a shim, grep it for constants it defines but never reads; that is where the
+  next one of these lives.
+
+All of it is pinned by smoke checks in `scripts/pygram-build.sh` and by the
+`re-verbose-flag` / `re-ascii-flag` / `csv-quote-all` / `csv-escapechar` corpus
+entries.
+
+## 4c. Size: what is taken, and what is settled
+
+Two passes took 390,456 → **269,124 B (−31%)**. `docs/PYGRAM.md` §8a and §8b have
+the tables. Taken, in descending order: unwind tables (−49,152), `-fno-pie`
+(−12,288), `main.c` `fprintf`→`mp_printf` (−11,604, which was holding musl's
+entire `vfprintf` engine), LTO (−16,384, also 16% faster), the i386 codegen pack
+(−8,192), `framebuf`+`uctypes` (−12,288), `mpy-cross -O3` (−2,592), and three
+padding flags.
+
+**Settled negatives — do not re-run:** UPX (opens go 0→1 on `/proc/self/exe`,
+needs a third-party binary in CI, and pays decompression every run);
+`-mregparm=3` (segfaults — musl's i386 `memcpy` is cdecl assembly, and 69 `.s`
+files mean rebuilding musl cannot fix it); stripping shim docstrings (**0 B** —
+`mpy-cross` sets `MICROPY_ENABLE_DOC_STRING=0`, the parser already discards
+them); dropping frozen modules (4,096 B for 7 lost MATCHes); computed goto;
+cutting `complex`; `ld.lld`; `ld.gold --icf`; `-Oz`.
+
+**Three measurement rules.** File size is quantised to the **4,096 B page** — use
+`size -A` for anything sub-page. **Measure combinations, never sum them**:
+`-fno-pie` and the codegen pack compose at 96.5% and two lanes each missed the
+other's flag. And a synthetic workload overstates VM speed ~10× against the real
+corpus, so time the 340 corpus programs instead.
+
+**Where a flag goes matters.** Anything inside the SHARED TOOLCHAIN BLOCK markers
+in `mpconfigvariant.mk` is extracted verbatim into the stock control, so codegen
+flags belong there — put them below the marker and the benchmark quietly starts
+measuring the compiler instead of pygram. `MPY_CROSS_FLAGS` is the exception: it
+only affects the frozen stdlib, which the control does not have.
+
+Rebuilding after a **config** change needs the generated headers dropped —
+`rm -rf pygram/.build/micropython/ports/unix/build-pygram/genhdr` — or a stale
+`moduledefs.h` fails the link on `undefined reference to mp_module_framebuf`. A
+`.mk` change does **not** invalidate the frozen artifacts either; drop
+`build-pygram/frozen_mpy` and `frozen_content.{c,o}` when changing
+`MPY_CROSS_FLAGS`.
+
 ## 5. Traps already paid for
 
 Each of these cost real time and each would recur.

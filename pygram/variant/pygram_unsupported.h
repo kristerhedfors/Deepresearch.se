@@ -288,4 +288,55 @@ static inline NORETURN void pygram_exit_unsupported_kwarg(const char *name) {
     pygram_exit_unsupported("argument", "keyword ", name);
 }
 
+/*
+ * Called from ports/unix/main.c's handle_uncaught_exception(), just before it
+ * prints a traceback.
+ *
+ * THE HALF OF THE CONTRACT THAT WAS MISSING. pygram_exit_not_implemented()
+ * above is reached from py/runtime.c's mp_raise_NotImplementedError(), which is
+ * a C function — so only the C layer could ever produce the 90. The FROZEN
+ * SHIMS raise NotImplementedError from Python (`re._unsupported()`,
+ * `csv._check_kw()`), and a Python-level raise never passes through that C
+ * helper. The message was right and everything around it was wrong: exit 1
+ * instead of 90, and a multi-line traceback instead of the single greppable
+ * line, so a caller branching on 90 to retry with real python3 never fired for
+ * ANY shim-level gap — regex backreferences, named-group references,
+ * re.VERBOSE, csv quoting. Discovered 2026-08-14 by adding corpus entries for
+ * two silent divergences and finding they landed on exit 1.
+ *
+ * The shim already writes the complete line ("pygram: unsupported: argument:
+ * re(VERBOSE)"), so this prints it verbatim rather than rebuilding it. Anything
+ * that is not a NotImplementedError carrying the marker is left completely
+ * alone and still gets its ordinary traceback and exit 1 — a program's own
+ * NotImplementedError must stay the program's own error.
+ */
+static inline void pygram_check_unsupported_exc(mp_obj_t exc) {
+    static const char marker[] = "pygram: unsupported: ";
+    const size_t mlen = sizeof(marker) - 1;
+
+    if (!mp_obj_is_exception_instance(exc)) {
+        return;
+    }
+    if (!mp_obj_is_subclass_fast(MP_OBJ_FROM_PTR(mp_obj_get_type(exc)),
+        MP_OBJ_FROM_PTR(&mp_type_NotImplementedError))) {
+        return;
+    }
+    mp_obj_t val = mp_obj_exception_get_value(exc);
+    if (!mp_obj_is_str(val)) {
+        return;
+    }
+    size_t len;
+    const char *s = mp_obj_str_get_data(val, &len);
+    if (len < mlen || memcmp(s, marker, mlen) != 0) {
+        return;
+    }
+
+    // One line, nothing else, stdout untouched (§7 rule 5).
+    ssize_t ignored = write(STDERR_FILENO, s, len);
+    (void)ignored;
+    ignored = write(STDERR_FILENO, "\n", 1);
+    (void)ignored;
+    exit(PYGRAM_UNSUPPORTED_EXIT);
+}
+
 #endif // PYGRAM_UNSUPPORTED_H

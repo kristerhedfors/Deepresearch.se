@@ -24,6 +24,28 @@ def _unsupported(tok):
     raise NotImplementedError("pygram: unsupported: argument: re(" + tok + ")")
 
 
+# The flags this shim actually implements. U/UNICODE is CPython 3's default and
+# a no-op here, so accepting it is honest rather than lenient.
+_FLAGS_OK = I | M | S | U
+_FLAG_NAMES = ((X, "VERBOSE"), (A, "ASCII"), (L, "LOCALE"), (DEBUG, "DEBUG"), (T, "TEMPLATE"))
+
+
+def _check_flags(flags):
+    """Refuse a flag we do not implement, instead of ignoring it.
+
+    Declaring a constant and then not honouring it is the worst failure this
+    project has: re.VERBOSE used to return [] where CPython returned ['1','22'],
+    at exit 0, with nothing on stderr. An agent cannot notice that. Exit 90 with
+    a named flag is recoverable; a confidently wrong answer is not.
+    """
+    rest = flags & ~_FLAGS_OK
+    if rest:
+        for bit, name in _FLAG_NAMES:
+            if rest & bit:
+                _unsupported(name)
+        _unsupported("flags=" + str(rest))
+
+
 def _swapcase(c):
     return c.upper() if c.islower() else c.lower()
 
@@ -70,6 +92,7 @@ def _prep(pat, flags):
 
     Returns (native_pattern, name->group index, starts_with_^, ends_with_$).
     """
+    _check_flags(flags)
     ic = flags & I
     out = []
     names = {}
