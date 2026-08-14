@@ -1686,11 +1686,15 @@ test("GET /captures/:id/chat is 200 with resumable:false for a clip recorded bef
 test("GET /captures/chats lists the recorded runs for the drawer's group", async () => {
   const db = fakeDb([
     { label: "one", chat_json: '[{"role":"user","content":"q"}]' },
-    { label: "two" },
+    { label: "two", mode: null },
   ]);
   const { res, json } = await call(db, "GET", "/api/admin/captures/chats");
   assert.equal(res.status, 200);
   assert.equal(json.count, 2);
+  // The mode is derived from the agent here for the same reason projectCapture
+  // derives it: the two projections describe the same row, and a field that is
+  // null in one endpoint and filled in the other is how this bug comes back.
+  assert.deepEqual(json.captures.map((c) => c.mode), ["cyber", "cyber"]);
   assert.deepEqual(json.captures.map((c) => c.id), [2, 1]);
   // The flag survives D1's 0/1 answer to a boolean expression.
   assert.deepEqual(json.captures.map((c) => c.has_chat), [false, true]);
