@@ -11,7 +11,7 @@ description: >-
   or tests/pygram/. Covers the cost model that justifies the project, the two
   gates and how to read them, the STOCK-MICROPYTHON CONTROL and the performance
   benchmark that measures what our variant costs, the capture harness that
-  grows the corpus by itself, and the seven traps already paid for — including
+  grows the corpus by itself, and the eight traps already paid for — including
   a .gitignore that silently swallowed the whole frozen stdlib and a
   measurement bug that inverted into a pass.
 ---
@@ -208,6 +208,17 @@ Each of these cost real time and each would recur.
   littering the repo, and so pygram cannot read back a file CPython created).
   That makes `PYGRAM_BIN=pygram/build/pygram` resolve against the temp dir.
   Resolve to absolute once.
+- **Regenerate the introspection artifacts AFTER staging, not before, whenever
+  a change ADDS a file.** The bundlers enumerate TRACKED files, so running all
+  four before `git add` silently skips the new ones: the committed snapshot
+  described 1089 files while the working tree had 1092, `npm test` passed
+  locally because the artifacts and the untracked files were consistent right up
+  until the commit made them tracked, and CI failed on both drift tests. Editing
+  an existing file does not have this failure mode, which is why it takes a
+  while to bite. Also note the snapshot indexes `docs/` and `.claude/skills/`,
+  not just `src/` and `public/js/` — a docs-only or skill-only edit stales it
+  too, and the fix is always all four bundlers, never editing an artifact.
+
 - **`process.exit()` truncates piped stdout.** Node's stdout is async on a pipe,
   so `--json` was cut mid-object. Set `process.exitCode` and return.
 
