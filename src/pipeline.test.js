@@ -622,7 +622,7 @@ describe("the web-search knob gates Exa only — depth still runs over other sou
     // Science agent restricting itself to the peer-reviewed leg) cannot lead
     // it either: a lead planAuxSource will then refuse to plan would stand the
     // web leg down and spend the wave on nothing.
-    assert.match(leading, /state\)\.auxOnly;\n\s*return Array\.isArray\(only\) && only\.length \? allowed\.filter\(/);
+    assert.match(leading, /\bstate\.auxOnly;\n\s*return Array\.isArray\(only\) && only\.length \? allowed\.filter\(/);
     assert.doesNotMatch(leading, /arxiv|\bhf\b|hugging|scholar/i);
   });
 
@@ -664,7 +664,7 @@ describe("the web-search knob gates Exa only — depth still runs over other sou
     // research answer paths must now carry the forced sources' findings.
     const fn = src.slice(src.indexOf("async function runForcedAuxSearches"), src.indexOf("async function runSourceResearch(ctx)"));
     // Generic: ids come off the state, no source is named here.
-    assert.match(fn, /state\)\.forceAux/);
+    assert.match(fn, /\bstate\.forceAux\b/);
     assert.match(fn, /for \(const source of SEARCH_SOURCES\)[\s\S]*forced\.includes\(source\.id\)[\s\S]*runAuxSearch\(ctx, source, batch, 1\)/);
     assert.doesNotMatch(fn, /\bhf\b|hugging/i);
     // The agent's own auxSources declaration still outranks the force.
@@ -693,7 +693,7 @@ describe("the web-search knob gates Exa only — depth still runs over other sou
     // hf". The override is read off the state by id — core names no source —
     // and only ever RAISES the registry's own default.
     const plan = src.slice(src.indexOf("function planAuxSource(ctx, source"), src.indexOf("async function runOneAuxSearch"));
-    assert.match(plan, /state\)\.auxMaxPerRequest\?\.\[source\.id\]/);
+    assert.match(plan, /\bstate\.auxMaxPerRequest\?\.\[source\.id\]/);
     assert.match(plan, /typeof override === "number" && override > 0 \? override : \(declared \?\? MAX_AUX_SEARCHES_DEFAULT\)/);
     // …and the registry's own ceilings — the ordinary one, and the higher one
     // a source declares for when it LEADS (feedback #44) — are what `declared`
@@ -815,12 +815,21 @@ describe("auxiliary source gates read the clean (pre-enrichment) user message", 
 // past the cut.
 describe("the aux registry reserve widens the digest with it", () => {
   const src = readFileSync(new URL("./pipeline.js", import.meta.url), "utf8");
-  const reserve = src.slice(src.indexOf("if (result.items.length && !st.reserved)"));
+  const widen = src.slice(src.indexOf("function widenPlanCapacity"));
 
   test("both caps move together, by the same widening", () => {
-    assert.match(reserve.slice(0, 1200), /state\.plan\.maxSources \+= widened;/);
-    assert.match(reserve.slice(0, 1600), /state\.plan\.digestCap = Math\.min\(/);
-    assert.match(reserve.slice(0, 1600), /DIGEST_CAP_CEILING,/);
+    // The pairing lives in ONE function now, so this pins it there…
+    assert.match(widen.slice(0, 400), /plan\.maxSources \+= n;/);
+    assert.match(widen.slice(0, 400), /plan\.digestCap = Math\.min\(plan\.digestCap \+ n \* DIGEST_CHARS_PER_SOURCE, DIGEST_CAP_CEILING\)/);
+    // …and this is the half the two hand-written copies could never assert:
+    // no OTHER site may widen the registry, because a site that widened it
+    // alone would be a reserve that admits sources the digest cannot carry.
+    const widenings = [...src.matchAll(/\.maxSources \+=/g)];
+    assert.equal(widenings.length, 1, "maxSources must only be widened by widenPlanCapacity");
+    // Both callers reach it: the aux-source reserve and the named-URL reads.
+    const reserve = src.slice(src.indexOf("if (result.items.length && !st.reserved)"));
+    assert.match(reserve.slice(0, 1600), /widenPlanCapacity\(state\.plan, Math\.min\(result\.items\.length, 8\)\)/);
+    assert.match(src, /widenPlanCapacity\(state\.plan, items\.length\)/);
   });
 
   test("the per-source reserve is sized off the measured verbose block", () => {
@@ -888,9 +897,12 @@ describe("what the source-routing gates read, and what the ledger may claim", ()
   // answer at all rather than a shorter one.
   test("the digest reserve has a ceiling", () => {
     assert.match(src, /const DIGEST_CAP_CEILING = 36_000;/);
-    const reserve = src.slice(src.indexOf("if (result.items.length && !st.reserved)"));
-    assert.match(reserve.slice(0, 1600), /Math\.min\(/);
-    assert.match(reserve.slice(0, 1600), /DIGEST_CAP_CEILING,/);
+    // The clamp sits in the one function every widening goes through, so a
+    // new caller cannot reintroduce an unbounded one.
+    const widen = src.slice(src.indexOf("function widenPlanCapacity"));
+    assert.match(widen.slice(0, 400), /Math\.min\(/);
+    assert.match(widen.slice(0, 400), /DIGEST_CAP_CEILING\)/);
+    assert.equal([...src.matchAll(/\.digestCap = /g)].length, 1, "one clamp, one writer");
   });
 });
 

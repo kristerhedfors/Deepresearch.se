@@ -139,7 +139,7 @@ describe("the forced hub source", () => {
   const enrichment = src.slice(src.indexOf("export async function runModelsAgentEnrichment"));
 
   test("forces the hub source on for the turn, before the intent gate", () => {
-    assert.match(enrichment, /\(state\)\.forceAux = \["hf"\];/);
+    assert.match(enrichment, /\bstate\.forceAux = \["hf"\];/);
     // Above the modelIntent early return: EVERY turn in this mode searches the
     // hub, not just the ones asking to pick a model.
     assert.ok(
@@ -149,7 +149,7 @@ describe("the forced hub source", () => {
   });
 
   test("raises the hub's per-request search ceiling above the registry default", () => {
-    assert.match(enrichment, /\(state\)\.auxMaxPerRequest = \{ hf: HUB_SEARCHES_PER_REQUEST \};/);
+    assert.match(enrichment, /\bstate\.auxMaxPerRequest = \{ hf: HUB_SEARCHES_PER_REQUEST \};/);
     assert.ok(HUB_SEARCHES_PER_REQUEST > 3, "above src/search-sources.js's maxPerRequest: 3");
     // Set beside forceAux, so the same "every turn" rule covers it.
     assert.ok(

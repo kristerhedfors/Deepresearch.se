@@ -199,7 +199,6 @@ import { runMemoryExtraction } from "./memory.js";
  *   modelsMode?: boolean,
  *   account?: { enabled: import("./user-models.js").AcceptedModel[], checks: Record<string, Record<string, any>> } | null,
  *   modelCards?: { shown: number, total: number, query: string, enabled: number, verified: number },
- *   forceAux?: string[],
  *   buildSlug?: string | null,
  *   userId?: string,
  *   buildResult?: { slug: string, url: string, files: number, bytes: number },

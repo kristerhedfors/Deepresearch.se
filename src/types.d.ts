@@ -330,6 +330,23 @@ export interface RequestState {
   /** Queries actually DISPATCHED to a provider. The subset of ranQueries that
    * genuinely happened — the only one the answer model may be shown. */
   issuedQueries?: Set<string>;
+  /**
+   * The auxiliary-search CONTROL fields: how an agent built AROUND a search
+   * source narrows the wave on its way in. Declared here, on the shape both
+   * channels build and every enrichment receives, because the writers are
+   * enrichments and the readers are the orchestrator — so leaving them
+   * undeclared meant nothing checked the two against each other.
+   *
+   * All four hold source IDS, never source names: core reads them generically
+   * and never learns which source it is deciding for (invariant 7).
+   *
+   * `forceAux` runs the listed sources whether or not the message engages
+   * them; `auxOnly` narrows the wave to the listed ones (the mirror image);
+   * `auxMaxPerRequest` raises one source's per-request search ceiling.
+   */
+  forceAux?: string[];
+  auxOnly?: string[];
+  auxMaxPerRequest?: Record<string, number>;
   /** Numbered source registry, deduped by URL. */
   sources: SourceEntry[];
   /** URL -> registry entry, for dedup. */

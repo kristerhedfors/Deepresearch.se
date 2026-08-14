@@ -266,20 +266,21 @@ export const endsWithQuestion = (text) => /[?？][*_`")\]]*$/.test(String(text |
  * and the iteration question (unless the prose already asked one). Shared by
  * both build paths. With `published` null: the honest no-publish note.
  * @param {string} prose The model-written reply text already emitted ("" when none).
- * @param {Array<{ path: string, content: string }>} files
- * @param {{ slug: string, url: string, files: number, bytes: number, paths?: string[] } | null} published
+ * @param {{ slug: string, url: string, files: number, bytes: number, paths: string[] } | null} published
  * @returns {string}
  */
-export function sdkReplyTail(prose, files, published) {
+export function sdkReplyTail(prose, published) {
   /** @type {string[]} */
   const parts = [];
   if (published) {
     const kb = (published.bytes / 1024).toFixed(1);
     // What SHIPPED, not what the model staged: the publish layer injects the
     // app kit (feedback #66), so the staged list would undercount the summary
-    // it is printed beside. Falls back to the staged paths for any caller that
-    // predates `paths`.
-    const paths = published.paths?.length ? published.paths : files.map((f) => f.path);
+    // it is printed beside. src/build-pub.js publishBuild always returns
+    // `paths`, and it is the only producer of this value — so there is no
+    // staged-list fallback to keep, and the staged list is not what this
+    // summary is documented to describe.
+    const paths = published.paths || [];
     parts.push(`**Build summary:** ${published.files} file${published.files === 1 ? "" : "s"}, ${kb} KB — ${paths.join(" · ")}`);
     if (!replyLinksTo(prose, published.url)) {
       parts.push(`**Try it live:** [${published.url}](${published.url})`);
