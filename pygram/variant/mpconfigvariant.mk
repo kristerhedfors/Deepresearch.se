@@ -81,6 +81,14 @@ COPT = -Os -DNDEBUG
 CFLAGS += -fno-stack-protector
 # <<< SHARED TOOLCHAIN BLOCK
 
+# DWARF unwind tables, deleted. MicroPython raises through setjmp/longjmp (the
+# NLR machinery), not through a DWARF unwinder; there is no C++ in the tree and
+# musl needs no unwinder for a binary with threads switched off. Measured on the
+# baseline: `nm` finds ZERO _Unwind/__cxa/backtrace symbols, so nothing in the
+# binary could read these tables — yet .eh_frame was 51,644 B, 13% of the
+# stripped artifact, because --gc-sections does not collect .eh_frame.
+CFLAGS += -fno-asynchronous-unwind-tables -fno-unwind-tables
+
 # Error strings stay as plain text in .rodata rather than being compressed.
 # Two reasons, both correctness rather than taste:
 #   - docs/PYGRAM-SUBSET.md §6 makes several exception messages contractual
@@ -90,3 +98,44 @@ CFLAGS += -fno-stack-protector
 #     be turned back into at that point.
 # Measured cost: about 8 KB against a 700 KB budget.
 MICROPY_ROM_TEXT_COMPRESSION = 0
+
+# Link-time optimisation. The unix port does not enable this, and it is the one
+# flag here that improves BOTH terms at once: 16,384 B off the stripped binary
+# (cross-translation-unit inlining and dead-code elimination that --gc-sections
+# cannot see, because it works at section granularity and not at call graph
+# granularity), and 16% off a real workload (loops + re + json + dict churn:
+# 518 ms -> 433 ms).
+#
+# LTO across setjmp/longjmp is the classic miscompile hazard, and MicroPython
+# raises exceptions through exactly that (the NLR machinery), so this is NOT
+# accepted on the conformance battery alone. It is pinned by a dedicated
+# stress case in tests/pygram/conformance.mjs ("nlr-stress"): deep recursive
+# unwinding, finally ordering, locals live across a raise, generator close,
+# 2000 sequential raises reusing the NLR buffer, and the recursion limit. All
+# match CPython exactly.
+CFLAGS += -flto=4
+LDFLAGS += -flto=4 -Os
+# Segment packing. Modern GNU ld defaults to `-z separate-code`, which gives
+# executable code its own page-aligned LOAD segments so that no page is both
+# writable-adjacent and executable. That hardening buys nothing here — the
+# binary is static, runs in a single-process WASM guest, and its whole input is
+# a program the caller already wrote — and it cost 4,096 B of pure inter-segment
+# padding, measured by readelf as a gap between LOAD segments rather than as any
+# section growing.
+#
+# Worth knowing when reading the numbers: the stripped FILE size is quantised to
+# the 4,096 B page, so two different changes can both report exactly -4,096 B.
+# Section sizes (`size -A`) are the fine-grained truth; the file size is what the
+# gate measures because it is what the sandbox actually streams.
+LDFLAGS += -Wl,-z,noseparate-code
+
+# MEASURED AND REJECTED, so it is not re-tried every time someone reads this
+# file and has the same idea:
+#
+#   - ld.lld cannot link this at all. GCC's LTO plugin emits GIMPLE bytecode
+#     and lld wants LLVM bitcode, so `main` comes out undefined from Scrt1.o.
+#   - ld.gold + --icf=safe (identical code folding) links, but folds 14 bytes.
+#     MicroPython has almost no byte-identical functions. It also cannot take
+#     -z noseparate-code, so it ends up 156 B LARGER than the default linker,
+#     while adding a non-default toolchain dependency to the CI build.
+#   - -Oz does not exist in GCC (it is a clang flag). -Os is already the COPT.
