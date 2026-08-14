@@ -267,6 +267,17 @@ try{var m=localStorage.getItem("dr_chat_mode");var c="sci-mode";var t="#e8d9a8";
         <p class="pipemap-status muted">Nothing has run yet — send a message and the steps light up here.</p>
         <div class="pipemap-body"></div>
       </details>
+      <!-- RECORDED RUNS: the chats behind the captured agent videos
+           (public/js/capture-chat.js). Its own expandable, collapsed by
+           default and hidden entirely for anyone who is not an admin — the
+           list is fetched from the admin captures API, which answers a
+           non-admin with nothing to show. Opening a row restores that
+           recorded conversation into this browser's own history, where it
+           continues like any other chat. -->
+      <details id="capturechats" class="capchats" hidden>
+        <summary>Recorded runs</summary>
+        <div class="capchats-body"></div>
+      </details>
       <button id="projectnewbtn" type="button" class="history-new">+ New project</button>
       <div id="projectcreate" hidden>
         <input id="projectcreatename" type="text" placeholder="Project name" maxlength="80">

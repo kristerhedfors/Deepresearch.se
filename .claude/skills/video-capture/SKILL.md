@@ -29,7 +29,7 @@ Four stages, three commands, one shared core.
 
 | Stage | Command | Reads | Writes |
 |---|---|---|---|
-| **Record** | `npm run capture -- --agents … --models …` | the site, live | `captures/<date>/<slug>/raw.webm` + `timeline.json` + `meta.json` |
+| **Record** | `npm run capture -- --agents … --models …` | the site, live | `captures/<date>/<slug>/raw.webm` + `timeline.json` + `meta.json` (with the run's `chat`) |
 | **Plan + encode** | `npm run capture:edit -- <dir>` | those three | `final.mp4`, `poster.jpg`, `edit.json` |
 | **Publish** | `scripts/captures --add … --upload …` | `edit.json` | a D1 row + two R2 objects |
 | **Review** | `/captures/` → Capture reviews | the API | a like, or feedback |
@@ -178,6 +178,65 @@ Two properties of `stillSpans` worth keeping:
   word of every answer.
 - The sampler is driven from **Node**, not from an in-page timer, so a frozen
   page cannot stop it. A stalled run is exactly the recording worth watching.
+
+## A clip links back to the chat it recorded
+
+> *"Link from captured agent videos to the actual chat so one can continue and
+> explore from there. Let those recorded chats appear in admin's chat history
+> panel under its own expandable."* — owner, 2026-08-14
+
+A clip used to be a dead end: the run died with the browser that recorded it,
+so the answer on screen could not be opened, followed up, or checked. Four
+pieces close that loop, and each one has a reason worth keeping.
+
+**The driver reads the RAW messages, not the screen.**
+`window.__DR_TRANSCRIPT` (`public/js/stream.js` `conversationTranscript`)
+returns a copy of the message array the conversation was built from, and it
+goes into `meta.json` as `chat`. The DOM read is only a fallback: an answer is
+markdown, and by the time it is on screen the links are elements — a scraped
+transcript keeps the words and loses every citation URL, which is exactly the
+half a reader following the link came for. The read happens BEFORE the Agent
+Studio walk navigates the page to the published app; after that there is no
+chat left to read.
+
+**The transcript is taken out of the edit report before storage.**
+`CAPTURE_CAPS.meta` is 20 kB and one research answer is larger, so a report
+that still carried the chat would serialize past the cap and `serializeMeta`
+would drop THE WHOLE REPORT — segments, ffprobe, verdict — in exchange for
+something that has its own column. The server strips it (`withoutChat`) and
+reads it from any of `chat`, `meta.chat` or `meta.meta.chat`, which is where
+the documented `meta: .` publish recipe actually puts it. **This is why the
+publish recipe below did not have to change.**
+
+**Every capture links, transcript or not.** A clip recorded before this shows
+"💬 Ask this again" and opens the composer with the same question, agent and
+model; one with a transcript shows "💬 Continue this chat". `resumable` /
+`has_chat` is what decides the wording — "continue" over an empty history is a
+promise the app cannot keep.
+
+**The reader's copy wins.** The conversation is written into local encrypted
+history under the stable id `capture-<id>`. Reopening a capture you have
+already continued brings back YOUR chat, follow-ups and all, not the
+recording; the stable id is also why following the same link twice does not
+leave two entries in the drawer.
+
+```bash
+scripts/captures --chat 12 captures/2026-08-14/…/meta.json   # backfill one
+scripts/captures --chat 12 -                                  # clear it again
+curl -su "$U:$P" "$BASE/api/admin/captures/12/chat"           # the seed
+```
+
+The **Recorded runs** group in the left chat-history drawer
+(`public/js/capture-chat.js`, `#capturechats`) lists them: collapsed, admin
+only, hidden entirely when the API answers with nothing. Its list endpoint
+selects the naming columns only — never `meta_json`, never `chat_json` — because
+it is opened on every drawer refresh by a pane that is mostly about the
+reader's own conversations.
+
+**One rule that is not negotiable:** nothing in this path reads `chat_logs`.
+Capture prompts are the shipped starters (synthetic by construction) and the
+answers are this pipeline's own, recorded by the operator. A full-visibility
+log is not consent to replay somebody's conversation into a video or a drawer.
 
 ## Editing: cutting the waits, choosing the speed
 

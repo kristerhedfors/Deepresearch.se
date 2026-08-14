@@ -50,6 +50,13 @@
 # Naming (the derived name is a default; this is how a human improves it):
 #   scripts/captures --name 12 "Swedish electricity prices"
 #
+# THE CHAT BEHIND THE CLIP. A capture links back to the run it recorded, so the
+# viewer can continue and explore from there (/?capture=<id>). --add files the
+# transcript automatically when the edit report has one; these backfill it:
+#
+#   scripts/captures --chat 12 captures/2026-08-14/…/meta.json
+#   scripts/captures --chat 12 -        # clear it again
+#
 # Reviewing from the terminal (the swipe deck on /admin is the usual way):
 #   scripts/captures --review 12 like
 #   scripts/captures --review 12 feedback "the model dropdown is cut off"
@@ -95,6 +102,7 @@ while [ $# -gt 0 ]; do
     --add) action="add"; arg="$2"; shift ;;
     --set) action="set"; id="$2"; arg="$3"; shift 2 ;;
     --name) action="name"; id="$2"; arg="$3"; shift 2 ;;
+    --chat) action="chat"; id="$2"; arg="$3"; shift 2 ;;
     --upload) action="upload"; id="$2"; arg="$3"; shift 2 ;;
     --poster) action="poster"; id="$2"; arg="$3"; shift 2 ;;
     --queue-status) action="queue-status" ;;
@@ -153,6 +161,29 @@ case "$action" in
     # The short handle the clip is asked for by, next to its #CAP-<id> number.
     curl_auth -X PATCH -H 'content-type: application/json' \
       -d "$(jq -n --arg n "$arg" '{name:$n}')" "$BASE_URL/api/admin/captures/$id"
+    exit 0 ;;
+  chat)
+    # BACKFILL the conversation a clip recorded, so the card links to a chat
+    # the viewer can continue instead of only to the question. --add already
+    # carries it when the edit report has one; this is for the back catalogue,
+    # for a re-attach, and for `--chat <id> -` to CLEAR one (a transcript read
+    # off a run that went wrong is worth removing).
+    #
+    # The file may be a bare transcript array, a meta.json (`.chat`) or an
+    # edit.json (`.meta.chat`) — the three places it actually exists on disk,
+    # so nobody has to remember which.
+    if [ "$arg" = "-" ]; then
+      body='{"chat":null}'
+    else
+      [ -f "$arg" ] || { echo "no such file: $arg" >&2; exit 2; }
+      body="$(jq '{chat: (if type == "array" then . elif .chat then .chat elif .meta.chat then .meta.chat else null end)}' "$arg")"
+      case "$body" in
+        *'"chat": null'*|*'"chat":null'*)
+          echo "no transcript in $arg (looked at ., .chat and .meta.chat)" >&2; exit 2 ;;
+      esac
+    fi
+    curl_auth -X PATCH -H 'content-type: application/json' -d "$body" \
+      "$BASE_URL/api/admin/captures/$id"
     exit 0 ;;
   upload)
     upload_file "$arg" "video/mp4" "video"

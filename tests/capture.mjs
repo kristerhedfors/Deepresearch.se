@@ -478,6 +478,75 @@ async function sampleFinalState(page) {
 }
 
 /**
+ * THE CONVERSATION, as `[{role, content}]` — the run itself, not a description
+ * of it, so the published clip can link back to a chat the viewer continues
+ * from (owner directive, 2026-08-14).
+ *
+ * Two readers, in this order, and the order is the whole point:
+ *
+ *  1. `window.__DR_TRANSCRIPT` (public/js/stream.js) — the RAW messages the
+ *     conversation was built from. This is what makes the reopened chat a
+ *     usable one: an answer is markdown, and by the time it is on screen the
+ *     links are elements. A reader scraping the page gets the words and loses
+ *     every citation URL, which is precisely what somebody following "continue
+ *     this chat" wants to explore.
+ *  2. The DOM — for a deploy older than the hook, or a page where the module
+ *     graph never finished booting. Lossy, and honestly so: better a chat that
+ *     reopens without its links than no chat at all.
+ *
+ * @returns {Array<{role: string, content: any}>}
+ */
+/* c8 ignore start — runs in the browser, not in Node */
+function readTranscript() {
+  const hook = /** @type {any} */ (window).__DR_TRANSCRIPT;
+  if (typeof hook === "function") {
+    try {
+      const raw = hook();
+      if (Array.isArray(raw) && raw.length) return raw;
+    } catch {
+      /* fall through to the DOM */
+    }
+  }
+  const out = [];
+  for (const el of document.querySelectorAll(".msg.user, .msg.assistant")) {
+    const assistant = el.classList.contains("assistant");
+    // The assistant's answer is the .content body — never the whole bubble,
+    // which also holds the activity panel's step labels and the stats footer.
+    // Those are the pipeline talking about itself, not part of the answer, and
+    // restoring them into a chat would put them in the model's context.
+    const source = assistant ? el.querySelector(".content") : el;
+    if (!source) continue;
+    // A user bubble carries its attachments as children (thumbnails, document
+    // chips). Cloning and dropping them keeps the message text from picking up
+    // "📄 report.pdf" as if the visitor had typed it.
+    const node = /** @type {HTMLElement} */ (source.cloneNode(true));
+    for (const extra of node.querySelectorAll(".imgs, .docs, .typing-icon")) extra.remove();
+    const content = (node.textContent || "").trim();
+    if (!content) continue;
+    out.push({ role: assistant ? "assistant" : "user", content });
+  }
+  return out;
+}
+/* c8 ignore stop */
+
+/**
+ * The transcript, or an empty one. NEVER THROWS, for the same reason
+ * `sampleFinalState` does not: a page that died must still produce a
+ * recording, and "no transcript" is a capture that links to the composer
+ * rather than a batch that failed.
+ * @param {any} page
+ * @returns {Promise<Array<{role: string, content: any}>>}
+ */
+async function sampleTranscript(page) {
+  try {
+    const t = await page?.evaluate(readTranscript);
+    return Array.isArray(t) ? t : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
  * A still of whatever is on screen right now. Fail-soft to `false`: a
  * screenshot is evidence, never a reason to lose a recording.
  * @param {any} page
@@ -624,7 +693,9 @@ export function captureName(run) {
  * default shape) and by the admin uploader.
  * @param {import("../scripts/capture-core.mjs").CaptureRun} run
  * @param {CaptureOptions} opts
- * @param {{ startedAt: number, endedAt: number, ok: boolean, error?: string | null }} timing
+ * @param {{ startedAt: number, endedAt: number, ok: boolean, error?: string | null,
+ *   appE2E?: any, verdict?: any, observed?: any, frames?: any,
+ *   chat?: Array<{role: string, content: any}> }} timing
  */
 export function buildMeta(run, opts, timing) {
   const shape = resolveShape(opts.shape);
@@ -668,6 +739,13 @@ export function buildMeta(run, opts, timing) {
     ...(timing.verdict ? { verdict: timing.verdict } : {}),
     ...(timing.observed ? { observed: timing.observed } : {}),
     ...(timing.frames ? { frames: timing.frames } : {}),
+    // THE CONVERSATION ITSELF, so the finished clip can link back to a chat
+    // the viewer continues from (owner directive, 2026-08-14). Carried whole
+    // rather than summarised — `observed` is an excerpt for judging the run,
+    // this is the run. Omitted, not emptied, when nothing could be read: the
+    // publish step then files a capture with no transcript, which links to the
+    // composer instead of to a restored chat, and says so on the card.
+    ...(timing.chat && timing.chat.length ? { chat: timing.chat } : {}),
   };
 }
 
@@ -890,6 +968,9 @@ export async function captureRun(browser, run, opts, net) {
   /** The transcript's end state, read BEFORE any walk away from the chat. */
   /** @type {any} */
   let chatState = null;
+  /** The conversation itself, filed with the clip so the video links to a chat. */
+  /** @type {Array<{role: string, content: any}>} */
+  let transcript = [];
   /** Console/page errors the CHAT threw, for the guard. */
   /** @type {string[]} */
   const consoleErrors = [];
@@ -1025,6 +1106,10 @@ export async function captureRun(browser, run, opts, net) {
     // presented as good captures: `state.done` only ever meant "the stats
     // footer landed", and the server emits that footer after an error too.
     chatState = await sampleFinalState(page);
+    // …and the conversation itself, HERE — before the Agent Studio walk below
+    // navigates this page to the published app. After that navigation there is
+    // no chat left to read, and the clip would link to nothing.
+    transcript = await sampleTranscript(page);
 
     // AGENT STUDIO: a build is only worth showing if the thing it built works.
     // So the capture does not stop at the transcript — it walks to the
@@ -1053,6 +1138,12 @@ export async function captureRun(browser, run, opts, net) {
     // setup, or timed out inside the walk), read whatever is there now. An
     // empty record is itself a failing verdict, which is the right answer.
     if (!chatState) chatState = await sampleFinalState(page);
+    // Same fallback for the transcript — but ONLY when the run never reached
+    // the read above. An Agent Studio walk has navigated away by now, so
+    // re-reading here would replace a good transcript with the built app's
+    // page. `transcript.length` is the test, not "did we try": an empty read
+    // and a missing read are the same state and both deserve one more attempt.
+    if (!transcript.length) transcript = await sampleTranscript(page);
     const video = page?.video?.() || null;
     // ALWAYS close: Playwright only flushes the video file on context close, so
     // an early return here is a lost recording.
@@ -1111,6 +1202,7 @@ export async function captureRun(browser, run, opts, net) {
       endframe: frames.endframe ? "endframe.png" : null,
       chatframe: frames.chatframe ? "chatframe.png" : null,
     },
+    chat: transcript,
   });
   writeFileSync(paths.meta, JSON.stringify(meta, null, 2));
 

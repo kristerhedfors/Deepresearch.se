@@ -283,6 +283,14 @@ CREATE INDEX IF NOT EXISTS idx_test_point_messages_point ON test_point_messages(
 -- merges later), and answered_at the moment the FIRST verdict landed — set
 -- once, never cleared, which is how the top-up tells a genuinely fresh capture
 -- from a re-cut that went back on the deck.
+--
+-- chat_json is THE RUN ITSELF (2026-08-14): the conversation the recording
+-- shows, read off the page by tests/capture.mjs as [{role, content}], so the
+-- clip links to a chat the viewer can continue and explore from instead of an
+-- answer that died with the browser that made it. It holds this site's own
+-- output answering a shipped starter prompt, recorded by the operator — never
+-- a row lifted out of chat_logs, which is a full-visibility log and not
+-- consent to replay somebody's conversation (privacy invariant 4).
 CREATE TABLE IF NOT EXISTS captures (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   created_at INTEGER NOT NULL,
@@ -313,7 +321,8 @@ CREATE TABLE IF NOT EXISTS captures (
   status TEXT NOT NULL DEFAULT 'new',
   likes INTEGER NOT NULL DEFAULT 0,
   ref TEXT,
-  meta_json TEXT
+  meta_json TEXT,
+  chat_json TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_captures_status ON captures(status, id DESC);
 -- Every version a capture has ever had, newest never overwriting oldest: a
@@ -630,6 +639,12 @@ const ALTERS = [
   "ALTER TABLE captures ADD COLUMN commit_sha TEXT",
   "ALTER TABLE captures ADD COLUMN version INTEGER DEFAULT 1",
   "ALTER TABLE captures ADD COLUMN answered_at INTEGER",
+  // THE CHAT BEHIND THE CLIP (2026-08-14). Additive for the same reason as the
+  // four above: the table is live. A row written before this column exists
+  // reads back NULL, which src/captures.js reports as `has_chat: false` — the
+  // capture still links to the app, it just opens the composer with the same
+  // question instead of the recorded conversation.
+  "ALTER TABLE captures ADD COLUMN chat_json TEXT",
 ];
 
 let migrated = false; // per isolate

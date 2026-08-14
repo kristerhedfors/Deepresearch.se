@@ -153,3 +153,32 @@ export function buildComposerDeepLink(opts) {
   const qs = p.toString();
   return qs ? `${base}?${qs}` : base;
 }
+
+/**
+ * THE CAPTURE LINK — `/?capture=<id>`, the way a recorded run on the
+ * /captures/ review feed opens as a live chat (owner directive, 2026-08-14).
+ *
+ * A separate parser from the composer link above rather than another field on
+ * it, because the two do genuinely different things: a composer link PREFILLS
+ * a question, while this one restores a whole conversation and its agent, and
+ * a caller that handled "ask" would otherwise silently half-handle this.
+ *
+ * Ids are positive integers (the D1 rowid the `#CAP-<id>` tag is written
+ * from). Anything else is null — a link carrying a slug, a negative number or
+ * an expression is not a capture link and must not become a fetch.
+ *
+ * @param {string} search e.g. "?capture=12"
+ * @returns {{ id: number|null }}
+ */
+export function parseCaptureLink(search) {
+  let params;
+  try {
+    params = new URLSearchParams(search || "");
+  } catch {
+    return { id: null };
+  }
+  const raw = (params.get("capture") || "").trim();
+  if (!/^\d{1,15}$/.test(raw)) return { id: null };
+  const id = Number(raw);
+  return { id: Number.isSafeInteger(id) && id > 0 ? id : null };
+}
