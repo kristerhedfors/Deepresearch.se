@@ -112,6 +112,19 @@
 #define MICROPY_PY_NETWORK (0)
 #define MICROPY_PY_BLUETOOTH (0)
 
+// The `micropython` module — const(), opt_level(), stack_use(), the emitter
+// decorators. Same argument as framebuf and uctypes below: it is not a CPython
+// module, so no CPython-conformant program can reach it. Checked before
+// cutting: nothing in pygram/lib imports it.
+#define MICROPY_PY_MICROPYTHON (0)
+
+// One byte of qstr hash instead of two. This is an internal hash-table tuning
+// knob with no semantic surface at all — a narrower hash means slightly more
+// collisions inside the interned-string table and nothing else. Worth 2,100 B
+// together with the line above, because the cost is paid once per interned
+// string and pygram interns the whole frozen stdlib.
+#define MICROPY_QSTR_BYTES_IN_HASH (1)
+
 // Debug and instrumentation surfaces.
 #define MICROPY_PY_MICROPYTHON_MEM_INFO (0)
 #define MICROPY_PY_SYS_SETTRACE (0)
@@ -140,6 +153,21 @@
 // ---------------------------------------------------------------------------
 
 // Bare-metal / hardware surfaces with nothing behind them in a browser VM.
+//
+// framebuf and uctypes are the two expensive ones — 6,606 B and 3,183 B of
+// .text+.rodata, measured per-object in the build tree. Neither is reachable by
+// anything this project can be asked to run, and the argument is stronger than
+// "not in the corpus": NEITHER MODULE EXISTS IN CPYTHON. framebuf drives pixel
+// buffers on embedded displays and uctypes maps hardware registers; both are
+// MicroPython extensions. Since conformance is defined against CPython
+// (tests/pygram/conformance.mjs), a corpus entry that imports either could
+// never MATCH, so cutting them costs no coverage at all. Contrast heapq, which
+// has zero corpus references but IS a CPython module and therefore stays.
+#undef MICROPY_PY_FRAMEBUF
+#define MICROPY_PY_FRAMEBUF (0)
+#undef MICROPY_PY_UCTYPES
+#define MICROPY_PY_UCTYPES (0)
+
 #undef MICROPY_PY_MACHINE
 #define MICROPY_PY_MACHINE (0)
 #undef MICROPY_PY_MACHINE_PULSE
