@@ -54,6 +54,55 @@ The 50–85 ms floor sets the target. There is no point making pygram faster tha
 the envelope it arrives in; the goal is to get a cold one-liner from ~8.5 s down
 to *within the same order as the floor*.
 
+## 1a. Measured in a real VM (2026-08-14)
+
+The acceptance metric below was blocked on work item 8 from the day this file was
+written. It is now measured. `scripts/pygram-vm-measure.mjs` builds nothing and
+deploys nothing: it serves a local ext2 over HTTP Range, boots the pinned CheerpX
+in headless Chromium with the same device stack and mounts as
+`public/js/sandbox.js`, and times probes with a fresh IndexedDB block cache.
+
+Against a 131 MB Alpine i386 image carrying both interpreters:
+
+| probe | cold | warm | bytes streamed cold |
+|---|---|---|---|
+| `pygram --version` | 86 ms | 16 ms | 1,152 KB |
+| `pygram -c 'print(1+1)'` | 43 ms | 21 ms | 128 KB |
+| `pygram -c 'import json; …'` | 27 ms | 23 ms | **0 KB** |
+| `pygram -c 'import re; …'` | 29 ms | 25 ms | **0 KB** |
+| `python3 --version` | 318 ms | 44 ms | 3,460 KB |
+| `python3 -c 'print(1+1)'` | **never completed** | — | 2,304 KB, then frozen |
+
+**Read the bytes column, not the milliseconds.** This harness streams the image
+over loopback while production streams it over a WebSocket from R2, so the
+timings are optimistic by roughly 26× — `python3 --version` is 318 ms here
+against the 8573 ms §1 quotes. Bytes are transport-independent: the same command
+pulls the same blocks either way, and §1 says cold cost tracks bytes and opens.
+
+Two results matter more than the speed-up:
+
+**The frozen stdlib streams nothing.** `import json` and `import re` pull **zero
+bytes** off the disk image. Not few — none. That is the entire design thesis
+(§1: "a fully static binary with its standard library compiled in touches exactly
+one file: itself") confirmed directly rather than by projection, and it is why
+pygram's second and third one-liners cost less than its first.
+
+**CPython does not merely lose, it fails.** `python3 -c 'print(1+1)'` streams
+about 2.3 MB and then the block fetches stop dead; the command never returns and
+the VM is wedged. Verified over 435 s of frozen byte counters, from a fresh boot,
+reproducibly, and `-S` does not save it — while `python3 --version` in the same
+VM succeeds in 318 ms. So in this image CPython can print its version and cannot
+run a program. §9's first falsification test ("if a static pygram still takes
+seconds cold, the cost was somewhere else") is answered: it does not.
+
+**What this does not establish.** The image is not deployed — `/api/sandbox-image`
+still serves the third-party WebVM disk, so no user is affected yet. The hang is
+Alpine's CPython 3.14.7 on the pinned CheerpX 1.2.6; the 8573 ms figure came from
+Debian's 3.11, so the two are not the same binary and the wedge may not be
+universal. And loopback is not the WebSocket path. What is now measured is the
+ratio and the byte cost; the absolute production timing still needs the image
+deployed.
+
 ## 2. Acceptance metric
 
 One number, measured the same way the table above was measured — a new case in
@@ -386,8 +435,8 @@ alone would not have.
 | 5 | capture harness + corpus growth | `scripts/pygram-capture/` | in progress |
 | 6 | the variant + build | `pygram/`, `scripts/pygram-build.sh` | in progress |
 | 7 | the frozen shim stdlib | `pygram/lib/` | in progress |
-| 8 | live cold/warm measurement in the real VM | `tests/e2e/sandbox-perf.spec.js` case | blocked on 6 |
-| 9 | image delivery, staged | `scripts/build-sandbox-image.sh` | blocked on 8 |
+| 8 | live cold/warm measurement in the real VM | `scripts/pygram-vm-measure.mjs` | **done** — §1a, measured 2026-08-14 |
+| 9 | image delivery, staged | `scripts/build-sandbox-image.sh` | pygram installs; the alias-vs-alongside call is now an owner decision with evidence (§1a) |
 | — | `pygramd` | — | **not being built** — §3a |
 
 ## 8a. The optimisation pass (2026-08-14)
