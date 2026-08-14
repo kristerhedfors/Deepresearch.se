@@ -581,7 +581,18 @@ dispatch `turns.js`/`activity.js` call — mounts the CURRENT mode's spinner off
 `mode-theme.js` `spinnerKind`: the balloon everywhere except SDK, recoloured per
 mode (titanium in Introspection, violet in Orchestrator, crimson in Cyber), and
 the PLANT in
-SDK; fail-soft to the balloon), `plant-spinner.js` (SDK mode's WAITING SYMBOL —
+SDK; fail-soft to the balloon, and — where no canvas symbol can be drawn at all
+— to the COIN), `logo-spinner.js` (the CANVAS-LESS waiting symbol, any mode:
+the site icon in the slot is itself the spinner, spinning upright about its
+vertical axis the way a coin spins on a flat surface (css/app.css `coin-spin`),
+and on completion SETTLING — the turn slowing, the tilt growing, the rattle
+faster and wobblier the flatter it gets — to rest LYING FLAT, face-on, seen
+from 30° above the surface (`COIN_TILT_DEG` = 60° of rotateX), held a beat and
+faded as the real ✓ takes the slot; the motion is CSS, this module is the clock
+(the caught angle, the whole-turns left to land face-on, the durations) and it
+IMPORTS the run/hold/check pacing from `umbrella-spinner.js` so it is a sibling
+of the canvas finales by construction; pure clock/plan helpers Node-tested),
+`plant-spinner.js` (SDK mode's WAITING SYMBOL —
 `mountPlantSpinner`, the sibling of the balloon/umbrella spinners: a seed HITS
 THE GROUND, GETS PLANTED and boomerangs a settled sprout, turning back JUST
 before real growth; completion GROWS it out (stem, leaves, a gold-green bloom)

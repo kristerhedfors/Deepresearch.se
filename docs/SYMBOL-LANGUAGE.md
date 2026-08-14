@@ -166,6 +166,27 @@ Both reuse one renderer (`drawBalloonFigure`, exported by the intro) and the
 umbrella spinner's pure boomerang/tumble clocks, so the tiers' symbols stay
 siblings by construction.
 
+- **The CANVAS-LESS waiting symbol — the COIN** (`public/js/logo-spinner.js`
+  + `css/app.css`, 2026-08-14). Where no canvas symbol can be drawn — no
+  canvas context, a mount that threw — the loading slot keeps the **site icon**
+  it already wears, and the icon is a coin: it stands on its rim and spins
+  about the **vertical axis**, the way a coin spins on a table, face sweeping
+  toward the viewer and away. Completion is the coin **settling**: the turn
+  slows, the tilt grows, and the rattle gets faster and wobblier the flatter it
+  gets, until the coin comes to rest **lying flat, face up, seen from 30° above
+  the surface** (60° of `rotateX` — a horizontal disc foreshortens by sin θ at
+  elevation θ, and cos 60° = sin 30°). It holds there a beat and fades as the
+  real ✓ takes the slot. It is a sibling of the three canvas finales the same
+  way they are siblings of each other: it **imports** their run/hold/check
+  pacing (`umbrella-spinner.js` `FINALE_*`) rather than picking its own, and it
+  ends face-on for the same reason the balloon ends colored — a coin coming to
+  rest edge-on is not a coin coming to rest. The motion is CSS; the module is
+  the clock (the angle it was caught at, the whole turns left to land face-on,
+  the three durations), so the settle picks up exactly where the loop was with
+  no snap. Under **reduced motion** there is no spin, no settle and no 3D at
+  all — the icon simply breathes, and the ✓ arrives immediately rather than
+  behind a flourish.
+
 Residual (F-16 stays 🟡 PARTIAL): live verification on real devices (iOS PWA
 especially — intro, spinner finale, and the first-visit greeter alike). The
 "speech bubble like the ghost's" duty landed with round 4: the greeter's
