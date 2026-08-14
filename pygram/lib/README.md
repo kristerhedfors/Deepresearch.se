@@ -148,7 +148,19 @@ bite silently — a program that finishes, prints something plausible, and exits
     escapes to `\uXXXX` by default — `json.dumps({"s": "åäö"})` differing is the
     exact case `json-dumps-unicode` pins. Parsing stays on C.
 19. `json.JSONDecodeError` has no `.msg`/`.doc`/`.pos`/`.lineno`/`.colno`, and
-    its message is MicroPython's, not CPython's.
+    its message is MicroPython's, not CPython's. **Observed 2026-08-14** by a
+    harvested corpus entry (`py-428369184d6a`) that does the ordinary thing with
+    a caught exception — `except Exception as e: print('not json:', e)` — and so
+    put the message on stdout, where conformance compares it: CPython prints
+    `Expecting value: line 1 column 1 (char 0)`, pygram prints `syntax error in
+    JSON`. Closing it means reproducing CPython's line/column/char arithmetic,
+    which needs a position-tracking parser in this file; parsing is deliberately
+    on the C `ujson` (#18) precisely so that code does not exist here. The entry
+    is tagged `implementation-defined` instead, because Python specifies no
+    exception message text. That tag is hand-applied and now SURVIVES a
+    re-harvest (`scripts/pygram-capture/harvest.mjs` carries `tags` through the
+    merge and the serializer) — before that it would have been erased by the
+    next harvest and turned CI red with no diff to explain it.
 20. `hashlib`: `update()` after `digest()` does not resume — MicroPython's C
     hash finalises on `digest()`. The shim caches the digest so repeated
     `hexdigest()` is stable, which CPython also gives. `md5` and `sha1` need the
