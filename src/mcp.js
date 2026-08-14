@@ -1236,6 +1236,7 @@ async function runDeepResearch(env, log, identity, requestId, args, question, pr
       complexity: state.complexity ?? null,
       subquestions: state.subquestions ?? [],
       cached_searches: state.cachedSearchCount || 0,
+      named_urls: state.namedUrlCount || 0,
     },
   });
 
@@ -1282,6 +1283,7 @@ function newRequestState(model, jsonModel, webSearch, budgetS, plan, denseTotals
     plan: /** @type {any} */ (plan),
     searchCount: 0,
     cachedSearchCount: 0,
+    namedUrlCount: 0,
     iterations: 1,
     ranQueries: new Set(),
     // Queries actually DISPATCHED, as opposed to ranQueries' planned set. The

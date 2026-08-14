@@ -674,6 +674,7 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
         rounds: state.iterations,
         searches: state.searchCount,
         cached_searches: state.cachedSearchCount || 0,
+        named_urls: state.namedUrlCount || 0,
         sources: state.sources.length,
         // Whatever the registered extensions contributed this request — the
         // keys are theirs, not this handler's (src/extensions.js logMeta).
@@ -803,6 +804,7 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
             models_mode: modelsOn ? 1 : 0,
             model_cards: /** @type {any} */ (state).modelCards,
             cached_searches: state.cachedSearchCount || 0,
+            named_urls: state.namedUrlCount || 0,
             // The starter this conversation opened from, as its `#XP-07` tag
             // (pipeline.js reads it off the first message; the tag itself is
             // stripped before any model call). Present only for evaluation-mode
@@ -1279,6 +1281,7 @@ function newRequestState(model, jsonModel, webSearch, budgetS, extras = {}) {
     aux: {},
     searchCount: 0,
     cachedSearchCount: 0, // searches served from the Exa result cache (not billed)
+    namedUrlCount: 0, // pages read directly because the message named their URL
     iterations: 1, // search waves (initial + gap rounds that ran)
     ranQueries: new Set(),
     // Queries actually DISPATCHED, as opposed to ranQueries' planned set. The

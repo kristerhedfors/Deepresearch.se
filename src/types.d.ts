@@ -319,6 +319,9 @@ export interface RequestState {
   searchCount: number;
   /** Searches served from the Exa result cache (not billed). */
   cachedSearchCount: number;
+  /** Pages read directly because the user's message named their URL
+   * (src/named-urls.js). 0 when the message linked nothing readable. */
+  namedUrlCount: number;
   /** Search waves that ran (initial + gap rounds). */
   iterations: number;
   /** Queries PLANNED this request, for in-request dedup. Written before the
