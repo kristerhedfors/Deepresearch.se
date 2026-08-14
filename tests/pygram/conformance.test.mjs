@@ -65,6 +65,18 @@ function realPython() {
   return (r.stdout || "").trim();
 }
 
+/** findRealCPython deliberately follows the symlink chain, so comparing its
+ *  answer to a path by STRING is only valid when that path is already fully
+ *  resolved. It is not, on most machines: /usr/bin/python3 is a symlink to
+ *  /usr/bin/python3.N. This container happens to have an unresolved
+ *  python3.11 on PATH and the naive assertion passed here, then failed on CI
+ *  with `+ '/usr/bin/python3.12' - '/usr/bin/python3'`. Compare resolved
+ *  paths — the claim being tested is "the same interpreter", not "the same
+ *  spelling of it". */
+function resolved(p) {
+  return spawnSync("readlink", ["-f", p], { encoding: "utf8" }).stdout.trim() || p;
+}
+
 test("referencePython: skips a shell-script shim on PATH and finds the real ELF", () => {
   const real = realPython();
   if (!real) return; // no CPython here — nothing to resolve against
@@ -82,8 +94,9 @@ test("referencePython: PYTHON_BIN wins only when it names a real ELF", () => {
   // whole point is that the shim is not an interpreter, it wraps one.
   const shimmed = referencePython({ PATH: process.env.PATH, PYTHON_BIN: join(dir, "python3") });
   assert.notEqual(shimmed, join(dir, "python3"));
-  // Pointed at a genuine interpreter it is honoured.
-  assert.equal(referencePython({ PATH: process.env.PATH, PYTHON_BIN: real }), real);
+  // Pointed at a genuine interpreter it is honoured — same interpreter, which
+  // is not the same string once the symlink chain is followed.
+  assert.equal(resolved(referencePython({ PATH: process.env.PATH, PYTHON_BIN: real })), resolved(real));
 });
 
 test("a conformance run writes NOTHING to the capture log", { timeout: 120_000 }, () => {
