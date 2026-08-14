@@ -20,6 +20,7 @@ import {
   preprintSources,
   profileId,
   runScholarMetricsEnrichment,
+  WEB_SOURCE_NOTE,
   venueBlock,
   venueCategory,
   venueIntent,
@@ -311,6 +312,27 @@ test("the enrichment restricts EVERY turn to the peer-reviewed source", async ()
   // …and it appends nothing and shows no step on a turn that names neither a
   // profile nor a venue question.
   assert.deepEqual(out, c.conversation);
+});
+
+test("the enrichment orders the web leg LAST and labels what it returns", async () => {
+  // feedback #69: "deep science needs web search as well but should start with
+  // research sources and then validate with help from web search". Two more
+  // declarations, read generically by the pipeline — the ordering, and the
+  // caveat every web source carries into the digest.
+  const { c, state } = ctx("what is the boiling point of water");
+  await runScholarMetricsEnrichment(c);
+  assert.equal(state.webAfterAux, true);
+  assert.equal(state.webSourceNote, WEB_SOURCE_NOTE);
+  // The caveat has to do more than say "not peer-reviewed": the question that
+  // prompted the change is answerable from the open record and NOT from the
+  // reviewed one, so a note that reads as "discount this" would be the wrong
+  // instruction for the source holding the answer.
+  assert.match(WEB_SOURCE_NOTE, /NOT peer-reviewed/);
+  assert.match(WEB_SOURCE_NOTE, /corroborate/i);
+  assert.match(WEB_SOURCE_NOTE, /retractions/i);
+  // The enrichment still appends nothing to the conversation for it — these
+  // are state declarations, not prose in the user's message.
+  assert.deepEqual(await runScholarMetricsEnrichment(c), c.conversation);
 });
 
 test("the enrichment folds in venue metrics without any outbound request", async () => {

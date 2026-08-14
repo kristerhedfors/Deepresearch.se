@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { isTransientConnectStatus, contextOverflowMessage } from "./answer-stream.js";
 import { collectConflicts } from "./pipeline-inputs.js";
-import { searchPolicyFor, subquestionsAreIndependent } from "./pipeline.js";
+import { labelWebItems, searchPolicyFor, subquestionsAreIndependent } from "./pipeline.js";
 import { looksLikeClarifyTurn, normalizeTriage } from "./triage.js";
 import { lastAssistantText } from "./conversation.js";
 
@@ -521,8 +521,13 @@ describe("the web-search knob gates Exa only — depth still runs over other sou
     // decides whether it runs at all.
     const runSearches = src.slice(src.indexOf("async function runSearches"), src.indexOf("async function runWebLeg"));
     assert.match(runSearches, /const web = policy\.web && !lead\.length;/);
-    assert.match(runSearches, /if \(web\) await runWebLeg\(ctx, batch, round\);/);
-    const webLeg = src.slice(src.indexOf("async function runWebLeg"), src.indexOf("const MAX_AUX_SEARCHES_DEFAULT"));
+    // The leg is DISPATCHED behind the gate (`web ? startWebLeg(…) : null`)
+    // and awaited on whichever side of the aux wave this request ordered it —
+    // so the gate is the ternary, and both awaits are null-guarded by it.
+    assert.match(runSearches, /const webWave = web \? startWebLeg\(ctx, batch, round\) : null;/);
+    assert.match(runSearches, /if \(webWave && !webLast\) await webWave\(\);/);
+    assert.match(runSearches, /if \(webWave && webLast\) await webWave\(\);/);
+    const webLeg = src.slice(src.indexOf("function startWebLeg"), src.indexOf("const MAX_AUX_SEARCHES_DEFAULT"));
     assert.match(webLeg, /webSearch\(env, log, query, state\.plan\.searchDepth, \{ source: state\.searchSource \|\| "" \}\)/);
     assert.match(webLeg, /state\.searchCount \+= batch\.length/);
   });
@@ -537,12 +542,56 @@ describe("the web-search knob gates Exa only — depth still runs over other sou
     // took close to a minute").
     const runSearches = src.slice(src.indexOf("async function runSearches"), src.indexOf("async function runWebLeg"));
     const startIdx = runSearches.indexOf("const auxWave = startAuxSearches(ctx, batch, round, lead);");
-    const webIdx = runSearches.indexOf("if (web) await runWebLeg(ctx, batch, round);");
+    const webStartIdx = runSearches.indexOf("const webWave = web ? startWebLeg(ctx, batch, round) : null;");
+    const firstAwait = runSearches.indexOf("if (webWave && !webLast) await webWave();");
     const finishIdx = runSearches.indexOf("const auxItems = await auxWave();");
-    assert.ok(startIdx >= 0 && webIdx > startIdx, "aux wave is dispatched before the Exa leg is awaited");
-    assert.ok(finishIdx > webIdx, "aux results are absorbed after the Exa leg, so numbering stays deterministic");
-    // The dispatch itself is outside any `web` gate.
-    assert.ok(startIdx < runSearches.indexOf("if (web)"), "aux dispatch is not inside the Exa gate");
+    assert.ok(startIdx >= 0 && webStartIdx > startIdx, "aux wave is dispatched before the Exa leg is dispatched");
+    assert.ok(firstAwait > webStartIdx, "…and BOTH are dispatched before either is awaited");
+    assert.ok(finishIdx > firstAwait, "by default aux results are absorbed after the Exa leg, so numbering stays deterministic");
+    // The dispatch itself is outside any `web` gate — `webWave` is null when
+    // the knob is off, and only the AWAITS are guarded on it.
+    assert.ok(startIdx < webStartIdx, "aux dispatch is not inside the Exa gate");
+  });
+
+  test("a request may stamp its web results with a standing caveat", () => {
+    // The second half of feedback #69. The digest is what the answer model
+    // reads, so a caveat only reliably attaches to a source by travelling ON
+    // it — the same reasoning that puts "Preprint, not peer-reviewed" at the
+    // head of every arXiv item instead of in a prompt sentence about arXiv.
+    const note = "Web result — NOT peer-reviewed.";
+    const items = [{ url: "https://e.com/a", title: "A", highlights: ["first", "second"] }];
+    const out = labelWebItems(/** @type {any} */ ({ webSourceNote: note }), items);
+    assert.deepEqual(out[0].highlights, [note, "first", "second"], "the caveat leads");
+    assert.deepEqual(items[0].highlights, ["first", "second"], "the source item is not mutated");
+    // A source with no highlights at all still carries it.
+    assert.deepEqual(
+      labelWebItems(/** @type {any} */ ({ webSourceNote: note }), [{ url: "u", title: "t" }])[0].highlights,
+      [note],
+    );
+    // Most requests declare nothing, and those items pass through untouched.
+    for (const state of [{}, { webSourceNote: "" }, { webSourceNote: "   " }, { webSourceNote: 7 }]) {
+      assert.deepEqual(labelWebItems(/** @type {any} */ (state), items), items);
+    }
+    // Fail-soft on the shape core was handed (invariant 2).
+    assert.deepEqual(labelWebItems(/** @type {any} */ ({ webSourceNote: note }), /** @type {any} */ (null)), []);
+  });
+
+  test("a request may order the web leg LAST, without either leg waiting on the other", () => {
+    // feedback #69: "deep science needs web search as well but should start
+    // with research sources and then validate with help from web search".
+    // Ordering is a property of ABSORPTION (which fixes a source's number),
+    // never of dispatch — buying the ordering with the serial latency of
+    // feedback #44 would be trading one report for the other.
+    const runSearches = src.slice(src.indexOf("async function runSearches"), src.indexOf("async function runWebLeg"));
+    assert.match(runSearches, /const webLast = \/\*\* @type \{any\} \*\/ \(state\)\.webAfterAux === true;/);
+    const webStartIdx = runSearches.indexOf("const webWave = web ? startWebLeg(ctx, batch, round) : null;");
+    const auxAwaitIdx = runSearches.indexOf("const auxItems = await auxWave();");
+    const lateAwaitIdx = runSearches.indexOf("if (webWave && webLast) await webWave();");
+    assert.ok(lateAwaitIdx > auxAwaitIdx, "the late absorption happens after the aux wave lands");
+    assert.ok(webStartIdx < auxAwaitIdx, "…but the web leg was still dispatched before the aux wave was awaited");
+    // Generic: core reads a boolean off the state and never learns which agent
+    // set it, the same seam as forceAux / auxOnly.
+    assert.ok(!/scholar|science/i.test(runSearches), "runSearches names no agent or source");
   });
 
   test("a source the user names by NAME leads the wave, and the lead fails soft", () => {
@@ -824,9 +873,11 @@ describe("what the source-routing gates read, and what the ledger may claim", ()
     assert.match(src, /searchLedgerSection\(\/\*\* @type \{any\} \*\/ \(state\)\.issuedQueries\)/);
     assert.doesNotMatch(src, /searchLedgerSection\(state\.ranQueries\)/);
     // Both dispatch points record: the web leg, and the aux leg (which on a
-    // lead wave is the only thing that ran).
-    const web = src.slice(src.indexOf("async function runWebLeg"));
-    assert.match(web.slice(0, 1200), /issuedQueries \|\|= new Set\(\)\)\.add\(query\)/);
+    // lead wave is the only thing that ran). The web leg's recording sits in
+    // startWebLeg, its DISPATCH half — a query is issued when it is sent, not
+    // when the request gets round to absorbing the answer.
+    const web = src.slice(src.indexOf("function startWebLeg"));
+    assert.match(web.slice(0, 1600), /issuedQueries \|\|= new Set\(\)\)\.add\(query\)/);
     const absorb = src.slice(src.indexOf("function absorbAuxResult"));
     assert.match(absorb.slice(0, 1200), /issuedQueries \|\|= new Set\(\)\)\.add\(plan\.key \|\| plan\.query\)/);
   });

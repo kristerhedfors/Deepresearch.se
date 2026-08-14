@@ -2,12 +2,17 @@
 // SCHOLAR — the peer-reviewed literature search source, and the search half of
 // the Deep Science agent.
 //
-// The agent it serves has one promise: every source in the answer is a
-// peer-reviewed publication, and nothing else is consulted — no web search, no
-// preprint server, no blog, no press release. This module is where that promise
-// is kept or broken, so most of what follows is about the two hard parts:
-// reaching Google Scholar's index at all, and deciding what "peer-reviewed"
-// means in a way a machine can check.
+// The agent it serves has one promise: every SCIENTIFIC claim in the answer
+// rests on a peer-reviewed publication. This module is the leg that keeps it —
+// no preprint server, no blog, no press release reaches an answer through here.
+// Since 2026-08-14 the agent also runs a web leg BEHIND this one (feedback #69,
+// docs/SCHOLAR.md §4a), absorbed second and stamped "NOT peer-reviewed", for the
+// things the reviewed record cannot report on itself: retractions and
+// corrections, who reported what and when, funding and institutional context.
+// That leg is elsewhere; nothing about this module's filter softened for it.
+// Most of what follows is about the two hard parts: reaching Google Scholar's
+// index at all, and deciding what "peer-reviewed" means in a way a machine can
+// check.
 //
 // ============================================================================
 // PART 1 — how you integrate with Google Scholar (established 2026-07-31, curl)
@@ -708,16 +713,68 @@ const RETRACTED_TITLE =
   /^\s*(?:retracted(?:\s+article)?|retraction(?:\s+(?:of|notice)(?:\s+to)?)?|withdrawn|withdrawal(?:\s+of)?|expression\s+of\s+concern)\s*:/i;
 
 /**
+ * Is this message asking ABOUT retraction, withdrawal or research misconduct —
+ * as opposed to asking a scientific question that retracted work happens to
+ * touch? EN + SV with the same breadth (invariant 6).
+ *
+ * Reported as feedback #69 (2026-08-14, chat_logs #1747): "What did the
+ * retracted papers on beta-amyloid and Alzheimer's actually claim, and how
+ * much of the later literature was built on them?" came back with eight
+ * unrelated amyloid papers and an admission that none of them mentioned a
+ * retraction. The filter below was doing exactly what it was written to do —
+ * a retracted paper cited as current evidence is the worst single failure this
+ * agent can produce — but it makes the retracted record structurally
+ * unreachable, so the one question that is ONLY answerable from retracted work
+ * is the one question this agent cannot answer at all.
+ *
+ * So the drop stays the default and this gate is the narrow exception: when
+ * the reader asks about the retraction itself, retracted records are admitted
+ * and LABELLED as retracted in the material the model reads (`toItem` leads
+ * with it). Same shape as `preprintSources` in scholar-metrics.js — the
+ * default turn is unchanged, and what the reader named outright is what widens
+ * it.
+ *
+ * Deliberately NOT matched: a bare "withdrawn"/"tillbakadragen", which is
+ * ordinary English and Swedish about drugs, trials and applications ("the drug
+ * was withdrawn from the market") and would widen a large share of the
+ * medical questions this agent is asked. The retraction sense needs a word
+ * that carries it on its own.
+ *
+ * The Swedish forms avoid `\b`, which does not close after `å/ä/ö` in JS
+ * regex — the boundary trap the palaeogenomics skill records, and which
+ * silently kills bilingual gates repo-wide.
+ * @param {string} text
+ * @returns {boolean}
+ */
+export function retractionIntent(text) {
+  const t = String(text || "");
+  return (
+    // EN: retraction as a noun/verb, research misconduct, papers pulled.
+    /(?<![\p{L}\p{N}_])(?:retract(?:ed|ion|ions|ing)?|unretracted|de-?retract\w*|research\s+(?:misconduct|fraud|integrity)|scientific\s+(?:misconduct|fraud)|data\s+(?:fabricat\w+|falsificat\w+|manipulat\w+)|image\s+(?:duplicat\w+|manipulat\w+)|expressions?\s+of\s+concern|paper\s?mill\w*|withdrawn\s+(?:paper|papers|article|articles|stud(?:y|ies))|pubpeer)(?![\p{L}\p{N}_])/iu.test(t) ||
+    // SV: dito. "indragen/tillbakadragen artikel" needs its noun — see above.
+    /(?<![\p{L}\p{N}_])(?:retraher\w*|retraktion\w*|indragn\w*|forskningsfusk\w*|forskningsfusket|oredlighet\s+i\s+forskning\w*|vetenskaplig\w*\s+ohederlighet\w*|vetenskaplig\w*\s+fusk\w*|datafabricer\w*|dataförfalskn\w*|bildmanipul\w*|(?:tillbaka|åter|in)dragn\w*\s+(?:artikel\w*|artiklar\w*|studie\w*|stud(?:ier|ien|ierna)\w*|papper\w*)|(?:tillbaka|åter|in)dragen\w*\s+(?:artikel\w*|studie\w*)|(?:tillbaka|åter|in)dragna\s+(?:artiklar\w*|studier\w*|papper\w*))(?![\p{L}\p{N}_])/iu.test(t)
+  );
+}
+
+/**
  * The peer-review verdict, and the one line of evidence behind it.
  *
  * Positive evidence only. A record with no venue type, no ISSN and no
  * publication type is UNKNOWN, and unknown is rejected — which is what makes
  * "exclusively peer-reviewed" a filter rather than a hope.
+ *
+ * `admitRetracted` is the ONE relaxation of that rule (feedback #69, see
+ * retractionIntent above): a retracted record stops being dropped on sight.
+ * Everything else about the verdict is unchanged — an admitted record still
+ * has to carry positive evidence of peer review, which is precisely what makes
+ * it the subject of the question, and `toItem` leads its provenance line with
+ * RETRACTED so the answer model cannot read it as standing evidence.
  * @param {ScholarRecord} r
+ * @param {{ admitRetracted?: boolean }} [opts]
  * @returns {{ ok: boolean, why: string }}
  */
-export function peerReviewed(r) {
-  if (r.retracted) return { ok: false, why: "retracted" };
+export function peerReviewed(r, { admitRetracted = false } = {}) {
+  if (r.retracted && !admitRetracted) return { ok: false, why: "retracted" };
   switch (r.backend) {
     case "openalex": {
       if (!JOURNAL_SOURCE_TYPES.has(r.kind)) return { ok: false, why: `venue type "${r.kind || "unknown"}"` };
@@ -810,10 +867,17 @@ const POLITE_UA = `DeepResearch.se/1.0 (https://deepresearch.se; mailto:${POLITE
  * @param {string[]} terms
  * @returns {Promise<ScholarRecord[]>}
  */
-export async function openalexSearch(env, log, terms) {
+export async function openalexSearch(env, log, terms, { admitRetracted = false } = {}) {
   if (!terms.length) return [];
   const key = String(/** @type {any} */ (env)?.OPENALEX_API_KEY || "");
-  const filter = ["type:article|review", "primary_location.source.type:journal", "is_retracted:false"].join(",");
+  // `is_retracted:false` is dropped when the reader asked about retraction
+  // (feedback #69). It has to come off HERE and not only at peerReviewed:
+  // OpenAlex applies it server-side, so leaving it on means the retracted
+  // record is never in the response for the verdict to admit — the API filter
+  // and the local filter have to agree about what this turn is looking for.
+  const filter = ["type:article|review", "primary_location.source.type:journal"]
+    .concat(admitRetracted ? [] : ["is_retracted:false"])
+    .join(",");
   const url =
     "https://api.openalex.org/works" +
     `?search=${encodeURIComponent(terms.join(" "))}` +
@@ -1264,13 +1328,14 @@ export function mergeRecords(lists) {
  * Apply the verdict and drop everything that fails it. Exported so a test can
  * assert on the rejects, which is the half that matters.
  * @param {ScholarRecord[]} records
+ * @param {{ admitRetracted?: boolean }} [opts] passed straight to peerReviewed
  * @returns {{ kept: ScholarRecord[], rejected: Array<{ title: string, why: string }> }}
  */
-export function filterPeerReviewed(records) {
+export function filterPeerReviewed(records, opts = {}) {
   const kept = [];
   const rejected = [];
   for (const r of records) {
-    const v = peerReviewed(r);
+    const v = peerReviewed(r, opts);
     if (v.ok) {
       r.peerReviewed = true;
       r.why = v.why;
@@ -1345,7 +1410,18 @@ export function toItem(r, venues = null) {
   if (r.publisher && r.publisher !== r.venue) bits.push(r.publisher);
   if (Number.isFinite(r.citedBy) && (r.citedBy ?? 0) > 0) bits.push(`cited ${r.citedBy}×`);
   bits.push(`peer-reviewed: ${r.why}`);
-  const highlights = [bits.join(" · ")];
+  // A retracted record only ever reaches here when the reader asked ABOUT
+  // retraction (retractionIntent), and it leads the line rather than trailing
+  // it for the same reason arXiv's items lead with "Preprint, not
+  // peer-reviewed": the first words of a source's provenance are the ones an
+  // answer is written against. It says WITHDRAWN as well as retracted because
+  // the citation count sitting next to it is the whole point of the question —
+  // the paper was cited that many times, and most of those citations predate
+  // the withdrawal.
+  const head = r.retracted
+    ? `RETRACTED — this paper has been withdrawn from the record; report what it claimed and what became of it, never as standing evidence. ${bits.join(" · ")}`
+    : bits.join(" · ");
+  const highlights = [head];
   if (r.authors.length) {
     const authors = r.authors.slice(0, 8).join(", ") + (r.authors.length > 8 ? " et al." : "");
     highlights.push(authors);
@@ -1362,11 +1438,22 @@ export function toItem(r, venues = null) {
  * @param {Env} env
  * @param {Logger} log
  * @param {string} query
- * @param {{ skipKeys?: Set<string> }} [opts]
+ * @param {{ skipKeys?: Set<string>, asked?: string }} [opts] `asked` is the
+ *   reader's own message (the registry's opts, threaded by pipeline.js) — it
+ *   decides whether the retracted record is in scope for this turn.
  * @returns {Promise<{ items: Array<{url: string, title: string, highlights: string[]}>, durationMs: number, usedKeys: string[], spend?: import('./dense-rag.js').RetrievalSpend }>}
  */
-export async function scholarSearch(env, log, query, { skipKeys } = {}) {
+export async function scholarSearch(env, log, query, { skipKeys, asked } = {}) {
   const startedAt = Date.now();
+  // Whether the retracted record is in scope for this turn, decided from the
+  // READER's message and not from `query` (feedback #69). The planner's angle
+  // usually inherits the reader's wording and would often decide the same way,
+  // but "usually" is not a filter: triage is free to paraphrase "which papers
+  // were retracted" into "amyloid oligomer hypothesis criticism", and the
+  // record the whole question is about would vanish on a word choice the
+  // reader never made. `asked` is optional (the MCP literature door passes no
+  // message), and absent it this is false — the long-standing default.
+  const admitRetracted = retractionIntent(asked || "");
   const rungs = scholarLadder(query).filter((r) => !skipKeys?.has(r.key));
   const usedKeys = [];
   // The venue table is a local artifact read; it costs no upstream call and is
@@ -1397,7 +1484,7 @@ export async function scholarSearch(env, log, query, { skipKeys } = {}) {
   if (!rungs.length) {
     const dense = await denseP;
     if (dense.length) backendsUsed = ["pubmed_rag"];
-    const verdict = filterPeerReviewed(mergeRecords([dense]));
+    const verdict = filterPeerReviewed(mergeRecords([dense]), { admitRetracted });
     kept = verdict.kept;
     rejected = verdict.rejected;
   }
@@ -1408,7 +1495,7 @@ export async function scholarSearch(env, log, query, { skipKeys } = {}) {
     // backends go first so a Google Scholar hit merges ONTO one of them rather
     // than the other way round.
     const [oa, epmc, s2, gs, dense] = await Promise.all([
-      openalexSearch(env, log, rung.terms).catch(() => []),
+      openalexSearch(env, log, rung.terms, { admitRetracted }).catch(() => []),
       europePmcPeerSearch(env, log, rung.terms).catch(() => []),
       semanticScholarSearch(env, log, rung.terms).catch(() => []),
       googleScholarSearch(env, log, rung.terms).catch(() => []),
@@ -1456,7 +1543,7 @@ export async function scholarSearch(env, log, query, { skipKeys } = {}) {
       }
     }
 
-    const verdict = filterPeerReviewed(merged);
+    const verdict = filterPeerReviewed(merged, { admitRetracted });
     kept = verdict.kept;
     rejected = verdict.rejected;
     if (kept.length) usedNote = rung.note;

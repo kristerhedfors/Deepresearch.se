@@ -29,8 +29,11 @@
 // Two consequences are load-bearing and easy to lose:
 //
 //  1. **`science` is the fallback**, so the terminal `else` of the whole routing
-//     system is now an agent with a POLICY (literature-only, `search.web: false`)
-//     rather than one without. A caller that wants something else must say so.
+//     system is now an agent with a POLICY — the peer-reviewed literature leads
+//     and is numbered first, and the web leg runs behind it, labelled as web
+//     reporting (feedback #69, 2026-08-14; it declared `search.web: false` and
+//     ran no web leg at all before then) — rather than one without. A caller
+//     that wants open-web research as the PRIMARY evidence must say so.
 //  2. **The registry is no longer optional** — see `routingNeedsRegistry`.
 
 /** The modes, in dropdown order. */
