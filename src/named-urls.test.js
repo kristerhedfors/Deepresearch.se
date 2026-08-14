@@ -270,3 +270,102 @@ describe("readNamedUrls", () => {
     assert.equal(out.attempted, MAX_NAMED_URLS);
   });
 });
+
+// ---------------------------------------------------------------------------
+// The host guard, closed on both halves (2026-08-14).
+//
+// Probing the guard after PR #441 merged found the NAME rules — and only the
+// name rules — bypassable by one character, and the redirect chain unchecked
+// past the first hop. Both are the same mistake in different places: the
+// address that was judged was not the address that got fetched.
+// ---------------------------------------------------------------------------
+
+describe("the host guard survives a fully-qualified name", () => {
+  // `localhost.` resolves to `localhost` but is not string-equal to it, and
+  // `box.local.` does not END in `.local`. So every name rule missed them
+  // while the IP rules held — the trailing dot is now stripped where the
+  // brackets already were, so a rule added later inherits the normalization.
+  test("a trailing dot does not smuggle a private name past the guard", () => {
+    for (const s of [
+      "http://localhost./x",
+      "http://localhost.:8787/admin",
+      "http://LocalHost./x",
+      "http://foo.internal./x",
+      "http://box.local./x",
+      "http://thing.home.arpa./x",
+      "http://localhost../x",
+    ]) assert.deepEqual(extractNamedUrls(s), [], s);
+  });
+
+  test("and a public host is still read, dot or no dot", () => {
+    assert.deepEqual(extractNamedUrls("https://example.com./page"), ["https://example.com./page"]);
+    assert.deepEqual(extractNamedUrls("https://example.com/page"), ["https://example.com/page"]);
+  });
+});
+
+describe("redirects are judged hop by hop, not just at the address typed", () => {
+  const html = (t) => new Response(`<title>${t}</title><p>${"word ".repeat(400)}</p>`, {
+    status: 200,
+    headers: { "content-type": "text/html" },
+  });
+  const to = (loc) => new Response(null, { status: 302, headers: { location: loc } });
+
+  test("a public URL that redirects INTO the local network is refused", async () => {
+    const log = fakeLog();
+    const out = await withFakeFetch(
+      [
+        [/^https:\/\/ok\.test\/$/, to("http://169.254.169.254/latest/meta-data/")],
+        [/169\.254/, html("metadata")],
+      ],
+      () => readNamedUrls({}, log, ["https://ok.test/"]),
+    );
+    assert.deepEqual(out.items, [], "nothing is read from behind the redirect");
+    assert.match(log.text(), /redirect_private/, "and the refusal is logged as such");
+  });
+
+  test("an ordinary redirect is still followed", async () => {
+    const log = fakeLog();
+    const out = await withFakeFetch(
+      [
+        [/^http:\/\/ok\.test\/$/, to("https://ok.test/final")],
+        [/^https:\/\/ok\.test\/final$/, html("Arrived")],
+      ],
+      () => readNamedUrls({}, log, ["http://ok.test/"]),
+    );
+    assert.equal(out.items.length, 1, "http->https is the common case and must keep working");
+    assert.equal(out.items[0].title, "Arrived");
+  });
+
+  test("a relative Location is resolved against the hop it came from", async () => {
+    // The check is only meaningful if `/next` inherits the previous host —
+    // refusing it for having none would break half the web instead.
+    const log = fakeLog();
+    const out = await withFakeFetch(
+      [
+        [/^https:\/\/ok\.test\/a$/, to("/b")],
+        [/^https:\/\/ok\.test\/b$/, html("Relative")],
+      ],
+      () => readNamedUrls({}, log, ["https://ok.test/a"]),
+    );
+    assert.equal(out.items.length, 1);
+    assert.equal(out.items[0].title, "Relative");
+  });
+
+  test("a redirect loop ends rather than running forever", async () => {
+    const log = fakeLog();
+    const out = await withFakeFetch([[/^https:\/\/loop\.test\//, to("https://loop.test/again")]], () =>
+      readNamedUrls({}, log, ["https://loop.test/"]),
+    );
+    assert.deepEqual(out.items, []);
+    assert.match(log.text(), /redirect_limit/);
+  });
+
+  test("a redirect to a non-http scheme is refused", async () => {
+    const log = fakeLog();
+    const out = await withFakeFetch([[/^https:\/\/ok\.test\/$/, to("file:///etc/passwd")]], () =>
+      readNamedUrls({}, log, ["https://ok.test/"]),
+    );
+    assert.deepEqual(out.items, []);
+    assert.match(log.text(), /redirect_scheme/);
+  });
+});
