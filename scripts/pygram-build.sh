@@ -7,6 +7,13 @@
 #   bash scripts/pygram-build.sh              # → pygram/build/pygram
 #   bash scripts/pygram-build.sh --clean      # discard the work dir first
 #   bash scripts/pygram-build.sh --verify     # build, then run the gates
+#   bash scripts/pygram-build.sh --stock      # → pygram/build/micropython-stock
+#
+# --stock builds the BENCHMARK CONTROL: upstream MicroPython, unpatched, with
+# no frozen pygram stdlib, from the same pinned commit and through the same
+# toolchain. It is what scripts/pygram-bench.mjs compares pygram against, and
+# the guarantees that make that comparison meaningful are documented at
+# build_stock() below. See docs/PYGRAM-BENCH-LEDGER.md.
 #
 # From scratch this takes a few minutes, almost all of it musl and the first
 # MicroPython compile. Both are cached in pygram/.build, so a rebuild after
@@ -59,15 +66,26 @@ OUT="$PYGRAM_DIR/build/pygram"
 MUSL_PREFIX="$WORK/musl-i386"
 MPY_DIR="$WORK/micropython"
 VARIANT_DEST="$MPY_DIR/ports/unix/variants/pygram"
+# The control build gets its OWN checkout of the same pinned commit. It is a
+# local clone, so it costs no network and about three seconds — and it means the
+# stock tree is never reached by `git apply`, and the two builds do not
+# invalidate each other's object files by alternately patching and unpatching
+# one shared source tree.
+STOCK_DIR="$WORK/micropython-stock"
+STOCK_VARIANT_DEST="$STOCK_DIR/ports/unix/variants/stock"
+STOCK_OUT="$PYGRAM_DIR/build/micropython-stock"
+MPY_LIB_STUB="$WORK/mpy-lib-stub"
 JOBS="$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)"
 
 DO_CLEAN=0
 DO_VERIFY=0
+DO_STOCK=0
 for arg in "$@"; do
     case "$arg" in
         --clean) DO_CLEAN=1 ;;
         --verify) DO_VERIFY=1 ;;
-        -h|--help) sed -n '2,40p' "${BASH_SOURCE[0]}"; exit 0 ;;
+        --stock) DO_STOCK=1 ;;
+        -h|--help) sed -n '2,48p' "${BASH_SOURCE[0]}"; exit 0 ;;
         *) echo "pygram-build: unknown option $arg" >&2; exit 2 ;;
     esac
 done
@@ -170,6 +188,179 @@ HEAD_SHA="$(git -C "$MPY_DIR" rev-parse HEAD)"
     || die "MicroPython HEAD is $HEAD_SHA, expected $MPY_COMMIT for $MPY_TAG"
 
 # --------------------------------------------------------------------------
+# 2b. --stock: the benchmark CONTROL build
+# --------------------------------------------------------------------------
+# scripts/pygram-bench.mjs measures pygram against stock MicroPython to isolate
+# what OUR variant costs — the port patch, the frozen stdlib, insertion-ordered
+# dicts, unicode \w, exact float repr. That subtraction is only valid if the two
+# binaries differ in NOTHING ELSE, so here is exactly how each dimension is
+# held equal, and exactly where the control is forced to differ.
+#
+# HELD EQUAL — and each one is mechanically enforced, not just intended:
+#
+#   MicroPython commit  Both trees are checked out at $MPY_COMMIT and the SHA is
+#                       re-verified below. The stock tree is additionally
+#                       asserted CLEAN (`git diff --quiet`) after its reset,
+#                       which is the mechanical proof that no patch from
+#                       pygram/variant/patches/ has touched it.
+#   libc + architecture  Both link the same $MUSL_PREFIX built by step 1 of this
+#                       same script, through the same musl-gcc wrapper, for
+#                       i686. There is one musl in the work directory and both
+#                       builds use it.
+#   compiler + flags    The stock variant makefile is not hand-written. The
+#                       block between the SHARED TOOLCHAIN BLOCK markers in
+#                       pygram/variant/mpconfigvariant.mk is EXTRACTED VERBATIM
+#                       into it, so -m32, -static, -Wl,-m,elf_i386,
+#                       -fno-stack-protector and COPT=-Os -DNDEBUG cannot drift
+#                       between the two. Editing them changes both binaries.
+#   strip state         Both are built with STRIP=strip and then stripped again
+#                       here, and the smoke check below asserts `file` reports
+#                       ", stripped" for the control exactly as it does for
+#                       pygram.
+#   invocation          Same make target, same -j, same CC/LD/STRIP/MPY_LIB_DIR.
+#
+# FORCED TO DIFFER — five deltas, all of them consequences of building offline
+# and statically, none of them a pygram design choice. They are listed here
+# because an unlisted difference is how a benchmark quietly starts measuring the
+# toolchain:
+#
+#   1. FROZEN_MANIFEST is empty. Upstream `standard` freezes mip-cmdline and ssl
+#      from micropython-lib, a git submodule this build deliberately never
+#      clones. Empty is also the honest control for "what does pygram's frozen
+#      stdlib cost", which is one of the things being measured.
+#   2. MICROPY_PY_BTREE=0  — needs the berkeley-db submodule.
+#   3. MICROPY_PY_FFI=0    — links libffi, which would make the binary dynamic.
+#   4. MICROPY_PY_SSL=0 / MICROPY_SSL_AXTLS=0 — needs the axtls submodule.
+#   5. MICROPY_VFS_FAT=0 / MICROPY_VFS_LFS1=0 / MICROPY_VFS_LFS2=0 — submodules.
+#
+# Everything else is left at upstream's `standard` defaults ON PURPOSE, even
+# where pygram switches it off: socket, _thread, termios, readline and the REPL
+# are all present in the control. Those are pygram SCOPE decisions, so their
+# cost in bytes belongs in the comparison rather than being quietly normalised
+# away. The control's mpconfigvariant.h is upstream's `standard` header copied
+# byte for byte.
+build_stock() {
+    say "Stock control: cloning $MPY_TAG into a separate tree"
+    if [ -d "$STOCK_DIR/.git" ] && [ "$(git -C "$STOCK_DIR" rev-parse HEAD 2>/dev/null || true)" = "$MPY_COMMIT" ]; then
+        echo "    cached"
+    else
+        rm -rf "$STOCK_DIR"
+        git clone --quiet --no-checkout "$MPY_DIR" "$STOCK_DIR" \
+            || die "could not make a local clone of $MPY_DIR"
+        git -C "$STOCK_DIR" checkout --quiet "$MPY_COMMIT" \
+            || die "could not check out $MPY_COMMIT in the stock tree"
+    fi
+
+    # Reset every run, exactly as the pygram path does — and then simply do not
+    # patch. The assertion after it is the point: a clean tree at the pinned
+    # commit is a *checked* claim that the control carries none of our changes.
+    git -C "$STOCK_DIR" reset --hard "$MPY_COMMIT" >/dev/null
+    git -C "$STOCK_DIR" clean -qfd -e ports/unix/build-stock -e ports/unix/variants/stock -e mpy-cross/build
+    local stock_head
+    stock_head="$(git -C "$STOCK_DIR" rev-parse HEAD)"
+    [ "$stock_head" = "$MPY_COMMIT" ] \
+        || die "stock tree HEAD is $stock_head, expected $MPY_COMMIT"
+    git -C "$STOCK_DIR" diff --quiet \
+        || die "the stock tree has local modifications — the control must be unpatched upstream"
+
+    say "Stock control: generating the variant"
+    # The header is upstream's, verbatim. The makefile is upstream's plus the
+    # extracted shared toolchain block plus the five forced disables above.
+    local upstream_variant="$STOCK_DIR/ports/unix/variants/standard"
+    [ -f "$upstream_variant/mpconfigvariant.h" ] \
+        || die "upstream has no variants/standard/mpconfigvariant.h — did the pin move?"
+    rm -rf "$STOCK_VARIANT_DEST"
+    mkdir -p "$STOCK_VARIANT_DEST"
+    cp "$upstream_variant/mpconfigvariant.h" "$STOCK_VARIANT_DEST/mpconfigvariant.h"
+
+    # Extract the shared block. If the markers are gone the build must FAIL,
+    # never silently fall back to hand-copied flags — a control built with
+    # different optimisation flags measures the compiler, not pygram.
+    local shared
+    shared="$(awk '/^# >>> SHARED TOOLCHAIN BLOCK/{f=1;next} /^# <<< SHARED TOOLCHAIN BLOCK/{f=0} f' \
+        "$PYGRAM_DIR/variant/mpconfigvariant.mk")"
+    printf '%s' "$shared" | grep -q -- '-static' \
+        || die "could not extract the SHARED TOOLCHAIN BLOCK from pygram/variant/mpconfigvariant.mk.
+The markers are what keeps the benchmark control apples-to-apples; restore them
+rather than duplicating the flags here."
+
+    {
+        printf '# GENERATED by scripts/pygram-build.sh --stock. Do not edit.\n'
+        printf '#\n'
+        printf '# The benchmark control: upstream MicroPython, unpatched, no frozen pygram\n'
+        printf '# stdlib, same pinned commit, same musl-i386 toolchain, same flags.\n'
+        printf '# The rationale and the five forced deltas are in build_stock().\n\n'
+        printf 'PROG = micropython-stock\n\n'
+        printf '# micropython-lib is a submodule this build never clones.\n'
+        printf 'FROZEN_MANIFEST =\n\n'
+        printf '# Forced off: each needs a git submodule or a shared library.\n'
+        printf 'MICROPY_PY_BTREE = 0\n'
+        printf 'MICROPY_PY_FFI = 0\n'
+        printf 'MICROPY_PY_SSL = 0\n'
+        printf 'MICROPY_SSL_AXTLS = 0\n'
+        printf 'MICROPY_VFS_FAT = 0\n'
+        printf 'MICROPY_VFS_LFS1 = 0\n'
+        printf 'MICROPY_VFS_LFS2 = 0\n\n'
+        printf '# --- extracted verbatim from pygram/variant/mpconfigvariant.mk ---\n'
+        printf '%s\n' "$shared"
+    } >"$STOCK_VARIANT_DEST/mpconfigvariant.mk"
+
+    # The same micropython-lib stub the pygram build uses: the port Makefile
+    # insists the directory exists even when nothing is frozen from it.
+    mkdir -p "$MPY_LIB_STUB"
+
+    say "Building mpy-cross for the stock tree (host tool)"
+    make -C "$STOCK_DIR/mpy-cross" -j"$JOBS" >"$WORK/mpy-cross-stock.log" 2>&1 \
+        || { tail -30 "$WORK/mpy-cross-stock.log"; die "stock mpy-cross build failed"; }
+
+    say "Building stock MicroPython (i386, musl, static)"
+    make -C "$STOCK_DIR/ports/unix" \
+        VARIANT=stock \
+        CC="$MUSL_PREFIX/bin/musl-gcc" \
+        LD="$MUSL_PREFIX/bin/musl-gcc" \
+        STRIP=strip \
+        MPY_LIB_DIR="$MPY_LIB_STUB" \
+        -j"$JOBS" >"$WORK/stock.log" 2>&1 \
+        || { tail -40 "$WORK/stock.log"; die "stock build failed — full log in $WORK/stock.log"; }
+
+    local built="$STOCK_DIR/ports/unix/build-stock/micropython-stock"
+    [ -f "$built" ] || die "the stock build reported success but produced no binary"
+    strip "$built" 2>/dev/null || true
+    cp "$built" "$STOCK_OUT"
+
+    # The control's own smoke checks. These are NOT pygram's contract checks —
+    # stock is upstream MicroPython and owes none of them. They assert only the
+    # four properties the comparison depends on.
+    say "Stock control: shape checks"
+    local sfail=0
+    scheck() {
+        if [ "$2" = "$3" ]; then printf '    ok    %-42s %s\n' "$1" "$2"
+        else printf '    FAIL  %-42s got %s, want %s\n' "$1" "$2" "$3"; sfail=1; fi
+    }
+    scheck "statically linked" "$(file -L "$STOCK_OUT" | grep -c 'statically linked')" "1"
+    scheck "ELF 32-bit i386" "$(file -L "$STOCK_OUT" | grep -c 'ELF 32-bit.*80386')" "1"
+    scheck "stripped" "$(file -L "$STOCK_OUT" | grep -c ', stripped')" "1"
+    scheck "runs -c 'pass'" "$("$STOCK_OUT" -c 'pass' >/dev/null 2>&1; echo $?)" "0"
+    # The control must NOT be pygram. If a copy of pygram ever landed here every
+    # ratio in the ledger would read 1.00 and look like a clean result, so this
+    # is checked on two things only pygram does: the pinned sys.path and the
+    # version line.
+    scheck "is not pygram: sys.path is upstream's" \
+        "$("$STOCK_OUT" -c 'import sys; print(len(sys.path) > 1)' 2>/dev/null)" "True"
+    scheck "is not pygram: no pygram version line" \
+        "$("$STOCK_OUT" --version 2>&1 | grep -c 'pygram' || true)" "0"
+    [ "$sfail" = 0 ] || die "stock shape checks failed"
+
+    say "Built $STOCK_OUT — $(stat -c %s "$STOCK_OUT") bytes"
+    echo "    benchmark against pygram:  npm run pygram:bench"
+}
+
+if [ "$DO_STOCK" = 1 ]; then
+    build_stock
+    exit 0
+fi
+
+# --------------------------------------------------------------------------
 # 3. The port patch
 # --------------------------------------------------------------------------
 # Reset to the pinned commit and re-apply, every run. This is what keeps the
@@ -216,7 +407,6 @@ echo "    frozen modules from pygram/lib: $LIB_COUNT"
 # pygram/lib and requires nothing from upstream's library. The Makefile still
 # insists the directory exists, so point it at a stub rather than cloning tens
 # of megabytes of modules that would not be frozen.
-MPY_LIB_STUB="$WORK/mpy-lib-stub"
 mkdir -p "$MPY_LIB_STUB"
 printf 'Not micropython-lib. pygram freezes only pygram/lib; see manifest.py.\n' \
     >"$MPY_LIB_STUB/README.md"

@@ -18,6 +18,7 @@ Berry, RustPython and a stripped CPython.
 ```bash
 bash scripts/pygram-build.sh        # → pygram/build/pygram
 make -C pygram verify               # build, then run both gates
+bash scripts/pygram-build.sh --stock   # → pygram/build/micropython-stock, the benchmark control
 ```
 
 About 40 s from nothing on this container, seconds on a rebuild. It needs the
@@ -63,6 +64,52 @@ Latest measured (390,456 B binary, 201 corpus entries):
 
 CPython 3.11 on the same gate: 6,639,992 B, dynamically linked, 22 files opened,
 7 failed probes, 65 stat/access calls. **17.0× smaller, and it touches nothing.**
+
+## The performance benchmark, and its control
+
+The gates answer "is the shape right" and "is the answer right". Neither answers
+"what did our changes cost", and pygram's own timings cannot answer it either —
+a number with nothing to divide by is not a measurement. So there is a control:
+**stock MicroPython, same pinned commit, same toolchain, unpatched, with no
+frozen pygram stdlib.**
+
+```bash
+bash scripts/pygram-build.sh --stock    # → pygram/build/micropython-stock
+npm run pygram:bench                    # the table
+npm run pygram:bench:record             # ... and a dated entry in the ledger
+make -C pygram bench                    # builds whichever binary is missing first
+```
+
+**Run it after any of these, and record the result:**
+
+- any edit to `pygram/variant/` — the config header, the makefile, the manifest;
+- any change to a patch in `pygram/variant/patches/`;
+- any module added to or removed from `pygram/lib/`, since a frozen shim
+  replaces C with interpreted Python and that is exactly what the `re.sub` row
+  found;
+- any bump of `MPY_TAG` / `MPY_COMMIT` in `scripts/pygram-build.sh`, which
+  rebases the patch onto a different interpreter;
+- before and after any change made *in order to* be faster, because that is the
+  only way to know whether it was.
+
+The control is apples-to-apples by construction, not by care: the toolchain
+flags are **extracted verbatim** from `pygram/variant/mpconfigvariant.mk` into
+the stock variant at build time, so libc, architecture, optimisation level and
+strip state cannot drift between the two binaries. `build_stock()` in
+`scripts/pygram-build.sh` documents what is held equal and the five differences
+the offline static build forces. CPython3 is measured beside them as **context,
+never as the control** — different architecture, different league, and a
+cold-start problem rather than a warm-CPU one.
+
+Results, methodology and how to read a regression: **`docs/PYGRAM-BENCH-LEDGER.md`**.
+The headline from the first recorded run — the dict quadratic at 9.4× on 20,000
+keys, `re.sub` at 10.9× that turns out to be the frozen shim and not the engine,
+exact float repr at 1.9×, and startup at parity — is in that file's *Reading*
+section.
+
+It is **not in CI**, deliberately: a wall-clock benchmark on a shared runner
+measures the runner. CI keeps the deterministic half — size, file opens,
+conformance.
 
 ## What is pinned, and why
 
@@ -245,13 +292,19 @@ found by trying it; the build fails with a bare `error compiling shutil.py`.
 with a linear scan. Measured on the shipped binary, native x86-64 host, one
 dict built by inserting N distinct string keys:
 
-| distinct keys | wall | vs previous |
-|---|---|---|
-| 1,000 | 11 ms | — |
-| 5,000 | 193 ms | — |
-| 10,000 | 768 ms | 4.0× for 2× keys |
-| 20,000 | 3,005 ms | 3.9× for 2× keys |
-| 40,000 | `MemoryError` | — |
+| distinct keys | pygram, min of 15, less startup | vs previous | vs stock MicroPython |
+|---|---|---|---|
+| 1,000 | 8 ms | — | 2.1× |
+| 5,000 | 169 ms | — | 4.0× |
+| 10,000 | 647 ms | 3.8× for 2× keys | 7.7× |
+| 20,000 | 2,540 ms | 3.9× for 2× keys | 9.4× |
+| 40,000 | `MemoryError` | — | — |
+
+The last column is what the ordering decision actually *costs*, rather than what
+the workload costs: the same insertions on a stock build of the same MicroPython
+commit through the same toolchain (`docs/PYGRAM-BENCH-LEDGER.md`, 2026-08-14,
+`npm run pygram:bench`). Reading back out of the dict is worse than filling it —
+12.4× on the same 10,000 keys, because a lookup is a linear scan too.
 
 That is clean quadratic behaviour: doubling the keys quadruples the time. Two
 things bound the risk, and both matter for the 30 s exec ceiling that
