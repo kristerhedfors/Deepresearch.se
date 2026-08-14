@@ -155,6 +155,30 @@ Two rules that keep the evidence honest:
   theoretical — two credential-shaped tokens were redacted on the first real
   harvest.
 
+**Separate FILES did not achieve separation, and the first harvest was mostly
+fiction** (found 2026-08-14 — `docs/PYGRAM.md` §7a). The conformance runner
+executes every corpus entry, resolved the reference interpreter by NAME, and so
+found the capture shim first on `$PATH`: every run logged 212 invocations that
+the next harvest merged back as observed evidence. **138 of the 197 "observed"
+programs were byte-identical to seed programs**, and 139 sat at `count=8` — one
+per conformance run, not a Zipfian spread. `--plan` ranks build order by those
+counts, so the loop ranked guessed-at programs above real ones. Meanwhile the log
+at `$HOME/.pygram/` never reached the repo: `corpus.jsonl` was committed once and
+every `first_seen` falls in one 36-minute window.
+
+Now: the runner resolves a real CPython ELF **and** spawns with
+`PYGRAM_CAPTURE=0` (either alone closes the loop); harvest drops seed-identical
+sightings as `seedCollision` and says so on every run; a `Stop` hook harvests
+before teardown without committing. **The committed counts are still inflated** —
+the fixes stop them growing, nothing can retroactively correct them — so treat
+`count` as an upper bound and any build order from it as provisional.
+
+Two traps if you touch this: a stand-in shim in a test must reproduce the real
+one's `$HOME/.pygram/` fallback, because `runOne` strips `PYGRAM_LOG` but keeps
+`HOME` — the first loop test passed with every defence removed. And mutate the
+defences **separately**; running the test against fixed code alone would not
+have caught that.
+
 ## 4. Building
 
 ```bash

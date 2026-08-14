@@ -239,7 +239,11 @@ const account = initAccountPanel();
 // doesn't have yet (diff-only; skips up-to-date items) and pull
 // conversations written from other devices. Entirely fail-soft and
 // deliberately not awaited — the app is fully usable while it runs.
-loadSettings()
+// Kept as a promise because ONE later boot step has to run after it: the
+// capture link below applies the agent a recorded run was made under, and the
+// adopt inside this `.then` would otherwise be free to land afterwards and pull
+// the tab back to the account's own agent (see applyCaptureLink).
+const settingsSettled = loadSettings()
   .then((s) => {
     // Adopt the server's stored chat mode — the authoritative copy of the
     // ACCOUNT DEFAULT, so a mode picked on another device lands here. The server
@@ -512,26 +516,50 @@ function persistChatMode(mode) {
   if (!chatModesAvailable() && mode !== DEFAULT_CHAT_MODE) return;
   setChatMode(mode).catch(() => {});
 }
-modeSel.addEventListener("change", () => {
-  const mode = applyChatModeTheme(modeSel.value);
-  modeSel.value = mode;
-  applyModeBackdrop(mode);
-  // Leaving Orchestrator abandons any local swarm still decoding: free the
-  // models now rather than letting them run to their own deadline in a mode
-  // that has no use for them (public/js/swarm-runtime.js).
-  if (mode !== "orchestrator") import("./swarm-runtime.js").then((m) => m.stopSwarms()).catch(() => {});
+/**
+ * ENTER A CHAT MODE — every visible consequence of being in an agent, in one
+ * place. The theme, the dropdown, the agent backdrop, the SDK greeter, the
+ * starter strip, the Outrospection feed and the Models board are not decoration
+ * around the pick: they are how a reader can SEE which agent is about to answer.
+ *
+ * It exists because the link-driven switches each grew their own subset. The
+ * `/?capture=<id>` link applied the theme and the dropdown and nothing else, so
+ * a reopened Cyber run sat under the previous agent's backdrop and starter
+ * strip; the `/?mode=` deep link skipped the backdrop the same way. A switch
+ * that is half-applied reads as the app landing on the wrong agent, which is
+ * exactly what it is.
+ *
+ * @param {string} mode
+ * @param {{ persist?: boolean }} [opts] persist:false for a mode that is being
+ *   RESTORED rather than chosen (the default mode on a deep link), which must
+ *   not rewrite the account's stored pick
+ * @returns {string} the applied (normalized) mode
+ */
+function enterChatMode(mode, opts = {}) {
+  const applied = applyChatModeTheme(mode);
+  syncModeSelect(applied);
+  applyModeBackdrop(applied);
   // Persist the pick so it follows the account to its other devices. The theme
   // is already applied above, so a failed write costs the durability of the
   // choice, never the switch itself (break-glass has no row to write to).
-  persistChatMode(mode);
-  greetSdkMode(mode);
+  if (opts.persist !== false) persistChatMode(applied);
+  greetSdkMode(applied);
   // Each mode runs a different agent, so the starter strip has to follow it —
   // Deep Science openers sitting in Agent Studio would advertise the wrong
   // thing entirely.
   starters?.refresh();
   clearOutrospectionFeed();
-  openOutrospectionFeed(mode);
-  syncModelsBoard(mode);
+  openOutrospectionFeed(applied);
+  syncModelsBoard(applied);
+  return applied;
+}
+
+modeSel.addEventListener("change", () => {
+  const mode = enterChatMode(modeSel.value);
+  // Leaving Orchestrator abandons any local swarm still decoding: free the
+  // models now rather than letting them run to their own deadline in a mode
+  // that has no use for them (public/js/swarm-runtime.js).
+  if (mode !== "orchestrator") import("./swarm-runtime.js").then((m) => m.stopSwarms()).catch(() => {});
 });
 
 // The web-search popover opens on a press-and-hold of the spiderweb knob
@@ -771,14 +799,15 @@ const historySidebar = initHistorySidebar({
 initCaptureChats({
   onRecord: applyRecordSettings,
   onMode: (mode) => {
+    // The WHOLE switch (enterChatMode), not just the theme and the dropdown:
+    // the backdrop, the starter strip and the mode's own surfaces are how the
+    // reader sees which agent is about to answer their follow-up.
+    //
     // Persisted, unlike a `?mode=` deep link's default: opening a recorded
     // Cyber run IS a deliberate move to that agent, and a follow-up typed
     // after the reload has to be answered by the agent that produced the
     // conversation on screen.
-    const applied = applyChatModeTheme(mode);
-    syncModeSelect(applied);
-    persistChatMode(applied);
-    greetSdkMode(applied);
+    enterChatMode(mode);
   },
   onPrefill: (text) => {
     input.value = text;
@@ -1280,12 +1309,9 @@ resumePoolSharing();
     // (deeplink-core.js), so those old links must not quietly rewrite a stored
     // pick either. Any other named mode is a deliberate choice and is kept.
     if (mode && mode !== DEFAULT_CHAT_MODE) {
-      const applied = applyChatModeTheme(mode);
-      syncModeSelect(applied);
-      persistChatMode(applied);
-      greetSdkMode(applied);
+      enterChatMode(mode);
     } else if (mode === DEFAULT_CHAT_MODE) {
-      syncModeSelect(applyChatModeTheme(DEFAULT_CHAT_MODE));
+      enterChatMode(DEFAULT_CHAT_MODE, { persist: false });
     }
     if (ask) {
       input.value = ask;
@@ -1310,11 +1336,18 @@ resumePoolSharing();
 // asked for. It runs AFTER the composer deep-link above on purpose: the two
 // are not meant to be combined, and if a link carries both, the conversation
 // wins over a prefilled question because it is the larger claim on the screen.
+// It runs AFTER the boot settings adopt has settled (`settingsSettled`), not
+// merely after it was started. `adoptServerChatMode` applies the ACCOUNT's
+// agent on a new session; landing after this would drag a reader who followed a
+// Cyber clip's link back into the account's own agent, with the recorded
+// conversation still on screen — the wrong agent answering the follow-up, and
+// nothing visible saying so. In practice the settings fetch resolved first, but
+// "usually first" is not an ordering, and the loser of that race is silent.
 (function applyCaptureLink() {
   try {
     const { id } = parseCaptureLink(location.search);
     if (!id) return;
-    openCaptureChat(id).catch(() => {});
+    settingsSettled.then(() => openCaptureChat(id)).catch(() => {});
   } catch {
     /* a malformed link must never break boot */
   }

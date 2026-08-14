@@ -379,9 +379,19 @@ one-line row in a table of twenty is how a bad run gets scrolled past.
 
 ## 4. Stage 2 — the cut plan
 
-`stillSpans(samples, {minStillMs})` returns the maximal spans over which the
-signature never changed. Two decisions in it are load-bearing:
+`waitSpans(samples, {minStillMs})` returns the maximal spans over which nothing
+worth reading changed, each labelled with why. Three decisions in it are
+load-bearing:
 
+- **The comparison is `readableSignature`, not the whole signature.** The full
+  signature moves for two different reasons: something appeared on screen to
+  read, or the pipeline said it was busy. `readableSignature` keeps the first
+  three fields that carry something to read — `msgs`, `answerLen`, `stats` —
+  and drops `steps`, `finished` and the step label, which are the activity bar
+  reporting progress. A ticking activity bar is the wait, not an escape from
+  it. (A signature this module cannot parse is compared verbatim, the same rule
+  `parseSignature` follows: never widen what counts as removable footage on the
+  strength of a format guess.)
 - A span **ends at the last sample known to be idle**, not at the sample where
   the change was observed. A change seen at sample *m* happened somewhere in
   `(t[m-1], t[m]]`; ending one sample early guarantees the frame where new
@@ -389,15 +399,55 @@ signature never changed. Two decisions in it are load-bearing:
 - The sampler runs in **Node**, driving `page.evaluate`, not as an in-page
   timer — a frozen page cannot stop it.
 
+Each span is classified by whether the *full* signature moved inside it:
+
+| Kind | Means | What the edit does with it |
+|---|---|---|
+| `dead` | the signature never moved at all — a frozen frame | dropped by `cut`, accelerated by `speed`, kept by `keep` |
+| `thinking` | the activity bar moved, nothing readable did | **accelerated in every mode but `keep`, never dropped** |
+
+`thinking` is never dropped outright because the research phase is what a deep
+research clip is *of*. A clip whose search rounds have been edited away is a
+demo of a different product; accelerating them keeps the wait visible and
+honest while giving the answer generation the room it needs.
+
 `planEdit` turns those spans into an ordered segment list:
 
 | Input | Default | Meaning |
 |---|---|---|
-| `minStillMs` | 1500 | Below this, a pause is reading rhythm, not dead air. |
-| `holdMs` | 600 | Head of each dead span kept, so the reached state is legible. |
+| `minStillMs` | 1500 | Below this, a pause is reading rhythm, not wait time. |
+| `holdMs` | 600 | Head of each wait span kept, so the reached state is legible. |
 | `speed` | 1 | Playback multiplier where something is happening. |
-| `waitMode` | `cut` | `cut` drops dead air, `speed` accelerates it, `keep` leaves it. |
-| `waitSpeed` | 8 | Multiplier for `waitMode: "speed"`. |
+| `waitMode` | `cut` | `cut` drops frozen frames and accelerates thinking, `speed` accelerates both, `keep` leaves both. |
+| `waitSpeed` | 8 | Multiplier for accelerated wait time. |
+
+The plan reports the split as `deadMs` and `thinkingMs` (`waitMs` is their
+sum), and `edit.json` carries them as `dead_ms` / `thinking_ms` beside the
+existing `dead_air_ms`.
+
+### Why the comparison had to change — #CAP-10
+
+> *"In this case video waits and waits for answer and then just the last frame
+> shows the bottom of the reply. We should cut speed up stale wait time to
+> allow viewing of entire answer generation."* — owner review of #CAP-10,
+> 2026-08-14
+
+That clip was recorded at 54 555 ms and delivered at 43 644 ms with
+`--speed 1.25 --wait speed`. `54555 / 1.25 = 43644` **exactly**, and `cut_ms`
+was 0: not one millisecond was accelerated, in a run that was mostly the
+pipeline searching. The reason was the comparison, not the threshold — the
+activity bar ticked faster than any usable `--min-still`, so no two
+consecutive samples were ever byte-identical and the detector found no dead
+air in a clip that was almost entirely dead air. Raising `--min-still` cannot
+fix that: no threshold separates "a step label changed" from "a word was
+typed" when both are only "the signature moved".
+
+Reading the signature down to what a viewer can read fixes it at the root, and
+it retires the old `--min-still 3500` workaround as a side effect. That number
+existed because a research run's ticking bar made the 1500 default strobe
+between the action speed and 8×; with the readable comparison the streaming
+answer moves `answerLen` on every sample, so pauses during streaming are real
+pauses and 1500 is the right default again.
 | `minSegmentMs` | 200 | Below this a kept fragment reads as a glitch. |
 | `trimStartMs` | measured | Head of the recording. Left unset it is derived — see 4.1. |
 | `trimEndMs` | 0 | Extra tail to drop, on top of ending at the last content frame. |
@@ -773,6 +823,30 @@ page: a group that opens onto nothing teaches the reader to stop opening it.
    recent chats.
 4. With no transcript, loads the composer with the same question under the same
    agent and model — which is what the link's own wording promised.
+
+**Which agent it lands in, and the three ways that used to go wrong**
+(2026-08-14 — reported as *"link from video capture to rerun chat does not land
+on the correct agent"*, all three fixed in the same change):
+
+- **The row did not know its mode.** `captureChatSeed` read the `mode` column
+  and nothing else, and the documented `--add` recipe never sent one — so five
+  published Cyber clips carried `agent: "cyber"` with `mode: null` and moved
+  the agent nowhere at all. The seed now DERIVES the mode from the agent id
+  when the column is empty (`modeForAgentId`, the strict direction of
+  `MODE_AGENTS` — §3.1's table read the other way), which repairs those rows on
+  read, with no migration. `validateCaptureCreate` derives it on write too, and
+  the recipe in `scripts/captures` now sends `mode:.meta.mode`. Null survives
+  only for an agent that genuinely has no mode (`secure`, a tier), and then the
+  reader's current agent is left alone rather than snapped to the default.
+- **Half a switch.** The link applied the theme and the dropdown but not the
+  agent backdrop, the starter strip, the Models board or the Outrospection
+  feed, so a reopened run sat in one agent wearing the previous one's surfaces.
+  `app.js`'s `enterChatMode` now does the whole switch, and the dropdown, the
+  `/?capture=` link and the `/?mode=` deep link all go through it.
+- **A race with boot.** `adoptServerChatMode` applies the ACCOUNT's agent when
+  `/api/settings` resolves; the capture link applied its own from a fetch
+  started later. Whichever landed last won, silently. The link now waits for
+  the settings adopt to settle before it applies anything.
 
 **Whose content this is.** A capture's prompt is a shipped starter (synthetic
 by construction — §3.1) and its answer is this pipeline's own output, recorded

@@ -26,6 +26,7 @@ import {
   sightingsFromLog,
   sightingsFromTranscript,
   mergeSightings,
+  seedIds,
   parseCorpus,
   serializeCorpus,
   harvest,
@@ -338,4 +339,72 @@ test("parseArgs: flags and defaults", () => {
   assert.equal(o.transcriptsEnabled, false);
   assert.equal(o.dryRun, true);
   assert.throws(() => parseArgs(["--nope"]), /unknown argument/);
+});
+
+// --- the seed-collision guard -------------------------------------------------
+// docs/PYGRAM.md §7 keeps the two corpus files separate so expectation cannot
+// inflate the frequency table that decides build order. Separate FILES did not
+// achieve that: the conformance runner executes every seed program, and while
+// the capture shim was on PATH for those runs each execution was logged as a
+// real invocation and merged back. The first harvest ended up with 138 of 197
+// "observed" programs byte-identical to seed programs, 139 at count=8.
+
+test("mergeSightings: a sighting identical to a seed program is dropped", () => {
+  const seedProg = 'print("seeded")';
+  const seen = new Set([programId(seedProg)]);
+  const sightings = [
+    { key: "shim:l#1", source: "shim", program: seedProg, argv_tail: [], ts: "2026-01-01T00:00:00Z" },
+    { key: "shim:l#2", source: "shim", program: 'print("organic")', argv_tail: [], ts: "2026-01-01T00:00:01Z" },
+  ];
+  const { records, skipped } = mergeSightings([], sightings, seen);
+  assert.equal(skipped.seedCollision, 1);
+  assert.deepEqual(records.map((r) => r.program), ['print("organic")']);
+});
+
+test("mergeSightings: the guard is whitespace-insensitive, like every other id", () => {
+  // Normalization is what makes the id stable, so a re-logged seed program that
+  // picked up a trailing space or CRLF must not slip past the guard.
+  const seen = new Set([programId('print("x")')]);
+  const { records, skipped } = mergeSightings([], [
+    { key: "shim:l#1", source: "shim", program: 'print("x")  \r\n', argv_tail: [], ts: "2026-01-01T00:00:00Z" },
+  ], seen);
+  assert.equal(skipped.seedCollision, 1);
+  assert.equal(records.length, 0);
+});
+
+test("mergeSightings: the guard stops an ALREADY-laundered record's count growing", () => {
+  // The 138 contaminated records stay in the committed corpus — this is a guard
+  // against new contamination, not a rewrite of evidence — but re-running the
+  // conformance suite must no longer inflate them.
+  const prog = 'print("seeded")';
+  const existing = [{ id: programId(prog), program: prog, argv_tail: [], source: "shim", first_seen: "2026-01-01T00:00:00Z", count: 8, stdin_sample: null }];
+  const sightings = Array.from({ length: 5 }, (_, i) => ({ key: `shim:l#${i}`, source: "shim", program: prog, argv_tail: [], ts: "2026-02-01T00:00:00Z" }));
+  const { records, skipped } = mergeSightings(existing, sightings, new Set([programId(prog)]));
+  assert.equal(skipped.seedCollision, 5);
+  assert.equal(records.length, 1);
+  assert.equal(records[0].count, 8, "count must not grow from seed-identical sightings");
+});
+
+test("mergeSightings: with no seed set the old behaviour is unchanged", () => {
+  const { records, skipped } = mergeSightings([], [
+    { key: "shim:l#1", source: "shim", program: 'print("x")', argv_tail: [], ts: "2026-01-01T00:00:00Z" },
+  ]);
+  assert.equal(skipped.seedCollision, 0);
+  assert.equal(records.length, 1);
+});
+
+test("seedIds: reads the seed corpus, tolerates a missing file", () => {
+  const dir = mkdtempSync(join(tmpdir(), "pygram-seed-"));
+  const f = join(dir, "seed.jsonl");
+  writeFileSync(f, JSON.stringify({ id: "x", program: 'print("a")' }) + "\n" + JSON.stringify({ id: "y", program: 'print("b")' }) + "\n");
+  const ids = seedIds(f);
+  assert.equal(ids.size, 2);
+  assert.ok(ids.has(programId('print("a")')));
+  assert.equal(seedIds(join(dir, "missing.jsonl")).size, 0);
+  assert.equal(seedIds("").size, 0);
+});
+
+test("parseArgs: the seed guard has a path and an escape hatch", () => {
+  assert.equal(parseArgs(["--seed", "/s"]).seed, "/s");
+  assert.equal(parseArgs(["--no-seed-guard"]).seed, "");
 });

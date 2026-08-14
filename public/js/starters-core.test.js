@@ -13,7 +13,7 @@ import { readFileSync } from "node:fs";
 
 import {
   SLOT_COUNT, QUEUE_MIN, EXPLOIT_SLOTS, UNRANKED_SCORE, DEAD_END_CAP, SHORTLIST_FLOOR,
-  MODE_AGENTS, agentForMode, resolveQueue, agentIds, starterStanding, isProven,
+  MODE_AGENTS, AGENT_MODES, agentForMode, modeForAgentId, resolveQueue, agentIds, starterStanding, isProven,
   selectStarters, nextCursor, recordStarterUse, shortlistFor, starterScore, rankStarters,
   starterJudgePrompt, parseJudgeReply, validateStarters, registryReport,
   EVAL_BANDS, bandOf, evalPool, selectEvalBatch, recordStartersSeen, coverageReport,
@@ -54,6 +54,24 @@ test("agentForMode maps every chat mode, and the tier wins over the mode", () =>
   // Se/cure runs its own queue whatever the mode says.
   assert.equal(agentForMode("science", { platform: "client" }), "secure");
   assert.equal(agentForMode("introspection", { platform: "client" }), "secure");
+});
+
+test("modeForAgentId is the strict inverse — no fallback to the default mode", () => {
+  // The direction a surface RESTORING a recorded run needs (a capture's card
+  // link, which stores an agent and has to reopen its mode). Strict on purpose:
+  // an agent with no mode of its own must leave the reader where they are
+  // rather than being snapped into Deep Science, so the fallback is the
+  // CALLER's to choose. The capture harness picks the opposite one.
+  for (const [mode, agent] of Object.entries(MODE_AGENTS)) {
+    assert.equal(modeForAgentId(agent), mode);
+    assert.equal(AGENT_MODES[agent], mode);
+  }
+  assert.equal(modeForAgentId("secure"), ""); // a TIER, not a dropdown entry
+  assert.equal(modeForAgentId("research"), ""); // retired 2026-08-13
+  assert.equal(modeForAgentId("nonsense"), "");
+  assert.equal(modeForAgentId(null), "");
+  assert.equal(modeForAgentId(undefined), "");
+  assert.equal(modeForAgentId("  cyber  "), "cyber");
 });
 
 test("MODE_AGENTS mirrors the defaults table in sdk/AGENTS.json", () => {
