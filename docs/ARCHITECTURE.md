@@ -2041,15 +2041,19 @@ as bespoke subsystems:
   **The roster is specific, with no general member** (owner directive,
   2026-08-13). `research` / mode `normal` — the catch-all labeled Deep Research
   — is retired; `science` is the default and the terminal fallback, so an
-  unrouted request gets a policy (literature-first, `search.web: false`) rather
+  unrouted request gets a policy (literature-first — the peer-reviewed record
+  leads and is numbered first, with a knob-gated web leg behind it since
+  2026-08-14) rather
   than open-web research, and `scholar` alone declares `requires: []` because a
   fallback must be reachable by any caller. `capability.context` became
   EXECUTED with the same change: Deep Science exclusively owns arXiv, PubMed and
   the peer-reviewed leg (`palaeogenomics` keeps `literature-pubmed`), and Cyber
   exclusively owns host intelligence, street imagery, the two OSINT methods and
-  the OWASP corpus. Deep Science (`docs/SCHOLAR.md`) answers from peer-reviewed
-  publications with the web leg structurally off and integrates Google Scholar
-  as far as Scholar's robots.txt permits.
+  the OWASP corpus. Deep Science (`docs/SCHOLAR.md`) rests its scientific claims
+  on peer-reviewed publications, runs a knob-gated web leg behind that record
+  for what the record cannot report on itself (retractions, corrections,
+  who reported what and when), and integrates Google Scholar as far as
+  Scholar's robots.txt permits.
 - **DeepResearch Platform SDK** (`sdk/MANIFEST.json`, `docs/DISTILLSDK.md`)
   — 34 modules, one buildable skill each, for distilling a whole
   DeepResearch.se-like platform. Module ids map back to the repo files that

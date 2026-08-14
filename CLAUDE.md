@@ -349,7 +349,10 @@ holds for the routing as for the run); validation enforces invariants 1, 3,
 the catch-all labeled "Deep Research" — are retired (`RETIRED_CHAT_MODES` keeps
 old clients resolving); **Deep Science (`science` / agent `scholar`) is the
 default and terminal fallback**, so an unrouted request now gets a POLICY
-(literature-first, `search.web: false`) instead of open-web research, and it
+(literature-first: the peer-reviewed record leads and is numbered first, and
+since 2026-08-14 a knob-gated web leg runs BEHIND it, labelled as web reporting
+and barred from standing in for the literature on a scientific claim — feedback
+#69, `docs/SCHOLAR.md` §4a) instead of open-web research, and it
 alone among the mode defaults declares `requires: []`; and a new **Cyber**
 (`cyber`) agent owns cybersecurity and OSINT. `capability.context` became
 EXECUTED with it — `capHasContext` gates the enrichment and search-source

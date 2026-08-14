@@ -14,6 +14,7 @@ import {
   filterPeerReviewed,
   invertedAbstract,
   mergeRecords,
+  openalexSearch,
   parseScholarResult,
   peerReviewed,
   pubmedScholarRecord,
@@ -22,6 +23,7 @@ import {
   scholarIntent,
   scholarLadder,
   scholarLeadIntent,
+  retractionIntent,
   scholarPickQuery,
   scholarTermKey,
   scholarTerms,
@@ -524,6 +526,118 @@ test("a retraction notice in the hosted corpus is rejected on its title", () => 
   ]) {
     assert.equal(pubmedRecordFrom({ t: title, j: "BMJ" }).retracted, false, title);
   }
+});
+
+// ---- retraction: the one question the drop made unanswerable -----------------
+//
+// feedback #69 (2026-08-14, chat_logs #1747): "What did the retracted papers on
+// beta-amyloid and Alzheimer's actually claim, and how much of the later
+// literature was built on them?" returned eight unrelated amyloid papers,
+// because a retracted record is dropped before the question can reach it. The
+// drop is right for every OTHER question, so what is asserted here is the
+// narrowness of the exception, in both directions.
+
+test("retractionIntent fires on the retraction question, in English and Swedish", () => {
+  for (const s of [
+    "What did the retracted papers on beta-amyloid actually claim?",
+    "how many papers cite retracted Alzheimer's work",
+    "was that study retracted",
+    "list the retractions in cancer biology",
+    "tell me about the research misconduct case at that lab",
+    "papers flagged for image duplication",
+    "which journals issued expressions of concern",
+    "what did PubPeer find about those figures",
+    "the withdrawn papers on simufilam",
+    "data fabrication in social psychology",
+    // Swedish — same breadth, definite and plural forms included. The `\b`
+    // boundary does not close after å/ä/ö in JS regex, so these are the cases
+    // an English-shaped gate silently drops (palaeogenomics skill).
+    "vilka artiklar har retraherats om amyloid",
+    "berätta om retraktionen av den studien",
+    "det där är ju rena forskningsfusket",
+    "oredlighet i forskningen vid det lärosätet",
+    "vetenskaplig ohederlighet inom fältet",
+    "de tillbakadragna artiklarna om betaamyloid",
+    "vad hände med den indragna studien",
+    "bildmanipulation i publicerade figurer",
+  ]) {
+    assert.equal(retractionIntent(s), true, `should fire: ${s}`);
+  }
+});
+
+test("retractionIntent stays off for ordinary science, in English and Swedish", () => {
+  for (const s of [
+    // The reason a bare "withdrawn" is not a trigger: it is ordinary medical
+    // English and Swedish about drugs, trials and consent, and matching it
+    // would widen a large share of what this agent is asked.
+    "why was the drug withdrawn from the market",
+    "patients who withdrew from the trial",
+    "läkemedlet drogs tillbaka från marknaden",
+    "deltagare som drog sig ur studien",
+    "what does the research say about vitamin D",
+    "senaste forskningen om intermittent fasta",
+    "meta-analysis of statin adherence",
+    "hur påverkar skärmtid sömnen",
+    "",
+  ]) {
+    assert.equal(retractionIntent(s), false, `should not fire: ${s}`);
+  }
+});
+
+test("a retracted record is dropped by default and admitted when the question is about retraction", () => {
+  const r = rec({ retracted: true, title: "Amyloid-beta protein assemblies impair memory" });
+  // The default is unchanged: dropped, with the reason recorded.
+  assert.equal(peerReviewed(r).ok, false);
+  assert.match(peerReviewed(r).why, /retracted/);
+  assert.equal(filterPeerReviewed([r]).kept.length, 0);
+  // …and admitted when the reader asked about retraction — but only then.
+  assert.equal(peerReviewed(r, { admitRetracted: true }).ok, true);
+  const { kept } = filterPeerReviewed([r], { admitRetracted: true });
+  assert.equal(kept.length, 1);
+  // Admission is not a promotion: it still had to carry positive evidence of
+  // peer review, which is exactly what makes it the subject of the question.
+  assert.match(kept[0].why, /ISSN/);
+});
+
+test("an admitted retraction LEADS its provenance line with the warning", () => {
+  const { kept } = filterPeerReviewed([rec({ retracted: true, citedBy: 2300 })], { admitRetracted: true });
+  const item = /** @type {any} */ (toItem(kept[0]));
+  // First words, for the same reason arXiv items lead with "Preprint, not
+  // peer-reviewed": the head of a source's provenance is what an answer is
+  // written against.
+  assert.match(item.highlights[0], /^RETRACTED\b/);
+  assert.match(item.highlights[0], /never as standing evidence/);
+  // The citation count is the whole point of the question and must survive.
+  assert.match(item.highlights[0], /cited 2300×/);
+  // An ordinary record is untouched.
+  const plain = /** @type {any} */ (toItem(filterPeerReviewed([rec()]).kept[0]));
+  assert.doesNotMatch(plain.highlights[0], /RETRACTED/);
+});
+
+test("the OpenAlex server-side retraction filter agrees with the local one", async () => {
+  // Both have to come off together: OpenAlex applies is_retracted:false in the
+  // query, so leaving it on would keep the record out of the response entirely
+  // and no local admission could reach it.
+  /** @type {string[]} */
+  const urls = [];
+  const log = { info() {}, warn() {}, error() {} };
+  const g = globalThis;
+  const realFetch = g.fetch;
+  g.fetch = async (/** @type {any} */ u) => {
+    urls.push(String(u));
+    return { ok: true, status: 200, json: async () => ({ results: [] }) };
+  };
+  try {
+    await openalexSearch(/** @type {any} */ ({}), /** @type {any} */ (log), ["amyloid"]);
+    await openalexSearch(/** @type {any} */ ({}), /** @type {any} */ (log), ["amyloid"], { admitRetracted: true });
+  } finally {
+    g.fetch = realFetch;
+  }
+  assert.equal(urls.length, 2);
+  assert.match(decodeURIComponent(urls[0]), /is_retracted:false/);
+  assert.doesNotMatch(decodeURIComponent(urls[1]), /is_retracted:false/);
+  // The rest of the filter is unchanged either way.
+  for (const u of urls) assert.match(decodeURIComponent(u), /primary_location\.source\.type:journal/);
 });
 
 test("filterPeerReviewed reports what it dropped and why", () => {
