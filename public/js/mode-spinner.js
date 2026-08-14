@@ -11,14 +11,25 @@
 // the work completes. Which one is decided by the mode registry
 // (mode-theme.js spinnerKind) off the cached chat mode (chat-mode.js).
 //
-// Thin glue over the two mount factories, which share one contract
-// (mountBalloonSpinner / mountPlantSpinner both return {stop, finish} and are
-// entirely fail-soft), so callers change nothing but the import.
+// Where neither canvas symbol can be drawn — no canvas, or a reduced-motion
+// preference — the slot keeps the site ICON it already wears, and that is the
+// COIN (logo-spinner.js + css/app.css): it spins upright about its vertical
+// axis the way a coin spins on a table, and on completion settles — wobbling
+// harder the flatter it gets — to rest LYING FLAT, seen from 30° above the
+// surface, before the ✓ takes its place. Same run/hold/check pacing as the
+// canvas finales, because it imports those constants rather than picking its own.
+//
+// Thin glue over the three mount factories, which share one contract
+// (mountBalloonSpinner / mountPlantSpinner / mountLogoSpinner all return
+// {stop, finish} and are entirely fail-soft), so callers change nothing but
+// the import.
 
 import { DEFAULT_CHAT_MODE, cachedChatMode } from "./chat-mode.js";
 import { spinnerKind } from "./mode-theme.js";
 import { mountBalloonSpinner } from "./balloon-spinner.js";
 import { mountPlantSpinner } from "./plant-spinner.js";
+import { mountLogoSpinner } from "./logo-spinner.js";
+import { canCanvas, reducedMotion } from "./umbrella-spinner.js";
 
 /** Introspection's balloon palette: brushed silver crown, steel alt, slate
  * border + logo wind-down, folding into a slate ✓. `check` MUST match app.css
@@ -105,7 +116,7 @@ export const CYBER_SPINNER = {
 /**
  * Mount the current mode's waiting spinner on a loading slot. Same signature
  * and return contract as the underlying mounts; fail-soft (a bad mode or a
- * throwing mount degrades to the balloon, and ultimately to the CSS spinner).
+ * throwing mount degrades to the balloon, and ultimately to the CSS coin).
  * @param {HTMLElement} host  the `.spin` / `.typing-icon` element
  * @param {{ size?: number, style?: number, speed?: number }} [opts]
  * @returns {{ stop: () => void, finish: (onDone?: () => void) => void }}
@@ -123,6 +134,19 @@ export function mountModeSpinner(host, opts = {}) {
   } catch {
     /* cache unavailable — the default mode is the safe answer */
   }
+  // No canvas (or a reduced-motion preference) means no 3D symbol at all — the
+  // site icon in the slot IS the waiting symbol then (css/app.css). Take that
+  // branch HERE rather than letting a canvas mount fall back to a bare no-op,
+  // so the coin gets its own clock and its own completion settle instead of
+  // spinning until the ✓ pops in (logo-spinner.js). Any mode, any agent: the
+  // canvas symbols are the only thing being substituted for.
+  let flat = false;
+  try {
+    flat = !canCanvas() || reducedMotion();
+  } catch {
+    /* neither probe can throw in practice; a thrown one means "try the canvas" */
+  }
+  if (flat) return mountLogoSpinner(host, opts);
   let kind = "balloon";
   try {
     kind = spinnerKind(mode);
