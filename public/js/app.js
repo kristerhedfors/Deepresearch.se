@@ -72,7 +72,8 @@ import { BUDGET_MAX_S, BUDGET_MIN_S, budgetTier, fmtBudget, posToSeconds, second
 import { clearChatDom, EMPTY_TEXT, initTurns } from "./turns.js";
 import { badgeText, queueUnanswered } from "./captures-core.js";
 import { initStarters } from "./starters.js";
-import { parseComposerDeepLink } from "./deeplink-core.js";
+import { parseCaptureLink, parseComposerDeepLink } from "./deeplink-core.js";
+import { initCaptureChats, openCaptureChat } from "./capture-chat.js";
 import { mountSlashMenu } from "./slash-menu.js";
 import { detectLang } from "./canned-faq.js";
 import { closeModelsBoard, initModelsPanel } from "./models-panel.js";
@@ -762,6 +763,30 @@ const historySidebar = initHistorySidebar({
     try { input.setSelectionRange(input.value.length, input.value.length); } catch { /* not focusable yet */ }
   },
 });
+// The chat behind a recorded capture (public/js/capture-chat.js). Wired with
+// the three things that module cannot reach on its own: the composer, the
+// model/budget knobs and the agent dropdown. Reused by BOTH doors — the
+// `/?capture=<id>` link on a review card and the drawer's "Recorded runs"
+// group — so a run opens identically however the reader arrived at it.
+initCaptureChats({
+  onRecord: applyRecordSettings,
+  onMode: (mode) => {
+    // Persisted, unlike a `?mode=` deep link's default: opening a recorded
+    // Cyber run IS a deliberate move to that agent, and a follow-up typed
+    // after the reload has to be answered by the agent that produced the
+    // conversation on screen.
+    const applied = applyChatModeTheme(mode);
+    syncModeSelect(applied);
+    persistChatMode(applied);
+    greetSdkMode(applied);
+  },
+  onPrefill: (text) => {
+    input.value = text;
+    autogrow();
+    input.focus();
+    try { input.setSelectionRange(input.value.length, input.value.length); } catch { /* not focusable yet */ }
+  },
+});
 // Projects (public/js/projects.js + projects-ui.js): collections of chats
 // and files with their own cloud knob and retrieval scope.
 initProjectsUi({ onNew: newChat, onLoad: applyRecordSettings });
@@ -1046,7 +1071,7 @@ input.addEventListener("keydown", (e) => {
 // every module was current. If the marker doesn't match, fetch the
 // stylesheet with cache:"reload" (bypasses AND overwrites the cached
 // entry) and swap the link so the fresh rules apply without a reload.
-const CSS_VERSION = "h56";
+const CSS_VERSION = "h57";
 try {
   const seen = getComputedStyle(document.documentElement).getPropertyValue("--css-version").trim();
   if (seen !== CSS_VERSION) {
@@ -1271,5 +1296,26 @@ resumePoolSharing();
     }
   } catch {
     // A malformed link must never break boot.
+  }
+})();
+
+// THE CAPTURE LINK — `/?capture=<id>`, followed from a card on the /captures/
+// review feed: the recorded run opens here as a live chat the reader continues
+// from (owner directive, 2026-08-14). It lands in their own history, so it is
+// also reachable afterwards from the drawer's "Recorded runs" group.
+//
+// Async and fire-and-forget: the fetch must not hold up boot, and a capture
+// that cannot be read (a session that is not admin's, a deleted row) leaves the
+// app exactly as it was — an empty composer — rather than an error nobody
+// asked for. It runs AFTER the composer deep-link above on purpose: the two
+// are not meant to be combined, and if a link carries both, the conversation
+// wins over a prefilled question because it is the larger claim on the screen.
+(function applyCaptureLink() {
+  try {
+    const { id } = parseCaptureLink(location.search);
+    if (!id) return;
+    openCaptureChat(id).catch(() => {});
+  } catch {
+    /* a malformed link must never break boot */
   }
 })();

@@ -431,7 +431,16 @@ description: >-
   the `--css-version`/`CSS_VERSION` handshake pair (app.css ↔ app.js —
   it force-reloads a stale cached stylesheet, which the boot guard's
   module-graph repair does not cover) whenever CSS and JS must move
-  together.
+  together. The drawer's own `CSS_WANT` is that same marker read from
+  the module that draws the pane: keep the three in step (h57 as of
+  2026-08-14) or the pane force-refreshes the stylesheet on every open.
+  The pane also hosts MODE- and ROLE-owned blocks above the list — the
+  SDK showcase gallery, introspection's pipeline map, and (admin only,
+  2026-08-14) **Recorded runs**, the chats behind the captured agent
+  videos (`public/js/capture-chat.js`, the **video-capture** skill).
+  Each is a `<details>` that hides itself entirely when it has nothing
+  to show: an expandable that opens onto "nothing here" teaches the
+  reader to stop opening it.
 
 ## The image deck (public/js/imagedeck.js)
 

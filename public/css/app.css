@@ -6,7 +6,7 @@
      that cached assets before the no-cache policy never revalidate on
      their own — 2026-07-08 incident, second file class after JS modules).
      Bump BOTH here and in app.js when they must move together. */
-  --css-version: h56;
+  --css-version: h57;
   --bg: #6fc3fd;
   --panel: #f2f9ff;
   --panel-2: #e2f1ff;
@@ -2001,6 +2001,55 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
   box-shadow: 4px 0 30px rgba(60, 35, 110, .26), inset 0 3px 0 rgba(109, 63, 196, .35);
 }
 #historysidebar[data-mode="orchestrator"] .history-head strong { color: #5a349e; }
+/* RECORDED RUNS (#capturechats) — the chats behind the captured agent videos,
+   as their own expandable in the history drawer. Styled as a sibling of the
+   pipeline map above rather than as a variant of a chat row: it is a GROUP the
+   admin opens, not one of the reader's own conversations, and looking like one
+   would put twenty recorded runs in front of the chats the pane exists for.
+   Collapsed by default and hidden entirely for a non-admin (capture-chat.js). */
+.capchats {
+  border: 1px solid rgba(120, 140, 160, .35);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, .3);
+  padding: .4rem .5rem;
+  margin-bottom: .5rem;
+  font-size: .85rem;
+}
+.capchats > summary {
+  cursor: pointer; font-weight: 600; color: #4a5a6a;
+  list-style: none; display: flex; align-items: center; gap: .4rem;
+}
+.capchats > summary::-webkit-details-marker { display: none; }
+.capchats > summary::before { content: "▸"; color: var(--muted); font-size: .8rem; }
+.capchats[open] > summary::before { content: "▾"; }
+.capchats-hint { font-weight: 400; font-size: .72rem; color: var(--muted); }
+.capchats-body {
+  /* Bounded like the pipeline map's: a long recording history must scroll
+     inside its own box, never take the drawer's list with it. */
+  max-height: 40vh; overflow: auto; overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  margin-top: .35rem;
+}
+.capchat-row {
+  display: flex; flex-direction: column; gap: .1rem; width: 100%;
+  /* A comfortable tap target: this is opened on a phone, in a drawer. */
+  min-height: 44px; padding: .35rem .4rem; margin: 0 0 .2rem;
+  border: 0; border-radius: 8px; background: transparent;
+  text-align: left; cursor: pointer; color: inherit; font: inherit;
+}
+.capchat-row:hover, .capchat-row:focus-visible { background: rgba(255, 255, 255, .55); }
+.capchat-row[disabled] { opacity: .55; cursor: default; }
+.capchat-head { display: flex; align-items: baseline; gap: .35rem; }
+.capchat-tag {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: .68rem; color: var(--muted); flex: none;
+}
+.capchat-title {
+  font-size: .82rem; font-weight: 600;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.capchat-sub { font-size: .7rem; color: var(--muted); }
+
 /* The live PIPELINE MAP (public/js/pipeline-map.js + pipeline-map-core.js):
    introspection mode's expandable diagram of this site's own request path,
    inside the left drawer. Titanium palette throughout — it only ever appears

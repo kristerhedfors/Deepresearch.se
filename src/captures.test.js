@@ -506,6 +506,9 @@ const PROJECTED_KEYS = [
   "prompt", "starter", "lang", "shape", "duration_ms", "source_ms", "cut_ms", "speed", "wait_mode",
   "width", "height", "size_bytes", "status", "likes", "ref", "commit_sha", "version", "answered_at",
   "answered", "has_video", "has_poster", "video_url", "poster_url", "meta", "reviews",
+  // The chat behind the clip: whether one was recorded, and where to read it.
+  // The MESSAGES are deliberately not here — see projectCapture's comment.
+  "has_chat", "chat_url",
 ];
 
 test("projectCapture exposes exactly the documented key set", () => {
@@ -718,6 +721,7 @@ function fakeDb(seed = [], seedVersions = []) {
     likes: 0,
     ref: null,
     meta_json: null,
+    chat_json: null,
     ...r,
   }));
   const reviews = [];
@@ -745,14 +749,23 @@ function fakeDb(seed = [], seedVersions = []) {
   // `UPDATE … SET a = ?, b = NULL, c = 'new', likes = likes + ?` — the four
   // right-hand sides this module's statements actually use.
   const applySet = (row, clause, binds) => {
-    for (const assign of clause.split(",")) {
-      const eq = assign.indexOf("=");
-      const col = assign.slice(0, eq).trim();
-      const expr = assign.slice(eq + 1).trim();
+    // Assignments are matched, not split on commas: `chat_json = COALESCE(?,
+    // chat_json)` contains one, and splitting through it left every later
+    // column reading the wrong bind — the silent kind of fake-D1 bug that makes
+    // a passing test meaningless.
+    const ASSIGN = /(\w+)\s*=\s*(COALESCE\([^)]*\)|likes \+ \?|'[^']*'|NULL|\?)/g;
+    for (const [, col, expr] of clause.matchAll(ASSIGN)) {
       if (expr === "?") row[col] = binds.shift();
       else if (expr === "NULL") row[col] = null;
       else if (/^'.*'$/.test(expr)) row[col] = expr.slice(1, -1);
       else if (/^likes \+ \?$/.test(expr)) row.likes = (row.likes || 0) + Number(binds.shift());
+      // `col = COALESCE(?, col)` — a new cut REPLACES the transcript when it
+      // brings one and keeps the recording's otherwise. The bind is consumed
+      // either way.
+      else if (/^COALESCE\(/.test(expr)) {
+        const next = binds.shift();
+        if (next !== null && next !== undefined) row[col] = next;
+      }
     }
   };
   const db = {
@@ -788,6 +801,19 @@ function fakeDb(seed = [], seedVersions = []) {
               results: versions.filter((v) => v.capture_id === binds[0]).sort((a, b) => b.version - a.version),
             };
           }
+          // The chat-history drawer's group: naming columns only, plus a
+          // computed has_chat. D1 answers a boolean expression with 0/1, and
+          // the projection depends on that, so the fake does too.
+          if (/chat_json IS NOT NULL AS has_chat/.test(this._sql)) {
+            const n = binds.pop();
+            return {
+              results: captures
+                .slice()
+                .sort((a, b) => b.id - a.id)
+                .slice(0, n)
+                .map((c) => ({ ...c, has_chat: c.chat_json ? 1 : 0 })),
+            };
+          }
           const limit = binds.pop();
           let rows = captures.slice().sort((a, b) => b.id - a.id);
           if (/status = 'new'/.test(this._sql)) rows = rows.filter((r) => r.status === "new");
@@ -816,14 +842,14 @@ function fakeDb(seed = [], seedVersions = []) {
             const [
               created_at, updated_at, slug, label, name, agent, mode, model, prompt, starter, lang, shape,
               duration_ms, source_ms, cut_ms, speed, wait_mode, width, height, size_bytes, commit_sha,
-              ref, meta_json,
+              ref, meta_json, chat_json,
             ] = binds;
             const row = {
               id: captures.length ? Math.max(...captures.map((c) => c.id)) + 1 : 1,
               created_at, updated_at, slug, label, name, agent, mode, model, prompt, starter, lang, shape,
               duration_ms, source_ms, cut_ms, speed, wait_mode, width, height, size_bytes, commit_sha,
               video_key: null, poster_key: null, version: 1, answered_at: null,
-              status: "new", likes: 0, ref, meta_json,
+              status: "new", likes: 0, ref, meta_json, chat_json,
             };
             captures.push(row);
             return { meta: { last_row_id: row.id } };
@@ -1522,4 +1548,136 @@ test("commit_sha can be backfilled, but only as a real sha", () => {
   for (const bad of ["unknown", "main", "b49c68", "zzzzzzz", "b49c68aa-dirty", ""]) {
     assert.match(validateCapturePatch({ commit_sha: bad }).error || "", /commit_sha/, `${bad} must be refused`);
   }
+});
+
+// ---------------------------------------------------------------------------
+// THE CHAT BEHIND THE CLIP (2026-08-14)
+// ---------------------------------------------------------------------------
+// The link from a captured video back to the run it recorded. What is pinned
+// here is not the plumbing but the two promises it makes: a clip WITH a
+// transcript reopens the conversation, a clip without one still links, and
+// neither of them is allowed to cost the edit report that shares the payload.
+
+test("validateCaptureCreate stores the recorded conversation", () => {
+  const v = validateCaptureCreate({
+    ...CREATE,
+    chat: [
+      { role: "user", content: "How much of Iceland's electricity comes from geothermal?" },
+      { role: "assistant", content: "About 30%, with hydro making up most of the rest." },
+    ],
+  });
+  assert.equal(v.error, undefined);
+  const chat = JSON.parse(String(v.entry.chat_json));
+  assert.equal(chat.length, 2);
+  assert.equal(chat[0].role, "user");
+});
+
+test("a capture with no transcript is still a valid capture", () => {
+  // The whole back catalogue is this row, and a create that rejected it would
+  // throw away a recording over its footnote.
+  const v = validateCaptureCreate(CREATE);
+  assert.equal(v.error, undefined);
+  assert.equal(v.entry.chat_json, null);
+  // Same for a transcript that normalises to nothing: NULL, not "[]", so "this
+  // capture has no chat" has exactly one representation.
+  assert.equal(validateCaptureCreate({ ...CREATE, chat: [{ role: "system", content: "x" }] }).entry.chat_json, null);
+});
+
+test("the transcript is taken OUT of the edit report before it is stored", () => {
+  // Load-bearing: CAPTURE_CAPS.meta is 20 kB and one research answer is bigger
+  // than that, so a report that still carried the chat would serialize past the
+  // cap and serializeMeta would drop THE WHOLE REPORT — segments, ffprobe,
+  // verdict — in exchange for a transcript that has its own column.
+  const answer = "y".repeat(30_000);
+  const chat = [{ role: "user", content: "q" }, { role: "assistant", content: answer }];
+  const v = validateCaptureCreate({ ...CREATE, meta: { output_ms: 8_400, meta: { slug: "s", chat } } });
+  assert.equal(v.error, undefined);
+  const meta = JSON.parse(String(v.entry.meta_json));
+  assert.equal(meta.output_ms, 8_400);
+  assert.equal(meta.meta.chat, undefined);
+  // …and the chat is read out of exactly where the documented publish recipe
+  // puts it (`meta: .` over edit.json), not silently lost.
+  assert.equal(JSON.parse(String(v.entry.chat_json)).length, 2);
+});
+
+test("validateCapturePatch backfills — and can clear — a transcript", () => {
+  const ok = validateCapturePatch({ chat: [{ role: "user", content: "hi" }] });
+  assert.equal(ok.error, undefined);
+  assert.equal(JSON.parse(String(ok.patch.chat_json))[0].content, "hi");
+  // null clears it: a transcript read off a run that went wrong is worth
+  // removing, and there has to be a way.
+  assert.deepEqual(validateCapturePatch({ chat: null }).patch, { chat_json: null });
+  // Something that is not a transcript is a 400 rather than a silent no-op —
+  // the caller is backfilling and needs to know it did not take.
+  assert.ok(validateCapturePatch({ chat: "the whole conversation" }).error);
+  assert.ok(validateCapturePatch({ chat: [{ role: "system", content: "x" }] }).error);
+});
+
+test("projectCapture says whether there is a chat and where to read it", () => {
+  const withChat = projectCapture(/** @type {any} */ ({ ...ROW, chat_json: '[{"role":"user","content":"q"}]' }));
+  assert.equal(withChat.has_chat, true);
+  assert.equal(withChat.chat_url, "/api/admin/captures/7/chat");
+  // The MESSAGES are deliberately absent from the list projection: twenty
+  // cards would each carry a full research answer.
+  assert.equal(withChat.chat, undefined);
+  assert.equal(projectCapture(ROW).has_chat, false);
+});
+
+test("GET /captures/:id/chat answers with a reopenable conversation", async () => {
+  const db = fakeDb([{ label: "one", mode: "cyber", model: "m", prompt: "p", name: "Elpris", chat_json: '[{"role":"user","content":"p"},{"role":"assistant","content":"a"}]' }]);
+  const { res, json } = await call(db, "GET", "/api/admin/captures/1/chat");
+  assert.equal(res.status, 200);
+  assert.equal(json.chat.resumable, true);
+  assert.equal(json.chat.title, "#CAP-1 · Elpris");
+  assert.equal(json.chat.mode, "cyber");
+  assert.deepEqual(json.chat.messages.map((m) => m.role), ["user", "assistant"]);
+});
+
+test("GET /captures/:id/chat is 200 with resumable:false for a clip recorded before transcripts", async () => {
+  // NOT a 404. "This clip is older" and "this clip is gone" must not look the
+  // same, or the link on the card has to guess which it is.
+  const db = fakeDb([{ label: "old", prompt: "ask me again" }]);
+  const { res, json } = await call(db, "GET", "/api/admin/captures/1/chat");
+  assert.equal(res.status, 200);
+  assert.equal(json.chat.resumable, false);
+  assert.deepEqual(json.chat.messages, []);
+  assert.equal(json.chat.prompt, "ask me again");
+});
+
+test("GET /captures/chats lists the recorded runs for the drawer's group", async () => {
+  const db = fakeDb([
+    { label: "one", chat_json: '[{"role":"user","content":"q"}]' },
+    { label: "two" },
+  ]);
+  const { res, json } = await call(db, "GET", "/api/admin/captures/chats");
+  assert.equal(res.status, 200);
+  assert.equal(json.count, 2);
+  assert.deepEqual(json.captures.map((c) => c.id), [2, 1]);
+  // The flag survives D1's 0/1 answer to a boolean expression.
+  assert.deepEqual(json.captures.map((c) => c.has_chat), [false, true]);
+  // The naming columns only — never the transcript itself, which is what keeps
+  // a drawer that opens on every refresh cheap.
+  assert.equal(json.captures[0].chat, undefined);
+  assert.equal(json.captures[0].chat_json, undefined);
+  assert.equal(json.captures[0].meta, undefined);
+  // …and `chats` is not read as a capture id.
+  assert.equal((await call(db, "GET", "/api/admin/captures/chats")).res.status, 200);
+});
+
+test("a NEW CUT replaces the transcript only when it brings one", async () => {
+  // A re-EDIT of the same footage sends no chat and must keep the recording's
+  // — otherwise a re-cut clip would link to nothing. A re-RECORDING sends one
+  // and replaces it, because the card would otherwise play v2 and open v1's
+  // chat: the same class of lie as a version quoting the previous cut's grading.
+  const db = fakeDb([{ label: "one", chat_json: '[{"role":"user","content":"first run"}]' }]);
+  await call(db, "POST", "/api/admin/captures/1/versions", { duration_ms: 9_000 });
+  assert.equal(JSON.parse(db.captures[0].chat_json)[0].content, "first run");
+  await call(db, "POST", "/api/admin/captures/1/versions", {
+    duration_ms: 9_500,
+    chat: [{ role: "user", content: "second run" }],
+  });
+  assert.equal(JSON.parse(db.captures[0].chat_json)[0].content, "second run");
+  // The rest of the re-cut still landed — the COALESCE consumed its own bind.
+  assert.equal(db.captures[0].duration_ms, 9_500);
+  assert.equal(db.captures[0].version, 3);
 });

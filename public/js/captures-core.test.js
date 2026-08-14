@@ -9,6 +9,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  CHAT_CAPS,
   DECK_FILTERS,
   KEY_VERDICTS,
   MAX_TILT_DEG,
@@ -17,12 +18,17 @@ import {
   SWIPE,
   activeVersion,
   badgeText,
+  captureChatLink,
+  captureChatRows,
+  captureChatSeed,
+  captureChatUrl,
   captureFacts,
   captureHeadline,
   captureName,
   captureRef,
   captureTag,
   captureThread,
+  normalizeChatMessages,
   captureTitle,
   captureVersions,
   cardStyle,
@@ -684,4 +690,162 @@ test("statusLabel says a status in the same words as its list", () => {
   assert.equal(statusLabel("archived"), "archived");
   assert.equal(statusLabel(""), "");
   assert.equal(statusLabel(null), "");
+});
+
+// ---- the chat behind the clip ----------------------------------------------
+// A capture links back to the run it recorded (owner directive, 2026-08-14).
+// The rules below are the ones that decide whether that link keeps its promise:
+// what a transcript is allowed to contain, what a clip WITHOUT one offers
+// instead, and where a row that cannot be opened goes (nowhere).
+
+test("normalizeChatMessages keeps user/assistant turns and drops everything else", () => {
+  const msgs = normalizeChatMessages([
+    { role: "user", content: "  How much geothermal?  " },
+    { role: "assistant", content: "About 30%." },
+    // A system prompt is the pipeline's internals, not the conversation —
+    // restoring it would put the harness's scaffolding into the model's context.
+    { role: "system", content: "You are a research assistant." },
+    { role: "tool", content: "{}" },
+    null,
+    "not a message",
+    { role: "user", content: "   " },
+  ]);
+  assert.deepEqual(msgs, [
+    { role: "user", content: "How much geothermal?" },
+    { role: "assistant", content: "About 30%." },
+  ]);
+});
+
+test("normalizeChatMessages reads the multipart content shape /api/chat uses", () => {
+  // A turn sent with an attachment carries an array of parts. The text parts
+  // are the message; an image part is not text and is simply not carried.
+  const msgs = normalizeChatMessages([
+    {
+      role: "user",
+      content: [
+        { type: "text", text: "What is in this photo?" },
+        { type: "image_url", image_url: { url: "data:image/png;base64,AAA" } },
+      ],
+    },
+  ]);
+  assert.deepEqual(msgs, [{ role: "user", content: "What is in this photo?" }]);
+});
+
+test("normalizeChatMessages bounds a transcript FROM THE FRONT", () => {
+  // Dropping the head would leave a chat whose first turn answers nothing.
+  const long = Array.from({ length: 200 }, (_, i) => ({ role: i % 2 ? "assistant" : "user", content: `m${i}` }));
+  const msgs = normalizeChatMessages(long);
+  assert.equal(msgs.length, CHAT_CAPS.messages);
+  assert.equal(msgs[0].content, "m0");
+});
+
+test("normalizeChatMessages truncates rather than dropping an over-long answer", () => {
+  const huge = "x".repeat(CHAT_CAPS.content + 5_000);
+  const msgs = normalizeChatMessages([{ role: "user", content: "q" }, { role: "assistant", content: huge }]);
+  assert.equal(msgs.length, 2);
+  assert.ok(msgs[1].content.length <= CHAT_CAPS.content);
+  // The question survives whole — it is the shorter of the two and the one a
+  // reader needs to make sense of what they reopened.
+  assert.equal(msgs[0].content, "q");
+});
+
+test("normalizeChatMessages answers a non-array with an empty transcript", () => {
+  for (const junk of [null, undefined, "", 0, {}, { messages: [] }]) {
+    assert.deepEqual(normalizeChatMessages(/** @type {any} */ (junk)), []);
+  }
+});
+
+test("captureChatSeed carries the run's agent, model and question", () => {
+  const seed = captureChatSeed({
+    id: 12,
+    tag: "#CAP-12",
+    name: "Elpris",
+    agent: "science",
+    mode: "science",
+    model: "mistral-small",
+    prompt: "Vad kostar elen?",
+    lang: "sv",
+    created_at: 1_700_000_000_000,
+    chat: [{ role: "user", content: "Vad kostar elen?" }, { role: "assistant", content: "Svar." }],
+  });
+  assert.equal(seed.title, "#CAP-12 · Elpris");
+  assert.equal(seed.mode, "science");
+  assert.equal(seed.model, "mistral-small");
+  assert.equal(seed.lang, "sv");
+  assert.equal(seed.recorded_at, 1_700_000_000_000);
+  assert.equal(seed.resumable, true);
+  assert.equal(seed.messages.length, 2);
+});
+
+test("captureChatSeed of a clip recorded before transcripts is NOT resumable", () => {
+  // Every capture published before 2026-08-14 is this row. It still links —
+  // with the question, the agent and the model — and `resumable: false` is what
+  // stops the link promising to continue a conversation that is not there.
+  const seed = captureChatSeed({ id: 3, name: "Vitamin D", agent: "science", model: "m", prompt: "Ask me again" });
+  assert.equal(seed.resumable, false);
+  assert.deepEqual(seed.messages, []);
+  assert.equal(seed.prompt, "Ask me again");
+});
+
+test("captureChatSeed leaves the tab's agent alone when the capture named none", () => {
+  // Null, never the default mode: an unknown agent must not silently move the
+  // reader into Deep Science, the same rule stream.js applies to a record with
+  // no chatMode.
+  assert.equal(captureChatSeed({ id: 1, agent: "science", model: "m", prompt: "p" }).mode, null);
+  assert.equal(captureChatSeed({ id: 1, mode: "   ", model: "m", prompt: "p" }).mode, null);
+});
+
+test("captureChatSeed survives a round trip through its own output", () => {
+  // The client re-normalises what the server sends rather than trusting it, so
+  // the seed has to be a fixed point — above all `recorded_at`, which is
+  // `created_at` on a row and `recorded_at` on a seed.
+  const first = captureChatSeed({
+    id: 7, name: "Elpris", mode: "cyber", model: "m", prompt: "p", created_at: 1_699_000_000_000,
+    chat: [{ role: "user", content: "p" }],
+  });
+  const second = captureChatSeed(first, first.messages);
+  assert.deepEqual(second, first);
+});
+
+test("captureChatUrl links to the app, and only for a real id", () => {
+  assert.equal(captureChatUrl({ id: 12 }), "/?capture=12");
+  assert.equal(captureChatUrl(12), "/?capture=12");
+  for (const bad of [{ id: 0 }, { id: -3 }, { id: null }, {}, null, "abc"]) {
+    assert.equal(captureChatUrl(/** @type {any} */ (bad)), "");
+  }
+});
+
+test("captureChatLink promises only what the capture can deliver", () => {
+  const withChat = captureChatLink({ id: 1, has_chat: true });
+  const without = captureChatLink({ id: 1, has_chat: false });
+  assert.match(withChat.text, /Continue/);
+  assert.equal(withChat.resumable, true);
+  // "Continue this chat" over an empty history is a promise the app cannot
+  // keep, so a clip with no transcript says something smaller and true.
+  assert.match(without.text, /again/);
+  assert.equal(without.resumable, false);
+});
+
+test("captureChatRows drops anything that cannot be opened", () => {
+  const rows = captureChatRows({
+    captures: [
+      { id: 12, tag: "#CAP-12", name: "Elpris", agent: "science", prompt: "p", has_chat: true, created_at: 5 },
+      { id: 0, name: "no id" },
+      { name: "no id at all" },
+      null,
+      "junk",
+    ],
+  });
+  assert.equal(rows.length, 1);
+  assert.deepEqual(rows[0], {
+    id: 12, tag: "#CAP-12", title: "Elpris", agent: "science", prompt: "p",
+    url: "/?capture=12", resumable: true, when: 5,
+  });
+});
+
+test("captureChatRows accepts a bare array as well as the API envelope", () => {
+  const row = { id: 4, name: "N", agent: "cyber", prompt: "q", has_chat: false };
+  assert.deepEqual(captureChatRows([row]), captureChatRows({ captures: [row] }));
+  assert.deepEqual(captureChatRows(null), []);
+  assert.deepEqual(captureChatRows({ captures: "nope" }), []);
 });

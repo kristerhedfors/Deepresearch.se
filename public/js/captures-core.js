@@ -934,3 +934,221 @@ export function badgeText(n) {
   if (v === null || v <= 0) return "";
   return v > 99 ? "99+" : String(Math.trunc(v));
 }
+
+// ---- the chat behind the clip ----------------------------------------------
+// A capture is a recording of a REAL research run, and until 2026-08-14 the
+// run died with the browser that made it: the clip showed an answer nobody
+// could open, follow up on, or check a citation in. The owner's ask was the
+// obvious missing half — "link from captured agent videos to the actual chat
+// so one can continue and explore from there".
+//
+// So the harness now reads the finished conversation off the page and files it
+// with the row (`chat_json`), and every surface that names a capture can hand
+// the reader a chat to CONTINUE: the review feed's card, and the history
+// drawer's own "Recorded runs" group.
+//
+// Two properties this core exists to keep:
+//
+//  * **A capture without a transcript still links.** Every clip recorded
+//    before this existed has its prompt, its agent and its model, which is
+//    enough to open the composer loaded and ready to ask the same question
+//    again. `resumable` is what says which of the two the reader is getting,
+//    so the link can promise the right thing instead of the better thing.
+//  * **The transcript is the site's own output, not a user's chat.** Capture
+//    prompts are the shipped starters (synthetic by construction — see the
+//    video-capture skill) and the answers are this pipeline's, recorded by the
+//    operator. Nothing here reads `chat_logs`, and nothing here may start
+//    doing so: a full-visibility log is not consent to replay somebody's
+//    conversation into a video or a drawer (privacy invariant 4).
+
+/** Bounds on a stored transcript. A capture is one or two turns; these are
+ * guards against a malformed harness run, not a product shape. */
+export const CHAT_CAPS = {
+  messages: 40,
+  /** per message, characters */
+  content: 24_000,
+  /** the whole transcript, characters */
+  total: 80_000,
+};
+
+/** The two roles a stored transcript may carry. A capture records a
+ * conversation, not a prompt set: a `system` message in here would be the
+ * harness leaking the pipeline's internals into a resumable chat. */
+const CHAT_ROLES = new Set(["user", "assistant"]);
+
+/**
+ * A stored transcript, cleaned into the shape stream.js's ConversationRecord
+ * wants: `[{role, content}]` with string content, roles limited to
+ * user/assistant, and the whole thing bounded.
+ *
+ * Bounding is applied from the FRONT (the earliest messages are kept) so a
+ * truncated transcript still opens with the question that was asked. Dropping
+ * the head would leave a chat whose first turn is an answer to nothing.
+ *
+ * @param {unknown} value
+ * @returns {{ role: string, content: string }[]} [] when there is nothing usable
+ */
+export function normalizeChatMessages(value) {
+  if (!Array.isArray(value)) return [];
+  /** @type {{ role: string, content: string }[]} */
+  const out = [];
+  let total = 0;
+  for (const raw of value) {
+    if (out.length >= CHAT_CAPS.messages || total >= CHAT_CAPS.total) break;
+    if (!raw || typeof raw !== "object") continue;
+    const role = typeof (/** @type {any} */ (raw).role) === "string" ? /** @type {any} */ (raw).role.trim() : "";
+    if (!CHAT_ROLES.has(role)) continue;
+    const content = chatText(/** @type {any} */ (raw).content);
+    if (!content) continue;
+    const room = Math.max(0, Math.min(CHAT_CAPS.content, CHAT_CAPS.total - total));
+    if (!room) break;
+    const text = content.length > room ? content.slice(0, room) : content;
+    out.push({ role, content: text });
+    total += text.length;
+  }
+  return out;
+}
+
+/**
+ * One message's content as text. Accepts the multipart shape `/api/chat`
+ * itself uses (`[{type:"text", text}, …]`) so a transcript read off a turn
+ * with attachments does not come back empty — the image parts are simply not
+ * text and are dropped.
+ *
+ * @param {unknown} content
+ * @returns {string}
+ */
+function chatText(content) {
+  if (typeof content === "string") return content.trim();
+  if (!Array.isArray(content)) return "";
+  return content
+    .filter((p) => p && typeof p === "object" && /** @type {any} */ (p).type === "text" && typeof (/** @type {any} */ (p).text) === "string")
+    .map((p) => /** @type {any} */ (p).text)
+    .join("\n")
+    .trim();
+}
+
+/**
+ * THE SEED: everything the app needs to reopen a capture's run as a live chat.
+ *
+ * `resumable` is the honest half of the contract. True means the recorded
+ * conversation itself is here and reopening it restores what the clip shows;
+ * false means only the question survived, and the reader gets a composer
+ * loaded with it rather than a transcript. The link's wording keys off this,
+ * because "continue this chat" over an empty history is a promise the app
+ * cannot keep.
+ *
+ * @param {any} c a capture (row projection or API entry)
+ * @param {unknown} [messages] the transcript, when it is not on `c`
+ * @returns {{ id: number|string|null, tag: string, name: string, title: string,
+ *   prompt: string, mode: string|null, model: string, lang: string|null,
+ *   messages: {role: string, content: string}[], resumable: boolean,
+ *   recorded_at: number|null }}
+ */
+export function captureChatSeed(c, messages) {
+  const src = c && typeof c === "object" ? c : {};
+  const msgs = normalizeChatMessages(messages === undefined ? /** @type {any} */ (src).chat : messages);
+  const tag = captureRef(src);
+  const name = captureName(src);
+  const prompt = typeof (/** @type {any} */ (src).prompt) === "string" ? /** @type {any} */ (src).prompt.trim() : "";
+  return {
+    id: /** @type {any} */ (src).id ?? null,
+    tag,
+    name,
+    // The conversation's title in the history drawer. The tag leads for the
+    // same reason it leads on a card: #CAP-12 is how the clip is asked for out
+    // loud, and a chat that cannot be matched back to its video is a chat
+    // nobody knows the provenance of.
+    title: tag ? `${tag} · ${name}` : name,
+    prompt,
+    // The agent the run was recorded under. Null leaves the tab's current
+    // agent alone rather than snapping it to the default — the same rule
+    // stream.js applies to a conversation record with no `chatMode`.
+    mode: typeof (/** @type {any} */ (src).mode) === "string" && /** @type {any} */ (src).mode.trim() ? /** @type {any} */ (src).mode.trim() : null,
+    model: typeof (/** @type {any} */ (src).model) === "string" ? /** @type {any} */ (src).model.trim() : "",
+    lang: typeof (/** @type {any} */ (src).lang) === "string" && /** @type {any} */ (src).lang.trim() ? /** @type {any} */ (src).lang.trim() : null,
+    messages: msgs,
+    resumable: msgs.length > 0,
+    // `created_at` on a capture row, `recorded_at` on a seed that has already
+    // been through here once — the client re-normalises the server's answer
+    // rather than trusting it, and a round trip must not lose the one date
+    // that says when the run happened.
+    recorded_at: field(/** @type {any} */ (src).created_at ?? /** @type {any} */ (src).recorded_at),
+  };
+}
+
+/**
+ * Where a capture's chat opens. A query parameter on the app's own root, not a
+ * fragment: the app reads it during boot (app.js) and a fragment is also where
+ * Se/cure keeps workspace material, which is not this.
+ *
+ * @param {any} c a capture, or a bare id
+ * @returns {string} "" when there is no id to link to
+ */
+export function captureChatUrl(c) {
+  const id = c && typeof c === "object" ? /** @type {any} */ (c).id : c;
+  const n = field(id);
+  if (n === null || n <= 0) return "";
+  return `/?capture=${Math.trunc(n)}`;
+}
+
+/**
+ * The link's own words. A clip whose transcript survived offers to CONTINUE
+ * the conversation; one recorded before transcripts existed offers to ask the
+ * question again, which is a smaller and truthful promise.
+ *
+ * @param {any} c
+ * @returns {{ text: string, title: string, resumable: boolean }}
+ */
+export function captureChatLink(c) {
+  const resumable = !!(c && typeof c === "object" && /** @type {any} */ (c).has_chat);
+  return resumable
+    ? {
+      text: "💬 Continue this chat",
+      title: "Open the recorded conversation in the app and keep asking from where the clip ends",
+      resumable,
+    }
+    : {
+      text: "💬 Ask this again",
+      title: "This clip was recorded before transcripts were kept — opens the composer with the same agent, model and question",
+      resumable,
+    };
+}
+
+/**
+ * The rows the history drawer's "Recorded runs" group renders: one per
+ * capture, newest first, each carrying what it takes to name a run and open
+ * it. Anything without an id is dropped — a row that cannot be opened is a
+ * row that only teaches the reader the group is broken.
+ *
+ * @param {any} data the /api/admin/captures/chats body, or a bare array
+ * @returns {{ id: number, tag: string, title: string, agent: string,
+ *   prompt: string, url: string, resumable: boolean, when: number|null }[]}
+ */
+export function captureChatRows(data) {
+  const list = Array.isArray(data)
+    ? data
+    : data && typeof data === "object" && Array.isArray(/** @type {any} */ (data).captures)
+      ? /** @type {any} */ (data).captures
+      : [];
+  /** @type {any[]} */
+  const rows = [];
+  for (const c of list) {
+    if (!c || typeof c !== "object") continue;
+    const id = field(/** @type {any} */ (c).id);
+    if (id === null || id <= 0) continue;
+    const url = captureChatUrl(c);
+    if (!url) continue;
+    rows.push({
+      id: Math.trunc(id),
+      tag: captureRef(c),
+      title: captureName(c),
+      agent: typeof (/** @type {any} */ (c).agent) === "string" ? /** @type {any} */ (c).agent.trim() : "",
+      prompt: typeof (/** @type {any} */ (c).prompt) === "string" ? /** @type {any} */ (c).prompt.trim() : "",
+      url,
+      resumable: !!(/** @type {any} */ (c).has_chat),
+      when: field(/** @type {any} */ (c).created_at),
+    });
+  }
+  return rows;
+}

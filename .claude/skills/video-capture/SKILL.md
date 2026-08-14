@@ -29,7 +29,7 @@ Four stages, three commands, one shared core.
 
 | Stage | Command | Reads | Writes |
 |---|---|---|---|
-| **Record** | `npm run capture -- --agents … --models …` | the site, live | `captures/<date>/<slug>/raw.webm` + `timeline.json` + `meta.json` |
+| **Record** | `npm run capture -- --agents … --models …` | the site, live | `captures/<date>/<slug>/raw.webm` + `timeline.json` + `meta.json` (with the run's `chat`) |
 | **Plan + encode** | `npm run capture:edit -- <dir>` | those three | `final.mp4`, `poster.jpg`, `edit.json` |
 | **Publish** | `scripts/captures --add … --upload …` | `edit.json` | a D1 row + two R2 objects |
 | **Review** | `/captures/` → Capture reviews | the API | a like, or feedback |
@@ -47,13 +47,13 @@ model without ffmpeg installed.
 cd tests && npm install                      # once — the harness needs Playwright
 export BASIC_AUTH_USER=… BASIC_AUTH_PASS=…   # break-glass, same as the e2e suite
 
-npm run capture -- --agents research,introspection --models <id> --per-agent 2
-npm run capture -- --agents research --models <a>,<b> --shape portrait --lang sv
-npm run capture -- --agents research --models <id> --dry-run   # matrix only
+npm run capture -- --agents cyber,introspection --models <id> --per-agent 2
+npm run capture -- --agents cyber --models <a>,<b> --shape portrait --lang sv
+npm run capture -- --agents cyber --models <id> --dry-run   # matrix only
 ```
 
 **Agents are chat modes.** `--agents` takes agent ids from the starter registry
-(`research`, `scholar`, `introspection`, `agent-builder`, `orchestrator`,
+(`scholar`, `cyber`, `introspection`, `agent-builder`, `orchestrator`,
 `outrospection`, `models`); the core's `modeForAgent` maps each to the
 `#modesel` value through `MODE_AGENTS`, so the harness and the product cannot
 drift on what an agent is. An unknown name is a hard error that lists the
@@ -179,11 +179,70 @@ Two properties of `stillSpans` worth keeping:
 - The sampler is driven from **Node**, not from an in-page timer, so a frozen
   page cannot stop it. A stalled run is exactly the recording worth watching.
 
+## A clip links back to the chat it recorded
+
+> *"Link from captured agent videos to the actual chat so one can continue and
+> explore from there. Let those recorded chats appear in admin's chat history
+> panel under its own expandable."* — owner, 2026-08-14
+
+A clip used to be a dead end: the run died with the browser that recorded it,
+so the answer on screen could not be opened, followed up, or checked. Four
+pieces close that loop, and each one has a reason worth keeping.
+
+**The driver reads the RAW messages, not the screen.**
+`window.__DR_TRANSCRIPT` (`public/js/stream.js` `conversationTranscript`)
+returns a copy of the message array the conversation was built from, and it
+goes into `meta.json` as `chat`. The DOM read is only a fallback: an answer is
+markdown, and by the time it is on screen the links are elements — a scraped
+transcript keeps the words and loses every citation URL, which is exactly the
+half a reader following the link came for. The read happens BEFORE the Agent
+Studio walk navigates the page to the published app; after that there is no
+chat left to read.
+
+**The transcript is taken out of the edit report before storage.**
+`CAPTURE_CAPS.meta` is 20 kB and one research answer is larger, so a report
+that still carried the chat would serialize past the cap and `serializeMeta`
+would drop THE WHOLE REPORT — segments, ffprobe, verdict — in exchange for
+something that has its own column. The server strips it (`withoutChat`) and
+reads it from any of `chat`, `meta.chat` or `meta.meta.chat`, which is where
+the documented `meta: .` publish recipe actually puts it. **This is why the
+publish recipe below did not have to change.**
+
+**Every capture links, transcript or not.** A clip recorded before this shows
+"💬 Ask this again" and opens the composer with the same question, agent and
+model; one with a transcript shows "💬 Continue this chat". `resumable` /
+`has_chat` is what decides the wording — "continue" over an empty history is a
+promise the app cannot keep.
+
+**The reader's copy wins.** The conversation is written into local encrypted
+history under the stable id `capture-<id>`. Reopening a capture you have
+already continued brings back YOUR chat, follow-ups and all, not the
+recording; the stable id is also why following the same link twice does not
+leave two entries in the drawer.
+
+```bash
+scripts/captures --chat 12 captures/2026-08-14/…/meta.json   # backfill one
+scripts/captures --chat 12 -                                  # clear it again
+curl -su "$U:$P" "$BASE/api/admin/captures/12/chat"           # the seed
+```
+
+The **Recorded runs** group in the left chat-history drawer
+(`public/js/capture-chat.js`, `#capturechats`) lists them: collapsed, admin
+only, hidden entirely when the API answers with nothing. Its list endpoint
+selects the naming columns only — never `meta_json`, never `chat_json` — because
+it is opened on every drawer refresh by a pane that is mostly about the
+reader's own conversations.
+
+**One rule that is not negotiable:** nothing in this path reads `chat_logs`.
+Capture prompts are the shipped starters (synthetic by construction) and the
+answers are this pipeline's own, recorded by the operator. A full-visibility
+log is not consent to replay somebody's conversation into a video or a drawer.
+
 ## Editing: cutting the waits, choosing the speed
 
 ```bash
-npm run capture:edit -- captures/2026-08-10/research__…            # defaults
-npm run capture:edit -- --all captures/2026-08-10                  # whole batch
+npm run capture:edit -- captures/2026-08-14/cyber__…               # defaults
+npm run capture:edit -- --all captures/2026-08-14                  # whole batch
 npm run capture:edit -- <dir> --dry-run                            # plan + argv
 npm run capture:edit -- <dir> --speed 1.5 --wait speed --wait-speed 8
 npm run capture:edit -- <dir> --shape square --max-mb 30
@@ -241,7 +300,7 @@ different encoder setting.
 ## Publishing and the review loop
 
 ```bash
-CAP=captures/2026-08-10/research__…
+CAP=captures/2026-08-14/cyber__…
 
 # edit.json already holds everything the row needs — reshape it and post:
 scripts/captures --add "$(jq '{label:("Capture " + (.meta.slug // "")), agent:.meta.agent,
@@ -313,7 +372,7 @@ cd tests && npm install && cd ..
 export BASIC_AUTH_USER=… BASIC_AUTH_PASS=…
 
 # 1. record two prompts per agent across two models, portrait
-npm run capture -- --agents research,introspection --models <a>,<b> \
+npm run capture -- --agents cyber,introspection --models <a>,<b> \
     --per-agent 2 --shape portrait --budget 90
 
 # 2. look at ONE plan before encoding forty of them
@@ -370,6 +429,24 @@ or the row will lie about the next re-shoot.
 
 ## Traps
 
+- **A PLACEHOLDER STARTER cannot be captured unattended.** Some starters open
+  by promising input the harness never supplies — `cyb-attack-surface` is *"I
+  will name a domain —"*, `cyb-street-view-site` and `cyb-sv-gata` name an
+  address. The agent correctly answers `What is the domain?` and stops, which
+  is a 19-character turn and a useless clip. The run gate fails it on
+  `empty_answer` rather than publishing it (2026-08-14, the Cyber batch), so
+  nothing bad ships — but it costs a run out of the batch. **Read the dry-run
+  matrix's prompt column before recording** and reach past those with
+  `--offset`; they are usually at the head of a queue, because they are the
+  most on-topic thing the agent does.
+- **`--add` prints prose, not JSON, unless you ask.** `id=$(scripts/captures
+  --add "$payload" | jq -r .capture.id)` yields an EMPTY id — the default
+  output starts with the word `capture`. An empty id then makes `--upload` and
+  `--poster` no-ops that still exit 0, so a batch loop reports success and
+  leaves five rows with no video. Pass `--json` in any pipeline — **before**
+  `--add` or after the payload, never between them: `--add` takes the next
+  word as its body, so `--add --json '{…}'` posts the flag itself and the row
+  is never created.
 - **`--min-still 1500` is wrong for a run with an activity log.** The default
   suits a direct answer with no search phase. A research run posts a new
   search step every couple of seconds, so nearly every gap qualifies as dead
