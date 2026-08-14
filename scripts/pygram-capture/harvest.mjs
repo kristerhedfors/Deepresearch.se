@@ -583,6 +583,9 @@ export function serializeCorpus(records) {
         first_seen: r.first_seen ?? null,
         count: r.count ?? 1,
         stdin_sample: r.stdin_sample ?? null,
+        // Only when there are any, so the 200-odd untagged records keep their
+        // exact line shape and a harvest that changes nothing produces no diff.
+        ...(Array.isArray(r.tags) && r.tags.length ? { tags: r.tags } : {}),
       }),
     )
     .join("\n") + (records.length ? "\n" : "");
@@ -625,6 +628,13 @@ export function mergeSightings(existingRecords, sightings, seedIds = new Set()) 
       first_seen: rec.first_seen ?? null,
       count: Number.isFinite(rec.count) && rec.count > 0 ? Math.floor(rec.count) : 1,
       stdin_sample: rec.stdin_sample ?? null,
+      // HAND-APPLIED and therefore never derivable from a sighting: the
+      // conformance runner reads `tags` to exempt an entry it must not compare
+      // (tests/pygram/conformance.mjs — nondeterministic, seeded,
+      // interpreter-specific, implementation-defined). A rebuild that dropped
+      // them would un-exempt the entry at the next harvest and turn CI red with
+      // no diff to explain it, which is worse than never having tagged it.
+      tags: Array.isArray(rec.tags) ? rec.tags.filter((t) => typeof t === "string") : [],
       keys: new Set(),
       fresh: false,
     });
@@ -685,6 +695,8 @@ export function mergeSightings(existingRecords, sightings, seedIds = new Set()) 
         first_seen: s.ts ?? null,
         count: 0,
         stdin_sample: s.stdin_sample ?? null,
+        // A sighting carries no tags — they are applied by hand afterwards.
+        tags: [],
         keys: new Set(),
         fresh: true,
       };
@@ -705,6 +717,11 @@ export function mergeSightings(existingRecords, sightings, seedIds = new Set()) 
     first_seen: r.first_seen,
     count: Math.max(r.count, r.keys.size) || 1,
     stdin_sample: r.stdin_sample,
+    // Omitted when empty, which is every record but the tagged handful: an
+    // absent key keeps the untagged lines byte-identical (no churn across 200+
+    // records when one entry is tagged) and keeps parseCorpus∘serializeCorpus
+    // an exact round-trip, which the serializer test pins.
+    ...(r.tags && r.tags.length ? { tags: r.tags } : {}),
   }));
   records.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 

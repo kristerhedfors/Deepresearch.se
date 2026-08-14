@@ -409,6 +409,57 @@ test("seedIds: reads the seed corpus, tolerates a missing file", () => {
   assert.equal(seedIds("").size, 0);
 });
 
+// A hand-applied `tags` array is the ONLY field on a corpus record that cannot
+// be re-derived from a sighting, and the conformance runner reads it to exempt
+// an entry it must not compare (tests/pygram/conformance.mjs — nondeterministic,
+// seeded, interpreter-specific, implementation-defined). The merge rebuilds
+// every record from an explicit field list, so `tags` has to be carried through
+// deliberately: before it was, tagging an entry "worked" until the next harvest
+// silently erased it and CI went red with no diff to explain why. Found on the
+// json-error-message divergence (pygram/lib/README.md #19).
+test("mergeSightings: a hand-applied tag survives the rebuild", () => {
+  // The id must be the program's own hash, as it is in the real corpus —
+  // otherwise a later sighting of the same program lands on a different id and
+  // the two never meet, which is a property of the test rather than the code.
+  const tagged = {
+    id: programId("print(1)"), program: "print(1)", argv_tail: [], source: "shim",
+    first_seen: "2026-01-01T00:00:00Z", count: 2, stdin_sample: null,
+    tags: ["implementation-defined"],
+  };
+  const { records } = mergeSightings([tagged], []);
+  assert.deepEqual(records[0].tags, ["implementation-defined"]);
+  // …and survives a sighting landing on the same program, which is the case
+  // that actually happens: the entry keeps being invoked.
+  const again = mergeSightings([tagged], [
+    { key: "shim:l#9", source: "shim", program: "print(1)", argv_tail: [], ts: "2026-02-01T00:00:00Z" },
+  ]);
+  assert.equal(again.records.length, 1, "the sighting merged onto the tagged record");
+  assert.deepEqual(again.records[0].tags, ["implementation-defined"]);
+  // A sighting carries no tags of its own, and an untagged record carries no
+  // `tags` key at all — see the projection's note on churn and round-tripping.
+  const fresh = mergeSightings([], [
+    { key: "shim:l#1", source: "shim", program: "print(2)", argv_tail: [], ts: "2026-01-01T00:00:00Z" },
+  ]);
+  assert.equal("tags" in fresh.records[0], false);
+  // Junk in the field is dropped rather than trusted.
+  const junk = mergeSightings([{ ...tagged, tags: ["ok", 7, null, { a: 1 }] }], []);
+  assert.deepEqual(junk.records[0].tags, ["ok"]);
+});
+
+test("serializeCorpus: tags round-trip, and an untagged line is byte-identical", () => {
+  const untagged = { id: "u", program: "print(1)", argv_tail: [], source: "shim", first_seen: "t", count: 1, stdin_sample: null };
+  // The 200-odd untagged records must not all churn when one entry is tagged,
+  // so the key is emitted only when there is something to emit.
+  assert.equal(
+    serializeCorpus([untagged]).trim(),
+    JSON.stringify({ id: "u", program: "print(1)", argv_tail: [], source: "shim", first_seen: "t", count: 1, stdin_sample: null }),
+  );
+  assert.equal(serializeCorpus([{ ...untagged, tags: [] }]).trim().includes("tags"), false);
+  assert.deepEqual(parseCorpus(serializeCorpus(mergeSightings([untagged], []).records)), mergeSightings([untagged], []).records);
+  const round = parseCorpus(serializeCorpus([{ ...untagged, tags: ["seeded"] }]));
+  assert.deepEqual(round[0].tags, ["seeded"]);
+});
+
 test("parseArgs: the seed guard has a path and an escape hatch", () => {
   assert.equal(parseArgs(["--seed", "/s"]).seed, "/s");
   assert.equal(parseArgs(["--no-seed-guard"]).seed, "");
