@@ -129,6 +129,33 @@ case "$DISTRO" in
     echo "Unknown distro: $DISTRO (alpine|debian|arch32)"; exit 1 ;;
 esac
 
+echo "==> Installing pygram (docs/PYGRAM.md)"
+# The Python-subset runtime, as /usr/local/bin/pygram. One static i386 ELF with
+# its stdlib frozen in, so it opens ZERO files at startup.
+#
+# MEASURED IN A REAL VM on 2026-08-14 with scripts/pygram-vm-measure.mjs against
+# this image, and the result is stronger than the speed-up it was built for:
+#
+#   pygram -c 'import json; …'   27 ms cold, streaming ZERO bytes off the disk
+#   pygram --version             86 ms cold, 1,152 KB
+#   python3 --version           318 ms cold, 3,460 KB
+#   python3 -c 'print(1+1)'     NEVER COMPLETED — 2.3 MB streamed, then the
+#                               block fetches stop dead and the VM is wedged.
+#                               `-S` does not save it either.
+#
+# So in this image CPython cannot run a one-liner at all, while pygram runs the
+# same work in tens of milliseconds. That turns docs/PYGRAM.md §5's "alias vs
+# add alongside" from a preference into an evidence-backed question for the
+# owner: what is here now is ADD ALONGSIDE, because aliasing changes what the
+# agent can do and is not a call this script should make silently.
+PYGRAM_BIN="${PYGRAM_BIN:-$(dirname "$0")/../pygram/build/pygram}"
+if [ -f "$PYGRAM_BIN" ]; then
+    install -Dm755 "$PYGRAM_BIN" "$MNT/usr/local/bin/pygram"
+    echo "    installed $(stat -c %s "$PYGRAM_BIN") B from $PYGRAM_BIN"
+else
+    echo "    SKIPPED — no binary at $PYGRAM_BIN (build it: bash scripts/pygram-build.sh)"
+fi
+
 echo "==> Configuring root shell + /root (sandbox.js launches /bin/bash --login, HOME=/root, uid 0)"
 mkdir -p "$MNT/root"
 grep -q '^root:' "$MNT/etc/passwd" 2>/dev/null || echo 'root:x:0:0:root:/root:/bin/bash' >> "$MNT/etc/passwd"

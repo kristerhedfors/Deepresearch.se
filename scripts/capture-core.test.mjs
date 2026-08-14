@@ -31,7 +31,9 @@ import {
   posterAtMs,
   resolveShape,
   secs,
+  readableSignature,
   stillSpans,
+  waitSpans,
 } from "./capture-core.mjs";
 import { DEFAULT_CHAT_MODE } from "../public/js/chat-mode-core.js";
 
@@ -370,6 +372,125 @@ test("a content signature is read, and an unknown format is treated as content",
   assert.equal(parseSignature(null).content, false);
 });
 
+// ---------------------------------------------------------------------------
+// A TICKING ACTIVITY BAR IS WAIT TIME — the #CAP-10 regression
+// ---------------------------------------------------------------------------
+//
+// Owner review of #CAP-10 (2026-08-14): "video waits and waits for answer and
+// then just the last frame shows the bottom of the reply. We should cut speed
+// up stale wait time to allow viewing of entire answer generation." The clip
+// was 54 555 ms recorded and 43 644 ms delivered at 1.25x — 54555 / 1.25 =
+// 43644 exactly, so not one millisecond was accelerated, in a run that was
+// mostly the pipeline searching. The activity bar ticked faster than any
+// usable `--min-still`, so the full signature never repeated and the old
+// detector found no dead air at all.
+
+/**
+ * A research run: the prompt goes in, the activity bar ticks once a second for
+ * half a minute, then tokens stream. The tick is FASTER than any usable
+ * `--min-still`, which is the shape #CAP-10 had.
+ */
+const researchRun = ({ searchMs = 30000, streamMs = 20000, tickMs = 1000, step = 250 } = {}) => {
+  const samples = [];
+  let t = 0;
+  const searchStart = 0;
+  for (; t < searchMs; t += step) {
+    const k = Math.floor(t / tickMs) + 1;
+    samples.push({ t, sig: SIG(2, k, Math.max(0, k - 1), 0, `Searching round ${k}`, 0) });
+  }
+  const streamStart = t;
+  for (let len = 40; t < streamStart + streamMs; t += step, len += 40) {
+    samples.push({ t, sig: SIG(3, 9, 9, len, "", t + step >= streamStart + streamMs ? 1 : 0) });
+  }
+  return { samples, searchStart, streamStart, sourceMs: t };
+};
+
+test("readableSignature keeps what a viewer reads and drops the activity bar", () => {
+  // Two samples one search round apart: everything a viewer can READ is equal.
+  assert.equal(
+    readableSignature(SIG(2, 3, 2, 0, "Searching round 3")),
+    readableSignature(SIG(2, 9, 8, 0, "Searching round 9")),
+  );
+  // The three fields that do carry something to read each move it.
+  assert.notEqual(readableSignature(SIG(2, 3, 2, 0)), readableSignature(SIG(3, 3, 2, 0)));
+  assert.notEqual(readableSignature(SIG(2, 3, 2, 0)), readableSignature(SIG(2, 3, 2, 120)));
+  assert.notEqual(readableSignature(SIG(2, 3, 2, 0, "", 0)), readableSignature(SIG(2, 3, 2, 0, "", 1)));
+  // A format this module does not know compares exactly as it always did.
+  assert.equal(readableSignature("s17"), "s17");
+  assert.equal(readableSignature(null), "");
+});
+
+test("a ticking activity bar is wait time, not activity", () => {
+  const { samples } = researchRun();
+  // The old rule — byte-identical signatures — finds nothing here, because the
+  // bar ticks faster than the threshold. That is the whole bug.
+  assert.deepEqual(stillSpans(samples, { minStillMs: 1500 }), []);
+
+  const spans = waitSpans(samples, { minStillMs: 1500 });
+  assert.equal(spans.length, 1);
+  assert.equal(spans[0].kind, "thinking", "the pipeline was visibly working, not frozen");
+  assert.ok(spans[0].end - spans[0].start > 29000, `the whole search phase: ${spans[0].end - spans[0].start} ms`);
+});
+
+test("a frozen stretch and a working one are told apart", () => {
+  const frozen = [];
+  for (let t = 0; t < 8000; t += 250) frozen.push({ t, sig: SIG(2, 4, 4, 900, "Done", 1) });
+  const spans = waitSpans(frozen, { minStillMs: 1500 });
+  assert.equal(spans.length, 1);
+  assert.equal(spans[0].kind, "dead", "nothing moved at all — a frozen frame");
+});
+
+test("#CAP-10: the wait is accelerated instead of playing out in real time", () => {
+  const { samples, sourceMs, streamStart } = researchRun();
+  const plan = planEdit({ sourceMs, samples, waitMode: "speed", speed: 1.25, waitSpeed: 8, minStillMs: 1500 });
+
+  // What #CAP-10 delivered: every millisecond at the action speed, nothing sped
+  // up. If this ever holds again the clip is unwatchable for the same reason.
+  const unedited = sourceMs / 1.25;
+  assert.ok(
+    plan.outMs < unedited * 0.75,
+    `the wait must be compressed, not replayed: ${Math.round(plan.outMs)} ms vs ${Math.round(unedited)} ms`,
+  );
+  assert.ok(plan.thinkingMs > 29000, "the search phase is measured as thinking");
+  assert.equal(plan.deadMs, 0, "nothing in this run was ever frozen");
+  assert.equal(plan.waitMs, plan.deadMs + plan.thinkingMs);
+
+  // And the point of accelerating it: the answer streaming survives whole, at
+  // the action speed, so the entire generation is watchable.
+  const streaming = plan.segments.filter((s) => s.start >= streamStart - 250);
+  assert.ok(streaming.length > 0);
+  for (const s of streaming) {
+    assert.equal(s.kind, "action", "the answer streaming is never treated as a wait");
+    assert.equal(s.speed, 1.25);
+  }
+});
+
+test("--wait cut accelerates the research phase instead of deleting it", () => {
+  const { samples, sourceMs } = researchRun();
+  const cut = planEdit({ sourceMs, samples, waitMode: "cut", waitSpeed: 8, minStillMs: 1500 });
+
+  const thinking = cut.segments.filter((s) => s.kind === "thinking");
+  assert.equal(thinking.length, 1, "the search phase is still in the clip");
+  assert.equal(thinking[0].speed, 8);
+  assert.equal(cut.cutMs, 0, "nothing was frozen, so nothing was dropped");
+
+  // A genuinely frozen tail IS dropped by the same mode.
+  const withFreeze = [...samples];
+  let t = sourceMs;
+  const frozenSig = samples[samples.length - 1].sig;
+  for (let i = 0; i < 40; i++, t += 250) withFreeze.push({ t, sig: frozenSig });
+  const frozen = planEdit({ sourceMs: t, samples: withFreeze, waitMode: "cut", minStillMs: 1500 });
+  assert.ok(frozen.deadMs > 8000, `the frozen tail is measured: ${frozen.deadMs} ms`);
+  assert.ok(frozen.cutMs > 8000, "and cut, because nobody loses anything when a frozen frame goes");
+});
+
+test("the plan prints the wait breakdown a reviewer argues from", () => {
+  const { samples, sourceMs } = researchRun();
+  const text = formatPlan(planEdit({ sourceMs, samples, waitMode: "speed" }), { shape: "portrait" });
+  assert.match(text, /thinking/);
+  assert.match(text, /frozen/);
+});
+
 test("the last frame with content is found past a blank tail", () => {
   const samples = [
     { t: 0, sig: BLANK },
@@ -614,7 +735,7 @@ test("ffprobe output degrades to nulls rather than throwing", () => {
 test("the plan renders as something an operator can argue with before encoding", () => {
   const text = formatPlan(planEdit({ sourceMs: 32000, samples: RUN }), { shape: "portrait" });
   assert.match(text, /source/);
-  assert.match(text, /dead air/);
+  assert.match(text, /wait time/);
   assert.match(text, /output/);
   assert.match(text, /4:5 portrait/);
 });

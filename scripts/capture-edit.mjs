@@ -20,10 +20,15 @@
 // OPTIONS
 //   --shape portrait|square|landscape|raw   delivery frame (default portrait)
 //   --speed <n>          playback speed for the parts where something happens
-//   --wait cut|speed|keep  what to do with dead air (default cut)
-//   --wait-speed <n>     multiplier for --wait speed (default 8)
-//   --min-still <ms>     a pause must exceed this to count as dead (default 1500)
-//   --hold <ms>          head of each dead span kept, so the state reads (default 600)
+//   --wait cut|speed|keep  what to do with wait time (default cut). "Wait" is
+//                        time nothing READABLE changed — no new message, the
+//                        answer not growing, no stats footer. A ticking
+//                        activity bar is the wait, not an escape from it, so
+//                        `cut` drops the frozen stretches and accelerates the
+//                        thinking rather than deleting the research phase.
+//   --wait-speed <n>     multiplier for accelerated wait time (default 8)
+//   --min-still <ms>     a pause must exceed this to count as wait (default 1500)
+//   --hold <ms>          head of each wait span kept, so the state reads (default 600)
 //   --end-hold <ms>      freeze the final content frame this long (default 1200)
 //   --end-at eof         end at end-of-file instead of at the last content frame
 //   --trim-start <ms>    head to drop; default is measured from the timeline
@@ -283,6 +288,8 @@ export function editCapture(dir, opts) {
     output_ms: Math.round(plan.outMs),
     cut_ms: Math.round(plan.cutMs),
     dead_air_ms: Math.round(plan.waitMs),
+    dead_ms: Math.round(plan.deadMs || 0),
+    thinking_ms: Math.round(plan.thinkingMs || 0),
     head_trim_ms: Math.round(plan.headTrimMs),
     head_trim_source: plan.headTrimSource,
     end_hold_ms: Math.round(plan.endHoldMs),

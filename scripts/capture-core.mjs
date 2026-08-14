@@ -387,17 +387,102 @@ function slugPart(s) {
  */
 export function stillSpans(samples, opts = {}) {
   const minStillMs = opts.minStillMs == null ? 1500 : opts.minStillMs;
+  const key = typeof opts.key === "function" ? opts.key : (/** @type {string} */ sig) => sig;
   const s = (samples || []).filter((x) => x && Number.isFinite(x.t)).slice().sort((a, b) => a.t - b.t);
   /** @type {Array<{ start: number, end: number }>} */
   const spans = [];
   if (s.length < 2) return spans;
   let runStart = 0; // index where the current identical-signature run began
   for (let i = 1; i <= s.length; i++) {
-    const changed = i === s.length || s[i].sig !== s[runStart].sig;
+    const changed = i === s.length || key(s[i].sig) !== key(s[runStart].sig);
     if (!changed) continue;
     const start = s[runStart].t;
     const end = s[i - 1].t;
     if (end - start >= minStillMs) spans.push({ start, end });
+    runStart = i;
+  }
+  return spans;
+}
+
+/**
+ * THE PART OF THE SIGNATURE A VIEWER ACTUALLY READS.
+ *
+ * The full signature moves for two very different reasons, and treating them
+ * the same is what made #CAP-10 unwatchable (owner, 2026-08-14: *"video waits
+ * and waits for answer and then just the last frame shows the bottom of the
+ * reply. We should cut speed up stale wait time to allow viewing of entire
+ * answer generation"*). That clip was 55 s recorded and 44 s delivered with
+ * ZERO milliseconds accelerated — `54555 / 1.25 = 43644` exactly — because the
+ * activity bar ticked a new search step every couple of seconds. Every tick
+ * changed `steps`/`finished`/`step`, so no two consecutive samples were ever
+ * byte-identical, so `stillSpans` found no dead air in a run that was almost
+ * entirely dead air. Raising `--min-still` cannot fix that: no threshold
+ * separates "a step label changed" from "a word was typed" when both are just
+ * "the signature moved".
+ *
+ * So the wait detector reads the signature down to the three fields that carry
+ * something to READ — a message appearing, the answer growing, the stats
+ * footer landing. `steps`, `finished` and the step label are the pipeline
+ * SAYING it is busy; they are the wait, not an escape from it.
+ *
+ * An unrecognised signature is returned verbatim, so a format this module does
+ * not know still compares exactly as it always did. Same rule as
+ * `parseSignature`: never widen what counts as removable footage on a guess.
+ * @param {string | null | undefined} sig
+ * @returns {string}
+ */
+export function readableSignature(sig) {
+  const p = parseSignature(sig);
+  if (!p.known) return typeof sig === "string" ? sig : "";
+  return `${p.msgs}|${p.answerLen}|${p.stats ? 1 : 0}`;
+}
+
+/**
+ * @typedef {Object} WaitSpan
+ * @property {number} start
+ * @property {number} end
+ * @property {"dead" | "thinking"} kind
+ */
+
+/**
+ * The spans where nothing worth reading changed, each labelled with WHY.
+ *
+ *   dead      — the full signature never moved. A frozen frame; nobody loses
+ *               anything if it goes.
+ *   thinking  — the activity bar moved but nothing readable did. The pipeline
+ *               is visibly working, which is footage of the product, so this
+ *               is accelerated but never dropped outright (see `planEdit`).
+ *
+ * The distinction exists so `--wait cut` can stay aggressive about frozen
+ * frames without deleting the research phase, which is the one thing a deep
+ * research clip is for.
+ * @param {Sample[]} samples
+ * @param {{ minStillMs?: number }} [opts]
+ * @returns {WaitSpan[]}
+ */
+export function waitSpans(samples, opts = {}) {
+  const minStillMs = opts.minStillMs == null ? 1500 : opts.minStillMs;
+  const s = (samples || []).filter((x) => x && Number.isFinite(x.t)).slice().sort((a, b) => a.t - b.t);
+  /** @type {WaitSpan[]} */
+  const spans = [];
+  if (s.length < 2) return spans;
+  let runStart = 0;
+  for (let i = 1; i <= s.length; i++) {
+    const changed = i === s.length || readableSignature(s[i].sig) !== readableSignature(s[runStart].sig);
+    if (!changed) continue;
+    const start = s[runStart].t;
+    const end = s[i - 1].t; // the last sample PROVEN idle — one step early, so
+    // the frame carrying the change is never inside a cut.
+    if (end - start >= minStillMs) {
+      let moved = false;
+      for (let j = runStart + 1; j < i; j++) {
+        if (s[j].sig !== s[runStart].sig) {
+          moved = true;
+          break;
+        }
+      }
+      spans.push({ start, end, kind: moved ? "thinking" : "dead" });
+    }
     runStart = i;
   }
   return spans;
@@ -584,7 +669,7 @@ export function mergeIntervals(intervals) {
  * @typedef {Object} Segment
  * @property {number} start   source ms
  * @property {number} end     source ms
- * @property {"action" | "wait"} kind
+ * @property {"action" | "wait" | "thinking"} kind
  * @property {number} speed   playback multiplier (2 = twice as fast)
  */
 /**
@@ -595,7 +680,9 @@ export function mergeIntervals(intervals) {
  * @property {number} cutMs    source time removed outright
  * @property {number} outMs    finished duration after the speed ramps, INCLUDING the end hold
  * @property {number} segmentsMs  finished duration of the segments alone
- * @property {number} waitMs   source time the driver measured as dead
+ * @property {number} waitMs   source time nothing readable changed (dead + thinking)
+ * @property {number} deadMs   of that, time the full signature never moved
+ * @property {number} thinkingMs  of that, time the activity bar moved and nothing readable did
  * @property {string} waitMode
  * @property {number} speed
  * @property {number} headTrimMs     source ms dropped off the front (the page-load flash)
@@ -605,6 +692,9 @@ export function mergeIntervals(intervals) {
  * @property {"found" | "blank" | "unknown"} contentStatus
  * @property {number} tailMs   source time kept after `contentEndMs` (0 when the cut ends on content)
  */
+
+/** How eventful each segment kind is, for the label a fused segment inherits. */
+const KIND_RANK = { wait: 0, thinking: 1, action: 2 };
 
 export const PLAN_DEFAULTS = {
   /** A pause shorter than this is part of the rhythm of reading, not dead air. */
@@ -670,25 +760,40 @@ export function planEdit(input) {
   const to =
     endAtContent && content.ms != null && content.ms > from ? Math.min(trimmedTo, content.ms) : trimmedTo;
 
-  const spans = stillSpans(input.samples || [], { minStillMs: input.minStillMs == null ? d.minStillMs : input.minStillMs });
+  const spans = waitSpans(input.samples || [], { minStillMs: input.minStillMs == null ? d.minStillMs : input.minStillMs });
   const waitMs = spans.reduce((n, s) => n + (s.end - s.start), 0);
+  const deadMs = spans.reduce((n, s) => n + (s.kind === "dead" ? s.end - s.start : 0), 0);
+  const thinkingMs = spans.reduce((n, s) => n + (s.kind === "thinking" ? s.end - s.start : 0), 0);
 
-  // Each dead span keeps `holdMs` at its head; the rest is the wait interval.
-  const waits = mergeIntervals(
-    spans
-      .map((s) => ({ start: clamp(s.start + holdMs, from, to), end: clamp(s.end, from, to) }))
-      .filter((s) => s.end - s.start >= minSegmentMs),
-  );
+  // Each wait span keeps `holdMs` at its head, so the state that was reached is
+  // legible before the tempo changes; the rest is the wait interval. The spans
+  // come out of one left-to-right walk and cannot overlap, so the `kind` label
+  // survives to the segment builder — which `mergeIntervals` would have thrown
+  // away.
+  const waits = spans
+    .map((s) => ({ start: clamp(s.start + holdMs, from, to), end: clamp(s.end, from, to), kind: s.kind }))
+    .filter((s) => s.end - s.start >= minSegmentMs)
+    .sort((a, b) => a.start - b.start)
+    .filter((s, i, all) => i === 0 || s.start >= all[i - 1].end);
 
   /** @type {Segment[]} */
   const segments = [];
   let cursor = from;
   for (const w of waits) {
     if (w.start > cursor) segments.push({ start: cursor, end: w.start, kind: "action", speed });
-    if (waitMode === "cut") {
+    // `cut` drops the frozen frames and ACCELERATES the thinking rather than
+    // deleting it: a deep research clip whose research phase has been edited
+    // out is a demo of a different product. `speed` accelerates both; `keep`
+    // leaves the run at the action speed.
+    if (waitMode === "cut" && w.kind === "dead") {
       // dropped entirely
     } else {
-      segments.push({ start: w.start, end: w.end, kind: "wait", speed: waitMode === "speed" ? waitSpeed : speed });
+      segments.push({
+        start: w.start,
+        end: w.end,
+        kind: w.kind === "dead" ? "wait" : "thinking",
+        speed: waitMode === "keep" ? speed : waitSpeed,
+      });
     }
     cursor = w.end;
   }
@@ -711,6 +816,8 @@ export function planEdit(input) {
     outMs: segmentsMs + endHoldMs,
     segmentsMs,
     waitMs,
+    deadMs,
+    thinkingMs,
     waitMode,
     speed,
     headTrimMs: from,
@@ -752,7 +859,10 @@ export function mergeSegments(segments) {
     const last = out[out.length - 1];
     if (last && last.speed === s.speed && Math.abs(last.end - s.start) < 1) {
       last.end = s.end;
-      if (s.kind === "action") last.kind = "action";
+      // The fused label is the most eventful of the two: a viewer told "wait"
+      // about a stretch that also contained the answer streaming would read
+      // the plan wrong, and the plan is what an edit is argued from.
+      if (KIND_RANK[s.kind] > KIND_RANK[last.kind]) last.kind = s.kind;
     } else {
       out.push({ ...s });
     }
@@ -1006,7 +1116,14 @@ export function formatPlan(plan, opts = {}) {
   const shape = resolveShape(opts.shape);
   const lines = [
     `source      ${formatDuration(plan.sourceMs)}`,
-    `dead air    ${formatDuration(plan.waitMs)} measured, ${plan.waitMode === "cut" ? "cut" : plan.waitMode === "speed" ? "sped up" : "kept"}`,
+    `wait time   ${formatDuration(plan.waitMs)} measured — ${formatDuration(plan.deadMs || 0)} frozen, ${formatDuration(plan.thinkingMs || 0)} thinking`,
+    `            ${
+      plan.waitMode === "cut"
+        ? "frozen cut, thinking sped up"
+        : plan.waitMode === "speed"
+          ? "both sped up"
+          : "both kept at the action speed"
+    }`,
     `removed     ${formatDuration(plan.cutMs)}`,
     `output      ${formatDuration(plan.outMs)}  (${shape.label})`,
     `compression ${plan.outMs > 0 ? (plan.sourceMs / plan.outMs).toFixed(1) : "—"}x shorter than the real run`,
@@ -1023,7 +1140,7 @@ export function formatPlan(plan, opts = {}) {
   ];
   for (const [i, s] of plan.segments.entries()) {
     lines.push(
-      `  ${String(i + 1).padStart(3)}  ${secs(s.start)}s → ${secs(s.end)}s  ${s.kind.padEnd(6)} ${s.speed}x`,
+      `  ${String(i + 1).padStart(3)}  ${secs(s.start)}s → ${secs(s.end)}s  ${s.kind.padEnd(8)} ${s.speed}x`,
     );
   }
   return lines.join("\n") + "\n";
