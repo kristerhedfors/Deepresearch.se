@@ -47,13 +47,13 @@ model without ffmpeg installed.
 cd tests && npm install                      # once — the harness needs Playwright
 export BASIC_AUTH_USER=… BASIC_AUTH_PASS=…   # break-glass, same as the e2e suite
 
-npm run capture -- --agents research,introspection --models <id> --per-agent 2
-npm run capture -- --agents research --models <a>,<b> --shape portrait --lang sv
-npm run capture -- --agents research --models <id> --dry-run   # matrix only
+npm run capture -- --agents cyber,introspection --models <id> --per-agent 2
+npm run capture -- --agents cyber --models <a>,<b> --shape portrait --lang sv
+npm run capture -- --agents cyber --models <id> --dry-run   # matrix only
 ```
 
 **Agents are chat modes.** `--agents` takes agent ids from the starter registry
-(`research`, `scholar`, `introspection`, `agent-builder`, `orchestrator`,
+(`scholar`, `cyber`, `introspection`, `agent-builder`, `orchestrator`,
 `outrospection`, `models`); the core's `modeForAgent` maps each to the
 `#modesel` value through `MODE_AGENTS`, so the harness and the product cannot
 drift on what an agent is. An unknown name is a hard error that lists the
@@ -182,8 +182,8 @@ Two properties of `stillSpans` worth keeping:
 ## Editing: cutting the waits, choosing the speed
 
 ```bash
-npm run capture:edit -- captures/2026-08-10/research__…            # defaults
-npm run capture:edit -- --all captures/2026-08-10                  # whole batch
+npm run capture:edit -- captures/2026-08-14/cyber__…               # defaults
+npm run capture:edit -- --all captures/2026-08-14                  # whole batch
 npm run capture:edit -- <dir> --dry-run                            # plan + argv
 npm run capture:edit -- <dir> --speed 1.5 --wait speed --wait-speed 8
 npm run capture:edit -- <dir> --shape square --max-mb 30
@@ -241,7 +241,7 @@ different encoder setting.
 ## Publishing and the review loop
 
 ```bash
-CAP=captures/2026-08-10/research__…
+CAP=captures/2026-08-14/cyber__…
 
 # edit.json already holds everything the row needs — reshape it and post:
 scripts/captures --add "$(jq '{label:("Capture " + (.meta.slug // "")), agent:.meta.agent,
@@ -313,7 +313,7 @@ cd tests && npm install && cd ..
 export BASIC_AUTH_USER=… BASIC_AUTH_PASS=…
 
 # 1. record two prompts per agent across two models, portrait
-npm run capture -- --agents research,introspection --models <a>,<b> \
+npm run capture -- --agents cyber,introspection --models <a>,<b> \
     --per-agent 2 --shape portrait --budget 90
 
 # 2. look at ONE plan before encoding forty of them
@@ -370,6 +370,24 @@ or the row will lie about the next re-shoot.
 
 ## Traps
 
+- **A PLACEHOLDER STARTER cannot be captured unattended.** Some starters open
+  by promising input the harness never supplies — `cyb-attack-surface` is *"I
+  will name a domain —"*, `cyb-street-view-site` and `cyb-sv-gata` name an
+  address. The agent correctly answers `What is the domain?` and stops, which
+  is a 19-character turn and a useless clip. The run gate fails it on
+  `empty_answer` rather than publishing it (2026-08-14, the Cyber batch), so
+  nothing bad ships — but it costs a run out of the batch. **Read the dry-run
+  matrix's prompt column before recording** and reach past those with
+  `--offset`; they are usually at the head of a queue, because they are the
+  most on-topic thing the agent does.
+- **`--add` prints prose, not JSON, unless you ask.** `id=$(scripts/captures
+  --add "$payload" | jq -r .capture.id)` yields an EMPTY id — the default
+  output starts with the word `capture`. An empty id then makes `--upload` and
+  `--poster` no-ops that still exit 0, so a batch loop reports success and
+  leaves five rows with no video. Pass `--json` in any pipeline — **before**
+  `--add` or after the payload, never between them: `--add` takes the next
+  word as its body, so `--add --json '{…}'` posts the flag itself and the row
+  is never created.
 - **`--min-still 1500` is wrong for a run with an activity log.** The default
   suits a direct answer with no search phase. A research run posts a new
   search step every couple of seconds, so nearly every gap qualifies as dead
