@@ -314,7 +314,7 @@ different encoder setting.
 CAP=captures/2026-08-14/cyber__…
 
 # edit.json already holds everything the row needs — reshape it and post:
-scripts/captures --add "$(jq '{label:("Capture " + (.meta.slug // "")), agent:.meta.agent,
+scripts/captures --add "$(jq '{label:("Capture " + (.meta.slug // "")), agent:.meta.agent, mode:.meta.mode,
   model:.meta.model, prompt:.meta.prompt, starter:.meta.starter, lang:.meta.lang,
   shape:.shape, duration_ms:.output_ms, source_ms:.source_ms, cut_ms:.cut_ms,
   speed:.speed, wait_mode:.wait_mode, width:.probe.width, height:.probe.height,

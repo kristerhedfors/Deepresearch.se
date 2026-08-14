@@ -120,6 +120,31 @@ export function agentForMode(mode, opts = {}) {
   return MODE_AGENTS[m] || MODE_AGENTS.science;
 }
 
+/**
+ * MODE_AGENTS read the other way: the chat mode a given agent id is the default
+ * of. Derived from the one table rather than written out again, so the two
+ * directions cannot drift.
+ * @type {Record<string, string>} agent id -> chat mode id
+ */
+export const AGENT_MODES = Object.fromEntries(Object.entries(MODE_AGENTS).map(([mode, agent]) => [agent, mode]));
+
+/**
+ * The chat mode that puts a surface into a given agent — the STRICT direction:
+ * an agent that has no mode of its own (`secure`, which is a TIER rather than a
+ * dropdown entry) and an unrecognised id both answer "" rather than falling
+ * back to the default. Callers that need a fallback pick their own, because the
+ * right one differs: the capture harness wants a run that is obviously the
+ * wrong agent (`modeForAgent` in scripts/capture-core.mjs), while a surface
+ * RESTORING a recorded run wants to leave the reader's current agent alone.
+ *
+ * @param {string|null|undefined} agent  an agent id
+ * @returns {string} a chat mode id, or "" when the agent has no mode
+ */
+export function modeForAgentId(agent) {
+  const a = typeof agent === "string" ? agent.trim() : "";
+  return AGENT_MODES[a] || "";
+}
+
 // ---- registry access ---------------------------------------------------------
 
 /**

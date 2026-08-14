@@ -787,10 +787,13 @@ test("captureChatSeed of a clip recorded before transcripts is NOT resumable", (
   assert.equal(seed.prompt, "Ask me again");
 });
 
-test("captureChatSeed leaves the tab's agent alone when the capture named none", () => {
+test("captureChatSeed leaves the tab's agent alone when nothing names a mode", () => {
   // Null, never the default mode: an unknown agent must not silently move the
   // reader into Deep Science, the same rule stream.js applies to a record with
-  // no chatMode.
+  // no chatMode. The agent→mode FALLBACK that saves a row whose `mode` column
+  // was never filled is applied upstream, in src/captures.js's projectCapture
+  // (this file must stay import-free — see its header); by the time a seed is
+  // built from a row the mode is either named or genuinely absent.
   assert.equal(captureChatSeed({ id: 1, agent: "science", model: "m", prompt: "p" }).mode, null);
   assert.equal(captureChatSeed({ id: 1, mode: "   ", model: "m", prompt: "p" }).mode, null);
 });
