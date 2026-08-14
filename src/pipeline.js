@@ -650,12 +650,9 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
     // must come from the user's own words, not an enrichment block's prose.
     quizReq = { questions: quizQuestionCount(ctx.cleanLastUser) || DEFAULT_QUIZ_QUESTIONS };
   }
-  if (decision.action === "direct") {
-    // Quiz from the material already in front of us (conversation, attached
-    // documents, project materials) — triage decided no web sources needed.
-    if (quizReq && (await runQuizGeneration(ctx, quizReq))) return;
-    return runDirectReply(ctx);
-  }
+  // Clarify first, and it is deliberately NOT overridden below: it asks the
+  // user a question rather than answering, so it cannot produce the failure
+  // the direct branch does, and no page needs reading to serve it.
   if (decision.action === "clarify") return runClarify(ctx, decision.question);
 
   // ---- Phase 1.5: read the pages the user NAMED --------------------------
@@ -663,9 +660,35 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
   // runNamedUrlReads / src/named-urls.js — feedback #67 was a question whose
   // five pasted URLs the run then spent fifteen search angles failing to
   // rediscover.
-  await runNamedUrlReads(ctx);
+  //
+  // ABOVE the direct branch, because what it reads decides that branch.
+  await runNamedUrlReads(ctx, extractNamedUrls(ctx.cleanLastUser));
+  // Pages we actually READ override a `direct` decision. Pasting a link and
+  // asking about it IS a research request over that page, and a direct reply
+  // cannot serve it: the answer model has no browser, so triage routing this
+  // turn to a direct completion produces the one answer that is both useless
+  // and wrong — "I can't browse arbitrary URLs" — for a question whose whole
+  // content is a URL we are perfectly able to read. Found by probing the
+  // deployed site, not by a test: this phase used to sit BELOW the branch, so
+  // it never ran on exactly the messages it was written for (verbatim probe,
+  // chat_logs #1743 — `named_urls: 0`, no queries, no sources).
+  //
+  // Gated on what came BACK, not on what was linked: if nothing could be
+  // read, the direct reply is still the better answer, and synthesis over an
+  // empty source set would be a worse one.
+  if (decision.action === "direct" && !state.namedUrlCount) {
+    // Quiz from the material already in front of us (conversation, attached
+    // documents, project materials) — triage decided no web sources needed.
+    if (quizReq && (await runQuizGeneration(ctx, quizReq))) return;
+    return runDirectReply(ctx);
+  }
+
   // ---- Phase 2: initial search wave -------------------------------------
-  await runSearches(ctx, decision.queries, 1);
+  // An overridden direct decision planned no angles, and that is the right
+  // outcome rather than a hole to paper over: "what does this page say?" is
+  // answered by the page, so the run goes straight to synthesis over what was
+  // read instead of inventing keyword angles for a URL we already have.
+  await runSearches(ctx, decision.action === "research" ? decision.queries : [], 1);
   // Quiz from web research: one search wave gathers the material, then the
   // quiz IS the answer — gap rounds, synthesis, and validation don't apply
   // (nothing streams that could be fact-checked; the quiz's own prompt pins
@@ -2445,11 +2468,12 @@ async function jsonPhase(ctx, { label, statKey, messages, maxTokens, recordStat 
  * Fail-soft in every branch (invariant 2) — a page that refuses, stalls or
  * returns something unreadable is one source fewer, never a broken chat.
  * @param {PipelineCtx} ctx
+ * @param {string[]} urls the URLs the caller already extracted (it needs them
+ *   before triage's branch, so they are not re-derived here)
  */
-async function runNamedUrlReads(ctx) {
+async function runNamedUrlReads(ctx, urls) {
   const { env, log, emit, state } = ctx;
-  const urls = extractNamedUrls(ctx.cleanLastUser);
-  if (!urls.length) return;
+  if (!urls?.length) return;
 
   // Rendered as a SEARCH card rather than a plain step, so the pages read
   // land in the research trail as the same expandable list of clickable
