@@ -415,8 +415,13 @@ const earlier = (a, b) => {
  *   and never shrinks when a log is rotated away, and re-running changes nothing.
  * - `source` is the strongest provenance ever seen for the program.
  * - existing text/argv_tail/stdin_sample win, so a hand-curated record survives.
+ *
+ * `seedIds` is the set of programIds in seed-corpus.jsonl, and a sighting whose
+ * program is byte-identical to a seed program is DROPPED — see SEED COLLISION
+ * below. Defaults to empty so a caller that does not care keeps the old
+ * behaviour.
  */
-export function mergeSightings(existingRecords, sightings) {
+export function mergeSightings(existingRecords, sightings, seedIds = new Set()) {
   const byId = new Map();
   let redactions = 0;
 
@@ -437,7 +442,7 @@ export function mergeSightings(existingRecords, sightings) {
     });
   }
 
-  const skipped = { empty: 0, oversized: 0, duplicateKey: 0 };
+  const skipped = { empty: 0, oversized: 0, duplicateKey: 0, seedCollision: 0 };
   const seenKeys = new Set();
   const ordered = [...sightings].sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
 
@@ -459,6 +464,29 @@ export function mergeSightings(existingRecords, sightings) {
     }
     const tail = (s.argv_tail ?? []).map((t) => redactSecrets(String(t)).text);
     const id = programId(program);
+    // SEED COLLISION. docs/PYGRAM.md §7 requires the two corpus files stay
+    // separate, because blending them lets expectation inflate the frequency
+    // table that decides build order. Keeping them as separate FILES does not
+    // achieve that on its own: the conformance runner EXECUTES every seed
+    // program, and until the capture shim was excluded from those runs each
+    // execution was logged as a real invocation and merged back in here. That
+    // is how the first harvest ended up with 138 of its 197 "observed"
+    // programs byte-identical to seed programs, 139 of them at count=8.
+    //
+    // So the rule is enforced where it was being broken. A sighting matching a
+    // seed program is dropped rather than merged — which also stops an
+    // already-laundered record's count from growing further, since the count is
+    // the max over sighting keys. Existing records are NOT deleted: this is a
+    // guard against new contamination, not a rewrite of committed evidence.
+    //
+    // The cost is that a genuine agent invocation which happens to be
+    // byte-identical to one of the 153 hand-written seeds is lost. That trade
+    // is deliberate: such a collision tells us nothing the seed did not already
+    // say, while a false observation corrupts the one table that ranks work.
+    if (seedIds.has(id)) {
+      skipped.seedCollision++;
+      continue;
+    }
     let rec = byId.get(id);
     if (!rec) {
       rec = {
@@ -504,6 +532,7 @@ export function defaultPaths(env = process.env) {
     log: env.PYGRAM_LOG || (home ? join(home, ".pygram", "invocations.jsonl") : ""),
     transcripts: env.PYGRAM_TRANSCRIPTS || (home ? join(home, ".claude", "projects") : ""),
     corpus: env.PYGRAM_CORPUS || join(ROOT, "tests", "pygram", "corpus.jsonl"),
+    seed: env.PYGRAM_SEED || join(ROOT, "tests", "pygram", "seed-corpus.jsonl"),
   };
 }
 
@@ -514,6 +543,8 @@ export function parseArgs(argv) {
     if (a === "--log") opts.log = argv[++i];
     else if (a === "--transcripts") opts.transcripts = argv[++i];
     else if (a === "--corpus") opts.corpus = argv[++i];
+    else if (a === "--seed") opts.seed = argv[++i];
+    else if (a === "--no-seed-guard") opts.seed = "";
     else if (a === "--no-transcripts") opts.transcriptsEnabled = false;
     else if (a === "--dry-run") opts.dryRun = true;
     else if (a === "--quiet") opts.quiet = true;
@@ -531,6 +562,18 @@ const readIfExists = (p) => {
     return "";
   }
 };
+
+/** programIds of every seed program, for the seed-collision guard in
+ *  mergeSightings. A missing or unreadable seed file yields an empty set: the
+ *  harvest still runs, it just loses the guard. */
+export function seedIds(path) {
+  const out = new Set();
+  if (!path) return out;
+  for (const rec of parseCorpus(readIfExists(path))) {
+    if (typeof rec.program === "string" && rec.program) out.add(programId(redactSecrets(rec.program).text));
+  }
+  return out;
+}
 
 export function harvest(opts) {
   const sightings = [];
@@ -550,7 +593,7 @@ export function harvest(opts) {
   }
 
   const existing = parseCorpus(readIfExists(opts.corpus));
-  const merged = mergeSightings(existing, sightings);
+  const merged = mergeSightings(existing, sightings, seedIds(opts.seed));
   const body = serializeCorpus(merged.records);
   const before = readIfExists(opts.corpus);
 
@@ -595,6 +638,10 @@ function main() {
     if (r.redactions) console.log(`redacted    : ${r.redactions} credential-shaped token(s)`);
     const sk = r.skipped;
     if (sk.empty || sk.oversized) console.log(`skipped     : ${sk.empty} empty, ${sk.oversized} oversized`);
+    // Never silent: a seed collision means something executed the seed corpus
+    // into the log, and a run that drops hundreds of them is reporting a
+    // reopened feedback loop, not routine hygiene.
+    if (sk.seedCollision) console.log(`seed guard  : ${sk.seedCollision} sighting(s) dropped as seed-identical`);
   }
   const verb = r.wrote ? "wrote" : opts.dryRun && r.changed ? "would write" : "unchanged";
   console.log(`${verb} ${opts.corpus}: ${r.total} program(s), ${r.added} new (was ${r.existing})`);

@@ -33,8 +33,28 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { findRealCPython } from "../../scripts/pygram-gate.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
+
+/** The reference interpreter, resolved to a real CPython ELF.
+ *
+ * NOT simply `python3`: the capture shim installs itself first on PATH, so
+ * resolving by name finds an 8.9 KB shell script. The gate learned this the
+ * hard way — measuring the shim as "the baseline" reported 30 file opens and a
+ * projected cold cost of 330 seconds (docs/PYGRAM.md; the pygram skill §5).
+ * Here the damage is different but worse: the shim EXECS the real interpreter,
+ * so the comparison still passes while every reference run is silently logged
+ * as evidence. findRealCPython walks PATH for a genuine ELF, following symlinks.
+ *
+ * PYTHON_BIN still wins when it names an ELF; if it names something else (or
+ * nothing on PATH is an ELF) we fall back to the plain name rather than
+ * refusing to run — a missing reference is the caller's problem to see, and
+ * runOne's PYGRAM_CAPTURE=0 keeps the loop broken either way.
+ */
+export function referencePython(env = process.env) {
+  return findRealCPython(env.PATH || "", env.PYTHON_BIN) || env.PYTHON_BIN || "python3";
+}
 
 // The unsupported-feature contract (docs/PYGRAM-SUBSET.md). 90 is clear of
 // 0/1/2 (python's own), 126/127 (shell) and 128+n (signals), so a caller can
@@ -141,7 +161,19 @@ function runOne(bin, entry) {
       cwd,
       // A clean, minimal environment: the corpus must not depend on this
       // machine's env, and pygram in the sandbox will not have one either.
-      env: { PATH: process.env.PATH, HOME: process.env.HOME, LC_ALL: "C.UTF-8", PWD: cwd },
+      // PYGRAM_CAPTURE=0 breaks the capture FEEDBACK LOOP. The capture shim
+      // (scripts/pygram-capture/python-shim) sits first on PATH, so a reference
+      // run resolved by name would be logged as a real invocation — and the
+      // next harvest would merge every corpus entry back into corpus.jsonl as
+      // observed evidence. That is how 138 of the first harvest's 197
+      // "harvested" programs came to be verbatim seed programs, and why 139 of
+      // them carried count=8 (one per conformance run) instead of a Zipfian
+      // spread. Since --plan ranks the build order by those counts, the loop
+      // does not just add noise: it makes the corpus rank the programs someone
+      // GUESSED at above the ones an agent actually typed. Belt and braces with
+      // referencePython() below, which avoids the shim in the first place —
+      // this one holds even if a caller points PYTHON_BIN straight at it.
+      env: { PATH: process.env.PATH, HOME: process.env.HOME, LC_ALL: "C.UTF-8", PWD: cwd, PYGRAM_CAPTURE: "0" },
     });
   } finally {
     try { rmSync(cwd, { recursive: true, force: true }); } catch { /* best effort */ }
@@ -328,7 +360,7 @@ function main() {
   const onlyTag = tagArg >= 0 ? args[tagArg + 1] : null;
   const verbose = args.includes("--verbose") || args.includes("-v");
 
-  const python = process.env.PYTHON_BIN || "python3";
+  const python = referencePython();
   // Each entry runs in its own temp cwd (see runOne), so a RELATIVE binary path
   // would be resolved against that temp dir and fail with ENOENT. Make it
   // absolute here, once, rather than in the hot loop.
