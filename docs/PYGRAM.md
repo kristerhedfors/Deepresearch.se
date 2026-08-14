@@ -54,6 +54,55 @@ The 50–85 ms floor sets the target. There is no point making pygram faster tha
 the envelope it arrives in; the goal is to get a cold one-liner from ~8.5 s down
 to *within the same order as the floor*.
 
+## 1a. Measured in a real VM (2026-08-14)
+
+The acceptance metric below was blocked on work item 8 from the day this file was
+written. It is now measured. `scripts/pygram-vm-measure.mjs` builds nothing and
+deploys nothing: it serves a local ext2 over HTTP Range, boots the pinned CheerpX
+in headless Chromium with the same device stack and mounts as
+`public/js/sandbox.js`, and times probes with a fresh IndexedDB block cache.
+
+Against a 131 MB Alpine i386 image carrying both interpreters:
+
+| probe | cold | warm | bytes streamed cold |
+|---|---|---|---|
+| `pygram --version` | 86 ms | 16 ms | 1,152 KB |
+| `pygram -c 'print(1+1)'` | 43 ms | 21 ms | 128 KB |
+| `pygram -c 'import json; …'` | 27 ms | 23 ms | **0 KB** |
+| `pygram -c 'import re; …'` | 29 ms | 25 ms | **0 KB** |
+| `python3 --version` | 318 ms | 44 ms | 3,460 KB |
+| `python3 -c 'print(1+1)'` | **never completed** | — | 2,304 KB, then frozen |
+
+**Read the bytes column, not the milliseconds.** This harness streams the image
+over loopback while production streams it over a WebSocket from R2, so the
+timings are optimistic by roughly 26× — `python3 --version` is 318 ms here
+against the 8573 ms §1 quotes. Bytes are transport-independent: the same command
+pulls the same blocks either way, and §1 says cold cost tracks bytes and opens.
+
+Two results matter more than the speed-up:
+
+**The frozen stdlib streams nothing.** `import json` and `import re` pull **zero
+bytes** off the disk image. Not few — none. That is the entire design thesis
+(§1: "a fully static binary with its standard library compiled in touches exactly
+one file: itself") confirmed directly rather than by projection, and it is why
+pygram's second and third one-liners cost less than its first.
+
+**CPython does not merely lose, it fails.** `python3 -c 'print(1+1)'` streams
+about 2.3 MB and then the block fetches stop dead; the command never returns and
+the VM is wedged. Verified over 435 s of frozen byte counters, from a fresh boot,
+reproducibly, and `-S` does not save it — while `python3 --version` in the same
+VM succeeds in 318 ms. So in this image CPython can print its version and cannot
+run a program. §9's first falsification test ("if a static pygram still takes
+seconds cold, the cost was somewhere else") is answered: it does not.
+
+**What this does not establish.** The image is not deployed — `/api/sandbox-image`
+still serves the third-party WebVM disk, so no user is affected yet. The hang is
+Alpine's CPython 3.14.7 on the pinned CheerpX 1.2.6; the 8573 ms figure came from
+Debian's 3.11, so the two are not the same binary and the wedge may not be
+universal. And loopback is not the WebSocket path. What is now measured is the
+ratio and the byte cost; the absolute production timing still needs the image
+deployed.
+
 ## 2. Acceptance metric
 
 One number, measured the same way the table above was measured — a new case in
@@ -308,6 +357,73 @@ The corpus drives the build order: implement in descending order of how many
 entries a feature unblocks, and re-run the conformance diff against CPython on
 every change.
 
+### 7a. The feedback loop that made the first harvest mostly fiction
+
+Capture worked from the day it shipped. Growth did not, and the frequency table
+was measuring the wrong thing. Both were found on 2026-08-14, by reading the
+committed corpus rather than the code.
+
+**The corpus fed itself.** The conformance runner executes every corpus entry
+under a reference interpreter, and it resolved that interpreter by NAME — so it
+found the capture shim sitting first on `$PATH`, which logged each run and then
+exec'd the real CPython. The comparison still passed, so nothing looked wrong.
+The next harvest merged those runs back in as observed evidence. The result:
+**138 of the first harvest's 197 "observed" programs were byte-identical to
+hand-written seed programs**, and the counts were not a distribution at all —
+
+```
+1x:1   2x:10  3x:7  4x:1  5x:1  8x:139  9x:25  10x:11  12x:1  45x:1
+```
+
+139 entries seen *exactly* eight times is eight conformance runs, not eight
+decisions to write a program. Real usage is Zipfian; this is a test loop. Since
+`--plan` ranks the build order by those counts, the loop did not merely add
+noise — it ranked the programs someone **guessed at** above the ones an agent
+actually typed. Stripping seed programs, pygram's own build chatter and trivial
+probes left **35 unique programs**, of which about four were genuinely
+task-driven.
+
+**Nothing persisted.** The log lives at `$HOME/.pygram/invocations.jsonl` —
+outside the repo, in an ephemeral container — and nothing ever ran the harvest.
+`corpus.jsonl` was committed exactly once (`b07654c1`); every entry's
+`first_seen` falls inside a single 36-minute window, and every session since
+captured into a file that died with its container.
+
+Three fixes, in the order they matter:
+
+1. **The runner no longer feeds the log.** `referencePython()` resolves to a
+   real CPython ELF via `findRealCPython` (the same helper the gate uses, for
+   the same reason — measuring the shim as a baseline once projected a 330-second
+   cold cost), and `runOne` spawns with `PYGRAM_CAPTURE=0`. Either alone closes
+   the loop; both are kept because they fail differently. Pinned by
+   `tests/pygram/conformance.test.mjs`, whose loop test asserts an empty log
+   after a full run.
+2. **Harvest enforces the separation it documents.** A sighting whose program
+   is byte-identical to a seed program is dropped and counted as
+   `seedCollision`, reported on every run. Keeping the two *files* apart never
+   achieved separation on its own, because the pipeline kept copying one into
+   the other. Existing contaminated records are **not** deleted — this guards
+   against new contamination rather than rewriting committed evidence — but
+   their counts can no longer grow.
+3. **A `Stop` hook harvests before teardown** (`.claude/hooks/pygram-harvest.sh`).
+   It does not commit: it leaves `corpus.jsonl` dirty in the working tree, which
+   is visible in `git status` and is the session's call to make.
+
+**The committed counts remain inflated.** Fixes 1 and 2 stop them growing; they
+do not retroactively correct the 138 laundered records, and no honest way to do
+so exists from the data — the log that would say which sightings were real is
+gone. Treat the current `count` column as an upper bound, and treat any build
+order derived from it as provisional until the corpus has grown from sessions
+running the fixed pipeline.
+
+**Two traps, both paid for here.** The first version of the loop test passed
+with every defence removed: its stand-in shim honoured only `$PYGRAM_LOG`, and
+`runOne` deliberately strips that variable while keeping `HOME` — so the
+stand-in wrote nowhere and a green test proved nothing. A stand-in must
+reproduce the real shim's fallback path. And mutation-testing the two defences
+separately is what showed the test was hollow; running it against the fixed code
+alone would not have.
+
 ## 8. Work breakdown
 
 | # | piece | artifact | state |
@@ -319,8 +435,8 @@ every change.
 | 5 | capture harness + corpus growth | `scripts/pygram-capture/` | in progress |
 | 6 | the variant + build | `pygram/`, `scripts/pygram-build.sh` | in progress |
 | 7 | the frozen shim stdlib | `pygram/lib/` | in progress |
-| 8 | live cold/warm measurement in the real VM | `tests/e2e/sandbox-perf.spec.js` case | blocked on 6 |
-| 9 | image delivery, staged | `scripts/build-sandbox-image.sh` | blocked on 8 |
+| 8 | live cold/warm measurement in the real VM | `scripts/pygram-vm-measure.mjs` | **done** — §1a, measured 2026-08-14 |
+| 9 | image delivery, staged | `scripts/build-sandbox-image.sh` | pygram installs; the alias-vs-alongside call is now an owner decision with evidence (§1a) |
 | — | `pygramd` | — | **not being built** — §3a |
 
 ## 8a. The optimisation pass (2026-08-14)

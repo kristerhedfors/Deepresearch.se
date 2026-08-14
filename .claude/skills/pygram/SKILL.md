@@ -155,6 +155,30 @@ Two rules that keep the evidence honest:
   theoretical — two credential-shaped tokens were redacted on the first real
   harvest.
 
+**Separate FILES did not achieve separation, and the first harvest was mostly
+fiction** (found 2026-08-14 — `docs/PYGRAM.md` §7a). The conformance runner
+executes every corpus entry, resolved the reference interpreter by NAME, and so
+found the capture shim first on `$PATH`: every run logged 212 invocations that
+the next harvest merged back as observed evidence. **138 of the 197 "observed"
+programs were byte-identical to seed programs**, and 139 sat at `count=8` — one
+per conformance run, not a Zipfian spread. `--plan` ranks build order by those
+counts, so the loop ranked guessed-at programs above real ones. Meanwhile the log
+at `$HOME/.pygram/` never reached the repo: `corpus.jsonl` was committed once and
+every `first_seen` falls in one 36-minute window.
+
+Now: the runner resolves a real CPython ELF **and** spawns with
+`PYGRAM_CAPTURE=0` (either alone closes the loop); harvest drops seed-identical
+sightings as `seedCollision` and says so on every run; a `Stop` hook harvests
+before teardown without committing. **The committed counts are still inflated** —
+the fixes stop them growing, nothing can retroactively correct them — so treat
+`count` as an upper bound and any build order from it as provisional.
+
+Two traps if you touch this: a stand-in shim in a test must reproduce the real
+one's `$HOME/.pygram/` fallback, because `runOne` strips `PYGRAM_LOG` but keeps
+`HOME` — the first loop test passed with every defence removed. And mutate the
+defences **separately**; running the test against fixed code alone would not
+have caught that.
+
 ## 4. Building
 
 ```bash
@@ -286,6 +310,48 @@ Rebuilding after a **config** change needs the generated headers dropped —
 `.mk` change does **not** invalidate the frozen artifacts either; drop
 `build-pygram/frozen_mpy` and `frozen_content.{c,o}` when changing
 `MPY_CROSS_FLAGS`.
+
+## 4d. Measuring in a REAL VM (the number §2 accepts on)
+
+```bash
+sudo bash scripts/build-sandbox-image.sh alpine alpine-i386-test 512   # needs root + loop mount
+node scripts/pygram-vm-measure.mjs build/alpine-i386-test.ext2 --repeats 5
+```
+
+This needs no deploy, no R2 and no live site: it serves a local ext2 over HTTP
+Range, boots the pinned CheerpX in headless Chromium with the same device stack
+and mounts as `public/js/sandbox.js`, and times probes against a fresh IDB cache.
+
+**Quote the BYTES column, not the milliseconds.** The harness streams over
+loopback and production streams over a WebSocket, so timings are optimistic by
+~26× (`python3 --version`: 318 ms here, 8573 ms in production). Bytes are
+transport-independent and are what the cost model is built on.
+
+Results (2026-08-14, `docs/PYGRAM.md` §1a): `pygram -c 'import json…'` streams
+**zero bytes** cold — the frozen stdlib confirmed directly, not projected — and
+**CPython cannot run a one-liner in this image at all**: `python3 -c 'print(1+1)'`
+streams ~2.3 MB, freezes, and wedges the VM (verified over 435 s of static byte
+counters; `-S` does not help), while `python3 --version` succeeds in 318 ms.
+
+Six obstacles, all of which will recur:
+
+- **Every HTTPS request from Chromium resets through the agent proxy**, so the
+  CheerpX CDN import is unreachable from the browser. The tool vendors the
+  engine into `.cache/cheerpx/` and lazily mirrors misses server-side — the
+  server can reach the CDN even though the browser cannot.
+- **`HttpBytesDevice` refuses to initialise without `ETag` or `Last-Modified`.**
+  R2 sends an ETag so production gets this free; any hand-rolled origin must.
+- **CheerpX loads a wider asset graph than its loader names** — `tun/direct.js`,
+  `tun/ipstack.js`, `tun/wasm_exec.js` all load at boot with networking unused.
+  Enumerating by hand does not converge; fetch-on-miss does.
+- **`pgrep -f` / `pkill -f` kills the calling shell** when the pattern appears in
+  its own command line. This is already trap #4 in §5 and it still cost three
+  shells. Enumerate `/proc/*/cmdline`, or bind by port.
+- **`| head -N` in a monitored pipeline delivers nothing** until N lines
+  accumulate, so a live run looks hung when it is fine. Write to a file.
+- **Escaping crosses JS → shell → Python.** `\d` silently became a literal
+  backslash and the probe printed `[]` at exit 0 — measuring the wrong thing
+  successfully. Use `[0-9]` and avoid the layers.
 
 ## 5. Traps already paid for
 
