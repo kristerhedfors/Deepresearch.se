@@ -308,6 +308,73 @@ The corpus drives the build order: implement in descending order of how many
 entries a feature unblocks, and re-run the conformance diff against CPython on
 every change.
 
+### 7a. The feedback loop that made the first harvest mostly fiction
+
+Capture worked from the day it shipped. Growth did not, and the frequency table
+was measuring the wrong thing. Both were found on 2026-08-14, by reading the
+committed corpus rather than the code.
+
+**The corpus fed itself.** The conformance runner executes every corpus entry
+under a reference interpreter, and it resolved that interpreter by NAME — so it
+found the capture shim sitting first on `$PATH`, which logged each run and then
+exec'd the real CPython. The comparison still passed, so nothing looked wrong.
+The next harvest merged those runs back in as observed evidence. The result:
+**138 of the first harvest's 197 "observed" programs were byte-identical to
+hand-written seed programs**, and the counts were not a distribution at all —
+
+```
+1x:1   2x:10  3x:7  4x:1  5x:1  8x:139  9x:25  10x:11  12x:1  45x:1
+```
+
+139 entries seen *exactly* eight times is eight conformance runs, not eight
+decisions to write a program. Real usage is Zipfian; this is a test loop. Since
+`--plan` ranks the build order by those counts, the loop did not merely add
+noise — it ranked the programs someone **guessed at** above the ones an agent
+actually typed. Stripping seed programs, pygram's own build chatter and trivial
+probes left **35 unique programs**, of which about four were genuinely
+task-driven.
+
+**Nothing persisted.** The log lives at `$HOME/.pygram/invocations.jsonl` —
+outside the repo, in an ephemeral container — and nothing ever ran the harvest.
+`corpus.jsonl` was committed exactly once (`b07654c1`); every entry's
+`first_seen` falls inside a single 36-minute window, and every session since
+captured into a file that died with its container.
+
+Three fixes, in the order they matter:
+
+1. **The runner no longer feeds the log.** `referencePython()` resolves to a
+   real CPython ELF via `findRealCPython` (the same helper the gate uses, for
+   the same reason — measuring the shim as a baseline once projected a 330-second
+   cold cost), and `runOne` spawns with `PYGRAM_CAPTURE=0`. Either alone closes
+   the loop; both are kept because they fail differently. Pinned by
+   `tests/pygram/conformance.test.mjs`, whose loop test asserts an empty log
+   after a full run.
+2. **Harvest enforces the separation it documents.** A sighting whose program
+   is byte-identical to a seed program is dropped and counted as
+   `seedCollision`, reported on every run. Keeping the two *files* apart never
+   achieved separation on its own, because the pipeline kept copying one into
+   the other. Existing contaminated records are **not** deleted — this guards
+   against new contamination rather than rewriting committed evidence — but
+   their counts can no longer grow.
+3. **A `Stop` hook harvests before teardown** (`.claude/hooks/pygram-harvest.sh`).
+   It does not commit: it leaves `corpus.jsonl` dirty in the working tree, which
+   is visible in `git status` and is the session's call to make.
+
+**The committed counts remain inflated.** Fixes 1 and 2 stop them growing; they
+do not retroactively correct the 138 laundered records, and no honest way to do
+so exists from the data — the log that would say which sightings were real is
+gone. Treat the current `count` column as an upper bound, and treat any build
+order derived from it as provisional until the corpus has grown from sessions
+running the fixed pipeline.
+
+**Two traps, both paid for here.** The first version of the loop test passed
+with every defence removed: its stand-in shim honoured only `$PYGRAM_LOG`, and
+`runOne` deliberately strips that variable while keeping `HOME` — so the
+stand-in wrote nowhere and a green test proved nothing. A stand-in must
+reproduce the real shim's fallback path. And mutation-testing the two defences
+separately is what showed the test was hollow; running it against the fixed code
+alone would not have.
+
 ## 8. Work breakdown
 
 | # | piece | artifact | state |
