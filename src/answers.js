@@ -22,7 +22,7 @@ import { jsonResponse } from "./http.js";
 /** @typedef {import('./settings.js').Identity} Identity */
 /**
  * A D1 `answers` row as the read path selects it.
- * @typedef {{ status: string, ts: number, text?: string | null, stats_json?: string | null }} AnswerRow
+ * @typedef {{ status: string, ts: number, text?: string | null, stats_json?: string | null, trail_json?: string | null }} AnswerRow
  */
 
 export const ANSWER_TTL_MS = 15 * 60 * 1000;
@@ -45,7 +45,7 @@ export const RUNNING_STALE_MS = 50 * 1000;
  * @param {AnswerRow | null | undefined} row
  * @param {number} now
  * @param {number} [staleMs]
- * @returns {{ status: "running" | "lost" } | { status: "done", text: string, stats: any } | null}
+ * @returns {{ status: "running" | "lost" } | { status: "done", text: string, stats: any, trail: any[] } | null}
  */
 export function projectAnswer(row, now, staleMs = RUNNING_STALE_MS) {
   if (!row) return null;
@@ -61,7 +61,17 @@ export function projectAnswer(row, now, staleMs = RUNNING_STALE_MS) {
   } catch {
     stats = null;
   }
-  return { status: "done", text: row.text || "", stats };
+  // The research trail, when the run recorded one. A row written before the
+  // column existed reads back NULL, and a corrupt value is dropped rather
+  // than thrown: an answer must recover with no steps rather than not at all.
+  let trail = [];
+  try {
+    const parsed = row.trail_json ? JSON.parse(row.trail_json) : null;
+    if (Array.isArray(parsed)) trail = parsed;
+  } catch {
+    trail = [];
+  }
+  return { status: "done", text: row.text || "", stats, trail };
 }
 
 // Called at stream start (metadata only — no content yet): gives the
@@ -120,16 +130,25 @@ export async function heartbeatAnswer(env, log, requestId, userId) {
  * @param {number | string} userId
  * @param {string} text
  * @param {unknown} stats the done-event stats footer, stored as JSON
+ * @param {unknown[]} [trail] the run's status events (steps and searches), so
+ *   a recovered answer can be explored and not just read — feedback #67
  */
-export async function saveAnswer(env, log, requestId, userId, text, stats) {
+export async function saveAnswer(env, log, requestId, userId, text, stats, trail) {
   try {
     const db = await getDb(env);
     if (!db) return;
     await db
       .prepare(
-        "INSERT OR REPLACE INTO answers (request_id, user_id, ts, status, text, stats_json) VALUES (?, ?, ?, 'done', ?, ?)",
+        "INSERT OR REPLACE INTO answers (request_id, user_id, ts, status, text, stats_json, trail_json) VALUES (?, ?, ?, 'done', ?, ?, ?)",
       )
-      .bind(requestId, String(userId), Date.now(), text, JSON.stringify(stats))
+      .bind(
+        requestId,
+        String(userId),
+        Date.now(),
+        text,
+        JSON.stringify(stats),
+        Array.isArray(trail) && trail.length ? JSON.stringify(trail) : null,
+      )
       .run();
   } catch (err) {
     log.warn("answers.save_failed", { error: (/** @type {any} */ (err))?.message || String(err) });

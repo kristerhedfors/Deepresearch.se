@@ -619,11 +619,25 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
     // `any` (not the SseEvent union) so the callback stays assignable to the
     // wider emit signatures pipeline.js/geocode.js declare; the wire
     // vocabulary is documented as SseEvent in src/types.d.ts.
+    // The RESEARCH TRAIL, captured off the same funnel every event already
+    // goes through. Parked with the answer so a run whose stream dropped
+    // comes back explorable rather than as bare prose — feedback #67 ("i
+    // cannot explorre the research steps taken here in the response as i used
+    // to"), filed on a 244-second run from a phone. Bounded: a long run emits
+    // hundreds of events and this is a D1 column, not a log.
+    /** @type {any[]} */
+    const trail = [];
+    const TRAIL_TYPES = new Set(["step_start", "step_done", "search_start", "search_done"]);
+    const TRAIL_MAX = 400;
+
     /** @param {any} obj one SSE event object */
     const emit = (obj) => {
       const chunk = obj.choices?.[0]?.delta?.content;
       if (chunk) answer.text += chunk;
       else if (obj.status?.type === "discard_text") answer.text = "";
+      if (obj.status && TRAIL_TYPES.has(obj.status.type) && trail.length < TRAIL_MAX) {
+        trail.push(obj.status);
+      }
       if (obj.error) emittedError = String(obj.error);
       if (disconnect.gone) return; // client gone: finish anyway, park in the cache
       try {
@@ -968,7 +982,7 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
       // Park the finished answer for recovery. The client DELETEs it the
       // moment the stream arrives intact, so content normally lives here
       // for seconds; a dropped client polls it back within the TTL.
-      await saveAnswer(env, log, requestId, identity.id, answer.text, stats);
+      await saveAnswer(env, log, requestId, identity.id, answer.text, stats, trail);
       try {
         controller.enqueue(encoder.encode("data: [DONE]\n\n"));
         controller.close();

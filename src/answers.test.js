@@ -37,7 +37,35 @@ describe("projectAnswer", () => {
       status: "done",
       text: "",
       stats: null,
+      trail: [],
     });
+  });
+
+  test("the research trail comes back so a recovered answer stays explorable", () => {
+    // Feedback #67: a recovered run replayed text + stats only, so its whole
+    // research trail was missing and the steps could not be explored.
+    const trail = [
+      { type: "search_start", round: 1, query: "a", source: "web" },
+      { type: "search_done", round: 1, query: "a", source: "web", results: 3 },
+    ];
+    const out = projectAnswer(
+      { status: "done", ts: 5, text: "hi", stats_json: null, trail_json: JSON.stringify(trail) },
+      10,
+    );
+    assert.deepEqual(out.trail, trail);
+  });
+
+  test("a row written before the trail column reads back as no trail, not a throw", () => {
+    // Every deployed row predates the column and returns NULL for it.
+    assert.deepEqual(projectAnswer({ status: "done", ts: 5, text: "hi", stats_json: null }, 10).trail, []);
+  });
+
+  test("a malformed or non-array trail degrades to none, keeping the answer", () => {
+    for (const trail_json of ["{bad", '"a string"', "42", "null", '{"not":"an array"}']) {
+      const out = projectAnswer({ status: "done", ts: 5, text: "hi", stats_json: null, trail_json }, 10);
+      assert.equal(out.text, "hi", trail_json);
+      assert.deepEqual(out.trail, [], trail_json);
+    }
   });
 
   test("done with malformed stats_json degrades stats to null, keeps the text", () => {
