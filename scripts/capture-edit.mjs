@@ -4,8 +4,8 @@
 // in, a LinkedIn-ready MP4 out. The second half of the capture pipeline —
 // `tests/capture.mjs` records, this edits. See the **video-capture** skill.
 //
-//   node scripts/capture-edit.mjs captures/2026-08-10/research__…      one run
-//   node scripts/capture-edit.mjs --all captures/2026-08-10            every run
+//   node scripts/capture-edit.mjs captures/2026-08-14/cyber__…        one run
+//   node scripts/capture-edit.mjs --all captures/2026-08-14           every run
 //   node scripts/capture-edit.mjs <dir> --dry-run                      plan only
 //
 // What it does, in order:

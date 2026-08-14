@@ -805,6 +805,11 @@ visitor gets), one starter prompt each, `--budget 60`:
 | 3 | research | `res-sv-elpris` (sv) | 54 s | 34 s, 12.5 MB |
 | 4 | scholar | `sch-vitamin-d` | 56 s | 25 s, 9.8 MB |
 
+Rows 2 and 3 are the record of a batch, not of the deck: both clips were
+DELETED on 2026-08-14 along with `#CAP-17` and `#CAP-18`, because the agent
+they demonstrate no longer exists (§8a). The table stays as written — it says
+what the first batch verified, and that is still what it verified.
+
 What that settled, each of which was an open caveat when this document was
 first written:
 
@@ -840,5 +845,45 @@ phase; this is a per-run knob, not a bug.
   reasoned and unit-tested, and the page has been rendered at phone width in a
   headless browser — but no real touch screen has dragged a card. The four test
   points in `docs/test-requests/` exist for this.
-- **Nothing has been swiped yet.** The four captures above sit at status
-  `new`; no like or feedback verdict has round-tripped through the live API.
+- **Verdicts have round-tripped.** `#CAP-20`, `#CAP-21` and `#CAP-22` each came
+  back `needs_work` with a written note, so the feedback half of the loop is
+  proven end to end. No `like` has been filed yet.
+
+## 8a. Retiring an agent's clips — the Cyber batch (2026-08-14)
+
+The `research` agent was retired on 2026-08-13, which left four published
+clips demonstrating a chat mode a visitor can no longer select: `#CAP-2`
+(`res-news-tech`), `#CAP-3` (`res-sv-elpris`), `#CAP-17` (`res-policy-aiact`)
+and `#CAP-18` (`res-health-glp1`). All four were **deleted** — row, review
+rows and both R2 objects — with `scripts/captures --delete`, on the owner's
+instruction rather than by default. Archiving is the reversible alternative
+and is the right call when the clip still shows something the product does;
+these did not.
+
+Five Cyber clips replaced them, recorded against the live site with
+`openai/gpt-oss-120b` at `--budget 90`, cut with
+`--speed 1.25 --wait speed --min-still 3500`:
+
+| # | Starter | Recorded | Final |
+|---|---|---|---|
+| 23 | `cyb-sv-exponerade` (sv) | 1m 16s | 40 s, 8.7 MB |
+| 24 | `cyb-banner-inference` (en) | 1m 14s | 34 s, 8.5 MB |
+| 25 | `cyb-cve-exploitable` (en) | 46 s | 32 s, 7.6 MB |
+| 26 | `cyb-kev-catalogue` (en) | 1m 21s | 37 s, 10.3 MB |
+| 27 | `cyb-owasp-top10` (en) | 1m 41s | 44 s, 12.5 MB |
+
+Two things the batch is worth remembering for:
+
+- **The run-verification gate earned its keep on the first run.** The queue's
+  head starter, `cyb-attack-surface`, opens *"I will name a domain —"*; the
+  agent replied `What is the domain?` and stopped. That is correct product
+  behaviour and a useless clip, and the gate failed it on `empty_answer`
+  (19 characters) rather than publishing it. **A placeholder starter — one
+  whose text promises input the capture never supplies — cannot be captured
+  unattended.** `cyb-street-view-site` and `cyb-sv-gata` are the same shape;
+  reach past them with `--offset` rather than expecting a clip. That is why
+  the five above come from offsets 1–3, 5 and 10 instead of the first five.
+- **The clips are honest about a layout defect.** `#CAP-27`'s OWASP
+  edition-comparison table overflows the portrait frame — the right column is
+  cut off for its whole time on screen. It was published as recorded: the
+  review feed is where a defect gets seen, and re-cutting around one hides it.

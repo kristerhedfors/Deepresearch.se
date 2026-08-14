@@ -7,22 +7,27 @@
 # two of (record → edit → PUBLISH → REVIEW).
 #
 # Publishing a finished clip (after `npm run capture:edit`), three calls:
-#   scripts/captures --add '{"label":"Deep Research answers a geothermal question","agent":"research","model":"mistral-small","prompt":"How much of Icelands electricity comes from geothermal?","starter":"geo-01","lang":"en","shape":"portrait","duration_ms":8400,"source_ms":41000,"cut_ms":30000,"speed":1.5,"wait_mode":"speed","width":1080,"height":1350}'
-#   scripts/captures --upload 12 captures/2026-08-10/research__…/final.mp4
-#   scripts/captures --poster 12 captures/2026-08-10/research__…/poster.jpg
+#   scripts/captures --add '{"label":"Cyber ranks an exposed attack surface","agent":"cyber","model":"openai/gpt-oss-120b","prompt":"What does CISAs KEV catalogue tell a defender that a CVSS score does not?","starter":"cyb-kev-catalogue","lang":"en","shape":"portrait","duration_ms":8400,"source_ms":41000,"cut_ms":30000,"speed":1.5,"wait_mode":"speed","width":1080,"height":1350}'
+#   scripts/captures --upload 12 captures/2026-08-14/cyber__…/final.mp4
+#   scripts/captures --poster 12 captures/2026-08-14/cyber__…/poster.jpg
 #
 # --add prints the new id (and the two upload URLs). The whole edit report can
 # ride along as a "meta" object — edit.json is exactly that shape:
 #   scripts/captures --add "$(jq '{label:("Capture " + (.meta.slug // "")), agent:.meta.agent, model:.meta.model, prompt:.meta.prompt, starter:.meta.starter, lang:.meta.lang, shape:.shape, duration_ms:.output_ms, source_ms:.source_ms, cut_ms:.cut_ms, speed:.speed, wait_mode:.wait_mode, width:.probe.width, height:.probe.height, size_bytes:.probe.bytes, meta:.}' <dir>/edit.json)"
+#
+# Publishing a whole batch in a loop needs the id back as DATA, not prose.
+# --json goes BEFORE --add or after the payload, never between: --add takes the
+# next word as its body, so `--add --json '{…}'` posts the flag and drops the row.
+#   id=$(scripts/captures --json --add "$payload" | jq -r .capture.id)
 #
 # Reading the deck:
 #   scripts/captures                        the un-swiped deck (status=new), readable text
 #   scripts/captures --all                  every clip, any status
 #   scripts/captures --status needs_work    the RE-SHOOT list — what came back with feedback
 #                                           (new|liked|needs_work|archived)
-#   scripts/captures --agent research       one agent / one model
-#   scripts/captures --model mistral-small
-#   scripts/captures --q "geothermal"       substring match on label OR prompt
+#   scripts/captures --agent cyber          one agent / one model
+#   scripts/captures --model openai/gpt-oss-120b
+#   scripts/captures --q "OWASP"            substring match on label OR prompt
 #   scripts/captures --id 12                one clip (incl. every review note + versions)
 #   scripts/captures --json                 JSON instead of text
 #   scripts/captures --queue-status         what the top-up needs: how far the unanswered
@@ -135,11 +140,17 @@ upload_file() {
 case "$action" in
   add)
     out="$(curl_auth -X POST -H 'content-type: application/json' -d "$arg" "$BASE_URL/api/admin/captures")"
-    if command -v jq >/dev/null 2>&1; then
+    # --json keeps the response machine-readable, because publishing a BATCH
+    # means piping the new id straight into --upload. The default prose form
+    # starts with the word "capture", which a `jq -r .capture.id` on the other
+    # end of the pipe reads as a parse error and turns into an empty id — and
+    # an empty id makes the two uploads no-ops that still exit 0. Five clips
+    # were published rowless-then-videoless that way on 2026-08-14.
+    if [ "$format" = "json" ] || ! command -v jq >/dev/null 2>&1; then
+      printf '%s\n' "$out"
+    else
       # The id is what the two uploads need next, so it is what gets printed.
       printf '%s\n' "$out" | jq -r 'if .capture then "capture \(.capture.id)\n  video:  \(.upload.video)\n  poster: \(.upload.poster)" else . end'
-    else
-      printf '%s\n' "$out"
     fi
     exit 0 ;;
   set)
@@ -189,12 +200,12 @@ case "$action" in
   add-version)
     out="$(curl_auth -X POST -H 'content-type: application/json' -d "$arg" \
       "$BASE_URL/api/admin/captures/$id/versions")"
-    if command -v jq >/dev/null 2>&1; then
+    if [ "$format" = "json" ] || ! command -v jq >/dev/null 2>&1; then
+      printf '%s\n' "$out"
+    else
       # The version number is what the two uploads need next, so it is what
       # gets printed.
       printf '%s\n' "$out" | jq -r 'if .capture then "capture \(.capture.id) is now v\(.capture.version)\n  video:  \(.upload.video)\n  poster: \(.upload.poster)" else . end'
-    else
-      printf '%s\n' "$out"
     fi
     exit 0 ;;
   upload-version)

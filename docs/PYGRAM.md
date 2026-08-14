@@ -323,6 +323,87 @@ every change.
 | 9 | image delivery, staged | `scripts/build-sandbox-image.sh` | blocked on 8 |
 | — | `pygramd` | — | **not being built** — §3a |
 
+## 8a. The optimisation pass (2026-08-14)
+
+The first working binary was 390,456 B. A pass over the build flags and the
+variant config took it to **304,440 B — 22.0% off — with conformance unchanged
+at 0 MISMATCH**, and made a real workload 17% faster on the way.
+
+Every line below was measured on this container by rebuilding and re-running
+both gates. Nothing here was accepted on reasoning alone.
+
+| change | file size | what moved |
+|---|---|---|
+| baseline | 390,456 B | — |
+| drop DWARF unwind tables | −49,152 B | `.eh_frame` 51,644 → 388 B |
+| drop `framebuf` + `uctypes` | −12,288 B | 6,606 B + 3,183 B of module code |
+| link-time optimisation | −16,384 B | `.text` 230,855 → 213,253 B |
+| drop `micropython` module, 1-byte qstr hash | −4,096 B | 2,100 B of sections, crossing a page |
+| `-z noseparate-code` | −4,096 B | inter-segment padding, no section changed |
+| **total** | **304,440 B** | **−86,016 B, −22.0%** |
+
+Projected cold cost falls 504 ms → 393 ms on the gate's own model. File opens
+were 0 before and after: that metric was already at its floor.
+
+**The largest single win was dead weight nothing could read.** `.eh_frame` held
+51,644 B of DWARF unwind tables, 13% of the stripped binary. MicroPython raises
+through setjmp/longjmp — the NLR machinery — never through a DWARF unwinder,
+and `nm` finds zero `_Unwind`, `__cxa` or `backtrace` symbols in the artifact.
+`--gc-sections` never removed it because it does not collect `.eh_frame`, so
+the section survived every earlier size pass while looking like it belonged.
+
+**LTO is the only change that improved both terms.** It removed 16,384 B *and*
+took a loop/regex/json workload from 518 ms to 433 ms, because it inlines and
+drops code across translation units where `--gc-sections` only works at section
+granularity. It is also the one change with a real correctness hazard: LTO
+across `setjmp`/`longjmp` is the classic miscompile, and that is precisely how
+MicroPython raises. Six `nlr-*` entries in `tests/pygram/seed-corpus.jsonl` pin
+it — deep recursive unwinding, `finally` ordering, locals live across a raise,
+generator close, 2000 sequential raises reusing the NLR buffer, and the
+recursion limit. All six match CPython exactly.
+
+### Rejected, with the measurement that rejected them
+
+Recorded so the same ideas are not re-tried by whoever reads the config next.
+
+- **`MICROPY_OPT_COMPUTED_GOTO = 0`** saves 4,096 B and is still wrong. It costs
+  0.14 ms per program — the real corpus of 340 programs went 630 ms → 678 ms —
+  against a one-time 5 ms cold saving, so it only pays back after ~37 programs
+  in a session. That is 1.3% of size for 7.6% slower execution.
+- **`MICROPY_PY_BUILTINS_COMPLEX = 0`** saves 3,248 B of `.text`, and
+  `complex(1,2)` correctly exits 90 because `complex` is already in the
+  CPython-builtins table of `pygram_unsupported.h`. But the **`1j` literal** is
+  caught by the lexer instead and exits 1 with a `SyntaxError`, so a caller
+  cannot tell "pygram is too small" from "your program is wrong" (§6). Closing
+  that needs a new hunk in the port patch, which is upstream-tracking surface
+  the variant deliberately does not spend — for 1% of the binary and the loss of
+  a genuine CPython builtin.
+- **`ld.lld`** cannot link this at all: GCC's LTO plugin emits GIMPLE and lld
+  wants LLVM bitcode, so `main` comes out undefined from `Scrt1.o`.
+- **`ld.gold --icf=safe`** links and folds 14 bytes. MicroPython has almost no
+  byte-identical functions. Gold also rejects `-z noseparate-code`, so it lands
+  156 B larger than the default linker while adding a toolchain dependency.
+
+### Two measurement traps this pass paid for
+
+- **The stripped file size is quantised to the 4,096 B page.** Three different
+  changes each reported exactly −4,096 B, and one of them had moved only 2,100 B
+  of actual content. `size -A` is the fine-grained truth; the file size is what
+  the gate measures because it is what the sandbox streams.
+- **A synthetic workload overstates VM speed by about tenfold.** The heavy
+  benchmark (20,000 iterations plus regex plus json) said computed-goto was
+  worth 48 ms. Timing the 340 real corpus programs said 0.14 ms each. The corpus
+  is the honest instrument, because it is the distribution pygram was built for.
+
+### What is now at its floor
+
+A six-module import — `re, json, os, base64, collections, datetime` — costs
+**13 syscalls in total and zero file syscalls beyond `execve`**. The `sys.path`
+probe pathology that `docs/PYGRAM-RESEARCH.md` §2.5 measured at 56 syscalls is
+gone, not merely reduced. Since cold cost tracks bytes and opens, and opens are
+0, **bytes are the only lever left** — which is why this pass is entirely a
+size pass.
+
 ## 9. What would make this project wrong
 
 Recorded up front so it can be checked rather than argued:
