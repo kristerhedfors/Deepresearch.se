@@ -50,6 +50,16 @@ FROZEN_MANIFEST ?= $(VARIANT_DIR)/manifest.py
 # applied inside freeze(), which is too late for the manifest's own isdir check.
 export PYGRAM_LIB_DIR := $(abspath $(VARIANT_DIR)/lib)
 
+# >>> SHARED TOOLCHAIN BLOCK — do not move the markers.
+# Everything between this line and the closing marker is EXTRACTED VERBATIM by
+# `scripts/pygram-build.sh --stock` into the control variant's makefile. That is
+# how the stock-MicroPython benchmark control is kept apples-to-apples: libc,
+# architecture, optimisation level and strip state cannot drift between the two
+# builds, because there is only one copy of these lines in the repository.
+# Editing them changes BOTH binaries. Anything below the closing marker is a
+# pygram config choice and is deliberately NOT shared — that is what the
+# benchmark measures (docs/PYGRAM-BENCH-LEDGER.md).
+#
 # The static musl link. CC/LD come in from the environment (scripts/pygram-build.sh
 # points them at the musl-i386 wrapper it builds); this file only asks for the
 # static link and the i386 linker emulation.
@@ -69,6 +79,7 @@ COPT = -Os -DNDEBUG
 # musl has no __stack_chk_fail_local, and the guard is pointless in a binary
 # whose whole input is a program the caller already controls.
 CFLAGS += -fno-stack-protector
+# <<< SHARED TOOLCHAIN BLOCK
 
 # Error strings stay as plain text in .rodata rather than being compressed.
 # Two reasons, both correctness rather than taste:

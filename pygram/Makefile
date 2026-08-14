@@ -8,15 +8,18 @@
 #   make verify     build, then run the size/opens gate and the conformance battery
 #   make gate       the gate alone, against an existing binary
 #   make conformance  the corpus diff against the system CPython
+#   make stock      build the benchmark control: unpatched upstream MicroPython
+#   make bench      build both if needed, then run the performance benchmark
 #   make clean      drop the built binary (keeps the musl + MicroPython cache)
 #   make distclean  drop the cache too — the next build re-downloads
 
 PYGRAM_DIR := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 ROOT := $(PYGRAM_DIR)..
 BIN := $(PYGRAM_DIR)build/pygram
+STOCK := $(PYGRAM_DIR)build/micropython-stock
 WORK ?= $(PYGRAM_DIR).build
 
-.PHONY: all build verify gate conformance clean distclean
+.PHONY: all build verify gate conformance stock bench clean distclean
 
 all: build
 
@@ -34,6 +37,16 @@ conformance: $(BIN)
 
 $(BIN):
 	@bash $(ROOT)/scripts/pygram-build.sh
+
+# The benchmark control. It is a SEPARATE checkout of the same pinned commit, so
+# building it never invalidates the pygram build's object files.
+stock: $(STOCK)
+
+$(STOCK):
+	@bash $(ROOT)/scripts/pygram-build.sh --stock
+
+bench: $(BIN) $(STOCK)
+	@node $(ROOT)/scripts/pygram-bench.mjs
 
 clean:
 	rm -rf $(PYGRAM_DIR)build
