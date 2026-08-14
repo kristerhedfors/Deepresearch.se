@@ -954,20 +954,82 @@ img.doc-img { max-width: 100%; height: auto; border-radius: 10px; border: 1px so
   cursor: pointer;
 }
 .debug-copy-btn:hover { color: var(--text); }
-/* Processing indicator: a tiny site icon that pulses in and out, each
-   pulse screwing the inner yellow spiral inward (grow, twist clockwise)
-   and back outward (shrink, untwist) via alternate direction. */
+/* Processing indicator: the site icon as a COIN spinning on a flat surface —
+   upright on its rim, turning about the VERTICAL axis, so the face sweeps
+   toward the viewer, thins to its edge, and comes round again. This is the
+   waiting symbol wherever the 3D canvas symbols can't be drawn (no canvas, a
+   mount that threw); the canvas siblings neutralize this background +
+   animation the moment they mount (balloon-spinner.js / plant-spinner.js).
+   The clock is public/js/logo-spinner.js — it sets the custom properties
+   below; the defaults here are what an unmounted slot spins at. */
 .spin, .typing-icon {
+  /* Defaults for the settle's two geometry properties, so the keyframes below
+     resolve even if the class is ever applied without the clock; logo-spinner.js
+     sets both inline (inline wins) and removes them again on stop(). */
+  --coin-from: 0deg;
+  --coin-turn: 1080deg;
   background: url("/icons/icon-192.png?v=4") center / cover;
   border-radius: 50%;
   flex: none;
-  animation: pulse-screw 1.4s ease-in-out infinite alternate;
+  animation: coin-spin var(--coin-spin-ms, 1150ms) linear infinite;
 }
 .spin { width: 1rem; height: 1rem; }
 .typing-icon { width: 32px; height: 32px; }
-@keyframes pulse-screw {
-  from { transform: scale(.72) rotate(0deg); }
-  to   { transform: scale(1.15) rotate(180deg); }
+/* The 2° of rotateX is the surface being seen from slightly above rather than
+   dead level — enough that the coin reads as standing ON something. */
+@keyframes coin-spin {
+  from { transform: perspective(220px) rotateX(2deg) rotateY(0deg); }
+  to   { transform: perspective(220px) rotateX(2deg) rotateY(360deg); }
+}
+
+/* The completion SETTLE (logo-spinner.js finish()): the coin keeps turning but
+   slows — the keyframe stops eat ever less of `--coin-turn` — while the tilt
+   grows and the rattle gets faster and wobblier the flatter it gets (the stops
+   crowd together, the rock about Z peaks mid-fall and dies out), until it comes
+   to rest LYING FLAT at rotateX(60deg): a disc on a flat surface seen from 30°
+   above it. `--coin-from` is the angle it was caught at and `--coin-turn` the
+   whole number of turns left to land FACE-ON, so the settle picks up exactly
+   where the loop was, with no snap. It holds the landed coin a beat, then
+   fades as the real ✓ takes the slot — the same run/hold/check pacing the
+   balloon, umbrella and plant finales use (umbrella-spinner.js FINALE_*). */
+.spin.coin-landing, .typing-icon.coin-landing {
+  animation:
+    coin-land var(--coin-land-ms, 640ms) linear forwards,
+    coin-rest var(--coin-rest-ms, 420ms) ease-in var(--coin-rest-delay, 880ms) forwards;
+}
+@keyframes coin-land {
+  0%   { transform: perspective(220px) translateY(0)    rotateX(2deg)  rotateY(var(--coin-from))                                rotateZ(0deg); }
+  12%  { transform: perspective(220px) translateY(0)    rotateX(5deg)  rotateY(calc(var(--coin-from) + var(--coin-turn) * .22)) rotateZ(1.5deg); }
+  24%  { transform: perspective(220px) translateY(1%)   rotateX(10deg) rotateY(calc(var(--coin-from) + var(--coin-turn) * .42)) rotateZ(-2.5deg); }
+  36%  { transform: perspective(220px) translateY(2%)   rotateX(16deg) rotateY(calc(var(--coin-from) + var(--coin-turn) * .58)) rotateZ(3.5deg); }
+  48%  { transform: perspective(220px) translateY(4%)   rotateX(24deg) rotateY(calc(var(--coin-from) + var(--coin-turn) * .71)) rotateZ(-5deg); }
+  60%  { transform: perspective(220px) translateY(6%)   rotateX(33deg) rotateY(calc(var(--coin-from) + var(--coin-turn) * .81)) rotateZ(6.5deg); }
+  70%  { transform: perspective(220px) translateY(7.5%) rotateX(41deg) rotateY(calc(var(--coin-from) + var(--coin-turn) * .875)) rotateZ(-7deg); }
+  78%  { transform: perspective(220px) translateY(9%)   rotateX(48deg) rotateY(calc(var(--coin-from) + var(--coin-turn) * .925)) rotateZ(6deg); }
+  85%  { transform: perspective(220px) translateY(10%)  rotateX(54deg) rotateY(calc(var(--coin-from) + var(--coin-turn) * .96))  rotateZ(-4deg); }
+  91%  { transform: perspective(220px) translateY(10%)  rotateX(58deg) rotateY(calc(var(--coin-from) + var(--coin-turn) * .982)) rotateZ(2.5deg); }
+  96%  { transform: perspective(220px) translateY(10%)  rotateX(61deg) rotateY(calc(var(--coin-from) + var(--coin-turn) * .995)) rotateZ(-1deg); }
+  100% { transform: perspective(220px) translateY(10%)  rotateX(60deg) rotateY(calc(var(--coin-from) + var(--coin-turn)))       rotateZ(0deg); }
+}
+/* The handoff: the landed coin fades where it lies and the caller prepends the
+   real .check in its place (activity.js markFinished / turns.js setText). */
+@keyframes coin-rest {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+/* Reduced motion: no spin, no settle, no 3D — the icon just breathes so the
+   slot still reads as "working". logo-spinner.js returns a no-op handle here,
+   so the ✓ arrives immediately instead of behind a flourish. */
+@media (prefers-reduced-motion: reduce) {
+  .spin, .typing-icon,
+  .spin.coin-landing, .typing-icon.coin-landing {
+    animation: coin-idle 1.6s ease-in-out infinite alternate;
+    transform: none;
+  }
+}
+@keyframes coin-idle {
+  from { opacity: .45; }
+  to   { opacity: 1; }
 }
 
 /* Typing indicator */
