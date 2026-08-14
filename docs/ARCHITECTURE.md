@@ -160,7 +160,7 @@ rest of the document elaborates.
 | **On-device model** | browser, WebGPU | downloaded weights in OPFS | the browser only | answers with no provider and no server in the path |
 | **Worker** (`src/index.js`) | Cloudflare edge | request state only | the operator | routing, the identity gate, every server capability |
 | **Agent registry** (`src/agent-registry.js`, `sdk/AGENTS.json` served as `public/introspect/agents.json`) | Worker, cached per isolate | the shipped agent specs — no user data at all | anyone; it is a public build artifact | resolving the turn's agent and its **capability**, which decides which corpora, which retrieval blocks and which third-party intelligence the turn may reach. Consulted on every request since 2026-08-13 |
-| **Research pipeline** (`src/pipeline.js`) | Worker | the request while it runs | the operator (`chat_logs` unless incognito) | triage → search → gap → synthesis → validation, deterministic, no function calling |
+| **Research pipeline** (`src/pipeline.js`) | Worker | the request while it runs | the operator (`chat_logs` unless incognito) | triage → read linked pages → search → gap → synthesis → validation, deterministic, no function calling |
 | **Grants & tokens** (`src/websearch.js`, `src/proxy*.js`, `src/server-token.js`, `src/pool-token.js`) | Worker + D1 | a `jti`, a quota, a counter — **no content** | the operator; the minting account | lending a Se/cure session bounded capability without giving it an account |
 | **Knowledge inbox** (`src/knowledge.js`) | Worker + D1 | sealed conclusion envelopes | the workspace admin at import; **the server can decrypt** (agent key in D1) | aggregating findings from many participants into one place |
 | **D1** | Cloudflare | accounts, quotas, config, `chat_logs`, meters, boards, game saves | the operator | identity, quotas, logging, every metered surface |
@@ -532,7 +532,8 @@ flowchart TD
     QZ -- no --> T["Phase 1 · Triage (JSON)<br/>direct | clarify | research plan<br/>+ complexity · sub-questions · quiz flag"]
     T -- direct --> DR["Stream direct answer"] --> DONE
     T -- clarify --> CL["Emit one clarifying question"] --> DONE
-    T -- "research (or triage failed → fallback query)" --> SW["Phase 2 · Search wave<br/>Exa + registry sources (HF Hub)<br/>dedupe · cap · source registry"]
+    T -- "research (or triage failed → fallback query)" --> NU["Phase 1.5 · Read linked pages<br/>URLs the message named, fetched<br/>direct from the Worker (named-urls.js)"]
+    NU --> SW["Phase 2 · Search wave<br/>Exa + registry sources (HF Hub)<br/>dedupe · cap · source registry"]
     SW --> GAP{"Phase 3 · Gap loop<br/>fitsDeadline? searches < cap?"}
     GAP -- "budget cut / cap" --> SY
     GAP -- proceed --> GC["Gap check (JSON)<br/>audit coverage vs source digest<br/>+ sub-questions · domain dominance"]

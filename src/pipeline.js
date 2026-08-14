@@ -66,6 +66,7 @@ import {
 import { runEnrichments } from "./enrichment.js";
 import { focusQueriesOnSubject } from "./query-focus.js";
 import { fetchContents, webSearch } from "./exa.js";
+import { extractNamedUrls, readNamedUrls } from "./named-urls.js";
 import { SEARCH_SOURCES, capabilityAllowsSource, leadSourceIds } from "./search-sources.js";
 // Folds a source's reported dense-retrieval spend into the request's tally —
 // the one thing the orchestrator does with it; pricing is billing.js's.
@@ -657,6 +658,12 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
   }
   if (decision.action === "clarify") return runClarify(ctx, decision.question);
 
+  // ---- Phase 1.5: read the pages the user NAMED --------------------------
+  // Before searching for sources, read the ones we were handed. See
+  // runNamedUrlReads / src/named-urls.js — feedback #67 was a question whose
+  // five pasted URLs the run then spent fifteen search angles failing to
+  // rediscover.
+  await runNamedUrlReads(ctx);
   // ---- Phase 2: initial search wave -------------------------------------
   await runSearches(ctx, decision.queries, 1);
   // Quiz from web research: one search wave gathers the material, then the
@@ -2425,6 +2432,73 @@ async function jsonPhase(ctx, { label, statKey, messages, maxTokens, recordStat 
 // Results are processed back in original order so source numbering
 // (citations) stays deterministic regardless of which fetch happens to
 // resolve first.
+/**
+ * Phase 1.5 — direct web browsing of the URLs the latest user message named.
+ *
+ * A COMPLEMENT to the search index, never a replacement: it runs before the
+ * first wave so the pages the user pointed at are numbered first and are in
+ * front of every later phase (gap check, digest, synthesis, validation), and
+ * the wave then runs exactly as it would have. Feedback #67 (chat_logs
+ * #1729): five URLs were pasted with per-URL instructions, and the run
+ * reported one of them "not retrieved by any of the angles run".
+ *
+ * Fail-soft in every branch (invariant 2) — a page that refuses, stalls or
+ * returns something unreadable is one source fewer, never a broken chat.
+ * @param {PipelineCtx} ctx
+ */
+async function runNamedUrlReads(ctx) {
+  const { env, log, emit, state } = ctx;
+  const urls = extractNamedUrls(ctx.cleanLastUser);
+  if (!urls.length) return;
+
+  // Rendered as a SEARCH card rather than a plain step, so the pages read
+  // land in the research trail as the same expandable list of clickable
+  // sources every other leg produces. The client pairs the two events on
+  // `source|query`, so both must carry the identical pair — hence the label
+  // is built once, from the count we have at the start.
+  const label = `${urls.length} linked page${urls.length === 1 ? "" : "s"}`;
+  const card = { round: 0, query: label, source: "named-urls", service: "Direct page read" };
+  emit({ status: { type: "search_start", ...card } });
+
+  let result = null;
+  try {
+    result = await readNamedUrls(env, log, urls);
+  } catch (/** @type {any} */ err) {
+    log.warn("chat.named_urls_failed", { error: err?.message || String(err) });
+  }
+  recordPhase(ctx.model, "fetch", result?.durationMs || 0);
+  const items = result?.items || [];
+  state.namedUrlCount = items.length;
+  const finish = (/** @type {any[]} */ sources) =>
+    emit({
+      status: {
+        type: "search_done",
+        ...card,
+        results: sources.length,
+        duration_ms: result?.durationMs || 0,
+        sources,
+      },
+    });
+  if (!items.length) {
+    // Nothing readable. The card still resolves — a leg that vanishes reads
+    // as a leg that never ran, which is the visibility complaint in the same
+    // feedback entry.
+    finish([]);
+    return;
+  }
+  // The registry and the digest are both capped, and these pages were asked
+  // for BY NAME: widen both so a linked page cannot be pushed out by the
+  // search results that follow it. Same reasoning (and the same feedback-#61
+  // precedent) as the aux-source reserve in absorbAuxResult.
+  state.plan.maxSources += items.length;
+  state.plan.digestCap = Math.min(
+    state.plan.digestCap + items.length * DIGEST_CHARS_PER_SOURCE,
+    DIGEST_CAP_CEILING,
+  );
+  addSources(state, items);
+  finish(items.map((i) => ({ title: i.title, url: i.url })));
+}
+
 /**
  * @param {PipelineCtx} ctx
  * @param {string[]} queries

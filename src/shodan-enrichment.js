@@ -31,7 +31,7 @@
 // the registry reports it as `shodan_intent`.
 
 import { withAppendedText } from "./conversation.js";
-import { pickShodanTarget } from "./shodan-text.js";
+import { pickShodanTarget, shodanNamedInLatest } from "./shodan-text.js";
 import { runShodanLookup, runShodanSearch } from "./shodan.js";
 
 /** @typedef {import('./types.js').Env} Env */
@@ -61,6 +61,18 @@ import { runShodanLookup, runShodanSearch } from "./shodan.js";
 export async function runShodanEnrichment(env, log, step, stepDone, conversation, slice) {
   const target = pickShodanTarget(conversation);
   if (!target) {
+    if (shodanNamedInLatest(conversation)) {
+      // The user asked for Shodan BY NAME and nothing in the conversation
+      // could be turned into a host, IP or company. Staying silent here is
+      // what produced feedback #68: the answer had no way to know the service
+      // was never called, and narrated a shodan.io search page that the WEB
+      // search had returned as though it were Shodan output. A step costs one
+      // line and makes the miss visible in the research trail.
+      slice.intent = "named-unresolved";
+      step("shodan", "Querying Shodan…");
+      stepDone("shodan", "Shodan: nothing to look up — name a host, an IP or a company");
+      return conversation;
+    }
     // Ran, matched nothing. Recorded so the chat_logs meta says so rather
     // than looking identical to a turn where the knob was off.
     slice.intent = "none";
@@ -99,7 +111,12 @@ export async function runShodanEnrichment(env, log, step, stepDone, conversation
 function stepLabel(target, count) {
   const plural = count === 1 ? "" : "s";
   if (target.kind === "search") {
-    return count ? `Shodan: ${count} host${plural} matching ${target.query}` : `Shodan: no hosts match ${target.query}`;
+    // The provenance tail matters most here: an org resolved by walking the
+    // conversation back was never typed in the message the user is looking at.
+    const from = target.followUp ? " (from an earlier message)" : "";
+    return count
+      ? `Shodan: ${count} host${plural} matching ${target.query}${from}`
+      : `Shodan: no hosts match ${target.query}${from}`;
   }
   if (!count) return "Shodan: no records for the host(s) named";
   const named = [...target.ips, ...target.hostnames][0] || "";
