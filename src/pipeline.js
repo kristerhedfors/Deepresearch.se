@@ -2553,9 +2553,23 @@ async function runSearches(ctx, queries, round) {
   // the three complaints in feedback #44 ("the arXiv searches took close to a
   // minute"). Results are still absorbed in a fixed order (web, then registry
   // order) so source numbering stays deterministic.
+  //
+  // …UNLESS this request declares `state.webAfterAux` (feedback #69), in which
+  // case both legs are still DISPATCHED together — the latency lesson of #44
+  // is not spent to buy the ordering — but the web leg is ABSORBED second, so
+  // the registry numbers the auxiliary sources ahead of it. That is the whole
+  // of the ordering: for an agent whose evidence is a corpus and whose web leg
+  // only corroborates it, "the literature first, the web after" has to be true
+  // of the numbered list the answer model reads, not merely of the order two
+  // fetches were started in. Declared per request and read generically here —
+  // core never learns which agent asked for it, the same seam as forceAux /
+  // auxOnly.
+  const webLast = /** @type {any} */ (state).webAfterAux === true;
   const auxWave = startAuxSearches(ctx, batch, round, lead);
-  if (web) await runWebLeg(ctx, batch, round);
+  const webWave = web ? startWebLeg(ctx, batch, round) : null;
+  if (webWave && !webLast) await webWave();
   const auxItems = await auxWave();
+  if (webWave && webLast) await webWave();
 
   // Fail-soft on the lead itself (invariant 2): "only arXiv" must never become
   // "no sources at all". A leading source that contributed nothing releases
@@ -2569,12 +2583,32 @@ async function runSearches(ctx, queries, round) {
 }
 
 /**
- * The Exa leg of one wave: every planned query, concurrently.
+ * The Exa leg of one wave, dispatched and awaited in one go. The fail-soft
+ * lead release is its only remaining caller — every ordinary wave goes through
+ * startWebLeg so it can overlap the auxiliary sources.
  * @param {PipelineCtx} ctx
  * @param {string[]} batch
  * @param {number} round
  */
 async function runWebLeg(ctx, batch, round) {
+  await startWebLeg(ctx, batch, round)();
+}
+
+/**
+ * Dispatch the Exa leg of one wave — every planned query, concurrently — and
+ * return the awaiter that absorbs the results into the registry.
+ *
+ * Split in two for the same reason startAuxSearches is: the caller decides
+ * WHEN the results land without deciding when the fetches start. Absorption is
+ * what fixes a source's number, so an agent that wants its corpus numbered
+ * ahead of the web (state.webAfterAux) can have that without either leg
+ * waiting on the other.
+ * @param {PipelineCtx} ctx
+ * @param {string[]} batch
+ * @param {number} round
+ * @returns {() => Promise<void>}
+ */
+function startWebLeg(ctx, batch, round) {
   const { env, log, emit, state } = ctx;
   state.searchCount += batch.length;
   // ISSUED, not planned. `ranQueries` is written by takeSearchBatch before the
@@ -2592,9 +2626,11 @@ async function runWebLeg(ctx, batch, round) {
   // …and every search honours the source the user's "Exa web
   // search" setting selects (state.searchSource — "" = whatever the site is
   // configured to use).
-  const results = await Promise.all(
+  const running = Promise.all(
     batch.map((query) => webSearch(env, log, query, state.plan.searchDepth, { source: state.searchSource || "" })),
   );
+  return async () => {
+  const results = await running;
   for (let i = 0; i < batch.length; i++) {
     const query = batch[i];
     const result = results[i];
@@ -2618,8 +2654,35 @@ async function runWebLeg(ctx, batch, round) {
         cached: !!result.cached,
       },
     });
-    addSources(state, result.items);
+    addSources(state, labelWebItems(state, result.items));
   }
+  };
+}
+
+/**
+ * Stamp this request's web results with the standing caveat the request
+ * declared for them (`state.webSourceNote`), as their FIRST highlight.
+ *
+ * The digest is what the answer model reads, so a caveat has to travel on the
+ * source itself to be reliably applied to it — the same reasoning that puts
+ * "Preprint, not peer-reviewed" at the head of every arXiv item rather than in
+ * a prompt sentence about arXiv. An agent whose evidence is a peer-reviewed
+ * corpus needs its web leg to arrive visibly labelled as the weaker thing it
+ * is, or the numbered list flattens the distinction the agent exists to make.
+ *
+ * Generic: core reads a string off the state and never learns which agent set
+ * it, or why. Most requests set nothing and the items pass through untouched.
+ * @param {PipelineState} state
+ * @param {import('./search-sources.js').SearchSourceItem[]} items
+ * @returns {import('./search-sources.js').SearchSourceItem[]}
+ */
+export function labelWebItems(state, items) {
+  const note = /** @type {any} */ (state).webSourceNote;
+  if (typeof note !== "string" || !note.trim() || !Array.isArray(items)) return items || [];
+  return items.map((item) => ({
+    ...item,
+    highlights: [note, ...(Array.isArray(item?.highlights) ? item.highlights : [])],
+  }));
 }
 
 // Auxiliary search sources (src/search-sources.js) alongside a wave's Exa
@@ -2793,12 +2856,15 @@ function planAuxSource(ctx, source, batch, leading) {
   // at all — a source's own intent, and even a lead, cannot get it in.
   //
   // It exists because an agent can be defined by what it must NOT consult as
-  // much as by what it must. The Deep Science agent answers exclusively from
-  // peer-reviewed publications, and its `search.web: false` only stands the
-  // Exa leg down; without this, arXiv would still fire on a physics question
-  // and hand it preprints, which is precisely the thing that agent promises
-  // not to do. Read generically here — ids off the state, no source named —
-  // so it composes with any future agent that needs the same restriction.
+  // much as by what it must. The Deep Science agent's SCIENTIFIC evidence is
+  // peer-reviewed publications; without this, arXiv would still fire on a
+  // physics question and hand it preprints, which is precisely the thing that
+  // agent promises not to do. Note that this narrows the AUXILIARY sources
+  // only: since 2026-08-14 that agent also runs a web leg, behind the
+  // literature and labelled as web reporting (state.webAfterAux /
+  // webSourceNote), and auxOnly has nothing to say about it. Read generically
+  // here — ids off the state, no source named — so it composes with any future
+  // agent that needs the same restriction.
   const only = /** @type {any} */ (state).auxOnly;
   if (Array.isArray(only) && only.length && !only.includes(source.id)) return [];
   // …and the STANDING narrowing beside that per-request one: a source may
@@ -2881,7 +2947,14 @@ function planAuxSource(ctx, source, batch, leading) {
 async function runOneAuxSearch(ctx, plan) {
   const { env, log } = ctx;
   try {
-    const r = await plan.source.search(env, log, plan.query, { skipKeys: plan.skipKeys });
+    // `asked` is the CLEAN, pre-enrichment user message (gateLastUser), handed
+    // to every source for the same reason pickQuery already gets it: a planned
+    // angle is triage's paraphrase, and a source whose behaviour turns on what
+    // the READER asked cannot read it off that paraphrase without inheriting
+    // triage's word choices. Pre-enrichment for the reason leadingSources
+    // documents at length — prose this pipeline appended to the message must
+    // never be able to trip a gate the user did not trip themselves.
+    const r = await plan.source.search(env, log, plan.query, { skipKeys: plan.skipKeys, asked: ctx.gateLastUser });
     // Provider spend the source reported (search-sources.js `spend`): the
     // hosted dense tiers cost Berget money per leg, and a request runs several
     // — multiple angles, two corpora, several gap rounds — so it ACCUMULATES

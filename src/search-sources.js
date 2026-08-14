@@ -106,10 +106,14 @@ import {
  *   The per-request search ceiling while LEADING (defaults to maxPerRequest).
  *   Higher is the point: with the web leg down, covering only one of the
  *   wave's angles leaves the turn thinner than the un-led one was.
- * @property {(env: import('./types.js').Env, log: import('./types.js').Logger, query: string, opts: { skipKeys?: Set<string> }) => Promise<SearchSourceResult>} search
+ * @property {(env: import('./types.js').Env, log: import('./types.js').Logger, query: string, opts: { skipKeys?: Set<string>, asked?: string }) => Promise<SearchSourceResult>} search
  *   The timeout-bounded, fail-soft client call. `skipKeys` is the set of
  *   attempt keys earlier waves consumed (skip them — don't re-fetch the
- *   same results).
+ *   same results). `asked` is the reader's own latest message, clean of any
+ *   enrichment prose — for a source whose FILTERING (not just its ranking)
+ *   depends on what was asked, and which therefore cannot read it off the
+ *   planner's paraphrase of the question. Optional: a source that ignores it
+ *   behaves identically whether or not it is passed.
  * @property {string} service
  *   Human display name shown on the client's search cards and carried on
  *   the search events as `service` (e.g. "Hugging Face Hub" — the UI must
