@@ -66,7 +66,17 @@ const URL_RE = /https?:\/\/[^\s<>"'`|\\^{}[\]]+/gi;
  * @returns {boolean}
  */
 function isPrivateHost(hostname) {
-  const h = String(hostname || "").toLowerCase().replace(/^\[|\]$/g, "");
+  // The TRAILING DOT is stripped with the brackets, and for the same reason:
+  // `localhost.` is the fully-qualified spelling of `localhost` and resolves
+  // to it, but it is not string-equal to it and does not end in `.local`
+  // either — so every NAME rule below missed it while the IP rules held.
+  // Found 2026-08-14 probing the guard after PR #441 (`localhost.`,
+  // `foo.internal.` and `box.local.` were all accepted). Normalize once, here,
+  // rather than at each comparison, so a rule added later inherits it.
+  const h = String(hostname || "")
+    .toLowerCase()
+    .replace(/^\[|\]$/g, "")
+    .replace(/\.+$/, "");
   if (!h) return true;
   if (h === "localhost" || h === "::1") return true;
   if (/\.(local|internal|localhost|home\.arpa)$/.test(h)) return true;
@@ -183,6 +193,68 @@ export function highlightsOf(text) {
   return out;
 }
 
+/** How many redirects a named URL may take before we give up on it. */
+const MAX_REDIRECTS = 5;
+
+/** The headers every hop carries — see the comment at the call site. */
+const READ_HEADERS = {
+  // Identify honestly and ask for documents. No cookies, no referrer,
+  // nothing derived from the conversation or the account.
+  "user-agent": "DeepResearch.se/1.0 (+https://deepresearch.se; direct page read)",
+  accept: "text/html,application/xhtml+xml,text/plain;q=0.8,*/*;q=0.5",
+  "accept-language": "en,sv;q=0.8",
+};
+
+/**
+ * Fetch a URL, following redirects OURSELVES so the host guard runs on every
+ * hop rather than only on the address the user typed.
+ *
+ * `redirect: "follow"` checks nothing after the first request: a public URL
+ * that answers `302 → http://169.254.169.254/` is followed inside fetch, and
+ * `extractNamedUrls`'s verdict on the typed URL never applies to where the
+ * bytes actually came from. That is the standard redirect-based SSRF shape,
+ * and the guard exists precisely to make it unreachable. So: `manual`, and
+ * every `Location` goes back through `isPrivateHost` before it is followed.
+ *
+ * Relative and scheme-relative `Location` values are resolved against the hop
+ * they came from, which is what makes the check meaningful — a bare `/admin`
+ * inherits the previous host and must be judged on THAT host, not refused for
+ * having none.
+ * @param {string} start
+ * @param {AbortSignal} signal
+ * @param {Logger} log
+ * @returns {Promise<Response | null>}
+ */
+async function followChecked(start, signal, log) {
+  let url = start;
+  for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+    const resp = await fetch(url, { signal, redirect: "manual", headers: READ_HEADERS });
+    if (resp.status < 300 || resp.status > 399) return resp;
+    const location = resp.headers.get("location");
+    if (!location) return resp; // a 3xx with nowhere to go is just a bad response
+    /** @type {URL} */
+    let next;
+    try {
+      next = new URL(location, url);
+    } catch {
+      log.info("named_urls.skipped", { reason: "redirect_unparsable" });
+      return null;
+    }
+    if (next.protocol !== "http:" && next.protocol !== "https:") {
+      log.info("named_urls.skipped", { reason: "redirect_scheme" });
+      return null;
+    }
+    if (isPrivateHost(next.hostname)) {
+      // The one that matters: the typed URL passed and the destination did not.
+      log.warn("named_urls.blocked", { reason: "redirect_private", hop: hop + 1 });
+      return null;
+    }
+    url = next.toString();
+  }
+  log.info("named_urls.skipped", { reason: "redirect_limit" });
+  return null;
+}
+
 /**
  * Read one URL. Resolves to a source item, or null for every failure mode —
  * the caller cannot tell them apart and must not care (invariant 2).
@@ -197,17 +269,8 @@ async function readOne(url, log, outerSignal) {
   const onOuter = () => controller.abort();
   outerSignal?.addEventListener("abort", onOuter);
   try {
-    const resp = await fetch(url, {
-      signal: controller.signal,
-      redirect: "follow",
-      headers: {
-        // Identify honestly and ask for documents. No cookies, no referrer,
-        // nothing derived from the conversation or the account.
-        "user-agent": "DeepResearch.se/1.0 (+https://deepresearch.se; direct page read)",
-        accept: "text/html,application/xhtml+xml,text/plain;q=0.8,*/*;q=0.5",
-        "accept-language": "en,sv;q=0.8",
-      },
-    });
+    const resp = await followChecked(url, controller.signal, log);
+    if (!resp) return null;
     if (!resp.ok) {
       log.info("named_urls.skipped", { reason: "status", status: resp.status });
       return null;
