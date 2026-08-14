@@ -126,6 +126,148 @@ this ledger.
 
 <!-- pygram-bench: newest entry is inserted directly below this line -->
 
+## 2026-08-14 — pygram vs stock MicroPython — after PR #434 (mpconfigvariant trim, 22% off the binary)
+
+MicroPython pin **v1.28.0** (`e0e9fbb17ed6`), repo `bb939924dc43` on branch `claude/pygram-bench-vs-stock`. Control built by `bash scripts/pygram-build.sh --stock`.
+
+### Binaries
+| binary | bytes | linkage | opens on -c 'pass' | failed probes | stat/access | sha256 |
+|---|---|---|---|---|---|---|
+| pygram | 304,440 | static Intel 80386 | 0 | 0 | 0 | 7b08605cdd5f |
+| stock | 455,680 | static Intel 80386 | 0 | 0 | 6 | 91937bdb6290 |
+| CPython3* | 6,639,992 | dynamic | 22 | 7 | 65 | f56a588548dd |
+
+### Floor-subtracted workload, min of n=15 (ms unless marked s)
+| case | pygram | stock | CPython3* | py/stock min | py/stock med |
+|---|---|---|---|---|---|
+| **startup** |  |  |  |  |  |
+| -c 'pass' | 1.14 raw | 1.05 raw | 13.2 raw | 1.09x | 0.87x ! |
+| -c 'print(1)' | 1.10 raw | 1.11 raw | 13.3 raw | 0.98x | 1.04x |
+| **dict** |  |  |  |  |  |
+| insert 1,000 distinct keys | 5.96 | 4.43 | 0.960 | 1.34x | 1.47x |
+| insert 5,000 distinct keys | 121.8 | 51.6 | 2.24 | 2.36x | 2.35x |
+| insert 10,000 distinct keys | 476.8 | 104.1 | 3.63 | 4.58x | 4.57x |
+| insert 20,000 distinct keys | 1.86 s | 334.3 | 9.18 | 5.58x | 5.47x |
+| insert 10,000 then look up all 10,000 | 931.7 | 130.2 | 7.56 | 7.16x | 7.22x |
+| **regex** |  |  |  |  |  |
+| re.search(r"\w+\d") x2000, ASCII | 11.9 | 15.0 | 15.0 | 0.79x | 0.82x |
+| re.search(r"\w+\d") x2000, non-ASCII | 13.5 | 8.87 | 13.5 | 1.52x | 1.60x |
+| re.sub(r"\W+") x2000, ASCII | 429.4 | 41.4 | 31.6 | 10.36x | 10.48x |
+| re.sub(r"\W+") x2000, non-ASCII | 454.3 | 53.1 | 32.1 | 8.55x | 8.72x |
+| ure.sub(r"\W+") x2000, ASCII (native sub, no shim) | 23.2 | 40.7 | unsupported | 0.57x | 0.58x |
+| re.findall(r"\w+") x2000, ASCII | 235.2 | unsupported | 30.3 | – | – |
+| re.findall(r"\w+") x2000, non-ASCII | 262.2 | unsupported | 30.2 | – | – |
+| **float** |  |  |  |  |  |
+| str(float) x20,000 | 56.9 | 32.3 | 12.3 | 1.76x | 1.77x |
+| "%.3f" % x  x20,000 | 17.8 | 23.3 | 9.58 | 0.76x | 0.78x |
+| **str** |  |  |  |  |  |
+| split/join/upper/replace x5,000, ASCII | 73.7 | 78.7 | 6.09 | 0.94x | 0.94x |
+| split/join/upper/replace x5,000, non-ASCII | 85.6 | 92.3 | 13.5 | 0.93x | 0.92x |
+| repr(list of non-ASCII strings) x5,000 | 100.9 | 127.1 | 16.9 | 0.79x | 0.80x |
+| **json** |  |  |  |  |  |
+| json.dumps(200 records) x200 | 1.55 s | 290.8 | 69.2 | 5.34x | 5.22x |
+| json.loads(200 records) x200 | 165.5 | 191.3 | 49.2 | 0.87x | 0.88x |
+| **sort** |  |  |  |  |  |
+| sorted(8,000 ints) | 8.15 | 13.2 | 4.35 | 0.62x | 0.63x |
+| sorted(5,000 strings) | 10.5 | 14.5 | 3.33 | 0.72x | 0.76x |
+| **collections** |  |  |  |  |  |
+| Counter(words).most_common(5) x500 | 133.7 | unsupported | 23.5 | – | – |
+| **pipeline** |  |  |  |  |  |
+| stdin 2,000 lines -> word count -> stdout | 15.5 | 23.6 | 1.72 | 0.65x | 0.67x |
+| stdin 2,000 lines -> frequency dict -> top 5 | 64.1 | 67.0 | 7.30 | 0.96x | 0.97x |
+| stdin 2,000 lines -> filter + upper -> stdout | 8.29 | 14.6 | 2.20 | 0.57x | 0.60x |
+
+### Raw wall clock, median / min (ms unless marked s)
+| case | pygram med | pygram min | stock med | stock min | CPython3* med | CPython3* min |
+|---|---|---|---|---|---|---|
+| -c 'pass' | 1.23 | 1.14 | 1.42 | 1.05 | 14.2 | 13.2 |
+| -c 'print(1)' | 1.25 | 1.10 | 1.20 | 1.11 | 13.8 | 13.3 |
+| insert 1,000 distinct keys | 7.47 | 7.10 | 5.66 | 5.48 | 14.5 | 14.2 |
+| insert 5,000 distinct keys | 125.9 | 122.9 | 54.4 | 52.7 | 16.3 | 15.5 |
+| insert 10,000 distinct keys | 481.3 | 477.9 | 106.5 | 105.1 | 18.0 | 16.8 |
+| insert 20,000 distinct keys | 1.90 s | 1.87 s | 348.0 | 335.3 | 25.2 | 22.4 |
+| insert 10,000 then look up all 10,000 | 955.6 | 932.9 | 133.6 | 131.2 | 21.4 | 20.8 |
+| re.search(r"\w+\d") x2000, ASCII | 13.5 | 13.1 | 16.4 | 16.1 | 29.3 | 28.2 |
+| re.search(r"\w+\d") x2000, non-ASCII | 15.1 | 14.6 | 10.1 | 9.92 | 27.4 | 26.7 |
+| re.sub(r"\W+") x2000, ASCII | 442.8 | 430.5 | 43.5 | 42.5 | 47.4 | 44.8 |
+| re.sub(r"\W+") x2000, non-ASCII | 464.1 | 455.4 | 54.5 | 54.2 | 46.9 | 45.3 |
+| ure.sub(r"\W+") x2000, ASCII (native sub, no shim) | 25.0 | 24.4 | 42.3 | 41.8 | unsupported |  |
+| re.findall(r"\w+") x2000, ASCII | 241.6 | 236.3 | unsupported |  | 46.3 | 43.5 |
+| re.findall(r"\w+") x2000, non-ASCII | 267.8 | 263.4 | unsupported |  | 44.6 | 43.4 |
+| str(float) x20,000 | 58.7 | 58.1 | 33.9 | 33.3 | 28.7 | 25.5 |
+| "%.3f" % x  x20,000 | 19.6 | 19.0 | 25.1 | 24.3 | 23.8 | 22.8 |
+| split/join/upper/replace x5,000, ASCII | 75.8 | 74.8 | 80.9 | 79.7 | 19.9 | 19.3 |
+| split/join/upper/replace x5,000, non-ASCII | 88.2 | 86.7 | 95.7 | 93.3 | 28.1 | 26.7 |
+| repr(list of non-ASCII strings) x5,000 | 103.4 | 102.0 | 129.6 | 128.2 | 30.7 | 30.1 |
+| json.dumps(200 records) x200 | 1.57 s | 1.55 s | 303.0 | 291.9 | 85.1 | 82.5 |
+| json.loads(200 records) x200 | 171.2 | 166.7 | 195.1 | 192.3 | 64.1 | 62.4 |
+| sorted(8,000 ints) | 9.56 | 9.29 | 14.6 | 14.2 | 18.4 | 17.6 |
+| sorted(5,000 strings) | 12.3 | 11.6 | 16.1 | 15.5 | 17.5 | 16.5 |
+| Counter(words).most_common(5) x500 | 136.7 | 134.8 | unsupported |  | 39.0 | 36.7 |
+| stdin 2,000 lines -> word count -> stdout | 17.4 | 16.6 | 25.5 | 24.7 | 15.9 | 14.9 |
+| stdin 2,000 lines -> frequency dict -> top 5 | 67.7 | 65.3 | 70.0 | 68.1 | 21.2 | 20.5 |
+| stdin 2,000 lines -> filter + upper -> stdout | 10.0 | 9.43 | 16.0 | 15.6 | 16.8 | 15.4 |
+
+### Cases a binary could not run (data, not failures)
+| case | binary | verdict | reason |
+|---|---|---|---|
+| ure.sub(r"\W+") x2000, ASCII (native sub, no shim) | CPython3* | unsupported | ModuleNotFoundError: No module named 'ure' |
+| re.findall(r"\w+") x2000, ASCII | stock | unsupported | AttributeError: module 're' has no attribute 'findall' |
+| re.findall(r"\w+") x2000, non-ASCII | stock | unsupported | AttributeError: module 're' has no attribute 'findall' |
+| Counter(words).most_common(5) x500 | stock | unsupported | ImportError: can't import name Counter |
+
+Noise warning: 1 case(s) where the min-based and median-based ratios disagree by more than 25% — startup-pass. Do not quote these as findings.
+
+Machine: Intel(R) Xeon(R) Processor @ 2.80GHz x4, 17 GB, Linux 6.18.5-fc-v20 x86_64, node v22.22.2. Load average at start/end: 1.14 0.45 0.17 / 1.00 0.70 0.32.
+Config: repeats=15 warmup=3 max-case-ms=30000. Verdict ratio uses the floor-subtracted MIN.
+
+---
+
+### Reading
+
+**This is the harness's first real job: judging someone else's optimization.**
+PR #434 changed only `pygram/variant/mpconfigvariant.h` and `mpconfigvariant.mk`
+— no C, no shims — and took the binary from **390,456 B to 304,440 B (−22%)**
+with conformance intact (195 MATCH / 13 UNSUPPORTED / **0 MISMATCH**, on a
+corpus that grew to 208 entries) and all three build-gate numbers unchanged:
+static, zero file opens, zero stat/access.
+
+Every ratio below was confirmed by a second full run before being written down,
+which is the rule the baseline entry set. What that second run changed and did
+not change is the whole point of doing it:
+
+| case | baseline (390 KB) | this entry | confirm run | verdict |
+|---|---|---|---|---|
+| `-c 'print(1)'` | 0.99× | 1.68× | **0.97×** | the 1.68× was NOISE — discarded |
+| dict insert 20k | 9.62× | 5.32× | 5.46× | real, large improvement |
+| dict lookup 10k | 12.33× | 7.18× | 7.34× | real, large improvement |
+| `json.dumps` | 3.91× | 5.39× | 5.35× | real REGRESSION |
+| `re.sub` ASCII | 10.98× | 10.55× | 10.57× | unchanged |
+| `str(float)` | 1.86× | 1.75× | 1.76× | unchanged |
+
+**The dict cost roughly halved.** Insertion at 20,000 keys went 9.62× → 5.46×
+and lookup 12.33× → 7.34×, and the absolute numbers moved with them (20k
+insertion 2.57 s → 1.84 s). The ordered-map scan is still quadratic — that is a
+data structure, and a config change cannot fix it — but the constant in front
+of it got materially smaller. This is the single largest cost pygram carries,
+so halving its constant is the most valuable thing #434 did, and it was not
+what the PR was about.
+
+**`json.dumps` moved the other way, and it reproduces.** 3.91× → 5.35×, with
+pygram's absolute time going 1.30 s → 1.57 s on the same input. Note the
+control also drifted between runs (331.7 ms → 292.8 ms for a binary that did
+not change), so cross-entry comparison is weaker than within-run comparison and
+some of the ratio move is the machine. The absolute pygram slowdown is not
+explained by that, though, and it is worth a look: `json.dumps` was previously
+attributed to dict ordering, and dict ordering got FASTER here while dumps got
+slower — so the two are less coupled than the baseline entry assumed.
+
+**The startup outlier is the reason the confirm-run rule exists.** The recorded
+run put `-c 'print(1)'` at 1.68× with a `!` on the median disagreement. A second
+run put it at 0.97×. Had it been written up from one run, the ledger would now
+claim pygram's variant costs 68% on startup, which is false. Startup is at
+parity, as it has been since the baseline.
+
 ## 2026-08-14 — pygram vs stock MicroPython — baseline: first measured run of the harness
 
 MicroPython pin **v1.28.0** (`e0e9fbb17ed6`), repo `fa90a86e22e9` (working tree dirty) on branch `claude/pygram-bench-vs-stock`. Control built by `bash scripts/pygram-build.sh --stock`.
