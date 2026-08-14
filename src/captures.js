@@ -1380,7 +1380,11 @@ export async function handleAdminCaptures(request, env, url, log) {
       label: r.label,
       name: r.name || null,
       agent: r.agent,
-      mode: r.mode || null,
+      // Derived from the agent when the column is empty, exactly as
+      // projectCapture does it. The two projections describe the same row, and
+      // a field that is null in one endpoint and filled in the other is how the
+      // next reader of this list inherits the bug the derivation just fixed.
+      mode: r.mode || modeForAgentId(r.agent) || null,
       model: r.model,
       prompt: r.prompt,
       starter: r.starter || null,
