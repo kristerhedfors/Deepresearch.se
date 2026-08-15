@@ -14,6 +14,8 @@ import { loadAgentRegistry } from "./agent-registry.js";
 // routingNeedsRegistry moved to the shared mode table with the rest of the mode
 // logic (public/js/chat-mode-core.js, re-exported by src/chat-modes.js).
 import { DEFAULT_CHAT_MODE, routingNeedsRegistry } from "./chat-modes.js";
+import { SOURCE_CARRYING_MODES } from "../public/js/chat-mode-core.js";
+import { defaultAgentForMode } from "./agent-spec.js";
 import { SNAPSHOT_PATH } from "../public/js/introspect-core.js";
 import { AGENTS_PATH } from "../public/js/agent-spec-core.js";
 
@@ -95,4 +97,36 @@ test("routingNeedsRegistry says yes to everything, because every mode is a domai
   assert.equal(routingNeedsRegistry(undefined, undefined), true);
   assert.equal(routingNeedsRegistry({ agent: "under-construction" }, "science"), true);
   assert.equal(routingNeedsRegistry({ agent: "" }, "science"), true);
+});
+
+// Which modes carry the source snapshot is stated TWICE: as a hand-written
+// mode list (chat-mode-core.js SOURCE_CARRYING_MODES, which chat.js turns into
+// state.introspection and enrichment.js gates the introspect row on) and as
+// each agent's declared `capability.context`. Every other context block in the
+// registry was converted to the declaration on 2026-08-13 — owasp,
+// ancient-samples, scholar-metrics, entity-method, and the extension blocks all
+// gate on capHasContext — and this one was left behind. It had already drifted:
+// `outrospection` and `models` were in the list and declared nothing.
+//
+// The list stays (it is the fail-soft path when no agent resolves, and /help
+// nulls the capability deliberately), so what is pinned is that the two agree.
+// "When a copy is forced, pin it" — the oauth-store.js DDL precedent.
+test("SOURCE_CARRYING_MODES agrees with what the agents declare", () => {
+  const registry = JSON.parse(readFileSync(join(repoRoot, AGENTS_PATH), "utf8"));
+  const declares = (mode) => {
+    const context = defaultAgentForMode(registry, mode)?.capability?.context;
+    return Array.isArray(context) && context.includes("source-snapshot");
+  };
+  for (const mode of SOURCE_CARRYING_MODES) {
+    assert.equal(declares(mode), true, `${mode} carries the source snapshot but its agent does not declare it`);
+  }
+  // …and the other direction: an agent that declares it must be in the list,
+  // or the declaration is a promise the request path never keeps.
+  for (const agent of registry.agents) {
+    const context = agent?.capability?.context;
+    if (!Array.isArray(context) || !context.includes("source-snapshot")) continue;
+    const mode = (registry.defaults || []).find((d) => d.agent === agent.id)?.mode;
+    if (!mode) continue; // not a mode default — nothing routes to it by mode
+    assert.ok(SOURCE_CARRYING_MODES.includes(mode), `${agent.id} declares source-snapshot but mode ${mode} does not carry it`);
+  }
 });

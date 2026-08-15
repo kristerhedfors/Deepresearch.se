@@ -531,7 +531,8 @@
         "tools": [],
         "toolFallback": "none",
         "context": [
-          "outward-feed"
+          "outward-feed",
+          "source-snapshot"
         ],
         "search": {
           "web": false,
@@ -666,7 +667,8 @@
         "toolFallback": "none",
         "context": [
           "model-catalog",
-          "shell-transcript"
+          "shell-transcript",
+          "source-snapshot"
         ],
         "search": {
           "web": true,
