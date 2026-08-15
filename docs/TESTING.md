@@ -236,7 +236,19 @@ the contract document names actually exists.
 
 Additional server suites cover the request/routing and infra seams:
 `mcp.js` (the PURE JSON-RPC / MCP protocol helpers, asserted to load
-WITHOUT pulling in the pipeline), and the three modules behind connecting an
+WITHOUT pulling in the pipeline), `mcp-modern.js` + `mcp-era.test.js` (the
+STATELESS protocol revision `2026-07-28` served beside the handshake one: era
+detection per request, the three refusal codes `-32020`/`-32021`/`-32022` at the
+statuses the spec assigns them, `resultType` and the caching hints, and the
+narrowed `Origin` rule — the era suite drives both revisions through the real
+handler, because what a client branches on is the HTTP response, not the object a
+helper returned), the three VOICE tool modules (`maps-tools.js` — the EN+SV
+direction vocabulary and the `view` handle codec; `shodan-tools.js`;
+`voice-answer.js` — the removals that make an answer speakable, each pinned to
+show the facts survive them) and `extension-tools.js` (the MCP seam of the
+extension registry: one source for the tool list, the catalog rows and the
+spending set, plus the guard that `src/mcp.js` still names no third-party service
+and reaches the runners dynamically), and the three modules behind connecting an
 external client to it — `mcp-key.js` (the bearer credential: the
 `mck1.<payload>.<hex sig>` wire shape, a mint→verify round-trip preserving the
 claims, a fresh unguessable `jti` per mint, and rejection of expired, tampered,

@@ -83,22 +83,27 @@ test("initializeResult has protocolVersion, serverInfo, and tools capability", (
 
 test("tools/list returns deep_research first plus the literature, adapter and SDK families", () => {
   const r = toolsListResult();
-  assert.equal(r.tools.length, 11);
+  assert.equal(r.tools.length, 10);
   const tool = r.tools[0];
   assert.equal(tool.name, TOOL_NAME);
   assert.equal(tool.name, "deep_research");
   assert.equal(tool, DEEP_RESEARCH_TOOL);
   // Every family rides along in MCP's schema shape (inputSchema, not
   // Anthropic's input_schema) so external agents can search the hosted corpora
-  // and plan against the SDK without shelling into the execution sandbox. The
-  // literature family sits directly behind deep_research — same capability,
-  // different grain.
+  // without shelling into the execution sandbox. The literature family sits
+  // directly behind deep_research — same capability, different grain — and the
+  // EXTENSION tools come last, because they are the only ones an account can be
+  // unable to use for a second reason (its per-extension knob).
+  //
+  // The four sdk_* manifest tools were removed on 2026-08-15: this surface is
+  // shaped for callers without a screen, and a build-planning tool is the
+  // clearest case of one such a caller cannot use.
   assert.deepEqual(
     r.tools.slice(1).map((t) => t.name),
     [
       "literature_search", "literature_fetch", "literature_similar", "literature_corpora",
       "search", "fetch",
-      "sdk_list_modules", "sdk_show_module", "sdk_plan", "sdk_validate",
+      "street_view_look", "place_nearby", "host_intel",
     ],
   );
   for (const t of r.tools.slice(1)) {
@@ -114,6 +119,11 @@ test("tools/list returns deep_research first plus the literature, adapter and SD
   assert.equal(tool.inputSchema.properties.time_budget_s.default, 120);
   assert.equal(tool.inputSchema.properties.web_search.default, true);
   assert.ok(tool.inputSchema.properties.model, "model property");
+  // The two voice-era arguments: which specialist agent answers, and whether the
+  // answer is shaped for a screen or for an ear.
+  assert.ok(tool.inputSchema.properties.agent, "agent property");
+  assert.deepEqual(tool.inputSchema.properties.style.enum, ["text", "voice"]);
+  assert.equal(tool.inputSchema.properties.style.default, "text");
 });
 
 test("the literature family keeps its retrieval half behind a dynamic import", () => {

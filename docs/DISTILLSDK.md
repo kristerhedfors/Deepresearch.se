@@ -34,9 +34,16 @@ DeepResearch.**Se/cure** + DeepResearch.**Se/rver**.
 >   deterministic `FILE:` fenced-block convention. (The retired khaki **SWE**
 >   sibling — "build a new instance of Se/cure" — was folded into SDK mode on
 >   2026-07-19: distilling the Se/cure tier is now SDK mode's core purpose.)
-> - **MCP** — `POST /mcp` exposes `sdk_list_modules` / `sdk_show_module` /
->   `sdk_plan` / `sdk_validate`, so external agents operate on the manifest
->   directly instead of shelling into the execution sandbox.
+> - **MCP** — until 2026-08-15 `POST /mcp` exposed `sdk_list_modules` /
+>   `sdk_show_module` / `sdk_plan` / `sdk_validate`, so external agents operated
+>   on the manifest directly instead of shelling into the execution sandbox. The
+>   four were REMOVED when that surface was reshaped for callers without a
+>   screen: a build-planning tool answers in file trees and dependency orders,
+>   with a build to run afterwards, which is precisely what a voice caller cannot
+>   use. Nothing about the SDK changed — `node sdk/pair-cli.mjs
+>   list|show|plan|validate` is the same pure core, Agent Studio drives it
+>   in-app, and the sandbox route below is unaffected. Re-exposing them over MCP
+>   is a one-entry change in `src/mcp.js` if an external planner ever asks.
 > - **The sandbox** — in developer/SDK mode the source tree (this `sdk/`
 >   included) mounts at `/src` in the in-browser VM, so
 >   `node /src/sdk/pair-cli.mjs …` runs in-guest too.

@@ -15,6 +15,7 @@ import {
   MCP_BUDGET_MIN,
   MCP_TOOL_CATALOG,
   MCP_TOOL_IDS,
+  MCP_VOICE_BUDGET_DEFAULT,
   applyConfigPatch,
   clampMcpBudget,
   defaultMcpConfig,
@@ -22,6 +23,7 @@ import {
   isMcpEndpoint,
   isMcpHost,
   normalizeConfigPatch,
+  normalizeStyle,
   parseMcpConfig,
   resolveResearchArgs,
   toolExposed,
@@ -86,7 +88,7 @@ test("parseMcpConfig reads a stored config and ignores unknown tools", () => {
       bash_lite_mcp: true, // a neighbouring knob — must not disturb this half
       mcp: {
         enabled: true,
-        tools: { deep_research: false, sdk_plan: true, not_a_tool: true },
+        tools: { deep_research: false, host_intel: true, not_a_tool: true },
         defaults: { time_budget_s: 300, web_search: false, model: " some-model " },
         allow_model_override: false,
         key: { jti: "abc", hint: "123456", label: "Laptop", created_at: 5, exp: 9 },
@@ -94,8 +96,8 @@ test("parseMcpConfig reads a stored config and ignores unknown tools", () => {
     }),
   );
   assert.equal(config.tools.deep_research, false);
-  assert.equal(config.tools.sdk_plan, true);
-  assert.equal(config.tools.sdk_list_modules, true, "an unmentioned tool keeps its default");
+  assert.equal(config.tools.host_intel, true);
+  assert.equal(config.tools.street_view_look, true, "an unmentioned tool keeps its default");
   assert.equal("not_a_tool" in config.tools, false);
   assert.deepEqual(config.defaults, { time_budget_s: 300, web_search: false, model: "some-model" });
   assert.equal(config.allow_model_override, false);
@@ -121,10 +123,10 @@ test("the master switch wins over every individual tool row", () => {
 });
 
 test("filterMcpTools narrows the list and drops uncatalogued names", () => {
-  const config = applyConfigPatch(defaultMcpConfig(), { tools: { sdk_plan: false, sdk_validate: false } });
+  const config = applyConfigPatch(defaultMcpConfig(), { tools: { host_intel: false, place_nearby: false } });
   const names = filterMcpTools(config, ALL_MCP_TOOLS).map((t) => t.name);
   assert.ok(names.includes("deep_research"));
-  assert.ok(!names.includes("sdk_plan"));
+  assert.ok(!names.includes("host_intel"));
   assert.deepEqual(filterMcpTools(config, [{ name: "ghost_tool" }]), []);
 });
 
@@ -138,7 +140,31 @@ test("resolveResearchArgs falls back to the account's defaults", () => {
     time_budget_s: 45,
     web_search: true,
     model: "house-model",
+    agent: "",
+    style: "text",
   });
+});
+
+test("voice style lowers the DEFAULT budget and nothing else", () => {
+  const config = applyConfigPatch(defaultMcpConfig(), { defaults: { time_budget_s: 300 } });
+  // A spoken exchange cannot wait five minutes, so the default drops…
+  assert.equal(resolveResearchArgs(config, { style: "voice" }).time_budget_s, MCP_VOICE_BUDGET_DEFAULT);
+  // …but a caller that names a budget gets the one it named, in either style.
+  assert.equal(resolveResearchArgs(config, { style: "voice", time_budget_s: 240 }).time_budget_s, 240);
+  // An account whose own default is already shorter keeps it — this lowers, never raises.
+  const brief = applyConfigPatch(defaultMcpConfig(), { defaults: { time_budget_s: 30 } });
+  assert.equal(resolveResearchArgs(brief, { style: "voice" }).time_budget_s, 30);
+  assert.equal(resolveResearchArgs(config, {}).time_budget_s, 300, "text style is untouched");
+});
+
+test("style and agent are carried through, and junk degrades rather than fails", () => {
+  const config = defaultMcpConfig();
+  assert.equal(resolveResearchArgs(config, { style: "VOICE" }).style, "voice");
+  assert.equal(resolveResearchArgs(config, { style: "interpretive dance" }).style, "text");
+  assert.equal(resolveResearchArgs(config, { style: 7 }).style, "text");
+  assert.equal(resolveResearchArgs(config, { agent: "  cyber " }).agent, "cyber");
+  assert.equal(resolveResearchArgs(config, { agent: 42 }).agent, "");
+  assert.equal(normalizeStyle("voice"), "voice");
 });
 
 test("a caller may narrow the budget and model when the account allows it", () => {
@@ -183,9 +209,9 @@ test("resolveResearchArgs tolerates junk arguments", () => {
 // ---- the PUT body ------------------------------------------------------------
 
 test("normalizeConfigPatch accepts a partial, well-formed body", () => {
-  const r = normalizeConfigPatch({ enabled: false, tools: { sdk_plan: false }, defaults: { time_budget_s: 90 } });
+  const r = normalizeConfigPatch({ enabled: false, tools: { host_intel: false }, defaults: { time_budget_s: 90 } });
   assert.ok(r.ok);
-  assert.deepEqual(r.patch, { enabled: false, tools: { sdk_plan: false }, defaults: { time_budget_s: 90 } });
+  assert.deepEqual(r.patch, { enabled: false, tools: { host_intel: false }, defaults: { time_budget_s: 90 } });
 });
 
 test("normalizeConfigPatch rejects rather than coerces", () => {
@@ -214,8 +240,8 @@ test("normalizeConfigPatch rejects rather than coerces", () => {
 
 test("applyConfigPatch merges tools and defaults key-by-key and never touches the key record", () => {
   const config = { ...defaultMcpConfig(), key: { jti: "j", hint: "h", label: "l", created_at: 1, exp: 2 } };
-  const next = applyConfigPatch(config, { tools: { sdk_plan: false }, defaults: { web_search: false } });
-  assert.equal(next.tools.sdk_plan, false);
+  const next = applyConfigPatch(config, { tools: { host_intel: false }, defaults: { web_search: false } });
+  assert.equal(next.tools.host_intel, false);
   assert.equal(next.tools.deep_research, true, "unmentioned tools survive");
   assert.equal(next.defaults.time_budget_s, MCP_BUDGET_DEFAULT, "unmentioned defaults survive");
   assert.equal(next.defaults.web_search, false);

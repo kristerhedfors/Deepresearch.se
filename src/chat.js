@@ -16,7 +16,7 @@ import { heartbeatAnswer, markAnswerRunning, saveAnswer } from "./answers.js";
 import { recordChatLog, shellLogSummary } from "./chatlog.js";
 import { addUserMessage } from "./user-messages.js";
 import { adminDefaultModelValid, completeJson, DEFAULT_MODEL } from "./berget.js";
-import { resolveJsonModel as resolveJsonPhaseModel } from "./model-routing.js";
+import { resolveJsonModel as resolveJsonPhaseModel, resolveVisionModels } from "./model-routing.js";
 import { denseSpend, exaCost, spendByModel, summarizeSpend } from "./billing.js";
 import { newRetrievalSpend } from "./dense-rag.js";
 // Re-exported so chat.test.js (and any importer) keeps getting it from here.
@@ -1162,11 +1162,10 @@ function resolveEnrichmentOptions(body, env, identity, catalog, model) {
     stored: storedChatMode(identity),
   });
   const modelIsVision = !!catalog?.find((m) => m.id === model)?.vision;
-  const visionCandidates = catalog?.filter((m) => m.vision && m.up).map((m) => m.id) || [];
-  const visionModels = (modelIsVision
-    ? [model, ...visionCandidates.filter((id) => id !== model)]
-    : visionCandidates
-  ).slice(0, 3);
+  // The ranked describe-helper candidates, from the shared leaf (model-routing.js)
+  // so the MCP street-imagery tool — which resolves the same list with no answer
+  // model of its own — cannot drift from this one.
+  const visionModels = resolveVisionModels(catalog, model);
   return {
     ext: resolveExtensionState(body, extensionEnabledMap(env, identity)),
     chatMode,

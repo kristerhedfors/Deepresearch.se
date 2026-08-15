@@ -43,11 +43,23 @@ agent SDK). Alongside it the server re-exposes three more families: the four
 `literature_similar`, `literature_corpora`, via `LITERATURE_MCP_TOOLS` over
 `src/literature-tools.js` + `src/literature-run.js`) that hand an agent the
 two hosted scientific corpora directly — see the section below, it is the
-family with the most surface; DistillSDK's four **manifest tools**
-(`sdk_list_modules`, `sdk_show_module`, `sdk_plan`, `sdk_validate`, via
-`SDK_MCP_TOOLS`) so an external agent can plan against the SDK without
-shelling into the execution sandbox. Nine tools total; the pipeline one is
-the reason the server exists.
+family with the most surface; the two OpenAI **adapter tools** `search` and
+`fetch`, which ChatGPT demands by name; and the three **extension tools**
+`street_view_look`, `place_nearby` and `host_intel` (via `EXTENSION_MCP_TOOLS`
+over `src/extension-tools.js`), the only ones here that reach a third party on
+the caller's behalf. Ten tools total; the pipeline one is the reason the server
+exists.
+
+**THE SURFACE IS SHAPED FOR CALLERS WITHOUT A SCREEN (owner directive,
+2026-08-15).** That is the rule to apply to any proposed tool now: a voice client
+reads the result aloud, so a tool whose answer is a file tree, a URL list or a
+table has no way to land. It is why the four DistillSDK manifest tools
+(`sdk_list_modules`, `sdk_show_module`, `sdk_plan`, `sdk_validate`) were REMOVED
+in that change — they answered in build plans, with a build to run afterwards —
+and why the three that replaced them return spoken prose and nothing else. The
+CLI (`node sdk/pair-cli.mjs list|show|plan|validate`) and Agent Studio still
+drive the same pure core, so nothing was lost; re-exposing them is a one-entry
+change if an external planner ever asks.
 
 A six-tool family for a browser-and-chat surface lived here from 2026-07-30
 and was **removed on 2026-08-02 by owner directive**. Worth knowing as a
@@ -58,12 +70,14 @@ the six tools were paying for schemas, an exposure switch each and a
 mirror-test row against a caller nobody could name. Deleting a tool family is
 cheap here; adding one that nothing calls is the expensive mistake.
 
-The SDK family is **pure** — committed data, no network, no D1, no model —
-which is why it is a static import in `mcp.js` without breaking its
-keep-the-pipeline-dynamic file-layout rule, and why it costs nothing to
-expose. The literature family splits along that same
-line rather than breaking it: its schemas are pure and static, its retrieval
-half is dynamic. Every family fails into an `isError` result rather than a
+Every family splits the same way rather than breaking the file-layout rule:
+schemas pure and statically imported, anything touching a binding, a provider or
+the network behind a dynamic `import()` inside `tools/call`. `literature-tools.js`
+⇄ `literature-run.js` is the original; `extension-tools.js` ⇄
+`extension-tools-run.js` is the same cut, with one extra constraint — the
+registry may name a service and **`src/mcp.js` may not** (invariant 7; it is in
+`extensions.test.js`'s `CORE_MODULES`, and the guard reads code, so even a tool
+DESCRIPTION naming Shodan inside `mcp.js` fails the build). Every family fails into an `isError` result rather than a
 transport error, and `literature_*` degrades junk arguments to a described
 default: a tool that throws is a model that retries the same call forever.
 This is the ONE place the pipeline points *outward*: the architecture
@@ -79,12 +93,17 @@ dependency** (same minimal-deps stance as the rest of the repo). It
 implements exactly the methods a minimal server needs:
 
 - `initialize` → `initializeResult()` (reports `PROTOCOL_VERSION`,
-  `SERVER_INFO`, `capabilities: { tools: {} }`)
+  `SERVER_INFO`, `capabilities: { tools: {} }`) — the HANDSHAKE era
+- `server/discover` → `discoverResult()` — the STATELESS era's replacement for it
 - `tools/list` → `toolsListResult(config)` (`ALL_MCP_TOOLS` = `DEEP_RESEARCH_TOOL`
-  + `SDK_MCP_TOOLS`, filtered by the account's exposure config)
-- `tools/call` → `handleToolCall()` → `runDeepResearch()`
+  + `LITERATURE_MCP_TOOLS` + `OPENAI_MCP_TOOLS` + `EXTENSION_MCP_TOOLS`, filtered
+  by the account's exposure config)
+- `tools/call` → `handleToolCall()` → `runDeepResearch()` / a family runner
 - `notifications/initialized` → no-op ack (a notification has no `id`, so it
   returns no response body)
+
+Both revisions are served side by side and the era is decided PER REQUEST — see
+"Two revisions, one endpoint" below, which replaced the old forecast section.
 
 ## Getting in: the two auth paths and the `mcp.` host
 
@@ -464,21 +483,31 @@ not another keepalive.
   read the new arg in `runDeepResearch` with a fail-soft default, and update
   the `tools/list` assertion in `mcp.test.js`. Keep descriptions written for
   an LLM caller (they're what the client model sees).
-- **Add ANOTHER tool:** add its schema constant at the top, put it in
-  `ALL_MCP_TOOLS`, add its `MCP_TOOL_CATALOG` entry in `src/mcp-config.js`
-  **in the same change** (the mirror test fails otherwise — and an account
-  needs a way to switch it off), decide whether it belongs in
-  `SPENDING_TOOL_NAMES` (does it reach a provider? then yes — it holds a
-  concurrency slot and goes behind `researchQuotaBlock`), and branch on
-  `parsed.params.name` in `dispatchToolCall` — which already dispatches the
-  `sdk_*` family by
-  `SDK_TOOL_NAMES` membership before falling through to `deep_research`;
-  anything matching neither is method-not-found. Any heavy work its handler
-  needs stays behind a dynamic import. Ask whether the tool actually belongs
-  here — the roadmap's thesis is a few high-leverage tools, not a tool zoo; a
-  new one should be a genuinely distinct outward capability, not a pipeline
-  knob. (The `sdk_*` four earned their place by answering manifest questions
-  the sandbox would otherwise have to shell out for.)
+- **Add ANOTHER tool:** add its schema constant at the top (or in a pure schema
+  module, if it is a family), put it in `ALL_MCP_TOOLS`, add its
+  `MCP_TOOL_CATALOG` entry in `src/mcp-config.js` **in the same change** (the
+  mirror test fails otherwise — and an account needs a way to switch it off),
+  decide whether it belongs in `SPENDING_TOOL_NAMES` (does it reach a provider?
+  then yes — it holds a concurrency slot and goes behind `researchQuotaBlock`),
+  and branch on `parsed.params.name` in `dispatchToolCall` — which dispatches the
+  literature family and then the extension families by `EXTENSION_TOOL_NAMES`
+  membership before falling through to `deep_research`; anything matching neither
+  is method-not-found. Any heavy work its handler needs stays behind a dynamic
+  import. Two questions to answer before writing any of it: does it belong here
+  at all (the roadmap's thesis is a few high-leverage tools, not a tool zoo), and
+  **can a caller with no screen use its answer** (the 2026-08-15 directive — that
+  is what the four `sdk_*` tools failed).
+- **A tool that reaches a THIRD PARTY is not added here at all.** It goes in
+  `src/extension-tools.js` as an entry on its integration's family, with its
+  schemas in a pure module and its runner in `extension-tools-run.js`. Three
+  things follow automatically and none of them should be hand-rolled: `mcp.js`
+  never learns the service's name (invariant 7's core-purity guard), the catalog
+  row appears in Settings, and the call is gated on the account's per-extension
+  KNOB as well as the exposure switch. Those two gates mean different things —
+  the switch says whether the tool exists on this surface, the knob is the
+  account's consent to reach that third party — and only the switch filters
+  `tools/list`, deliberately: a caller should be able to SEE the capability and
+  be told why it is unavailable rather than have it vanish.
 - **Never** introduce model-driven tool *selection* on the inbound side —
   that's the exact function-calling shape invariant 1 rules out. The MCP
   client's model chooses to call `deep_research`; inside, orchestration
@@ -758,57 +787,98 @@ server involvement at all. Beta, rollout-gated, and shaped for a credential an
 organization shares — but it is the fallback if the OAuth flow fails its live
 check on Claude, and it does nothing for ChatGPT.
 
-## The stateless revision — what's coming (F-19)
+## Two revisions, one endpoint (protocol 2026-07-28 — SHIPPED 2026-08-15)
 
-**Read this before touching the protocol surface.** `PROTOCOL_VERSION` is
-`"2025-06-18"` and has never been bumped — the published spec revision is
-`2025-11-25`, so the server already reports a version two behind, and the
-NEXT revision rewrites exactly the methods above. Tracking it is
-`FEATURES.md` F-19, opened from user feedback #33 (2026-07-26).
+**Read this before touching the protocol surface.** The CURRENT MCP revision is
+`2026-07-28`, and it is the largest rewrite since launch: the `initialize`
+handshake is gone and with it the protocol session. We serve it BESIDE the
+handshake revision `2025-06-18`, which `initialize` still reports and which every
+client that can reach us today opens with. All of the new revision's logic lives
+in `src/mcp-modern.js` — pure, imports nothing, unit-tested without a Worker.
 
-Verified against `modelcontextprotocol.io/specification/draft/changelog` on
-2026-07-26 (a *draft* — re-read it before building; a reported RC date of
-2026-07-28 was **not** confirmed by the published revision list):
+**Era is decided per REQUEST** (`isModernRequest`), because a stateless protocol
+leaves nothing to decide it once. Three signals say modern — the method
+`server/discover`, a `_meta` declaring a protocol version, or an
+`MCP-Protocol-Version` header naming the modern revision — and one exception
+outranks all of them: an `initialize` is ALWAYS legacy. That is the spec's own
+dual-era rule ("an `initialize` request selects legacy semantics"), and it
+matters because a legacy client has no fall-forward mechanism: answer it with a
+modern error and it has nowhere to go.
 
-- **The handshake is removed.** No `initialize`, no
-  `notifications/initialized`. Each request carries its protocol version and
-  client capabilities in `_meta`
-  (`io.modelcontextprotocol/protocolVersion`, `…/clientCapabilities`,
-  `…/clientInfo`); each result returns `…/serverInfo` in its own `_meta`.
-  Mismatch → `UnsupportedProtocolVersionError` (`-32022`).
-- **`server/discover` is MANDATORY** — a new RPC advertising supported
-  versions, capabilities and identity. New surface, not a renamed
-  `initialize`.
-- **Protocol sessions and `Mcp-Session-Id` are gone.** List endpoints no
-  longer vary per connection; cross-call state becomes a server-minted
-  handle passed as an ordinary tool argument.
-- **Results carry a required `resultType`** — `"complete"`, or
-  `"input_required"` for the multi-round-trip pattern. A missing field from
-  an older server MUST read as `"complete"`.
-- **`tools/list` results require `ttlMs` + `cacheScope`** and SHOULD be
-  deterministically ordered — ours already are (a static array).
-- **`extensions` joins client/server capabilities.** This is MCP's own
-  extension concept and is unrelated to invariant 7's `src/extensions.js`
-  registry; the shared word is a trap.
-- **`Mcp-Method` / `Mcp-Name` request headers become required**
-  (`HeaderMismatch`), and the server-error range is re-partitioned:
-  `-32020`–`-32099` reserved for the spec, `-32000`–`-32019` left
-  implementation-defined. Our `RPC_*` constants are all standard JSON-RPC
-  codes and are unaffected; new codes must come from the right range.
-- **Irrelevant to us — confirm, don't implement:** `ping`,
-  `logging/setLevel`, `notifications/roots/list_changed`, SSE resumability
-  (`Last-Event-ID`), the HTTP+SSE transport, and Roots / Sampling / Logging
-  all go away or get deprecated. We implement none of them.
+### The four codes, and why confusing them is not cosmetic
 
-Two things shape the design. **Serve both revisions at once:** the spec's new
-feature-lifecycle policy guarantees a minimum twelve-month deprecation window
-and removes nothing inside it, so `initialize` keeps working for existing
-clients — deleting it is the wrong move, and how to support both cleanly is
-the question to settle first. And **the two standing rules still bind**: all
-of this is pure protocol logic, so it lives at the TOP of the file with
-`mcp.test.js` still loading without the pipeline (the file-layout rule), and a
-richer inbound protocol is still the *client's* model choosing to call us —
-invariant 1's ban on function calling inside the pipeline is untouched.
+A conforming client BRANCHES on the first error it gets. A recognized modern
+JSON-RPC error means "modern server — correct the request and retry"; anything
+else means "legacy server — fall back to `initialize` and stay there". So a wrong
+code, or a right code at a wrong status, silently downgrades every client that
+ever connects, and nothing in the logs says so.
+
+| what is wrong | code | HTTP |
+|---|---|---|
+| a required `_meta` field is missing | `-32602` Invalid params | 400 |
+| the request needs a client capability it did not declare | `-32021` MissingRequiredClientCapability | 400 |
+| the version is one we do not implement | `-32022` UnsupportedProtocolVersion | 400 |
+| a mirrored header is missing or disagrees with the body | `-32020` HeaderMismatch | 400 |
+| the method is one we do not implement | `-32601` Method not found | **404** |
+
+The 404 is deliberate: "the JSON-RPC error body distinguishes this case from a
+`404` returned by a legacy HTTP+SSE server that does not host the modern MCP
+endpoint." And `-32022` carries `data: { supported, requested }` — both required
+by the schema, because `supported` is how a client retries instead of giving up.
+
+### What every modern request must carry, and what every result carries back
+
+Required in `params._meta`: `io.modelcontextprotocol/protocolVersion` and
+`io.modelcontextprotocol/clientCapabilities` — the second even though
+`clientInfo` is only SHOULD, because a stateless server has no earlier request to
+learn capabilities from. **An empty `{}` is a valid answer** ("no optional
+capabilities") and must be accepted; only its absence is the error.
+
+Mirrored into headers, and validated against the body: `MCP-Protocol-Version`,
+`Mcp-Method` (all requests), and `Mcp-Name` (`tools/call`, `resources/read`,
+`prompts/get` — decoded first if it arrives in the `=?base64?…?=` sentinel). The
+rule is a security one rather than a formality: an intermediary may route on the
+header while we execute on the body, and the two disagreeing is exactly what must
+not be served.
+
+Going back: `resultType: "complete"` on EVERY result, `_meta`'s
+`io.modelcontextprotocol/serverInfo`, and — on a cacheable listing only —
+`ttlMs` + `cacheScope`, which are REQUIRED members rather than hints. Ours are
+`private` for `tools/list` (it is filtered per account, so a shared cache must
+never hand one account's listing to another) and `public` for `server/discover`
+(identical for every caller). We stamp `resultType`/`_meta` on both eras: they are
+additive, a legacy client ignores them, and one result shape is one thing to test.
+
+### Deliberate deviations, each with a reason
+
+- **A bare `server/discover` with no `_meta` is refused** with `-32602`, not
+  answered. The spec makes `_meta` required on it, a conforming modern client
+  always sends it, and the refusal is still a recognized modern error — so the
+  client learns the right thing about us either way.
+- **`GET`/`DELETE` on the endpoint are not 405.** The spec's SHOULD covers a
+  modern-ONLY server shedding legacy session traffic; on the `mcp.` host a `GET`
+  serves the human setup page `public/connect/`, which is worth more than the
+  SHOULD. Revisit if a client is ever observed probing with GET.
+- **The `Origin` rule is narrowed.** The transport says validate `Origin` on all
+  connections; here the real threat is not DNS rebinding but that `/mcp` is
+  reachable with the site's own session cookie as well as a bearer key. So
+  `forbiddenOrigin` refuses exactly the forgeable case — cross-site Origin AND no
+  Authorization header of its own — and 403s it before the body is read.
+
+### Not implemented, and the next things to want
+
+`extensions` capability negotiation, MRTR (`resultType: "input_required"`),
+`subscriptions/listen`, and the `x-mcp-header` tool-parameter mirroring. None is
+needed by a tools-only server; all are additive when one is. The nearest real gap
+is unchanged from the progress work: a `tools/call` answer still arrives in ONE
+frame at the end, so a client with a hard wall-clock ceiling still cuts a long
+call.
+
+Validation: `node --test src/mcp-modern.test.js src/mcp-era.test.js` (the first
+pins the rules, the second drives both eras through the real `handleMcp`), then
+`npm run mcp:probe`, whose `discover` / `modern-tools-list` / `header-mismatch` /
+`unsupported-version` checks are the live half. **Not yet run against
+production** as of 2026-08-15.
 
 ## What a call costs (before widening the audience)
 
@@ -820,8 +890,15 @@ a maximum-budget call actually measured **€0.2355**, because the gap check
 saturated at round 2 and spent 9 of its 34 permitted searches. The
 literature family costs €0.0021 (1 angle) to €0.0124 (6 angles) — **all of
 it the reranker**, 50 candidates × 900 chars per angle-corpus leg, measured
-at 10,198 tokens per leg at €0.10/M. The `sdk_*` four and
-`literature_fetch` / `literature_corpora` / `fetch` cost nothing.
+at 10,198 tokens per leg at €0.10/M. Only `literature_fetch`,
+`literature_corpora` and `fetch` cost nothing now.
+
+**The three extension tools are a NEW cost shape and are not priced yet.** They
+spend nothing at Berget except `street_view_look`'s one vision description, but
+they bill Google (imagery, places) and Shodan (credits) — money the four-window
+quota does not model, because it counts Berget EUR and Exa searches. They hold a
+concurrency slot and pass the quota gate anyway, which bounds the RATE; what is
+missing is a price per call. Measure it before the surface is widened.
 
 Two metering gaps decided whether the surface can be published, both in the
 register as P-3, and **both are now closed (2026-08-05)**.

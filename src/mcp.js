@@ -32,18 +32,36 @@
 // import() INSIDE the tools/call handler, so importing this module (as the
 // test does) never pulls in pipeline.js/berget.js/etc.
 
-import { emptyExtensionState } from "./extensions.js";
+import { emptyExtensionState, resolveExtensionState } from "./extensions.js";
 import { jsonResponse } from "./http.js";
 // A leaf module (imports nothing), so this static import does NOT pull the
 // pipeline graph in — the file-layout rule above (heavy deps stay dynamic) is
 // preserved. Shares the split-model-routing decision with src/chat.js.
-import { resolveJsonModel } from "./model-routing.js";
-// DistillSDK's pure core (via the src/sdk-tools.js façade): manifest
-// operations + the provider-neutral sdk_* tool definitions. Pure and
-// dependency-light (no pipeline/berget imports), so a static import keeps the
-// file-layout rule intact; only the SNAPSHOT loading (tools/call time) is a
-// dynamic import of ./introspect.js below.
-import { SDK_TOOLS, SDK_TOOL_NAMES, manifestFromSnapshot, runSdkTool, snapshotFileCheck } from "./sdk-tools.js";
+import { resolveJsonModel, resolveVisionModels } from "./model-routing.js";
+// The MODERN (stateless) revision — protocol 2026-07-28, served beside the
+// handshake revision below. Pure, imports nothing (src/mcp-modern.js).
+import {
+  DISCOVER_METHOD,
+  LEGACY_PROTOCOL_VERSION,
+  MODERN_PROTOCOL_VERSION,
+  TOOLS_LIST_TTL_MS,
+  completeResult,
+  discoverResult,
+  forbiddenOrigin,
+  isModernRequest,
+  validateModernRequest,
+} from "./mcp-modern.js";
+// The EXTENSION tool families (street imagery, host intelligence): their
+// schemas only. This module names no third-party service — src/extension-tools.js
+// is the registry that does, exactly as src/extensions.js is for the enrichment
+// seam (invariant 7), and the runners live behind its dynamic loader.
+import {
+  EXTENSION_MCP_TOOLS,
+  EXTENSION_SPENDING_TOOLS,
+  EXTENSION_TOOL_EXTENSION,
+  EXTENSION_TOOL_NAMES,
+  extensionOffMessage,
+} from "./extension-tools.js";
 // The LITERATURE family: the two hosted scientific corpora (arXiv, PubMed) as
 // directly searchable knowledge bases. Only the SCHEMAS are imported here —
 // src/literature-tools.js imports nothing at all, so the file-layout rule holds;
@@ -59,6 +77,8 @@ import {
 // server"). A pure leaf module — catalog, parse, filter, argument resolution —
 // so this static import keeps the file-layout rule above intact.
 import { defaultMcpConfig, filterMcpTools, parseMcpConfig, resolveResearchArgs, toolExposed } from "./mcp-config.js";
+// Shaping an answer for a listener rather than a reader (pure, imports nothing).
+import { VOICE_NOTE, spokenAnswer } from "./voice-answer.js";
 
 /** @typedef {import('./types.js').Env} Env */
 /** @typedef {import('./types.js').Logger} Logger */
@@ -79,9 +99,12 @@ import { defaultMcpConfig, filterMcpTools, parseMcpConfig, resolveResearchArgs, 
 // PURE protocol helpers (no heavy imports) — unit-tested in src/mcp.test.js
 // ---------------------------------------------------------------------------
 
-// MCP protocol revision we implement. `initialize` reports this back so the
-// client can confirm compatibility.
-export const PROTOCOL_VERSION = "2025-06-18";
+// The protocol revision `initialize` reports back — the HANDSHAKE era, which
+// this server keeps speaking for every client that has not moved yet. The
+// stateless 2026-07-28 revision is served in parallel and selected per request
+// (src/mcp-modern.js); neither is a mode the server is "in", because a stateless
+// protocol has nothing to be in.
+export const PROTOCOL_VERSION = LEGACY_PROTOCOL_VERSION;
 
 // WHY serverInfo CARRIES ICONS. A client that is handed no icon draws one, and
 // what it draws is the first letter of `name` on a colour hashed from it — the
@@ -112,6 +135,16 @@ export const SERVER_INFO = {
   ],
 };
 
+// What this server is for, in one paragraph a client MAY show its user or hand
+// its model. `server/discover` carries it; the handshake era has no field for
+// it, which is one of the small things the new revision fixes.
+export const SERVER_INSTRUCTIONS =
+  "DeepResearch.se runs deep research as a tool: a planned, searched, gap-checked and " +
+  "validated answer built only from sources it found (deep_research), direct semantic " +
+  "search over hosted arXiv and PubMed indexes (literature_*), and — when the account " +
+  "enables them — street-level imagery described in words and internet host intelligence. " +
+  "Every answering tool takes a plain question; nothing here needs a browser.";
+
 // JSON-RPC 2.0 standard error codes (subset we use).
 export const RPC_PARSE_ERROR = -32700;
 export const RPC_INVALID_REQUEST = -32600;
@@ -129,7 +162,10 @@ export const DEEP_RESEARCH_TOOL = {
     "angles, searches the web, audits coverage for gaps, and synthesizes a " +
     "cited answer built only from the sources it found. Returns the final " +
     "answer text with inline [n] citations and a Sources list. Best for " +
-    "questions that benefit from current, multi-source web research.",
+    "questions that benefit from current, multi-source web research. Set " +
+    "`style: \"voice\"` when the answer will be SPOKEN: it comes back as plain " +
+    "prose with no markdown, no citation numbers and the sources named in a " +
+    "closing sentence. `agent` picks the specialist that answers.",
   inputSchema: {
     type: "object",
     properties: {
@@ -160,6 +196,33 @@ export const DEEP_RESEARCH_TOOL = {
           "answers directly without contacting the search provider.",
         default: true,
       },
+      agent: {
+        type: "string",
+        description:
+          "Which specialist agent answers. Each brings its own policy, prompts " +
+          "and sources: `scholar` (Deep Science — the peer-reviewed literature " +
+          "leads, arXiv + PubMed + Europe PMC; the default), `cyber` " +
+          "(cybersecurity and OSINT — host intelligence, street imagery, entity " +
+          "and person research, the OWASP corpus), `palaeogenomics` (ancient DNA " +
+          "— the published-individuals corpus plus the life-science literature), " +
+          "`introspection` (this site's own source and documentation), " +
+          "`outrospection` (how this site is seen from outside), `models` (the " +
+          "model catalog). Omit for the default. An agent this account may not " +
+          "use, or one that does not exist, falls back to the default rather " +
+          "than failing the call.",
+      },
+      style: {
+        type: "string",
+        enum: ["text", "voice"],
+        description:
+          "Shape of the answer. `text` (default) returns markdown with inline " +
+          "[n] citations and a Sources list. `voice` returns speakable prose: no " +
+          "markdown, no bracketed citation markers, no URLs, sources named in a " +
+          "closing sentence — for a caller that will read the answer aloud. " +
+          "`voice` also lowers the default time budget, because a spoken " +
+          "exchange cannot wait two minutes.",
+        default: "text",
+      },
     },
     required: ["question"],
   },
@@ -175,16 +238,19 @@ export function initializeResult() {
   };
 }
 
-// DistillSDK's manifest tools, exposed over MCP too (2026-07-18) so
-// an external agent can plan against the SDK — list/show/plan/validate —
-// WITHOUT shelling into the in-browser execution sandbox to run
-// `node sdk/pair-cli.mjs`: the same pure core answers directly. The shared
-// definitions carry Anthropic's `input_schema` key; MCP wants `inputSchema`.
-export const SDK_MCP_TOOLS = SDK_TOOLS.map(({ name, description, input_schema }) => ({
-  name,
-  description,
-  inputSchema: input_schema,
-}));
+// THE SDK MANIFEST TOOLS ARE GONE (2026-08-15, owner directive). `sdk_list_modules`,
+// `sdk_show_module`, `sdk_plan` and `sdk_validate` shipped on this surface on
+// 2026-07-18 so an external agent could plan against the Platform SDK without
+// shelling into the execution sandbox. They are removed because the surface is
+// now shaped for VOICE callers, and a manifest-planning tool is the clearest
+// case of a tool a voice caller can never use: its answers are file trees and
+// dependency orders, read from a terminal, with a build to run afterwards.
+// Nothing is lost — `node sdk/pair-cli.mjs list|show|plan|validate` is the same
+// pure core, and Agent Studio drives it in-app.
+//
+// The precedent this follows is the six-tool browser family deleted on
+// 2026-08-02: a tool earns its place here when a caller WITHOUT the app needs
+// the answer. Deleting one is cheap; keeping one nothing calls is not.
 
 // The literature family, same rename. These are the only tools here that reach
 // a data store rather than committed data, which is why their runner is loaded
@@ -217,11 +283,16 @@ export const OPENAI_MCP_TOOLS = OPENAI_ADAPTER_TOOLS.map(({ name, description, i
 // literature_* hands an agent the corpus to answer it from. A client scanning
 // the list top-down should meet them together — and the two adapters follow
 // them, next to the tools they project.
+// The EXTENSION families come last: they are the only tools here that reach a
+// third party on the caller's behalf, and they are the only ones an account can
+// be unable to use for a second reason (the per-account knob, not just the
+// exposure switch). Their definitions arrive from the registry, so this list
+// gains and loses tools without this file learning any service's name.
 export const ALL_MCP_TOOLS = [
   DEEP_RESEARCH_TOOL,
   ...LITERATURE_MCP_TOOLS,
   ...OPENAI_MCP_TOOLS,
-  ...SDK_MCP_TOOLS,
+  ...EXTENSION_MCP_TOOLS,
 ];
 
 // ---------------------------------------------------------------------------
@@ -246,18 +317,23 @@ export const ALL_MCP_TOOLS = [
 //                          ChatGPT's shape, so it is gated identically or the
 //                          adapter becomes the way around the meter
 //
+// …and every EXTENSION tool, because each one reaches a metered third-party API
+// (imagery, places, host records) and, for the ones that describe an image, a
+// vision model on top. The registry says which those are, so this file does not
+// have to know what any of them talk to.
+//
 // Everything else is deliberately EXEMPT, because a slot it held would be pure
-// denial of service against the caller's own next call: the four sdk_* tools
-// read a committed snapshot, literature_corpora answers from committed facts
-// plus describe(), and literature_fetch / fetch are key reads. None of them
-// contacts a provider, so none of them can participate in the race the cap
-// exists to bound — and an agent whose budget is gone should still be able to
-// resolve an id it was handed while another call is in flight.
+// denial of service against the caller's own next call: literature_corpora
+// answers from committed facts plus describe(), and literature_fetch / fetch are
+// key reads. None of them contacts a provider, so none of them can participate
+// in the race the cap exists to bound — and an agent whose budget is gone should
+// still be able to resolve an id it was handed while another call is in flight.
 export const SPENDING_TOOL_NAMES = new Set([
   TOOL_NAME,
   "literature_search",
   "literature_similar",
   "search",
+  ...EXTENSION_SPENDING_TOOLS,
 ]);
 
 // The refusal an over-cap caller gets. It is NOT quota.js's inflightLimitResponse:
@@ -493,6 +569,22 @@ export function parseJsonRpc(body) {
  * @returns {Promise<Response>}
  */
 export async function handleMcp(request, env, log, identity, ctx, requestId) {
+  // The transport's first security rule, and here it is not about DNS rebinding
+  // but about this endpoint's two doors: an external agent arrives with a bearer
+  // credential, a browser tab arrives with the site's session cookie. Only the
+  // second can be driven by someone else's page, and only a cross-site Origin
+  // identifies it. See forbiddenOrigin (src/mcp-modern.js) for why the check is
+  // this narrow rather than an allowlist.
+  const bearer = !!request.headers.get("authorization");
+  const origin = request.headers.get("origin");
+  if (forbiddenOrigin(origin, new URL(request.url).hostname, bearer)) {
+    log.warn("mcp.origin_refused", { origin });
+    return jsonResponse(
+      jsonRpcError(null, RPC_INVALID_REQUEST, "Forbidden: cross-site request to the MCP endpoint."),
+      403,
+    );
+  }
+
   let body;
   try {
     body = await request.json();
@@ -503,6 +595,27 @@ export async function handleMcp(request, env, log, identity, ctx, requestId) {
   const parsed = parseJsonRpc(body);
   if (!parsed.valid) {
     return jsonResponse(jsonRpcError(parsed.id, RPC_INVALID_REQUEST, parsed.error));
+  }
+
+  // WHICH ERA this request belongs to, decided per request because a stateless
+  // protocol leaves nothing to decide it once (src/mcp-modern.js isModernRequest).
+  // A modern request is held to the modern rules — required `_meta`, a version we
+  // implement, and the three mirrored headers agreeing with the body — and every
+  // failure of those is answered with the code and HTTP status the revision
+  // assigns it, because clients BRANCH on exactly those to tell a modern server
+  // from a legacy one.
+  const modern = isModernRequest(parsed, request.headers);
+  if (modern) {
+    const bad = validateModernRequest(parsed, request.headers);
+    if (bad) {
+      log.info("mcp.protocol_refused", { code: bad.code, method: parsed.method });
+      // A notification gets no JSON-RPC response body, but it does get the HTTP
+      // status: "If the server cannot accept it, it MUST return an HTTP error
+      // status code … The body MAY comprise a JSON-RPC error response that has
+      // no id."
+      const id = parsed.isNotification ? null : parsed.id;
+      return jsonResponse(jsonRpcError(id, bad.code, bad.message, bad.data), bad.status);
+    }
   }
 
   // Notifications (e.g. notifications/initialized) get no response body —
@@ -518,10 +631,30 @@ export async function handleMcp(request, env, log, identity, ctx, requestId) {
   const config = identity?.user ? parseMcpConfig(identity.user.settings_json) : defaultMcpConfig();
 
   switch (parsed.method) {
+    // The mandatory modern RPC: supported versions, capabilities and identity in
+    // one request, so a client need not probe three listing methods to learn
+    // what this server is. It is a MODERN method, so a call that omits the
+    // required `_meta` was already refused above with -32602 — a recognized
+    // modern error, which is what a probing client needs in order to conclude
+    // "modern server, fix the request" rather than "legacy server".
+    case DISCOVER_METHOD:
+      return jsonResponse(
+        jsonRpcResult(
+          parsed.id,
+          discoverResult(SERVER_INFO, { tools: {} }, SERVER_INSTRUCTIONS),
+        ),
+      );
     case "initialize":
-      return jsonResponse(jsonRpcResult(parsed.id, initializeResult()));
+      return jsonResponse(jsonRpcResult(parsed.id, mcpResult(initializeResult())));
     case "tools/list":
-      return jsonResponse(jsonRpcResult(parsed.id, toolsListResult(config)));
+      // The one listing this server has, and it is per-account (the exposure
+      // config filters it), which is what makes its cache scope private.
+      return jsonResponse(
+        jsonRpcResult(
+          parsed.id,
+          mcpResult(toolsListResult(config), { ttlMs: TOOLS_LIST_TTL_MS, cacheScope: "private" }),
+        ),
+      );
     case "tools/call": {
       // The ONE method that can run for minutes, and so the one that needs to
       // say something while it does (see the PROGRESS section above). Every
@@ -532,10 +665,29 @@ export async function handleMcp(request, env, log, identity, ctx, requestId) {
       return streamToolCall(run, progressTokenOf(parsed.params), progress, log);
     }
     default:
+      // 404, not 400, and only for a MODERN caller: "If the server does not
+      // implement the requested RPC method, it MUST respond with 404 Not Found
+      // and a JSON-RPC error with code -32601", precisely so a client can tell
+      // this apart from a plain 404 at a host that serves no MCP endpoint at
+      // all. A legacy caller keeps the 200 it has always had, because that
+      // revision never asked for anything else.
       return jsonResponse(
         jsonRpcError(parsed.id, RPC_METHOD_NOT_FOUND, `Method not found: ${parsed.method}`),
+        modern ? 404 : 200,
       );
   }
+}
+
+/**
+ * Stamp a result with `resultType` (and, for a listing, its caching hints) plus
+ * this server's identity in `_meta` — the fields every 2026-07-28 result
+ * carries. Applied on BOTH eras: they are additive, a legacy client ignores
+ * them, and one result shape is one thing to test.
+ * @param {any} result
+ * @param {{ ttlMs?: number, cacheScope?: "public"|"private" }} [cache]
+ */
+function mcpResult(result, cache) {
+  return completeResult(result, SERVER_INFO, cache);
 }
 
 /**
@@ -723,7 +875,7 @@ async function handleToolCall(parsed, env, log, identity, ctx, requestId, config
       active: reserved.active,
       limit: reserved.limit,
     });
-    return jsonResponse(jsonRpcResult(parsed.id, toolResult(inflightLimitToolMessage(reserved), true)));
+    return jsonResponse(jsonRpcResult(parsed.id, mcpResult(toolResult(inflightLimitToolMessage(reserved), true))));
   }
   try {
     return await dispatchToolCall(parsed, env, log, identity, ctx, requestId, config, progress);
@@ -803,21 +955,46 @@ async function dispatchToolCall(parsed, env, log, identity, ctx, requestId, conf
     );
   }
 
-  // The SDK manifest tools: pure reads over the deployed source snapshot's
-  // sdk/MANIFEST.json (the same artifact introspection mode runs on). They
-  // fail soft — a missing snapshot/manifest comes back as an isError result.
-  if (typeof name === "string" && SDK_TOOL_NAMES.has(name)) {
+  // The EXTENSION tools. Two gates, ANDed, and they mean different things — the
+  // same pair the enrichment seam applies (src/extensions.js): the account's
+  // exposure switch decides whether the tool exists on this surface at all
+  // (already enforced above), and the account's per-extension KNOB decides
+  // whether this site may reach that third party on their behalf. The knob is
+  // consent, default OFF, and a tool call is not a way around it.
+  //
+  // Nothing here names the service. The registry resolves a tool to its
+  // extension id, settings.js answers whether that id is on, and the runner
+  // arrives behind a dynamic import — so this branch reads the same whether the
+  // registry holds two integrations or none.
+  if (typeof name === "string" && EXTENSION_TOOL_NAMES.has(name)) {
     try {
-      const { loadSourceSnapshot } = await import("./introspect.js");
-      const snapshot = await loadSourceSnapshot(env, log);
-      const manifest = manifestFromSnapshot(snapshot);
-      const text = runSdkTool(manifest, name, args, { fileCheck: snapshotFileCheck(snapshot) });
-      log.info("mcp.sdk_tool", { tool: name, user_id: identity?.id });
-      return jsonResponse(jsonRpcResult(id, toolResult(text, !manifest)));
+      const extensionId = EXTENSION_TOOL_EXTENSION[name];
+      const { extensionEnabled } = await import("./settings.js");
+      if (!extensionEnabled(env, identity, extensionId)) {
+        log.info("mcp.extension_tool_off", { tool: name, extension: extensionId, user_id: identity?.id });
+        return jsonResponse(jsonRpcResult(id, mcpResult(toolResult(extensionOffMessage(name), true))));
+      }
+      if (EXTENSION_SPENDING_TOOLS.has(name)) {
+        const blocked = await researchQuotaBlock(env, log, identity);
+        if (blocked) {
+          log.info("mcp.quota_blocked", { tool: name, user_id: identity?.id });
+          return jsonResponse(jsonRpcResult(id, mcpResult(toolResult(blocked, true))));
+        }
+      }
+      const { runExtensionTool } = await import("./extension-tools-run.js");
+      const result = await runExtensionTool(env, log, name, args, { identity, requestId });
+      log.info("mcp.extension_tool", {
+        tool: name,
+        extension: extensionId,
+        user_id: identity?.id,
+        request_id: requestId,
+        found: result.found,
+      });
+      return jsonResponse(jsonRpcResult(id, mcpResult(toolResult(result.text, result.isError))));
     } catch (err) {
       const message = (/** @type {any} */ (err))?.message || String(err);
-      log.error("mcp.sdk_tool_failed", { tool: name, error: message });
-      return jsonResponse(jsonRpcResult(id, toolResult(`SDK tool failed: ${message}`, true)));
+      log.error("mcp.extension_tool_failed", { tool: name, error: message });
+      return jsonResponse(jsonRpcResult(id, mcpResult(toolResult(`Lookup failed: ${message}`, true))));
     }
   }
 
@@ -841,7 +1018,7 @@ async function dispatchToolCall(parsed, env, log, identity, ctx, requestId, conf
         const blocked = await researchQuotaBlock(env, log, identity);
         if (blocked) {
           log.info("mcp.quota_blocked", { tool: name, user_id: identity?.id });
-          return jsonResponse(jsonRpcResult(id, toolResult(blocked, true)));
+          return jsonResponse(jsonRpcResult(id, mcpResult(toolResult(blocked, true))));
         }
       }
       const { runLiteratureTool } = await import("./literature-run.js");
@@ -864,9 +1041,11 @@ async function dispatchToolCall(parsed, env, log, identity, ctx, requestId, conf
       return jsonResponse(
         jsonRpcResult(
           id,
-          result.structured
-            ? structuredToolResult(result.text, result.payload, result.isError)
-            : toolResult(result.text, result.isError),
+          mcpResult(
+            result.structured
+              ? structuredToolResult(result.text, result.payload, result.isError)
+              : toolResult(result.text, result.isError),
+          ),
         ),
       );
     } catch (err) {
@@ -877,7 +1056,7 @@ async function dispatchToolCall(parsed, env, log, identity, ctx, requestId, conf
       // result. The runners answer their own failures inside the declared shape
       // (an empty `results`, a named miss); this branch is the one nothing
       // planned for, and inventing a document to describe it would be worse.
-      return jsonResponse(jsonRpcResult(id, toolResult(`Literature tool failed: ${message}`, true)));
+      return jsonResponse(jsonRpcResult(id, mcpResult(toolResult(`Literature tool failed: ${message}`, true))));
     }
   }
 
@@ -888,7 +1067,7 @@ async function dispatchToolCall(parsed, env, log, identity, ctx, requestId, conf
   const question = typeof args.question === "string" ? args.question.trim() : "";
   if (!question) {
     return jsonResponse(
-      jsonRpcResult(id, toolResult("The `question` argument is required and must be a non-empty string.", true)),
+      jsonRpcResult(id, mcpResult(toolResult("The `question` argument is required and must be a non-empty string.", true))),
     );
   }
 
@@ -900,7 +1079,7 @@ async function dispatchToolCall(parsed, env, log, identity, ctx, requestId, conf
 
   try {
     const text = await runDeepResearch(env, log, identity, requestId, research, question, progress);
-    return jsonResponse(jsonRpcResult(id, toolResult(text, false)));
+    return jsonResponse(jsonRpcResult(id, mcpResult(toolResult(text, false))));
   } catch (err) {
     const message = (/** @type {any} */ (err))?.message || String(err);
     log.error("mcp.tool_failed", { tool: name, user_id: identity?.id, error: message });
@@ -917,7 +1096,7 @@ async function dispatchToolCall(parsed, env, log, identity, ctx, requestId, conf
       error: message,
       web_search: research.web_search,
     });
-    return jsonResponse(jsonRpcResult(id, toolResult("Research failed: " + message, true)));
+    return jsonResponse(jsonRpcResult(id, mcpResult(toolResult("Research failed: " + message, true))));
   }
 }
 
@@ -1029,7 +1208,8 @@ function errText(err) {
  * @param {Logger} log
  * @param {Identity} identity
  * @param {string} requestId
- * @param {{ time_budget_s: number, web_search: boolean, model: string | undefined }} args
+ * @param {{ time_budget_s: number, web_search: boolean, model: string | undefined,
+ *   agent: string, style: "text"|"voice" }} args
  *   the EFFECTIVE arguments — the caller's, already reconciled with this
  *   account's defaults and override policy (src/mcp-config.js)
  * @param {string} question
@@ -1064,9 +1244,14 @@ async function runDeepResearch(env, log, identity, requestId, args, question, pr
   ]);
 
   // Minimal single-turn conversation — the same {role, content} shape chat.js
-  // validates and forwards.
+  // validates and forwards. A VOICE call carries its rendering instruction on
+  // the user turn, which is the only place a deterministic pipeline has to put
+  // one (invariant 1 rules out a tool-driven detour, and the prompt sets belong
+  // to the agent, not to the transport). It is appended, never substituted: the
+  // caller's question reaches the model exactly as written.
+  const voice = args.style === "voice";
   /** @type {import('./types.js').Conversation} */
-  const conversation = [{ role: "user", content: question }];
+  const conversation = [{ role: "user", content: voice ? question + VOICE_NOTE : question }];
   const invalid = validateMessages(conversation);
   if (invalid) throw new Error(invalid);
 
@@ -1118,6 +1303,14 @@ async function runDeepResearch(env, log, identity, requestId, args, question, pr
   // literature branch returns its message directly, one frame closer.)
   if (blocked) throw new Error(blocked);
 
+  // WHICH AGENT answers. Absent an `agent` argument nothing changes: the request
+  // runs exactly as this channel always has, with no capability resolved. Named,
+  // it goes through the SAME resolution chat.js uses — the registry, the account's
+  // grant, the capability's own validation — so an MCP caller can reach a
+  // specialist agent without this module learning what any of them do.
+  const agentPick = await resolveMcpAgent(env, log, identity, args.agent);
+  if (agentPick?.refused) throw new Error(agentPick.refused);
+
   const state = newRequestState(
     model,
     jsonModel,
@@ -1125,6 +1318,13 @@ async function runDeepResearch(env, log, identity, requestId, args, question, pr
     budgetS,
     planResearch(model, budgetS, jsonModel),
     newRetrievalSpend(),
+    agentPick,
+    // The describe-helper candidates, resolved from the same catalog through the
+    // same leaf chat.js uses. Only an addressed agent needs them — an agentless
+    // run reaches no imagery to describe — but without them an agent that CAN
+    // reach imagery would fetch it and then say nothing about it, which is the
+    // worst of both: billed, and silent.
+    agentPick ? resolveVisionModels(catalog, model) : [],
   );
 
   // Collect the pipeline's streamed text deltas (and honor discard_text, the
@@ -1197,11 +1397,16 @@ async function runDeepResearch(env, log, identity, requestId, args, question, pr
     // Nothing usable came back — surface the soft error if one was emitted.
     throw new Error(emittedError || "The pipeline produced no answer.");
   }
-  // withSources lives in sources.js (the source-registry/formatting owner);
-  // dynamic-imported like the other heavy-ish deps so mcp.test.js can load
-  // this module without pulling the source/search graph.
+  // How the answer is TAILED, and the two are alternatives rather than layers.
+  // The screen path appends the numbered Sources list withSources builds
+  // (sources.js, the source-registry/formatting owner; dynamic-imported like the
+  // other heavy-ish deps so mcp.test.js can load this module without pulling the
+  // source/search graph). The voice path strips what a speech engine would
+  // pronounce as itself and names the outlets in a closing sentence instead — a
+  // numbered URL list is the single least speakable thing this pipeline
+  // produces.
   const { withSources } = await import("./sources.js");
-  const result = withSources(finalText, state.sources);
+  const result = voice ? spokenAnswer(finalText, state.sources) : withSources(finalText, state.sources);
 
   // Full-visibility interaction log (src/chatlog.js), same table as
   // /api/chat, channel 'mcp'. MCP has no ghost toggle — every tool call is
@@ -1249,11 +1454,22 @@ async function runDeepResearch(env, log, identity, requestId, args, question, pr
 }
 
 // Per-request pipeline state — the same shape src/chat.js's newRequestState
-// builds. This v1 MCP surface applies no per-user knobs, so every registered
-// EXTENSION is off (emptyExtensionState — the registry's own "nothing
-// enabled" bag, so this channel never needs updating when an extension is
-// added or removed) and so is vision, which the pipeline treats exactly as a
-// request with those knobs disabled.
+// builds.
+//
+// WITHOUT an addressed agent this is what it always was: every registered
+// EXTENSION off (emptyExtensionState — the registry's own "nothing enabled" bag,
+// so this channel never needs updating when an extension is added or removed),
+// no capability, no vision. That is the default, and it is deliberate: a client
+// that has been calling deep_research for months must not have its answers
+// change shape because this argument appeared.
+//
+// WITH one, three things arrive together and they are a set: the resolved
+// capability (which sources and context blocks the agent may reach), its prompt
+// set (the voice every phase speaks in), and the account's own extension knobs
+// (its consent to reach the third parties the capability allows). Passing any
+// two without the third produces a run that claims a capability it cannot
+// exercise — which is the exact mismatch this channel already had, where the
+// grounded capabilities note listed integrations the enrichment could never run.
 /**
  * @param {string} model
  * @param {string} jsonModel
@@ -1265,22 +1481,35 @@ async function runDeepResearch(env, log, identity, requestId, args, question, pr
  *   dense-rag.js pulls berget.js, and this module's static half must stay free
  *   of it (the file-layout rule at the top); runDeepResearch already has it
  *   from its dynamic-import block.
+ * @param {McpAgentPick | null} [agent] the addressed agent, when one was named
+ * @param {string[]} [visionModels] ranked describe-helper candidates, empty
+ *   when nothing on this run can reach imagery
  * @returns {McpRequestState}
  */
-function newRequestState(model, jsonModel, webSearch, budgetS, plan, denseTotals) {
+function newRequestState(model, jsonModel, webSearch, budgetS, plan, denseTotals, agent, visionModels = []) {
   return {
     startedAt: Date.now(),
     model,
     jsonModel,
     webSearch,
-    ext: emptyExtensionState(),
-    // The MCP channel never enters introspection mode (no developer knob on
-    // this channel) — the flag exists for the shared RequestState shape.
-    introspection: false,
+    ext: agent?.ext || emptyExtensionState(),
+    // The registry-resolved agent, or nothing. Every field here is read through
+    // the narrowing accessors in agent-spec-core.js, so an agent can make its own
+    // run smaller and can never make it larger.
+    answerPhase: agent?.answerPhase || null,
+    agentId: agent?.agentId || null,
+    promptSet: agent?.promptSet || null,
+    capability: agent?.capability || null,
+    // Source-carrying agents (introspection) need the site's own source folded
+    // in; every other agent leaves this off exactly as this channel always did.
+    introspection: !!agent?.introspection,
     introspectionCount: 0,
+    // `vision` is whether the ANSWER model takes images; it stays false because
+    // this channel never attaches any. The HELPER list is separate and is what
+    // an imagery enrichment actually needs.
     vision: false,
-    visionModel: null,
-    visionModels: [],
+    visionModel: visionModels[0] || null,
+    visionModels,
     visionTotals: { prompt_tokens: 0, completion_tokens: 0 },
     imageLocations: [],
     // types.d.ts's RequestState documents `plan` against its own BudgetPlan
@@ -1304,4 +1533,114 @@ function newRequestState(model, jsonModel, webSearch, budgetS, plan, denseTotals
     // money. Same bucket, priced by the same billing.js denseSpend below.
     denseTotals,
   };
+}
+
+/**
+ * A resolved agent, ready to be folded into the request state.
+ * @typedef {{
+ *   agentId: string,
+ *   mode: string,
+ *   capability: any,
+ *   promptSet: string | null,
+ *   answerPhase: string | null,
+ *   introspection: boolean,
+ *   ext: Record<string, any>,
+ *   refused?: string,
+ * }} McpAgentPick
+ */
+
+/**
+ * The answer phases an MCP caller may address.
+ *
+ * `research` and `source-research` are the two that answer a question, and
+ * `feed` (Outrospection) answers one from the outward feed — all three take a
+ * question and return prose, which is the whole contract of this tool.
+ *
+ * `build` (Agent Studio) and `workflow` (Orchestrator) are deliberately NOT
+ * here, and not because they would fail: they would work, and that is the
+ * problem. One publishes a live application at a public URL and the other spawns
+ * a team of sub-agents; both are long, expensive and side-effecting, and neither
+ * belongs behind a single stateless tool call from a client whose user may be
+ * talking to it hands-free. `direct` is excluded for a smaller reason — it is
+ * not a research phase at all, and a caller wanting a plain model answer has
+ * `web_search: false`.
+ */
+const MCP_AGENT_PHASES = new Set(["research", "source-research", "feed"]);
+
+/**
+ * Resolve the `agent` argument through the same chain a chat turn uses.
+ *
+ * Returns null when nothing was named (the unchanged default path), a pick when
+ * one resolved, or `{ refused }` when the agent exists but may not be addressed
+ * here — a refusal, unlike a miss, is worth saying out loud, because the caller
+ * asked for something specific and silently answering as someone else would be
+ * a lie about who spoke.
+ *
+ * Fail-soft everywhere else (invariant 2): an unreadable registry, a missing
+ * grant, an unknown id — all degrade to the default agent-less run rather than
+ * failing a research call the caller is paying for.
+ *
+ * @param {Env} env
+ * @param {Logger} log
+ * @param {Identity} identity
+ * @param {string} [requested]
+ * @returns {Promise<McpAgentPick | null>}
+ */
+async function resolveMcpAgent(env, log, identity, requested) {
+  const named = typeof requested === "string" ? requested.trim() : "";
+  if (!named) return null;
+  try {
+    const [{ loadAgentRegistry }, { resolveRequestAgent, resolvePromptSet }, settings, { modeCarriesSource }] =
+      await Promise.all([
+        import("./agent-registry.js"),
+        import("./agent-spec.js"),
+        import("./settings.js"),
+        import("./chat-modes.js"),
+      ]);
+    // The SAME grant chat.js computes. `sandbox` is false by construction: the
+    // sandbox is a browser VM, and there is no browser on this channel.
+    const granted = { developer_mode: settings.chatModesAvailable(env, identity), sandbox: false };
+    const registry = await loadAgentRegistry(env);
+    const routed = resolveRequestAgent(registry, { agent: named }, granted, "");
+    if (!routed) {
+      log.info("mcp.agent_unresolved", { agent: named, user_id: identity?.id });
+      return null;
+    }
+    const phase = String(routed.capability?.answerPhase || "research");
+    if (!MCP_AGENT_PHASES.has(phase)) {
+      return {
+        agentId: "",
+        mode: "",
+        capability: null,
+        promptSet: null,
+        answerPhase: null,
+        introspection: false,
+        ext: emptyExtensionState(),
+        refused:
+          `The "${named}" agent is not available over this interface: it does not answer questions, it ` +
+          `builds or orchestrates, and both are long side-effecting flows that need the app. Ask a research ` +
+          `agent instead, or use the site directly.`,
+      };
+    }
+    const mode = String(routed.mode || "");
+    log.info("mcp.agent", { agent: routed.agent?.id, mode, phase, user_id: identity?.id });
+    return {
+      agentId: String(routed.agent?.id || ""),
+      mode,
+      capability: routed.capability ?? null,
+      promptSet: resolvePromptSet(routed.agent),
+      // Only an executor phase is dispatched on; `research` and `source-research`
+      // stay null so the pipeline's own per-message decision keeps deciding,
+      // exactly as it does for a chat turn (src/chat.js's answerPhase).
+      answerPhase: phase === "feed" ? phase : null,
+      introspection: modeCarriesSource(mode),
+      // The account's own extension knobs, which is what lets an agent that
+      // declares a third-party context block actually reach it. Both gates
+      // still hold: the knob is consent, the capability is permission.
+      ext: resolveExtensionState({}, settings.extensionEnabledMap(env, identity)),
+    };
+  } catch (err) {
+    log.warn("mcp.agent_unavailable", { agent: named, error: errText(err) });
+    return null;
+  }
 }

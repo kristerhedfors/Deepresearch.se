@@ -22,3 +22,32 @@ export function resolveJsonModel(catalog, userModel, defaultModel) {
   if (!entry) return userModel; // this deployment doesn't offer it — don't route to a missing model
   return entry.up === false ? userModel : defaultModel;
 }
+
+/** How many describe-helper candidates to carry. The describe FAILS OVER down
+ * this list (a production trace showed one loaded vision model missing its
+ * connect timeout while others answered instantly), and three attempts is the
+ * point where a further one costs more latency than it buys reliability. */
+export const MAX_VISION_CANDIDATES = 3;
+
+/**
+ * The ranked describe-helper models: every vision model the catalog reports as
+ * up, with the ANSWER model first when it is itself a vision model — asking the
+ * model that will use the description to produce it keeps one voice, and saves a
+ * second provider when it can.
+ *
+ * A leaf decision like resolveJsonModel, and shared for the same reason: it is
+ * now made on two channels (a chat turn resolves it per request, and the MCP
+ * street-imagery tool resolves it with no answer model at all, passing ""), and
+ * a second copy would drift on exactly the details that are load-bearing — the
+ * answer-model-first ordering and the cap.
+ *
+ * @param {import('./types.js').ModelCatalog | null | undefined} catalog
+ * @param {string} answerModel the resolved answer model, or "" when there is none
+ * @returns {string[]} ranked candidate ids — empty when nothing can describe
+ */
+export function resolveVisionModels(catalog, answerModel) {
+  const candidates = Array.isArray(catalog) ? catalog.filter((m) => m.vision && m.up).map((m) => m.id) : [];
+  const answerIsVision = !!(answerModel && catalog?.find((m) => m.id === answerModel)?.vision);
+  const ranked = answerIsVision ? [answerModel, ...candidates.filter((id) => id !== answerModel)] : candidates;
+  return ranked.slice(0, MAX_VISION_CANDIDATES);
+}

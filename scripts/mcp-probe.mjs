@@ -48,8 +48,13 @@
 // checks (0 = clean), so it drops into a shell gate unchanged.
 
 const DEFAULT_URL = "https://mcp.deepresearch.se";
-/** The protocol revision src/mcp.js reports. Bumping it there should fail here. */
+/** The protocol revision `initialize` reports — the HANDSHAKE era, which this
+ * server still speaks for every client that has not moved. Bumping it in
+ * src/mcp.js should fail here. */
 export const EXPECTED_PROTOCOL = "2025-06-18";
+/** The stateless revision served beside it (src/mcp-modern.js), which is what a
+ * `server/discover` must advertise. */
+export const MODERN_PROTOCOL = "2026-07-28";
 /** Every tool the server serves, in the order src/mcp.js's ALL_MCP_TOOLS fixes. */
 export const EXPECTED_TOOLS = [
   "deep_research",
@@ -63,10 +68,13 @@ export const EXPECTED_TOOLS = [
   // mode, a server missing either name is refused outright.
   "search",
   "fetch",
-  "sdk_list_modules",
-  "sdk_show_module",
-  "sdk_plan",
-  "sdk_validate",
+  // The EXTENSION families, last in the list because they are last in the
+  // registry. An account with their knobs off still SEES them here — the
+  // exposure switch and the extension knob are different gates, and only the
+  // first one filters the listing.
+  "street_view_look",
+  "place_nearby",
+  "host_intel",
 ];
 
 // Six angles on one topic — the shape literature_search exists for. Chosen to
@@ -137,6 +145,44 @@ export function rpc(id, method, params) {
 /** A tools/call envelope. */
 export function toolCall(id, name, args) {
   return rpc(id, "tools/call", { name, arguments: args });
+}
+
+/**
+ * A MODERN-era request body: the same envelope carrying the two `_meta` fields
+ * every 2026-07-28 request must declare. `clientCapabilities` is an empty object
+ * on purpose — that is the valid way to say "no optional capabilities", and a
+ * server that refuses it has confused absent with empty.
+ * @param {number} id
+ * @param {string} method
+ * @param {any} [params]
+ */
+export function modernRpc(id, method, params) {
+  return rpc(id, method, {
+    ...(params || {}),
+    _meta: {
+      "io.modelcontextprotocol/protocolVersion": MODERN_PROTOCOL,
+      "io.modelcontextprotocol/clientInfo": { name: "mcp-probe", version: "1.0.0" },
+      "io.modelcontextprotocol/clientCapabilities": {},
+    },
+  });
+}
+
+/**
+ * The three mirrored headers a modern POST must carry. `Mcp-Name` only for the
+ * methods whose table row demands it.
+ * @param {string} method
+ * @param {string} [name] params.name, for tools/call
+ * @returns {Record<string, string>}
+ */
+export function modernHeaders(method, name) {
+  /** @type {Record<string, string>} */
+  const headers = {
+    "mcp-protocol-version": MODERN_PROTOCOL,
+    "mcp-method": method,
+    accept: "application/json, text/event-stream",
+  };
+  if (method === "tools/call" && name) headers["mcp-name"] = name;
+  return headers;
 }
 
 /**
@@ -212,6 +258,59 @@ export function checkToolsList(result) {
       : "no literature_* tool is exposed — switch them on at Settings → MCP server",
     { names, missing },
   );
+}
+
+/**
+ * The MODERN era (protocol 2026-07-28): `server/discover` must answer with the
+ * five required fields, and it must list a version we actually serve.
+ *
+ * This is the one check a client's own probe depends on — a client that gets
+ * anything but a recognized modern result here concludes the whole server is
+ * legacy and stays there — so it is checked live rather than only in units.
+ * @param {any} result the `server/discover` result
+ */
+export function checkDiscover(result) {
+  const versions = result?.supportedVersions;
+  if (!Array.isArray(versions) || !versions.length) return verdict(false, "no supportedVersions");
+  if (!versions.includes(MODERN_PROTOCOL)) {
+    return verdict(false, `supportedVersions ${versions.join(", ")} does not include ${MODERN_PROTOCOL}`);
+  }
+  if (result?.resultType !== "complete") return verdict(false, `resultType ${JSON.stringify(result?.resultType)}`);
+  if (typeof result?.ttlMs !== "number" || result.ttlMs < 0) return verdict(false, `ttlMs ${JSON.stringify(result?.ttlMs)}`);
+  if (result?.cacheScope !== "public" && result?.cacheScope !== "private") {
+    return verdict(false, `cacheScope ${JSON.stringify(result?.cacheScope)}`);
+  }
+  if (!result?.capabilities?.tools) return verdict(false, "does not advertise the tools capability");
+  return verdict(true, `speaks ${versions.join(", ")}; ttl ${result.ttlMs}ms ${result.cacheScope}`);
+}
+
+/**
+ * A modern request whose mirrored header disagrees with its body MUST be
+ * refused with 400 and -32020. Getting this wrong is invisible until an
+ * intermediary routes on one value while the server executes the other, which is
+ * the exact confusion the rule exists to prevent.
+ * @param {{ status: number, body: any }} res
+ */
+export function checkHeaderMismatch(res) {
+  if (res.status !== 400) return verdict(false, `expected 400, got ${res.status}`);
+  if (res.body?.error?.code !== -32020) return verdict(false, `expected -32020, got ${JSON.stringify(res.body?.error?.code)}`);
+  return verdict(true, `400 with -32020: ${String(res.body.error.message).slice(0, 80)}`);
+}
+
+/**
+ * A version we do not implement MUST come back as 400 + -32022 carrying the
+ * versions we do — that list is how a conforming client retries instead of
+ * giving up.
+ * @param {{ status: number, body: any }} res
+ */
+export function checkUnsupportedVersion(res) {
+  if (res.status !== 400) return verdict(false, `expected 400, got ${res.status}`);
+  const error = res.body?.error;
+  if (error?.code !== -32022) return verdict(false, `expected -32022, got ${JSON.stringify(error?.code)}`);
+  if (!Array.isArray(error?.data?.supported) || !error.data.supported.length) {
+    return verdict(false, "-32022 carried no data.supported list");
+  }
+  return verdict(true, `400 with -32022, offering ${error.data.supported.join(", ")}`);
 }
 
 /** @param {any} body a JSON-RPC response @param {number} code */
@@ -418,8 +517,8 @@ export function summarize(results, gaps = []) {
  * @param {any} body
  * @param {{ raw?: boolean }} [opts]
  */
-async function call(url, auth, body, { raw = false } = {}) {
-  const headers = { "content-type": "application/json" };
+async function call(url, auth, body, { raw = false, headers: extra = {} } = {}) {
+  const headers = { "content-type": "application/json", ...extra };
   if (auth) /** @type {any} */ (headers).authorization = auth;
   const res = await fetch(url, {
     method: "POST",
@@ -483,6 +582,45 @@ async function runBattery(url, cred, opts) {
   const has = (name) => exposed.includes(name);
 
   await check("bad-method", async () => checkRpcError((await call(url, auth, rpc(next(), "no/such/method"))).json, -32601));
+
+  // ---- the MODERN era (protocol 2026-07-28) --------------------------------
+  //
+  // These four are what a stateless client's own opening moves look like. They
+  // are checked live because a client BRANCHES on them: anything but a
+  // recognized modern error makes it conclude the server is legacy and stay
+  // there, and no unit test can prove the deployed edge answers this way.
+
+  await check("discover", async () =>
+    checkDiscover((await call(url, auth, modernRpc(next(), "server/discover"), { headers: modernHeaders("server/discover") })).json?.result),
+  );
+
+  await check("modern-tools-list", async () => {
+    const res = await call(url, auth, modernRpc(next(), "tools/list"), { headers: modernHeaders("tools/list") });
+    const result = res.json?.result;
+    if (res.status !== 200) return verdict(false, `expected 200, got ${res.status}`);
+    if (result?.resultType !== "complete") return verdict(false, `resultType ${JSON.stringify(result?.resultType)}`);
+    if (typeof result?.ttlMs !== "number") return verdict(false, "a cacheable listing carried no ttlMs");
+    if (result?.cacheScope !== "private") {
+      return verdict(false, `cacheScope ${JSON.stringify(result?.cacheScope)} — the listing is per-account, so it is private`);
+    }
+    return checkToolsList(result);
+  });
+
+  await check("header-mismatch", async () => {
+    const res = await call(url, auth, modernRpc(next(), "tools/list"), {
+      headers: { ...modernHeaders("tools/list"), "mcp-method": "tools/call" },
+    });
+    return checkHeaderMismatch({ status: res.status, body: res.json });
+  });
+
+  await check("unsupported-version", async () => {
+    const body = modernRpc(next(), "tools/list");
+    body.params._meta["io.modelcontextprotocol/protocolVersion"] = "1900-01-01";
+    const res = await call(url, auth, body, {
+      headers: { ...modernHeaders("tools/list"), "mcp-protocol-version": "1900-01-01" },
+    });
+    return checkUnsupportedVersion({ status: res.status, body: res.json });
+  });
 
   await check("bad-json", async () =>
     checkRpcError((await call(url, auth, "{not json", { raw: true })).json, -32700),

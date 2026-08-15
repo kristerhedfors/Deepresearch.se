@@ -99,6 +99,34 @@ never learn which agent or which service it belongs to:
     block that costs an outbound request to a third party or injects a method
     the turn did not ask for.
 
+  Since 2026-08-15 `POST /mcp` can resolve a capability after all:
+  `deep_research` takes an `agent` argument, and naming `cyber` resolves the
+  whole capability through the same registry and the same `developer_mode` grant
+  a chat turn uses. Saying nothing still resolves nothing, so the null-capability
+  reading above is unchanged for every existing caller — it is now the DEFAULT
+  rather than the only possibility.
+
+## 1a. Reachable as MCP TOOLS, and gated the same way
+
+Two of Cyber's capabilities are also callable directly over `POST /mcp`, without
+a research turn: `street_view_look` / `place_nearby` (street imagery) and
+`host_intel` (host intelligence). They exist because the `/mcp` surface is aimed
+at voice callers, and "describe what you see a hundred metres south of here" is
+worth more spoken than anything else this platform does.
+
+**They are not a hole in the exclusivity guard**, and the reason is worth being
+precise about. The guard says which AGENT may consult a source during a research
+turn; a direct tool call has no agent, so there is nothing for it to be exclusive
+against. What replaces it is the pair of gates in
+`src/mcp.js`'s dispatch: the account's MCP exposure switch (does this tool exist
+on this surface?) and the extension's own per-account KNOB (may this site reach
+that third party for this account at all?) — the second being the same consent
+the enrichment obeys, default OFF, and the one that actually protects the user.
+The schemas live in `src/maps-tools.js` / `src/shodan-tools.js` and the runners in
+`src/extension-tools-run.js`, registered in `src/extension-tools.js`; `src/mcp.js`
+names none of them (invariant 7). Adding a new OSINT source as a TOOL is an entry
+there, not an edit to the MCP module.
+
   Declaring an **empty** `context` is a real declaration on both seams and does
   gate — that is an agent saying "nothing", not a caller saying nothing.
 - `routingNeedsRegistry` therefore returns `true` unconditionally. A request
