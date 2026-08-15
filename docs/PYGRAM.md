@@ -787,9 +787,11 @@ review and its own conformance run — not the tail of a pass about compiler fla
 
 ### The instrument this pass needed and did not have
 
-`scripts/pygram-corpus-time.mjs` times all 351 corpus programs on one binary or
+`scripts/pygram-corpus-time.mjs` times every corpus program on one binary or
 two, interleaved, min-of-repeats, each in its own temp directory with
-`PYGRAM_CAPTURE=0`. Everything above depends on it. The benchmark answers "what
+`PYGRAM_CAPTURE=0`. (The measurements above were taken over 351 of them; the
+capture harness has since carried that past 460, which is why the tool prints
+the count it loaded rather than anyone quoting one.) Everything above depends on it. The benchmark answers "what
 does our variant cost against stock" per subsystem; only the corpus answers "did
 this change make the programs pygram is actually asked to run faster", and for
 all four techniques in the table the two instruments disagreed — the benchmark
