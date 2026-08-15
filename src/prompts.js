@@ -10,6 +10,7 @@ import { sourcePromptNotes } from "./search-sources.js";
 import { MAX_READ_TOTAL_CHARS, MERMAID_DIAGRAM_NOTE } from "./introspect-tools.js";
 import { AI_MODEL_NOT_A_PACKAGE_NOTE, AI_MODEL_RESEARCH_NOTE } from "./ai-models.js";
 import { APP_KIT_NOTE } from "./sdk-tools.js";
+import { capHasContext } from "./agent-spec.js";
 
 /**
  * The per-call options every JSON-mode prompt builder accepts.
@@ -213,6 +214,11 @@ export const gapPrompt = (pastQueries, maxFollowups, { subquestions = [], reinfo
     : "") +
   `Do not repeat or trivially rephrase these already-run queries: ${JSON.stringify(pastQueries)}` +
   sourcePromptNotes(capability) +
+  // SECURITY-RISKS.md P-7/M-6: this phase is handed raw web content (the
+  // source digest rides in its USER message), and the prompt text is public,
+  // so injections can be crafted offline against this exact phase. It was the
+  // one untrusted-content builder without the note, alongside validatePrompt.
+  ANTI_INJECTION_NOTE +
   (reinforceJsonOnly ? JSON_ONLY_REINFORCEMENT : "");
 
 // Phase 2.5 — notes digest (budget-gated, mid/high tiers). Compresses a NEW
@@ -284,6 +290,12 @@ export const IMAGE_READ_PROMPT =
 // data, honesty about gaps) stays identical across tiers. Every tier keeps
 // the inline [n] citation rule and the closing "Sources:" list, which
 // validation and the client's source rendering depend on.
+// The closing rule that comment declares shared, written once instead of four
+// times. It is not decoration: validation parses the "Sources:" list and the
+// client renders from it, so a tier that drifted out of the format would break
+// both — which is exactly the drift four copies invite.
+const SOURCES_LIST_RULE = '- End with a "Sources:" section listing each cited source as "- [n] Title — URL".\n';
+
 /** @type {Record<import('./types.js').ReportTier, string>} */
 const REPORT_TIER_STRUCTURE = {
   brief:
@@ -291,18 +303,18 @@ const REPORT_TIER_STRUCTURE = {
     "- Start with a 1-2 sentence direct answer in bold.\n" +
     "- Then 3-6 tight bullet points with the key facts — each concrete (a number, date, name, or finding) and cited inline with bracketed numbers like [1], [2] after each claim. No headings and no background sections; a small table only if the question is inherently comparative.\n" +
     "- Keep it under roughly 250 words before the source list.\n" +
-    '- End with a "Sources:" section listing each cited source as "- [n] Title — URL".\n',
+    SOURCES_LIST_RULE,
   standard:
     "- Start with a 1-3 sentence conclusion in bold.\n" +
     "- Then the key findings as short sections or bullet lists; cite sources inline with bracketed numbers like [1], [2] after each claim. Use tables when comparing figures.\n" +
-    '- End with a "Sources:" section listing each cited source as "- [n] Title — URL".\n',
+    SOURCES_LIST_RULE,
   extended:
     "REPORT DEPTH — STRUCTURED REPORT: the user chose an extended research time, so deliver a structured report, not just a short answer.\n" +
     "- Start with a 2-4 sentence conclusion in bold summarizing the key findings.\n" +
     '- Then organize the findings under short, informative "##" section headings — one per major theme or sub-question — mixing tight paragraphs and bullet lists; cite sources inline with bracketed numbers like [1], [2] after each claim. Use tables when comparing figures.\n' +
     '- Include the relevant background and context the sources support, and close the findings with a short "## Limitations" section naming what the sources leave unanswered.\n' +
     "- Aim for roughly 800-1,500 words before the source list. The depth must come from the sources' specifics — never from padding or repetition; if the sources are thin, say so and write less.\n" +
-    '- End with a "Sources:" section listing each cited source as "- [n] Title — URL".\n',
+    SOURCES_LIST_RULE,
   full:
     "REPORT DEPTH — FULL RESEARCH REPORT: the user chose the maximum research time and expects the structure and comprehensiveness of a frontier research assistant's full report.\n" +
     '- Start with a "# " title naming the specific subject, then an executive summary in bold (3-6 sentences: the key conclusions and the most important numbers or facts).\n' +
@@ -310,7 +322,7 @@ const REPORT_TIER_STRUCTURE = {
     "- Cover, as far as the sources support each: the current state, the key data and numbers, differing perspectives and independent commentary, notable risks or criticisms, and the outlook/what to watch next.\n" +
     '- Close with a "## Limitations and open questions" section: what the sources do not establish, conflicts left unresolved, and what further research would target.\n' +
     "- Aim for roughly 1,500-3,000 words before the source list. The depth must come from the sources' specifics — more of their facts, numbers, and context — never from padding, repetition, or unsourced generalities; if the sources are thin, say so plainly and write a shorter report.\n" +
-    '- End with a "Sources:" section listing each cited source as "- [n] Title — URL".\n',
+    SOURCES_LIST_RULE,
 };
 
 // The site's own interactive surfaces are DEMOS the chat can be asked for
@@ -589,7 +601,8 @@ export const sourceAgentPrompt = ({ reinforceJsonOnly = false } = {}) =>
   "Base your investigation on the CODE itself. Do NOT treat the project's own Markdown docs (CLAUDE.md, SECURITY-RISKS.md, SECURITY-ASSESSMENT.md, skills) or code comments as proof of behavior — they describe intent and may be outdated, aspirational, or wrong. A documented claim or issue is a LEAD to verify by reading the implementation it refers to, never a confirmed fact.\n" +
   "If short source excerpts already appear in the context, treat them as PREVIEWS, not a substitute for reading — read the FULL files they came from. Prefer the actual implementation (files under src/ and public/js/) over the Markdown docs. Do not reply done on the first round when the message asks how something is built, whether a control really works, or for an audit/assessment/review — read the code first.\n" +
   'HELP questions are the exception: when the message is a plain usage / how-do-I / what-is question and the documentation passages already in the context answer it, reply {"done":true} immediately — the answer comes from the documentation, and the source is only for follow-ups that ask about the implementation or want proof.\n' +
-  "For an audit, assessment, or 'how secure/correct is X' request, READ the relevant implementation BROADLY rather than answering from the docs: e.g. the request entrypoint and routing (src/index.js), authentication and access control (src/auth.js), the response security headers and CSP (src/security-headers.js), request validation and input sanitizers (src/validation.js), storage/crypto and the privacy model, and the /api/chat pipeline — plus whatever those reference." +
+  "For an audit, assessment, or 'how secure/correct is X' request, READ the relevant implementation BROADLY rather than answering from the docs: e.g. " +
+  AUDIT_SURFACES +
   ANTI_INJECTION_NOTE +
   (reinforceJsonOnly ? JSON_ONLY_REINFORCEMENT : "");
 
@@ -610,8 +623,31 @@ const OWASP_CONTEXT_BLOCK = "owasp";
  * @param {any} [capability]
  * @returns {boolean}
  */
-const owaspNoteFor = (capability) =>
-  capability === undefined || (Array.isArray(capability?.context) && capability.context.includes(OWASP_CONTEXT_BLOCK));
+const owaspNoteFor = (capability) => capability === undefined || capHasContext(capability, OWASP_CONTEXT_BLOCK);
+
+// The surfaces an audit/assessment request has to walk, named once. Both
+// introspection prompts list them — the read-loop planner (which files to
+// request) and the native-tool answer (which files to grep) — and each names
+// four src/ modules by PATH, so a rename or split of any of them has to reach
+// both copies and nothing goes red if it reaches only one.
+const AUDIT_SURFACES =
+  "the request entrypoint and routing (src/index.js), authentication and access control (src/auth.js), the response security headers and CSP (src/security-headers.js), request validation and input sanitizers (src/validation.js), storage/crypto and the privacy model, and the /api/chat pipeline — plus whatever those reference.";
+
+// The no-preamble rule, shared by the two introspection ANSWER prompts. They
+// are the same answer contract reached by two investigation mechanisms (the
+// deterministic read loop and the invariant-1-authorized native tool loop), so
+// a wording change to one is a bug in the other by construction.
+const DIRECT_ANSWER_NOTE =
+  "Write the answer DIRECTLY to the user: do NOT open with a meta-preamble narrating what you are about to do or restating what your tools can and cannot do, and never refer to 'the user' in the third person — the first thing shown must be the bold conclusion itself.\n";
+
+/**
+ * The closing notes both introspection answer prompts end with, in order.
+ * Same reason as DIRECT_ANSWER_NOTE: one answer contract, two mechanisms.
+ * @param {any} [capability]
+ * @returns {string}
+ */
+const introspectionAnswerTail = (capability) =>
+  MERMAID_DIAGRAM_NOTE + HELP_DOCS_NOTE + (owaspNoteFor(capability) ? OWASP_ASSESSMENT_NOTE : "") + ANTI_INJECTION_NOTE;
 
 /**
  * @param {{externalSources?: boolean, capability?: any}} [opts] `externalSources` when the turn
@@ -632,12 +668,9 @@ export const sourceAnswerPrompt = ({ externalSources = false, capability } = {})
   "Ground every claim in the code you were given: quote the relevant snippet and cite its file path (e.g. `src/auth.js`). Never invent files, functions, or behavior that isn't in the provided source, and never claim you lack access to the source — you have it here.\n" +
   "CRITICAL — verify, do not take documentation at face value: the repo's own Markdown docs (CLAUDE.md, SECURITY-RISKS.md, SECURITY-ASSESSMENT.md, skills, code comments) describe INTENDED behavior and can be outdated, aspirational, or simply wrong. When the question is about what the code actually does — security, correctness, whether a claimed control really exists — base the answer on the IMPLEMENTATION you read, not on what a doc asserts, and explicitly call out any place the docs and the code disagree. Treat a documented issue as a lead you checked, not a fact you inherited.\n" +
   "When the request is an audit, assessment, or review, ANSWER IT — produce concrete findings grounded in the code you read (each anchored to a specific file path, and a function/line where you can), not a description of how the project TRACKS security or a recap of SECURITY-RISKS.md / SECURITY-ASSESSMENT.md / the skills. Summarizing the repo's own security documents or its process is NOT an assessment; walking the actual implementation and reporting what you found is. If you were not given enough of the code to assess a given area, say which files you would need rather than filling the gap with what a doc claims.\n" +
-  "Write the answer DIRECTLY to the user: do NOT open with a meta-preamble narrating what you are about to do or restating what your tools can and cannot do, and never refer to 'the user' in the third person — the first thing shown must be the bold conclusion itself.\n" +
+  DIRECT_ANSWER_NOTE +
   "Format in Markdown (the UI renders it): a bold 1-3 sentence conclusion first, then findings as short sections or bullets, each citing the file path(s) it rests on. Use REAL line breaks — a blank line between paragraphs and before every heading. Be honest about coverage: if answering well would need a file you did not read, say so rather than guessing." +
-  MERMAID_DIAGRAM_NOTE +
-  HELP_DOCS_NOTE +
-  (owaspNoteFor(capability) ? OWASP_ASSESSMENT_NOTE : "") +
-  ANTI_INJECTION_NOTE;
+  introspectionAnswerTail(capability);
 
 // Introspection NATIVE-TOOL answer (src/pipeline.js runSourceResearchTools):
 // the system prompt when the answer model drives the investigation ITSELF with
@@ -657,15 +690,14 @@ export const sourceToolAgentPrompt = ({ externalSources = false, capability } = 
     : "") +
   "You have TOOLS to read the real code: grep_source (search the whole codebase like `grep -rn`, with optional context lines like `grep -C`), read_file (read files whole like `cat`, or a line range via offset/limit like `sed -n`), and list_files (see what exists, with byte sizes). USE them — do not answer from memory or from any excerpt already in the context. A typical investigation: grep_source for the relevant term, then read_file the implementation files it points to, following imports/references until you have really seen how it works.\n" +
   `TOOL ECONOMY — plan around the read budget: all read_file output in this investigation shares ONE fixed budget of ${MAX_READ_TOTAL_CHARS} characters (each result reports what is used so far); once spent, read_file returns nothing more. grep_source and list_files are free. So locate code with grep_source (its context parameter shows the surrounding lines cheaply), read only the relevant line ranges with read_file's offset/limit, and keep whole-file reads for small files (list_files shows sizes). For a broad ask spanning many files, extract per file with targeted greps and ranged reads instead of reading every file in full.\n` +
-  "For an audit, assessment, or 'how secure/correct is X' request, investigate BROADLY before answering: the request entrypoint and routing (src/index.js), authentication and access control (src/auth.js), the response security headers and CSP (src/security-headers.js), request validation and input sanitizers (src/validation.js), storage/crypto and the privacy model, and the /api/chat pipeline — plus whatever those reference.\n" +
+  "For an audit, assessment, or 'how secure/correct is X' request, investigate BROADLY before answering: " +
+  AUDIT_SURFACES +
+  "\n" +
   "CRITICAL — verify, do not take documentation at face value: the repo's own Markdown docs (CLAUDE.md, SECURITY-RISKS.md, SECURITY-ASSESSMENT.md, skills) and code comments describe INTENDED behavior and can be outdated, aspirational, or wrong. Treat a documented claim or issue as a LEAD to verify by reading the implementation, never a confirmed fact, and call out any place the docs and the code disagree.\n" +
   "When you have investigated enough, STOP calling tools and write the final answer. When the request is an audit/assessment/review, ANSWER IT — concrete findings grounded in the code you actually read, each anchored to a specific file path (and a function/line where you can). Summarizing the repo's own security documents or its tracking process is NOT an assessment; walking the implementation and reporting what you found is.\n" +
-  "Write the answer DIRECTLY to the user: do NOT open with a meta-preamble narrating what you are about to do or restating what your tools can and cannot do, and never refer to 'the user' in the third person — the first thing shown must be the bold conclusion itself.\n" +
+  DIRECT_ANSWER_NOTE +
   "Format the final answer in Markdown (the UI renders it): a bold 1-3 sentence conclusion first, then findings as short sections or bullets, each citing the file path(s) it rests on. Use REAL line breaks — a blank line between paragraphs and before every heading. Be honest about coverage: if you did not read enough to assess an area, say so rather than guessing." +
-  MERMAID_DIAGRAM_NOTE +
-  HELP_DOCS_NOTE +
-  (owaspNoteFor(capability) ? OWASP_ASSESSMENT_NOTE : "") +
-  ANTI_INJECTION_NOTE;
+  introspectionAnswerTail(capability);
 
 // SDK ("lovable experience") mode — the green mode in the mode dropdown. The
 // user describes a FLAVOUR to distill from this site — above all the
@@ -716,6 +748,19 @@ const SDK_METHOD_NOTE = (target) =>
     ? "THE PLATFORM SDK IS THE METHOD: this ask is a whole PLATFORM, so the Platform SDK (sdk/MANIFEST.json + sdk/skills/<id>/SKILL.md in this repo's deployed snapshot) — the site's own catalog of buildable modules and playbooks — is what structures it, with the deployed Se/cure source (public/cure/*, public/js/drc-*.js) as the reference implementation. Pick the relevant modules, follow their skills' guidance, study how Se/cure does browser-direct calls and its in-page pipeline, and say (briefly, in plain language) which Platform SDK modules shaped the build. Call it the Platform SDK — never an internal codename.\n"
     : "THE AGENT SDK IS THE METHOD: this ask is ONE AGENT, not a platform, so the Agent SDK (sdk/AGENTS.json + docs/AGENT-PLATFORM.md) is what shapes it. There an agent is DATA: a spec declaring what it IS (composer controls, theme, intro/loading animations, seed examples, share-link quota) and what it DOES (answer phase, prompt set, tool classes, context blocks, search and routing policy, gates, bounds, events). Decide those axes deliberately, build the agent to match, and say (briefly, in plain language) which of them you chose. The Platform SDK's module catalog is the OTHER SDK — it builds a whole platform; borrow from it only for machinery your agent genuinely sits on, and do NOT present it as the method. Call them the Agent SDK and the Platform SDK — never an internal codename.\n"
 
+// The two Agent Studio build prompts differ ONLY in their execution path (a
+// tool-capable model drives the sdk_* + write_file tools; every other model
+// emits FILE blocks), and the path is picked by the MODEL, not by the user.
+// So the opening identity and the closing rules have to be one string in each
+// case: a build-prompt edit landing on one path only means the same request
+// gets a different product voice depending on which model was selected.
+/** @param {"agent" | "platform" | undefined} target @returns {string} */
+const SDK_BUILD_HEADER = (target) =>
+  `You are the Agent Studio build assistant for Deepresearch.se — the "describe it, get a live link" experience: build ${target === "platform" ? "a new platform distilled from this site" : "a single-purpose agent"} out of this site (above all its client-side Se/cure tier). Today's date: ${today()}.\n`;
+
+/** @param {"agent" | "platform" | undefined} target @returns {string} */
+const SDK_BUILD_TAIL = (target) => SDK_BUILD_SHARED(target) + ANTI_INJECTION_NOTE;
+
 /** @param {"agent" | "platform"} [target] @returns {string} */
 const SDK_BUILD_SHARED = (target) =>
   BUILD_NOW_DIRECTIVE +
@@ -732,21 +777,19 @@ const SDK_BUILD_SHARED = (target) =>
 
 /** @param {{ target?: "agent" | "platform" }} [opts] @returns {string} */
 export const sdkBuildToolPrompt = ({ target } = {}) =>
-  `You are the Agent Studio build assistant for Deepresearch.se — the "describe it, get a live link" experience: build ${target === "platform" ? "a new platform distilled from this site" : "a single-purpose agent"} out of this site (above all its client-side Se/cure tier). Today's date: ${today()}.\n` +
+  SDK_BUILD_HEADER(target) +
   "You have TOOLS — Agent Studio's toolset: the Agent SDK's shipping tools plus planning over the Platform SDK's catalog. Planning: sdk_list_modules / sdk_show_module / sdk_plan / sdk_validate operate on the Platform SDK's manifest directly. Reading: grep_source / read_file / list_files read this site's deployed source snapshot — read the Agent SDK's definition (sdk/AGENTS.json, docs/AGENT-PLATFORM.md), the relevant sdk/skills/<id>/SKILL.md playbooks, and the Se/cure reference source (public/cure/index.html, public/cure/drc.js, public/js/drc-*.js) before building. Shipping: write_file stages each file of the app; publish_app (call it ONCE, after all files are staged) publishes the build and returns its live URL. These direct file tools are the ONLY way files ship — the sandbox publishes nothing, so never route file creation through it.\n" +
   `A typical turn: understand the ask → ${target === "platform" ? "sdk_plan the relevant Platform SDK modules" : "settle the agent's spec axes (controls, theme, capability)"} → read the 1-3 most relevant references → write_file every file of the app → publish_app → write the short reply.\n` +
   "On an iteration turn (the context names an already-published build), stage the COMPLETE new version of every file the app needs — the publish replaces the whole collection — then publish_app again; the URL stays stable.\n" +
-  SDK_BUILD_SHARED(target) +
-  ANTI_INJECTION_NOTE;
+  SDK_BUILD_TAIL(target);
 
 /** @param {{ target?: "agent" | "platform" }} [opts] @returns {string} */
 export const sdkBuildPrompt = ({ target } = {}) =>
-  `You are the Agent Studio build assistant for Deepresearch.se — the "describe it, get a live link" experience: build ${target === "platform" ? "a new platform distilled from this site" : "a single-purpose agent"} out of this site (above all its client-side Se/cure tier). Today's date: ${today()}.\n` +
+  SDK_BUILD_HEADER(target) +
   `You have NO tools in this path. The Agent Studio context block in the conversation carries ${target === "platform" ? "the Platform SDK's module catalog" : "the Agent SDK's spec vocabulary and shipped examples"}, the Se/cure reference source, and its privacy invariants — use it (and any source excerpts already provided) to structure the build.\n` +
   "SHIP FILES by emitting them in your reply, each as a `FILE: <relative path>` line followed by ONE fenced code block containing that file's COMPLETE content (the convention the context block shows). The user NEVER sees the FILE blocks: the server strips them from the reply, publishes the collection, and appends the build summary and live URL — what remains on screen is your prose, so write it as the finished reply (a short intro before the blocks, a short closing note after them); do not invent or promise a URL yourself.\n" +
   "Emit the complete app EVERY build turn (all files, index.html included) — a publish replaces the whole collection.\n" +
-  SDK_BUILD_SHARED(target) +
-  ANTI_INJECTION_NOTE;
+  SDK_BUILD_TAIL(target);
 
 // ---- Orchestrator mode (src/orchestrator.js) --------------------------------
 //
@@ -787,6 +830,9 @@ export const validatePrompt = ({ reinforceJsonOnly = false } = {}) =>
   "Respond ONLY with JSON:\n" +
   '- {"verdict":"pass"} if the draft is faithful to the sources.\n' +
   '- {"verdict":"revise","issues":["..."],"revised_answer":"..."} if you found problems. revised_answer must be the complete corrected answer in the same format, changing only what is needed to fix the issues.' +
+  // SECURITY-RISKS.md P-7/M-6, same as gapPrompt: the numbered sources AND the
+  // draft written from them both ride in this phase's user message.
+  ANTI_INJECTION_NOTE +
   (reinforceJsonOnly ? JSON_ONLY_REINFORCEMENT : "");
 
 // Phase 5 (claim-level, budget-gated) — extract the check-worthy claims from
@@ -1020,14 +1066,25 @@ const SEARCH_ON_BUT_UNUSED_NOTE =
  * capabilities note to the ones THIS agent can actually reach; omitted, the
  * note lists every registered extension exactly as it did before the filter
  * existed, so a caller that resolved no agent is byte-identical.
- * @param {{ hasShell?: boolean, hasSource?: boolean, spaceScene?: string, demoSurface?: string, webSearchOn?: boolean, capability?: any }} [opts]
+ *
+ * `externalSources` when the turn DOES carry a numbered digest — a forced
+ * auxiliary source ran even though this is the direct-reply path
+ * (pipeline.js runSourceResearch). It admits those sources for citation and
+ * suppresses the "no sources were gathered" note, which would otherwise tell
+ * the model to disregard material the pipeline just put in front of it — the
+ * same correction sourceAnswerPrompt's own `externalSources` makes.
+ * @param {{ hasShell?: boolean, hasSource?: boolean, spaceScene?: string, demoSurface?: string, webSearchOn?: boolean, externalSources?: boolean, capability?: any }} [opts]
  * @returns {string}
  */
-export const directPrompt = ({ hasShell = false, hasSource = false, spaceScene = "", demoSurface = "", webSearchOn = false, capability } = {}) =>
+export const directPrompt = ({ hasShell = false, hasSource = false, spaceScene = "", demoSurface = "", webSearchOn = false, externalSources = false, capability } = {}) =>
   "You are the assistant for Deepresearch.se, a deep-research service. Reply directly, helpfully, and concisely." +
   capabilitiesNote(capability) +
   capabilitiesTail(hasShell, hasSource, spaceScene, demoSurface) +
-  (webSearchOn ? SEARCH_ON_BUT_UNUSED_NOTE : "") +
+  (externalSources
+    ? " This turn carries numbered EXTERNAL SOURCES retrieved for the question — cite them as [n] and end with a \"Sources:\" list of the ones you cited."
+    : webSearchOn
+      ? SEARCH_ON_BUT_UNUSED_NOTE
+      : "") +
   ANTI_INJECTION_NOTE;
 
 // The SOURCELESS depth ladder for the search-off answer: the slider still buys

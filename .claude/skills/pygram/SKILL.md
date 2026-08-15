@@ -148,8 +148,10 @@ arms interleaved per entry, each in its own temp cwd with `PYGRAM_CAPTURE=0`.
 **This is the acceptance instrument for any change made in the name of speed** —
 the bench is the diagnostic that says where the time went. The tool prints the
 count it loaded; do not carry a remembered number, because the capture harness
-grows the corpus every session (351 when the instrument was written, 462 two
-days later).
+grows the corpus every session. It was 351 when the instrument was written, and
+this sentence originally named the figure a couple of days later — which was
+already wrong by 51 before the change landed. Run `loadCorpus()` if you need the
+number; do not quote one from here.
 
 **Run both, and expect them to disagree.** Every technique tried in the
 2026-08-15 pass had the two instruments telling different stories: the bench said
