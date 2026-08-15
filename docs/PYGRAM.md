@@ -671,6 +671,132 @@ than any flag: transport compression on the image would halve every byte saved
 (the 35,316 B here is 17,329 B under `gzip -9`), and implementing the recorded
 `sandbox.prefetch` directive would remove per-file cold cost altogether.
 
+## 8c. The third pass (2026-08-15): compiler techniques, and where the time actually is
+
+The first two passes were size passes, because opens were already zero and bytes
+were the only lever anyone could name. This one asked the other question — what
+do modern compiler optimisation techniques have left to give — and answered it
+with builds rather than reasoning. **The answer is nothing, and the reason is
+worth more than the flags.**
+
+### The measurements that closed the compiler question
+
+Every row was built and timed on one machine, against the same corpus.
+
+| technique | size | real corpus (351 programs) | heavy workloads | verdict |
+|---|---|---|---|---|
+| `-O2` everywhere (from `-Os`) | **+66,624 B (+24.7%)** | 0.994x | 0.95–0.99x | rejected |
+| PGO at `-Os` (`-fprofile-use`) | +2,240 B | 0.996x | **1.07–1.11x — slower** | rejected |
+| geometric map growth | +32 B | 1.000x | 0.96x on 20k-key insert | **taken** |
+| the `re` shim rewrite (below) | +192 B | 0.998x | **0.087x on re.sub** | **taken** |
+
+**The corpus column is why every compiler technique loses.** A corpus program
+costs about 1.7 ms, and `docs/PYGRAM-RESEARCH.md` §2.7 already measured where
+that goes: interpreter init is **0.96 ms against a 0.92 ms empty-C-program
+floor**. Ninety-six per cent of a pygram invocation is the operating system
+spawning a process, which no compiler flag touches. What is left for codegen to
+improve is a few hundred microseconds of parse, compile and execute — so a
+technique that makes generated code 10% faster moves the thing anyone waits for
+by well under one per cent, and the timings above say exactly that.
+
+**PGO is worse than inert, and the shape of its failure is the lesson.** Trained
+on all 351 corpus programs and then measured on that same corpus — training on
+the test set, so an upper bound — it was worth 0.4%, which is noise. Measured on
+the held-out dict workloads it was **7 to 11% slower than plain `-Os`**: the
+profile said `mp_map_lookup`'s scan was lukewarm, so GCC optimised it for size.
+That is the classic profile-representativeness failure, and it is unavoidable
+here rather than fixable, because pygram's two distributions genuinely differ —
+one-liners that start and exit, and the occasional program that loops over a
+large input. A profile can serve one or the other.
+
+Two mechanical findings ride along, both of which cost a build:
+
+- **GCC's `libgcov.a` cannot be statically linked against musl.** Ubuntu's
+  prebuilt copy is a glibc/`_FORTIFY_SOURCE` artifact and pulls in `mmap64`,
+  `open64`, `fopen64`, `fcntl64`, `__memcpy_chk`, `__isoc23_strtol` and three
+  `*printf_chk` variants, none of which musl has. Aliasing those nine to their
+  unsuffixed musl equivalents in one small translation unit closes it completely,
+  and the instrumented binary is a throwaway, so nothing shipped would ever link
+  it — but it is a real cost to put in CI for a technique measured at zero.
+- **At `-Os`, `-fprofile-use` cannot make code faster at all.** GCC's
+  `optimize_size` gates every speed-for-size transform, so a profile buys block
+  layout and nothing else — measured, a hot function was byte-identical with and
+  without a real profile. Anyone hoping for PGO's speed while keeping `-Os` is
+  chasing something that does not exist.
+
+### The cost model gains a constant: 131,072 B
+
+CheerpX streams the disk image in **128 KiB device blocks** (the constant is in
+`cx_esm.js`; `262144` and `524288` appear nowhere). Cold cost is therefore not
+linear in bytes, it is a **step function**: the 269,316 B binary occupies three
+blocks, and any saving that does not cross a 131,072 B boundary streams exactly
+the same number of blocks as before. This retires a great deal of speculative
+work — code layout, function ordering, hot/cold partitioning and `llvm-bolt` all
+optimise placement inside a file that is fetched whole — and it reprices the
+size passes: the next 6,980 B would drop the binary under 262,144 B and remove a
+whole fetch, while the 4,096 B cuts the earlier passes declined were worth
+nothing on their own and are worth a block as part of that total.
+
+`llvm-bolt` is independently ruled out: it has no i386/x86-32 target.
+
+### What was actually worth doing
+
+All of it was algorithmic, and all of it was above the compiler.
+
+- **The `re` shim stopped re-slicing the subject.** Every scanning operation ran
+  one loop that advanced by `search(seg[pos:])`, copying the remainder of the
+  string per match. The C engine has taken a start position all along. Scanning
+  is now a cursor on an ASCII subject — the engine's `pos` is a byte offset while
+  `span()` answers in characters, so the two units have to coincide — and
+  `re.sub` delegates to the engine's own substitution loop whenever its four
+  divergences cannot bite. `re.sub` went **10.36x -> 0.87x** against stock, which
+  is 16x faster in absolute terms and faster than CPython on the same case.
+- **A silent divergence fell out of writing the corpus entries for that gate.**
+  `_subn` carried CPython's pre-3.7 rule and skipped an empty match abutting the
+  previous one, so `re.sub(r"b*", "-", "abc")` answered `-a-c-` instead of
+  `-a--c-` — at exit 0, for every quantifier that can match empty. This is the
+  failure mode §9 names as the one that would make pygram a liability, and it
+  was found by adding coverage for a performance change.
+- **The ordered map grows geometrically.** Upstream's `alloc += 4` reallocated
+  the table once per four insertions; pygram points the Python-level dict at that
+  map, so a 20,000-key dict reallocated 5,000 times. Worth 0.96x, and worth more
+  as information: the allocator was never the problem.
+
+### The dict, priced and left standing
+
+`insert 10,000 then look up all 10,000` is **8.49x** stock and a 20,000-key
+insert takes 1.15 s on this host — which the ledger's own note says is optimistic
+against the emulated guest, and the 30 s exec ceiling destroys the VM. Now that
+the allocator is measured at 4% of it, the remaining 96% is the **linear scan**
+in `mp_map_lookup`: MicroPython's ordered map is an array, and insertion-ordered
+dicts are what keeps `print(d)`, `d.items()` and `json.dumps(d)` agreeing with
+CPython (`json.dumps` is 4.30x from the same cause).
+
+The fix is CPython's own compact-dict shape, and the containment matters more
+than the idea: `mp_map_t`'s bitfield has spare bits, so a `has_index` flag costs
+**zero bytes**, and a hash index of positions can live in the same allocation as
+the table — past `&table[alloc]` — so `mp_map_t` does not grow and every ROM
+module table stays the size it is. Above a threshold an ordered map probes the
+index instead of scanning; below it the array is genuinely faster. Deletion
+(`OrderedDict` only) shifts positions, so it rebuilds the index.
+
+It is not in this pass because it is a hundred lines inside `py/map.c`, which
+would be by far the largest hunk in a port patch that the project keeps small so
+that tracking upstream stays a rebase (§6). It wants its own change, its own
+review and its own conformance run — not the tail of a pass about compiler flags.
+
+### The instrument this pass needed and did not have
+
+`scripts/pygram-corpus-time.mjs` times all 351 corpus programs on one binary or
+two, interleaved, min-of-repeats, each in its own temp directory with
+`PYGRAM_CAPTURE=0`. Everything above depends on it. The benchmark answers "what
+does our variant cost against stock" per subsystem; only the corpus answers "did
+this change make the programs pygram is actually asked to run faster", and for
+all four techniques in the table the two instruments disagreed — the benchmark
+said 16x and the corpus said nothing, or the benchmark said nothing and the
+held-out workload said 11% slower. §8a already recorded a synthetic workload
+overstating a result tenfold. This is the general form of it.
+
 ## 9. What would make this project wrong
 
 Recorded up front so it can be checked rather than argued:
