@@ -22,17 +22,45 @@ Both append to the same log, one JSON object per line:
 $PYGRAM_LOG              # default ~/.pygram/invocations.jsonl
 ```
 
-`harvest.mjs` reads that log, plus Claude Code transcripts (`~/.claude/projects/**/*.jsonl`,
-which is how sessions from before the shim was installed still contribute),
-plus the existing corpus, and merges all three.
+That log is outside the repo, and these containers are ephemeral. So a third
+step publishes it into the tree: `.claude/hooks/pygram-harvest.sh` (Stop) writes
+`tests/pygram/sightings/<session>.jsonl`, and `.githooks/pre-commit` stages that
+one directory so it rides along with whatever commit the session was making.
+Those files are the durable evidence; the corpus is derived from them.
 
 ```
 python-shim ─┐
 hook ────────┼─> ~/.pygram/invocations.jsonl ─┐
-             │                                ├─> harvest.mjs ─> tests/pygram/corpus.jsonl
-~/.claude/projects/**/*.jsonl ────────────────┤
-tests/pygram/corpus.jsonl (existing) ─────────┘
+             │                                ├─> --export ─> tests/pygram/sightings/<session>.jsonl ─┐
+~/.claude/projects/**/*.jsonl ────────────────┘                                                       │
+                                                                                                      ├─> harvest.mjs ─> tests/pygram/corpus.jsonl
+tests/pygram/sightings/*.jsonl (every session that ever ran) ─────────────────────────────────────────┤
+tests/pygram/corpus.jsonl (existing) ─────────────────────────────────────────────────────────────────┘
 ```
+
+## Why per-session files, and not just the corpus
+
+The Stop hook originally folded the log straight into `tests/pygram/corpus.jsonl`
+and **that still lost the data**. One shared file that every session rewrites
+conflicts across branches by construction, and merging it was never worth it to
+a session whose PR was about something else. Measured 2026-08-14, over the 19
+branches cut since the corpus first landed:
+
+* 2 carried any harvested growth, and neither had reached `main`;
+* `corpus.jsonl` had exactly **one** commit, with every `first_seen` inside one
+  36-minute window;
+* so **17 sessions'** python was captured, harvested, and thrown away.
+
+A per-session path has exactly one writer, so no two branches can conflict, and
+an unrelated PR carries an **added** file rather than a rewritten one. Two
+consequences worth knowing:
+
+* A sighting key had to stop being a bare log line number — line 1 means
+  something different in every container. Keys are namespaced by session, which
+  is also what lets the fold read a session's live log and its own published
+  file without counting the same invocation twice.
+* `corpus.jsonl` is now DERIVED. Run `npm run pygram:harvest` to regenerate it
+  from the accumulated sightings; no individual session has to.
 
 ## Install
 
@@ -138,10 +166,18 @@ otherwise trip.
 
 ```sh
 node scripts/pygram-capture/harvest.mjs                 # merge into tests/pygram/corpus.jsonl
+node scripts/pygram-capture/harvest.mjs --export        # publish THIS session's sightings, write no corpus
 node scripts/pygram-capture/harvest.mjs --dry-run       # report, write nothing
 node scripts/pygram-capture/harvest.mjs --no-transcripts
-node scripts/pygram-capture/harvest.mjs --log X --corpus Y --transcripts Z
+node scripts/pygram-capture/harvest.mjs --no-sightings  # fold the live log only
+node scripts/pygram-capture/harvest.mjs --log X --corpus Y --transcripts Z --sightings S
 ```
+
+`--export` is what the Stop hook runs. It writes only
+`tests/pygram/sightings/<session>.jsonl` — never the corpus — as a union by
+sighting key, so it is idempotent at every turn boundary and a session that ran
+no python writes nothing. Records are redacted, seed-guarded and size-capped
+before they are written, because these files are committed.
 
 One record per DISTINCT program:
 
@@ -185,7 +221,9 @@ program is arbitrary text from this repo's working sessions — file contents,
 paths, occasionally a token pasted into a one-liner.
 
 * `~/.pygram/invocations.jsonl` stays local. It is not in the repo and must not
-  be committed, pasted into an issue, or attached to a PR.
+  be committed, pasted into an issue, or attached to a PR. The published
+  `tests/pygram/sightings/*.jsonl` files ARE committed, and go through the same
+  redaction and seed guard as the corpus before they are written.
 * `harvest.mjs` redacts before writing. Every program, argv tail, and stdin
   sample is matched against the repo's canonical credential patterns — the same
   set as `scripts/scan-secrets` (OpenAI `sk-`, Berget `sk_ber_`, Groq `gsk_`,
@@ -250,9 +288,7 @@ node --test scripts/pygram-capture/harvest.test.mjs
 ```
 
 Covers dedup, normalization, redaction, command extraction (quoting, heredocs,
-runners), and re-run idempotency.
+runners), re-run idempotency, and the durability path — per-session export,
+key namespacing, and the no-double-count property of the fold.
 
-> **Note:** `package.json`'s test glob is `scripts/*.test.mjs`, which is one
-> level shallower than this file. `npm test` therefore does NOT pick it up
-> today. Adding `scripts/*/*.test.mjs` to the `test` script closes the gap;
-> that edit is left to the owner of `package.json`.
+`npm test` picks this file up via the `scripts/*/*.test.mjs` glob.
