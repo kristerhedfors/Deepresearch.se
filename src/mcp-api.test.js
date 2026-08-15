@@ -206,14 +206,14 @@ test("PUT /api/mcp/config persists a partial update", async () => {
   const identity = identityFor(user);
   const req = new Request("https://deepresearch.se/api/mcp/config", {
     method: "PUT",
-    body: JSON.stringify({ tools: { sdk_plan: false }, defaults: { time_budget_s: 45 } }),
+    body: JSON.stringify({ tools: { host_intel: false }, defaults: { time_budget_s: 45 } }),
   });
   const payload = await readJson(await handleMcpConfigPut(req, env, URL_APEX, log, identity));
-  assert.equal(payload.config.tools.sdk_plan, false);
+  assert.equal(payload.config.tools.host_intel, false);
   assert.equal(payload.config.tools.deep_research, true);
   assert.equal(payload.config.defaults.time_budget_s, 45);
   // And it round-trips through the column.
-  assert.equal(parseMcpConfig(identity.user.settings_json).tools.sdk_plan, false);
+  assert.equal(parseMcpConfig(identity.user.settings_json).tools.host_intel, false);
 });
 
 test("PUT preserves the OTHER halves of settings_json", async () => {
@@ -304,7 +304,7 @@ test("revoking leaves the exposure config alone — it is a credential, not a se
   const { env } = fakeEnv(user);
   const identity = identityFor(user);
   await handleMcpConfigPut(
-    new Request("https://x/y", { method: "PUT", body: JSON.stringify({ tools: { sdk_plan: false } }) }),
+    new Request("https://x/y", { method: "PUT", body: JSON.stringify({ tools: { host_intel: false } }) }),
     env,
     URL_APEX,
     log,
@@ -312,7 +312,7 @@ test("revoking leaves the exposure config alone — it is a credential, not a se
   );
   await handleMcpKeyMint(mintRequest(), env, URL_APEX, log, identity);
   const after = await readJson(await handleMcpKeyRevoke(env, URL_APEX, log, identity));
-  assert.equal(after.config.tools.sdk_plan, false);
+  assert.equal(after.config.tools.host_intel, false);
   assert.equal(after.config.enabled, true);
 });
 

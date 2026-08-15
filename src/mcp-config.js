@@ -26,10 +26,14 @@
 // build when the two drift — so adding a tool to the MCP server without
 // deciding how an account switches it off is not possible by accident.
 //
-// Pure leaf module (imports nothing): src/mcp.js imports it statically without
-// breaking its keep-the-pipeline-out-of-the-test file-layout rule, and the
-// client's Settings screen consumes the same catalog over /api/mcp/config
-// rather than keeping a second copy of the tool list.
+// Pure module: its ONE import (src/extension-tools.js, the MCP tool seam of the
+// extension registry) is itself pure and imports only the two pure schema
+// modules, so src/mcp.js still imports this statically without breaking its
+// keep-the-pipeline-out-of-the-test file-layout rule. The client's Settings
+// screen consumes the same catalog over /api/mcp/config rather than keeping a
+// second copy of the tool list.
+
+import { EXTENSION_MCP_CATALOG } from "./extension-tools.js";
 
 /**
  * One exposable tool. `group` drives the Settings screen's headings; `label`
@@ -114,34 +118,17 @@ export const MCP_TOOL_CATALOG = [
       "practice. A direct key read: contacts no third party and spends nothing.",
     def: true,
   },
-  {
-    id: "sdk_list_modules",
-    group: "Platform SDK",
-    label: "sdk_list_modules",
-    blurb: "Lists the Platform SDK module registry — id, title and dependencies for each buildable module.",
-    def: true,
-  },
-  {
-    id: "sdk_show_module",
-    group: "Platform SDK",
-    label: "sdk_show_module",
-    blurb: "Shows one module in full: its skill, contract and acceptance checks.",
-    def: true,
-  },
-  {
-    id: "sdk_plan",
-    group: "Platform SDK",
-    label: "sdk_plan",
-    blurb: "Orders a set of modules into a dependency-correct build plan.",
-    def: true,
-  },
-  {
-    id: "sdk_validate",
-    group: "Platform SDK",
-    label: "sdk_validate",
-    blurb: "Checks a built tree against the manifest's declared files and acceptance criteria.",
-    def: true,
-  },
+  // The EXTENSION tools (street imagery, host intelligence) come from the tool
+  // registry rather than being listed here, for the same reason src/mcp.js takes
+  // them from there: this file must not become a second place a third-party
+  // service is named (invariant 7). Their rows carry the same fields as the ones
+  // above, so the Settings screen renders them without knowing the difference.
+  //
+  // Their switch means something slightly different, though, and the blurbs say
+  // so: switching one ON here does not by itself let it run. Each also needs its
+  // extension's per-account knob, which is the account's consent to reach that
+  // third party at all, and is default OFF.
+  ...EXTENSION_MCP_CATALOG,
 ];
 
 /** Every exposable tool id, in catalog order. */
@@ -287,15 +274,23 @@ export function filterMcpTools(config, tools) {
  * result is what src/mcp.js reads instead of the raw arguments.
  * @param {McpConfig} config
  * @param {any} args the tool-call arguments as sent
- * @returns {{ time_budget_s: number, web_search: boolean, model: string | undefined }}
+ * @returns {{ time_budget_s: number, web_search: boolean, model: string | undefined, agent: string, style: "text"|"voice" }}
  */
 export function resolveResearchArgs(config, args) {
   const given = args && typeof args === "object" ? args : {};
   const budgetGiven = Number(given.time_budget_s);
+  // VOICE lowers the default budget, and only the DEFAULT: a caller that names a
+  // budget gets the budget it named, in either style. The reason is not that a
+  // spoken answer needs less research — it is that a spoken exchange has a
+  // different failure mode. Two minutes of silence ends a voice session (that is
+  // the 2026-08-13 incident that put progress notifications on this surface);
+  // two minutes of a spinner in a chat window does not.
+  const voice = normalizeStyle(given.style) === "voice";
+  const styleDefault = voice
+    ? Math.min(config.defaults.time_budget_s, MCP_VOICE_BUDGET_DEFAULT)
+    : config.defaults.time_budget_s;
   const time_budget_s =
-    config.allow_budget_override && Number.isFinite(budgetGiven)
-      ? clampMcpBudget(budgetGiven)
-      : config.defaults.time_budget_s;
+    config.allow_budget_override && Number.isFinite(budgetGiven) ? clampMcpBudget(budgetGiven) : styleDefault;
   // web_search has no override policy of its own: an account that does not
   // want the MCP surface searching sets the default off, and a caller asking
   // for search it isn't paying for is exactly what the quota gate is for.
@@ -307,7 +302,28 @@ export function resolveResearchArgs(config, args) {
       : config.defaults.web_search;
   const requested = typeof given.model === "string" ? given.model.trim() : "";
   const model = config.allow_model_override && requested ? requested : config.defaults.model || undefined;
-  return { time_budget_s, web_search, model };
+  // `agent` and `style` have no account policy of their own and are carried
+  // through as asked. Neither can widen anything: an agent narrows a run to one
+  // domain's sources and prompts (and is refused outright if this account may not
+  // use it, which src/mcp.js decides against the same grant chat.js uses), and a
+  // style only shapes the text that comes back.
+  const agent = typeof given.agent === "string" ? given.agent.trim().slice(0, 64) : "";
+  return { time_budget_s, web_search, model, agent, style: normalizeStyle(given.style) };
+}
+
+/** The voice default budget: long enough for a real search wave, short enough
+ * that a spoken exchange does not die waiting. */
+export const MCP_VOICE_BUDGET_DEFAULT = 60;
+
+/**
+ * The answer style, defaulting to the screen-shaped one. Anything unrecognized
+ * is `text` rather than an error — a caller inventing a style should get the
+ * answer it can already read, not a refusal.
+ * @param {unknown} value
+ * @returns {"text"|"voice"}
+ */
+export function normalizeStyle(value) {
+  return typeof value === "string" && value.trim().toLowerCase() === "voice" ? "voice" : "text";
 }
 
 /**

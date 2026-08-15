@@ -15,11 +15,14 @@ import {
   BATCH_QUERIES,
   EXPECTED_PROTOCOL,
   EXPECTED_TOOLS,
+  MODERN_PROTOCOL,
   authHeader,
   checkBatchSpeedup,
   checkCorpora,
   checkDeepResearch,
+  checkDiscover,
   checkFetch,
+  checkHeaderMismatch,
   checkFilterDisclosure,
   checkInitialize,
   checkRpcError,
@@ -27,6 +30,9 @@ import {
   checkSimilar,
   checkToolsList,
   checkUnauthenticated,
+  checkUnsupportedVersion,
+  modernHeaders,
+  modernRpc,
   parseProbeArgs,
   rpc,
   summarize,
@@ -93,7 +99,7 @@ test("rpc and toolCall build well-formed JSON-RPC 2.0 messages", () => {
 test("the probe's expectations mirror the server's tool list", () => {
   // A tool added to src/mcp.js without being added here would pass tools-list
   // as "unknown tool" — which is the failure this constant exists to produce.
-  assert.equal(EXPECTED_TOOLS.length, 11);
+  assert.equal(EXPECTED_TOOLS.length, 10);
   assert.equal(EXPECTED_TOOLS[0], "deep_research");
   assert.deepEqual(EXPECTED_TOOLS.slice(1, 5), [
     "literature_search",
@@ -105,6 +111,58 @@ test("the probe's expectations mirror the server's tool list", () => {
   // dropped and the batch check would measure the wrong thing.
   assert.equal(BATCH_QUERIES.length, 6);
   assert.equal(new Set(BATCH_QUERIES).size, 6, "the angles must be distinct or de-duplication shrinks the batch");
+  // The extension families are last, mirroring the registry order ALL_MCP_TOOLS
+  // appends them in.
+  assert.deepEqual(EXPECTED_TOOLS.slice(-3), ["street_view_look", "place_nearby", "host_intel"]);
+});
+
+// ---------------------------------------------------------------------------
+// The MODERN era (protocol 2026-07-28)
+// ---------------------------------------------------------------------------
+
+test("a modern request carries both required _meta fields and its mirrored headers", () => {
+  const body = modernRpc(7, "tools/list");
+  const meta = body.params._meta;
+  assert.equal(meta["io.modelcontextprotocol/protocolVersion"], MODERN_PROTOCOL);
+  // An EMPTY capabilities object is the valid way to say "no optional
+  // capabilities" — it must be present, not merely truthy.
+  assert.deepEqual(meta["io.modelcontextprotocol/clientCapabilities"], {});
+  const headers = modernHeaders("tools/list");
+  assert.equal(headers["mcp-protocol-version"], MODERN_PROTOCOL);
+  assert.equal(headers["mcp-method"], "tools/list");
+  assert.equal(headers["mcp-name"], undefined, "Mcp-Name belongs only to tools/call and friends");
+  assert.equal(modernHeaders("tools/call", "deep_research")["mcp-name"], "deep_research");
+});
+
+test("checkDiscover demands the five required fields of a cacheable result", () => {
+  const good = {
+    resultType: "complete",
+    supportedVersions: [MODERN_PROTOCOL, "2025-06-18"],
+    capabilities: { tools: {} },
+    ttlMs: 3600000,
+    cacheScope: "public",
+  };
+  assert.equal(checkDiscover(good).ok, true);
+  assert.equal(checkDiscover({ ...good, resultType: undefined }).ok, false);
+  assert.equal(checkDiscover({ ...good, ttlMs: undefined }).ok, false);
+  assert.equal(checkDiscover({ ...good, cacheScope: "sometimes" }).ok, false);
+  assert.equal(checkDiscover({ ...good, supportedVersions: ["2025-06-18"] }).ok, false);
+  assert.equal(checkDiscover({ ...good, capabilities: {} }).ok, false);
+  assert.equal(checkDiscover(null).ok, false);
+});
+
+test("the two modern refusals are checked by status AND code", () => {
+  // 400 is what a client inspects the body of; a 200 carrying the right code
+  // would make it conclude the request succeeded.
+  assert.equal(checkHeaderMismatch({ status: 400, body: { error: { code: -32020, message: "x" } } }).ok, true);
+  assert.equal(checkHeaderMismatch({ status: 200, body: { error: { code: -32020, message: "x" } } }).ok, false);
+  assert.equal(checkHeaderMismatch({ status: 400, body: { error: { code: -32602, message: "x" } } }).ok, false);
+
+  const supported = { status: 400, body: { error: { code: -32022, data: { supported: ["2026-07-28"] } } } };
+  assert.equal(checkUnsupportedVersion(supported).ok, true);
+  // The `supported` list is the whole point — without it a client cannot retry.
+  assert.equal(checkUnsupportedVersion({ status: 400, body: { error: { code: -32022 } } }).ok, false);
+  assert.equal(checkUnsupportedVersion({ status: 400, body: { error: { code: -32020 } } }).ok, false);
 });
 
 // ---------------------------------------------------------------------------
@@ -148,10 +206,10 @@ test("checkToolsList accepts the full list and the narrowed one", () => {
   assert.equal(checkToolsList(TOOL_LIST).ok, true);
   // A SHORT list is the expected shape when an account has switched tools off,
   // so it passes and reports what is missing rather than failing.
-  const narrowed = { tools: TOOL_LIST.tools.filter((t) => t.name !== "sdk_validate") };
+  const narrowed = { tools: TOOL_LIST.tools.filter((t) => t.name !== "host_intel") };
   const v = checkToolsList(narrowed);
   assert.equal(v.ok, true);
-  assert.deepEqual(v.info.missing, ["sdk_validate"]);
+  assert.deepEqual(v.info.missing, ["host_intel"]);
   assert.match(v.detail, /switched off/);
 });
 

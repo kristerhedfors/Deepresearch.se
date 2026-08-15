@@ -199,10 +199,23 @@ async function callTool(env, name, args, { identity = user, requestId = "req-1" 
 // ---------------------------------------------------------------------------
 
 describe("SPENDING_TOOL_NAMES", () => {
-  test("is exactly the four tools that reach a provider", () => {
+  test("is exactly the tools that reach a provider", () => {
     assert.deepEqual(
       [...SPENDING_TOOL_NAMES].sort(),
-      ["deep_research", "literature_search", "literature_similar", "search"].sort(),
+      [
+        "deep_research",
+        "literature_search",
+        "literature_similar",
+        "search",
+        // The extension families: each reaches a metered third-party API, and
+        // the imagery one a vision model on top. They arrive from the tool
+        // registry rather than being written into mcp.js (invariant 7), which
+        // is why this list is the assertion that catches a family added there
+        // without a decision about what it costs.
+        "street_view_look",
+        "place_nearby",
+        "host_intel",
+      ].sort(),
     );
   });
 

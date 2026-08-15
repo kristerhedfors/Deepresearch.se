@@ -1091,6 +1091,15 @@ function travelWaypoints(anchor, dest, route, straightM) {
 // Runs Street View / map images through a vision-capable helper model to
 // produce a short factual description, so a NON-vision answer model (e.g. the
 // default Mistral Small) can still tell the user what the location looks like.
+//
+// EXPORTED (2026-08-15) for the street-imagery MCP tool
+// (src/extension-tools-run.js), which needs exactly this and must not carry a
+// copy: the three-candidate FAILOVER below exists because of a reproduced
+// production incident, and a duplicate would silently diverge from the fix.
+// The only requirement on a non-pipeline caller is that it passes a `state`
+// carrying real `visionModels` and a `visionTotals` it later bills — the
+// function writes the model that answered back into `state.visionModel`, which
+// is what makes the tokens price at the right rate.
 // `intro` is the caller's first sentence saying what the imagery IS (the
 // four-cardinal-frames look-around vs the user's exact current panorama
 // view). When the user's question is passed, the helper answers IT from the
@@ -1109,7 +1118,7 @@ function travelWaypoints(anchor, dest, route, straightM) {
  * @param {{ mapOnly?: boolean }} [opts]
  * @returns {Promise<string>} the description, or "" on any failure
  */
-async function describeStreetView(env, log, state, intro, images, question = "", { mapOnly = false } = {}) {
+export async function describeStreetView(env, log, state, intro, images, question = "", { mapOnly = false } = {}) {
   const ask = question
     ? `The user's current question about this place is: "${question}". First answer that question strictly from what is actually visible in ${mapOnly ? "this map image" : "these photos"} — if ${mapOnly ? "the map" : "the photos"} cannot answer it, say so plainly. Then briefly describe`
     : "Describe";
