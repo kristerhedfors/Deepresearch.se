@@ -284,7 +284,7 @@ provider never strands a consumer.
 ### Flow C — consumer submits a completion
 
 ```
-POST /api/pool/chat/completions           # PUBLIC (token is the authority)
+POST /api/pool/llm/chat/completions       # PUBLIC (token is the authority)
   Authorization: Bearer pt1.…
   body: OpenAI-wire { model, messages, ... }
 
@@ -400,22 +400,25 @@ honest:
 - **A peer sees the prompt.** This is genuinely new and stronger than any existing
   exception: not an anonymous upstream API but *another named user's computer*.
 
-**Recommended framing (this document's position, pending owner sign-off):** treat
-pool consumption as a **documented variant of the existing exception #2** (the
-proxy `api` path) — "an upstream LLM, operated by a peer instead of Berget" —
-rather than a brand-new third category. It reuses the connected-APIs disclosure
-surface Se/cure already shows, plus a **stronger, unmissable** line at the point
-of use: *"Answers are computed by another user's machine ([who]). They can read
-everything you send."* Consuming a pool is opt-in, per-session, and shown in the
-same "which APIs are connected" banner.
+**The framing (owner ruling, 2026-08-15).** Pool consumption is an exception in
+its own right, not a variant of the proxy `api` path: invariant 4 counts four,
+and this is **the third**. The difference is who operates the upstream, and it
+is too large to fold into the second — the `api` grant reaches an anonymous API
+this site holds the key to, while a pooled prompt is read by a named person's
+computer. Counted separately, the exposure stays auditable.
 
-Under this framing invariant 4's "EXACTLY TWO exceptions" is unchanged in spirit —
-peer compute is a variant of the second (a server-relayed upstream completion),
-distinguished only by who operates the upstream. The alternative (declare a
-literal THIRD exception and amend the invariant to say three) is cleaner to
-audit but changes a load-bearing, owner-directive sentence. **Neither is written
-into CLAUDE.md by this change** — the code ships behind the recommended framing
-and the disclosure, and the invariant text is left for the owner to amend.
+Disclosure is the connected-APIs surface Se/cure already shows, plus a
+**stronger, unmissable** line at the point of use: *"Answers are computed by
+another user's machine ([who]). They can read everything you send."* Consuming a
+pool is opt-in, per-session, and shown in the same "which APIs are connected"
+banner.
+
+The exception is bounded the way the other three are: the pool token is
+quota-metered, revocable and short-TTL'd (§8); the crossing needs BOTH parties'
+explicit consent, checked before a body is parsed, parked or metered (§8b); and
+the relayed body is forced through the DRSC/1 profile (§5b). CLAUDE.md
+invariant 4, `docs/PRIVACY-MODEL.md` and `docs/WORKSPACE-SECURITY.md` §7 carry
+the same count.
 
 ### 7b. What the CONSUMER's tier is allowed to claim (feedback #31, 2026-07-26)
 
@@ -591,8 +594,9 @@ answering, the answers remembered, and a denied participant staying out.
 Workspaces already carry the two existing grant families in the encrypted bundle
 (`public/js/workspace-core.js:346-357`: `grants:{ ws?, proxy?[] }`) and hydrate
 them on unlock via `connectProxyGrants` (`public/cure/drc.js:2659`). Pool sharing
-slots in the same seam with **no new server exception** (same as the workspace
-privacy note, `docs/WORKSPACE-SECURITY.md:169-175`):
+slots in the same seam. The workspace TRANSPORT still adds no server data path
+of its own — it is fragment-only — so a workspace is **how §7's third exception
+arrives**, not a fifth one (`docs/WORKSPACE-SECURITY.md` §7):
 
 - Extend the bundle payload with `grants.pool?: "pt1.…"` — a pool token the
   workspace owner minted for their pool. It rides entirely in the URL fragment
@@ -660,7 +664,8 @@ in `public/cure/drc.js`, owner import view `public/js/account-knowledge.js`.
   which the server refuses to open unless the bundle's `owner` field IS the
   caller (the pool id the sender's token named), so a stray blob can't be
   read by a signed-in bystander.
-- **Posture, stated plainly:** the import agent's private key lives in D1,
+- **Posture, stated plainly** — this is invariant 4's FOURTH exception
+  (owner ruling, 2026-08-15): the import agent's private key lives in D1,
   so THE SERVER CAN DECRYPT these envelopes — deliberate (the owner asked
   for "encrypted with the server agent's public key") and disclosed in the
   data-flow notice. What the seal buys: ciphertext at rest, plaintext only

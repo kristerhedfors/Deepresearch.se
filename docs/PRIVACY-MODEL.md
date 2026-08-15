@@ -290,8 +290,8 @@ expires (`app_ttl_hours`, default 30 days, renewed by republishing), and it is
 revocable and adjustable from the admin surface like any other. It is opt-in per
 build: nothing is minted unless the build asks for hosted access. What is spent
 is a bounded number of completions on the publisher's account — never an
-account, never a data path. Se/cure's exactly-two bounded exceptions are
-untouched: this is Se/rver, where the server is inside the trust boundary. The
+account, never a data path. Se/cure's bounded exceptions are untouched — this
+adds none: it is Se/rver, where the server is inside the trust boundary. The
 honest disclosure is required in the app's own UI (`llm.note()`), because a
 hosted conversation crosses this site's server and the bring-your-own-key mode
 that a build may still choose does not.
@@ -420,10 +420,10 @@ runs the commands. What that costs is bounded by tier, not by policy:
   (`public/js/exec-backends-core.js`) requires an explicit `tier:"server"`, so a
   Se/cure caller — or any caller that forgets to say — lands on the browser VM;
   and `/api/exec/*` sits behind the identity gate, which Se/cure never passes.
-  **The count of Se/cure's deliberate server-touching exceptions is therefore
-  UNCHANGED at two** (the web-search grant and the research-space proxy bundle).
-  A hand-edited sealed state naming the backend gets the browser VM, not a third
-  channel. Pinned by `public/js/exec-backends-core.test.js`.
+  **The server container therefore adds NOTHING to Se/cure's enumerated
+  server-touching exceptions** — it is a Se/rver-only execution environment, and
+  a hand-edited sealed state naming the backend gets the browser VM rather than a
+  channel of its own. Pinned by `public/js/exec-backends-core.test.js`.
 
 The container starts with `enableInternet:false` — no internet, no LAN, matching
 the browser VM — and on EU-jurisdiction infrastructure. The table in

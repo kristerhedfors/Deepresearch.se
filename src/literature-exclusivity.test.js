@@ -30,11 +30,12 @@
 // describes as absent.
 //
 // §3 pins the fail-soft hole on purpose: a request that resolved NO capability
-// keeps every source. That is the MCP channel — src/mcp.js builds its state
-// without a registry, POST /mcp has no concept of an agent, and the
-// ground-truth batteries reach both corpora through it — and any deployment
-// whose registry will not load (invariant 2: a helper phase degrades, it never
-// errors the request).
+// keeps every source. That is an UNADDRESSED POST /mcp call — src/mcp.js
+// resolves `deep_research`'s optional `agent` argument through the same
+// registry chat.js uses, so a call that names none carries a null capability,
+// and the ground-truth batteries reach both corpora that way — and any
+// deployment whose registry will not load (invariant 2: a helper phase
+// degrades, it never errors the request).
 //
 // Deliberately NOT duplicated here: the registry entry shape and
 // capabilityAllowsSource's own truth table (src/search-sources.test.js), the
@@ -187,12 +188,13 @@ describe("§2 the sources each shipped agent can reach", () => {
 
 describe("§3 a request with no resolved agent keeps every source", () => {
   test("null capability → the full registry, and the full planner vocabulary", () => {
-    // Invariant 2, and the deliberate design decision behind it: the MCP
-    // literature door is NOT governed by the agent roster, because MCP has no
-    // concept of an agent to govern it with. A null capability means "no agent
-    // was resolved" — the MCP channel, or a deployment whose registry will not
-    // load — never "an agent declared nothing", and reading it the second way
-    // would turn a registry outage into empty answers.
+    // Invariant 2, and the deliberate design decision behind it: an MCP call
+    // that names no agent leaves its literature door ungoverned by the roster,
+    // because nothing was resolved to govern it with — naming one resolves the
+    // capability through the same registry a chat turn uses. A null capability
+    // means "no agent was resolved" — that unaddressed call, or a deployment
+    // whose registry will not load — never "an agent declared nothing", and
+    // reading it the second way would turn a registry outage into empty answers.
     assert.deepEqual(reachable(null), SEARCH_SOURCES.map((s) => s.id));
     assert.deepEqual(reachable(undefined), SEARCH_SOURCES.map((s) => s.id));
     assert.equal(sourcePromptNotes(null), sourcePromptNotes());

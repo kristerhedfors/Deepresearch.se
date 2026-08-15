@@ -169,12 +169,14 @@ describe("capabilityAllowsSource", () => {
   });
 
   test("a NULL capability keeps every source — invariant 2, and the MCP door", () => {
-    // The fail-soft rule, and the one deliberate hole in the roster's reach:
-    // POST /mcp has no concept of an agent to govern its literature door with
-    // (src/mcp.js builds state without a registry), and the ground-truth
-    // batteries reach both corpora through it. A deployment whose registry will
-    // not load takes the same path, because an outage that looks like an empty
-    // answer is the worst possible reading of "the agent declared nothing".
+    // The fail-soft rule, and the one deliberate hole in the roster's reach: a
+    // POST /mcp call that names no agent resolves none, so its literature door
+    // is ungoverned (src/mcp.js resolves `deep_research`'s optional `agent`
+    // argument through the registry; without one the capability is null), and
+    // the ground-truth batteries reach both corpora that way. A deployment
+    // whose registry will not load takes the same path, because an outage that
+    // looks like an empty answer is the worst possible reading of "the agent
+    // declared nothing".
     for (const s of SEARCH_SOURCES) {
       assert.equal(capabilityAllowsSource(null, s), true, `${s.id}: null capability`);
       assert.equal(capabilityAllowsSource(undefined, s), true, `${s.id}: missing capability`);

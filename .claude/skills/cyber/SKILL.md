@@ -84,14 +84,14 @@ never learn which agent or which service it belongs to:
 
 - **A null capability means two different things, and the polarity is opposite
   on the two seams. Read this before assuming.** Null means *no agent was
-  resolved* — the `POST /mcp` channel builds its state without a registry, and a
+  resolved* — a `POST /mcp` call that names no agent resolves none, and a
   deployment whose registry will not load resolves nothing either. Both must
   keep working (invariant 2), but "keep working" resolves differently depending
   on what is being gated:
   - **Search sources** (`requiresContext` in `src/search-sources.js`, the
     literature legs): null **allows** the source. These legs have always run for
-    any caller, MCP included, and switching them off for a channel with no
-    concept of an agent would be a silent capability loss rather than a fail-soft
+    any caller, MCP included, and switching them off for a call that addressed
+    no agent would be a silent capability loss rather than a fail-soft
     degradation.
   - **Enrichments and extension capabilities** (`capHasContext` in
     `src/enrichment.js` and `src/extensions.js`): null **denies** the row. This

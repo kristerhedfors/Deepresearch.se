@@ -7,9 +7,12 @@
 # provider stays in the e2e/eval harnesses, which are deliberately NOT run
 # here (they spend tokens and need break-glass auth; see docs/TESTING.md).
 #
-# `npm ci` also fixes gap A3: the type-check needs the root devDependencies
-# (@cloudflare/workers-types, typescript), and a fresh clone has none, so
-# `npm run typecheck` used to die with a confusing TS2688.
+# `npm ci` also fixes gap A3: a fresh clone has none of the three root
+# devDependencies (@cloudflare/workers-types, cheerio, typescript), so
+# `npm run typecheck` used to die with a confusing TS2688. `npm test` needs
+# the install too: `scripts/arxiv-html.mjs` imports `cheerio` (dev-only, added
+# 2026-07-27 for one offline harvest script's DOM walk — docs/DEPENDENCIES.md
+# §8.1) and its unit suite runs in the same command.
 name: CI
 
 # `push: branches: [main]` + `pull_request`, NOT `push: ["**"]`: a branch with
