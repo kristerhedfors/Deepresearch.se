@@ -131,6 +131,63 @@ and **12.4× on lookup**; `json.dumps` 3.8× from the same cause; exact float re
 1.9× with its fixed-precision control at 0.86×; `\w` on non-ASCII 1.84×, which
 is not a clean cost because the two builds match different amounts of text.
 
+## 2c. The fourth measurement — the corpus, which is what anyone actually waits for
+
+The gates answer "is the shape right" and "is the answer right", and the bench
+answers "what did our variant cost against stock, per subsystem". None of them
+answers "did this change make the programs pygram is asked to run faster".
+
+```bash
+node scripts/pygram-corpus-time.mjs pygram/build/pygram              # one binary
+node scripts/pygram-corpus-time.mjs A.bin B.bin --repeats 5          # A/B, interleaved
+npm run pygram:corpus-time -- A.bin B.bin --json
+```
+
+All 351 corpus programs, min of repeats, both arms interleaved per entry, each
+in its own temp cwd with `PYGRAM_CAPTURE=0`. **This is the acceptance instrument
+for any change made in the name of speed** — the bench is the diagnostic that
+says where the time went.
+
+**Run both, and expect them to disagree.** Every technique tried in the
+2026-08-15 pass had the two instruments telling different stories: the bench said
+`re.sub` got 16x faster and the corpus said 0.998x; PGO looked free on the corpus
+and was 11% SLOWER on a held-out workload. Neither instrument is wrong — a
+corpus one-liner is 1.7 ms of which **0.04 ms is pygram's own code** (interpreter
+init 0.96 ms against a 0.92 ms empty-C floor), so it cannot show a steady-state
+win, and a 2,000-iteration microbenchmark is nothing but steady state.
+
+## 2d. Compiler optimisation is FINISHED here — do not re-survey it
+
+The 2026-08-15 pass measured the whole compiler lane and every technique lost.
+`docs/PYGRAM.md` §8c has the table and the reasoning; the short version, so
+nobody spends another session on it:
+
+- **`-O2` everywhere: +66,624 B (+24.7%) for 0.994x on the corpus.** Rejected.
+- **PGO: 0.996x on the corpus even when trained on that same corpus, and
+  1.07–1.11x — SLOWER — on held-out workloads.** The profile demotes the code the
+  training set does not exercise, and pygram's two distributions (one-liners that
+  exit; the occasional loop over a big input) cannot both be profiled. Rejected.
+- **PGO at `-Os` is inert by construction**: `optimize_size` gates every
+  speed-for-size transform, so a profile buys block layout and nothing else.
+- **GCC's `libgcov.a` will not statically link against musl** (glibc/fortify
+  symbols: `mmap64`, `open64`, `fopen64`, `fcntl64`, `__memcpy_chk`,
+  `__isoc23_strtol`, three `*printf_chk`). A nine-alias shim fixes it, if you
+  ever need an instrumented build for something else.
+- **`llvm-bolt` has no i386 target.** Section ordering buys nothing anyway —
+  see below.
+
+**Why the whole lane loses:** 96% of an invocation is the OS spawning a process.
+Codegen quality can only touch the 4% that is pygram's own startup plus a few
+hundred microseconds of execution. **The wins are algorithmic and above the
+compiler** — the same pass got 16x on `re.sub` by not re-slicing a string.
+
+**The cost model's missing constant: CheerpX streams the image in 131,072 B
+device blocks.** Cold cost is a STEP function, not linear in bytes. The binary is
+three blocks; a saving that does not cross a boundary streams the same number of
+fetches. The next **6,980 B** would take it under 262,144 B and remove a whole
+fetch — which is what makes the 4,096 B cuts §4c declined worth taking as a
+bundle, and what makes function placement worth exactly zero.
+
 ## 3. The corpus grows by itself — do not hand-write entries
 
 `scripts/pygram-capture/` installs a `python`/`python3` shim early on `$PATH`
@@ -163,6 +220,21 @@ Sighting keys are namespaced by session because a log line number means
 something different in every container — that namespacing is also what stops the
 fold counting one invocation twice when it reads both a session's live log and
 its own published file.
+
+**A session cannot publish a converged copy of its own sightings, and chasing
+one is a loop** (found 2026-08-15 while merging #456/#459). A sighting key is
+per INVOCATION — `hook:<session>#<n>` and `transcript:<file>#<tool-use-id>` —
+while the corpus fold dedupes by program hash. So re-running the same program
+adds rows to the sightings file and nothing downstream. The trap is that
+*checking* a published file is itself an invocation: validate it with python
+(unique keys, sortedness, a set difference against the committed copy) and
+`--export` immediately has two more rows to publish, which is a dirty tree
+again, which invites another check. Three commits went that way before the
+shape was clear. **Publish once, then inspect with `git`/`grep` only** — or
+accept that the file trails the container by however much work the publishing
+took, which is what `--export` is designed for anyway. Nothing is lost either
+way: the next session's export picks up the remainder, and the fold collapses
+the duplicates.
 
 Two rules that keep the evidence honest:
 

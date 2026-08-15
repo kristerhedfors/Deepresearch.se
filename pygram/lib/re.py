@@ -265,10 +265,52 @@ class Pattern:
         return _split(self, string, maxsplit)
 
     def sub(self, repl, string, count=0):
+        if _can_use_native_sub(self, repl):
+            return self._r.sub(repl, string, count)
         return _subn(self, repl, string, count)[0]
 
     def subn(self, repl, string, count=0):
         return _subn(self, repl, string, count)
+
+
+def _can_use_native_sub(p, repl):
+    # The C engine has its own substitution loop (`re_sub_helper` in
+    # extmod/modre.c), and it is 15x faster than doing the same work here: it
+    # appends into one vstr with pointer arithmetic, while _subn below builds a
+    # Python list of slices, and `s[last:st]` walks the string from the start on
+    # every match. Measured on this build, 2,000 substitutions over a 2,000-
+    # character line: 22 ms native against 340 ms through the shim.
+    #
+    # It is NOT a drop-in replacement, which is why this gate exists rather than
+    # a straight delegation. Four differences, each of which would be a silent
+    # wrong answer at exit 0 — the one failure mode docs/PYGRAM.md treats as
+    # worse than being slow:
+    #
+    #   1. An EMPTY match ends the native loop (`caps[0] == caps[1]` breaks), so
+    #      re.sub(r"", "-", "abc") returns "abc" where CPython returns "-a-b-c-".
+    #      Any pattern that can match empty is refused. The test is whether it
+    #      matches the empty string: this engine has no lookaround and no word
+    #      boundary, so the only context-sensitive instructions are Bol and Eol,
+    #      and both are satisfied at position 0 of "". A pattern that can consume
+    #      zero characters anywhere can therefore do it on "" too.
+    #   2. A BACKSLASH in the template means something different. The native
+    #      loop knows \1 and \g<1> but not \g<name>, and it drops the backslash
+    #      from \n rather than turning it into a newline, which _expand does.
+    #      Only a backslash-free template is delegated.
+    #   3. MULTILINE is done here, by splitting the subject into lines and
+    #      matching each (see _segments). The native loop sees one string, so ^
+    #      and $ would only match at its two ends.
+    #   4. A trailing `$` needs the newline trim in _trim, which the native loop
+    #      does not do.
+    #
+    # A callable replacement is technically supported by the native loop, but it
+    # would be handed the RAW match object rather than the wrapper this module
+    # returns, so the callback would see a different API. Refused too.
+    if not isinstance(repl, str) or "\\" in repl:
+        return False
+    if (p.flags & M) or p._dollar:
+        return False
+    return p._r.match("") is None
 
 
 def _trim(p, s):
@@ -290,18 +332,60 @@ def _segments(p, s):
 
 
 def _find(p, s):
+    # Every scanning operation in this module — findall, finditer, split, sub —
+    # is this loop. It used to advance by RE-SLICING the subject at each match
+    # (`search(seg[pos:])`), which copies the entire remainder of the string per
+    # match and makes a single re.sub over a 2,000-character line quadratic:
+    # 10.4x stock MicroPython in docs/PYGRAM-BENCH-LEDGER.md, against 0.57x for
+    # the same substitution done by the C engine directly. The cost was the
+    # slicing, not the engine.
+    #
+    # The engine already takes a start position — `re_exec_helper` in
+    # extmod/modre.c does `subj.begin += startpos` for a compiled pattern — so
+    # the scan can advance a cursor instead of copying.
+    #
+    # THE CATCH, and why there are two loops below. That `startpos` is a BYTE
+    # offset, while `match.span()` answers in CHARACTERS (match_span_helper runs
+    # utf8_ptr_to_index over the result). Feeding a character index back in as a
+    # byte offset lands mid-codepoint on any non-ASCII subject: measured on this
+    # build, `search("räksmörgås abc", 12)` reports a span starting at 9. The
+    # two units coincide exactly when the subject is ASCII, and only then.
+    #
+    # So the cursor path is taken on an ASCII subject and the old slicing path
+    # on any other, with the test being one encode per call — against one slice
+    # per match, which is what it replaces. Non-ASCII input keeps today's cost;
+    # closing that needs the engine to hand back a byte-space resume point,
+    # which is a port-patch hunk rather than a shim change (docs/PYGRAM.md §8c).
+    #
+    # One deliberate behaviour change rides along, in the ASCII path only: with
+    # slicing, the engine saw each remainder as a fresh string, so `^` matched at
+    # every restart. With a cursor it sees the true line start, which is what
+    # CPython's pos does. That is CPython's semantics, not a divergence from it —
+    # `re-caret-midpattern` in the seed corpus pins it.
     for seg, base in _segments(p, s):
-        pos = 0
         ln = len(seg)
-        while pos <= ln:
-            m = p._r.search(seg[pos:] if pos else seg)
-            if m is None:
-                break
-            st, en = m.span()
-            yield Match(m, p._names, base + pos, s)
-            if p._anchored:
-                break
-            pos += en if en > st else st + 1
+        if len(seg.encode()) == ln:
+            pos = 0
+            while pos <= ln:
+                m = p._r.search(seg, pos)
+                if m is None:
+                    break
+                st, en = m.span()
+                yield Match(m, p._names, base, s)
+                if p._anchored:
+                    break
+                pos = en if en > st else st + 1
+        else:
+            pos = 0
+            while pos <= ln:
+                m = p._r.search(seg[pos:] if pos else seg)
+                if m is None:
+                    break
+                st, en = m.span()
+                yield Match(m, p._names, base + pos, s)
+                if p._anchored:
+                    break
+                pos += en if en > st else st + 1
 
 
 def _findall(p, s):
@@ -383,19 +467,24 @@ def _expand(m, t):
 
 
 def _subn(p, repl, s, count):
+    # Every match _find yields is substituted, INCLUDING an empty one that
+    # abuts the previous match. This looks like a bug and is the rule: CPython
+    # skipped that match up to 3.6 and stopped skipping it in 3.7 (bpo-32308),
+    # so re.sub(r"b*", "-", "abc") is "-a--c-" and not "-a-c-" — the empty match
+    # at position 2, immediately after the "b", produces its own replacement.
+    # This module carried the 3.6 rule and answered "-a-c-" at exit 0, silently,
+    # for every quantifier that can match empty; `re-sub-empty-match` in the seed
+    # corpus is the entry that caught it. split() and findall() never had the
+    # skip and were already right, which is why the divergence was sub-only.
     fn = repl if callable(repl) else None
     out = []
     last = 0
     n = 0
-    prev = -1
     for m in _find(p, s):
         st, en = m.span()
-        if st == en and st == prev:
-            continue  # CPython skips an empty match abutting the previous one
         out.append(s[last:st])
         out.append(fn(m) if fn else _expand(m, repl))
         last = en
-        prev = en
         n += 1
         if count and n >= count:
             break
@@ -444,7 +533,7 @@ def split(pattern, string, maxsplit=0, flags=0):
 
 
 def sub(pattern, repl, string, count=0, flags=0):
-    return _subn(compile(pattern, flags), repl, string, count)[0]
+    return compile(pattern, flags).sub(repl, string, count)
 
 
 def subn(pattern, repl, string, count=0, flags=0):

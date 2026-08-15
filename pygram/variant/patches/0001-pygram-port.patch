@@ -423,6 +423,46 @@ index 2c7d796..756adcb 100644
      #if MICROPY_ERROR_REPORTING <= MICROPY_ERROR_REPORTING_TERSE
      mp_raise_msg(&mp_type_ImportError, MP_ERROR_TEXT("module not found"));
      #else
+diff --git a/py/map.c b/py/map.c
+index d40e3dc..250d1c1 100644
+--- a/py/map.c
++++ b/py/map.c
+@@ -214,8 +214,33 @@ mp_map_elem_t *MICROPY_WRAP_MP_MAP_LOOKUP(mp_map_lookup)(mp_map_t * map, mp_obj_
+             return NULL;
+         }
+         if (map->used == map->alloc) {
+-            // TODO: Alloc policy
+-            map->alloc += 4;
++            // pygram: grow geometrically, not by a constant 4.
++            //
++            // Upstream's `map->alloc += 4` carries a `TODO: Alloc policy` and
++            // is harmless where an ordered map is what it was written for — a
++            // module's globals or a type's locals, tens of entries at most.
++            // pygram points the PYTHON-level dict at the ordered map as well
++            // (see mp_obj_new_dict in py/objdict.c), so this line now runs for
++            // every dict a program builds, and one m_renew per FOUR insertions
++            // means a 20,000-key dict reallocates 5,000 times and copies the
++            // whole table each time.
++            //
++            // Measured against the constant-4 policy on this build, insert of
++            // 20,000 distinct keys: 0.96x; 10,000: 0.98x; 5,000: 0.98x. That is
++            // the whole of the reallocation cost, and it is small — which is
++            // the useful half of the result. It says the dict rows in
++            // docs/PYGRAM-BENCH-LEDGER.md are dominated by the LINEAR SCAN
++            // above, not by the allocator, so a future pass that wants those
++            // rows should go after the scan and not spend itself here.
++            //
++            // The 1.5x factor matches what the hashed path already does at
++            // these sizes (hash_allocation_sizes grows by 1.33-1.5x), so the
++            // memory slack is not a new behaviour for a large map.
++            if (map->alloc < 8) {
++                map->alloc += 4;
++            } else {
++                map->alloc += map->alloc / 2;
++            }
+             map->table = m_renew(mp_map_elem_t, map->table, map->used, map->alloc);
+             mp_seq_clear(map->table, map->used, map->alloc, sizeof(*map->table));
+         }
 diff --git a/py/modbuiltins.c b/py/modbuiltins.c
 index 6f085f2..71fe911 100644
 --- a/py/modbuiltins.c

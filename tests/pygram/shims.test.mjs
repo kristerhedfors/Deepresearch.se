@@ -406,8 +406,12 @@ if MODE == "shim":
     # Engine quirks reproduced: '.' matches \n (Any), '$' is end-of-string
     # only (Eol), \d\w\s are ASCII.
     class _MPMatch:
-        def __init__(self, m):
+        # _shift maps an offset in whatever slice the engine was pointed at
+        # back to a character index in the whole subject, which is what the C
+        # match object reports because its caps point into the original buffer.
+        def __init__(self, m, _shift=None):
             self._m = m
+            self._shift = _shift or (lambda i: i)
         def group(self, n):
             if not isinstance(n, int):
                 raise TypeError("MicroPython match.group takes an int")
@@ -415,11 +419,13 @@ if MODE == "shim":
         def groups(self):
             return self._m.groups()
         def start(self, n=0):
-            return self._m.start(n)
+            i = self._m.start(n)
+            return i if i < 0 else self._shift(i)
         def end(self, n=0):
-            return self._m.end(n)
+            i = self._m.end(n)
+            return i if i < 0 else self._shift(i)
         def span(self, n=0):
-            return self._m.span(n)
+            return (self.start(n), self.end(n))
 
     def _reject(pat):
         for bad in ("(?P<", "(?=", "(?!", "(?<"):
@@ -459,17 +465,69 @@ if MODE == "shim":
         def __init__(self, pat):
             _reject(pat)
             self._r = _re.compile(_eol(pat), _re.DOTALL | _re.ASCII)
-        def search(self, s):
-            m = self._r.search(s)
-            return _MPMatch(m) if m else None
+        def search(self, s, pos=None, endpos=None):
+            if pos is None and endpos is None:
+                m = self._r.search(s)
+                return _MPMatch(m) if m else None
+            # pos and endpos are BYTE offsets, and .span() answers in
+            # CHARACTERS. That asymmetry is not a quirk of this stub: in
+            # extmod/modre.c, re_exec_helper advances subj.begin by the raw
+            # integer while match_span_helper converts the result back with
+            # utf8_ptr_to_index. Modelling pos as a character index here would
+            # make the shim's ASCII gate look like belt-and-braces, and the
+            # test would stop covering the reason it exists.
+            b = s.encode()
+            start = min(max(pos or 0, 0), len(b))
+            if endpos is not None:
+                b = b[:min(max(endpos, start), len(b))]
+            m = self._r.search(b[start:].decode("utf-8", "replace"))
+            if not m:
+                return None
+            return _MPMatch(m, _shift=lambda i: len(
+                b[:start + len(m.string[:i].encode())].decode("utf-8", "replace")))
         def match(self, s):
             m = self._r.match(s)
             return _MPMatch(m) if m else None
+        def sub(self, repl, s, count=0):
+            # re_sub_helper's own loop, divergences included — this is the fast
+            # path pygram/lib/re.py delegates to, and the point of the stub is
+            # that a wrong delegation FAILS here rather than in production.
+            out, at, n = [], 0, 0
+            while True:
+                m = self._r.search(s, at)
+                if not m or m.start() == m.end():
+                    break            # an empty match ENDS the native loop
+                out.append(s[at:m.start()])
+                i, t = 0, repl
+                while i < len(t):
+                    if t[i] != "\\":
+                        out.append(t[i]); i += 1; continue
+                    i += 1
+                    if t[i:i + 2] == "g<":
+                        i += 2       # \g<number> only; \g<name> is not parsed
+                    if i < len(t) and t[i].isdigit():
+                        g = ""
+                        while i < len(t) and t[i].isdigit():
+                            g += t[i]; i += 1
+                        if i < len(t) and t[i] == ">":
+                            i += 1
+                        out.append(m.group(int(g)) or "")
+                    elif t[i:i + 1] == "\\":
+                        out.append("\\"); i += 1
+                    # anything else: the backslash is simply dropped, so \n
+                    # comes out as the letter n
+                at = m.end()
+                n += 1
+                if count > 0 and n >= count:
+                    break
+            out.append(s[at:])
+            return "".join(out)
 
     ure = type(sys)("ure")
     ure.compile = lambda pat, flags=0: _MPPattern(pat)
     ure.search = lambda pat, s: _MPPattern(pat).search(s)
     ure.match = lambda pat, s: _MPPattern(pat).match(s)
+    ure.sub = lambda pat, repl, s, count=0: _MPPattern(pat).sub(repl, s, count)
 
     # --- uos: only the names MicroPython's C os module has -----------------
     uos = type(sys)("uos")
