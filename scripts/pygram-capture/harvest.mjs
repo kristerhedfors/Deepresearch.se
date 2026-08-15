@@ -5,20 +5,27 @@
 //
 //     --log PATH          shim/hook log (default $PYGRAM_LOG or ~/.pygram/invocations.jsonl)
 //     --transcripts DIR   Claude Code transcript root (default ~/.claude/projects)
+//     --sightings DIR     published per-session sightings (default tests/pygram/sightings)
 //     --corpus PATH       corpus to merge into (default tests/pygram/corpus.jsonl)
+//     --export            publish THIS container's sightings and stop (writes
+//                         tests/pygram/sightings/<session>.jsonl, never the corpus)
 //     --no-transcripts    skip the transcript scan
+//     --no-sightings      skip the published sightings
 //     --dry-run           report what would change, write nothing
 //     --quiet             summary line only
 //     --json              print the summary as JSON
 //
-// Three inputs, one output:
+// Four inputs, one output:
 //   (a) the JSONL log written by scripts/pygram-capture/python-shim (every run
 //       that reached an interpreter) and by .claude/hooks/pygram-capture.sh
 //       (every Bash command that mentioned python),
 //   (b) Claude Code transcripts — Bash tool_use inputs whose command is
 //       python-ish, which is how sessions from BEFORE the shim was installed
 //       still contribute,
-//   (c) the existing corpus, whose records are never lost.
+//   (c) tests/pygram/sightings/*.jsonl — the COMMITTED per-session evidence,
+//       which is the only input that survives a container (see the sightings
+//       section below for why the corpus itself could not play that role),
+//   (d) the existing corpus, whose records are never lost.
 //
 // One record per DISTINCT program, keyed by a hash of the NORMALIZED program
 // text, so `print(1)` logged a hundred times is one record with count=100.
@@ -286,11 +293,19 @@ export function sightingsFromLog(text, tag = "log") {
       continue;
     }
     if (!rec || typeof rec !== "object") continue;
+    // The scope of the line number is the LOG, and a log lives inside one
+    // container — so `#12` alone repeats across sessions. Every record carries
+    // the session that wrote it, so the key is namespaced by it whenever it is
+    // known. That is what lets a sighting survive its container (see
+    // exportSightings): the key stays unique and stable once the log is gone,
+    // and re-reading the same evidence through either path cannot double-count.
+    const sess = typeof rec.session === "string" && rec.session ? rec.session : tag;
     if (rec.kind === "python_invocation") {
       if (typeof rec.program !== "string" || !rec.program.trim()) continue;
       out.push({
-        key: `shim:${tag}#${i + 1}`,
+        key: `shim:${sess}#${i + 1}`,
         source: "shim",
+        session: typeof rec.session === "string" ? rec.session : null,
         program: rec.program,
         argv_tail: Array.isArray(rec.argv_tail) ? rec.argv_tail.map(String) : [],
         ts: typeof rec.ts === "string" ? rec.ts : null,
@@ -300,8 +315,9 @@ export function sightingsFromLog(text, tag = "log") {
       const progs = extractPythonPrograms(rec.command);
       progs.forEach((p, n) => {
         out.push({
-          key: `hook:${tag}#${i + 1}#${n}`,
+          key: `hook:${sess}#${i + 1}#${n}`,
           source: "hook",
+          session: typeof rec.session === "string" ? rec.session : null,
           program: p.program,
           argv_tail: p.argv_tail,
           ts: typeof rec.ts === "string" ? rec.ts : null,
@@ -318,6 +334,9 @@ export function sightingsFromLog(text, tag = "log") {
  *  inputs are read; the key is the tool_use id, which never changes. */
 export function sightingsFromTranscript(text, tag = "transcript") {
   const out = [];
+  // A transcript file is named for its session, so the tag already namespaces
+  // the key; the session is lifted out only so an export can group by it.
+  const session = (tag.split("/").pop() || "").replace(/\.jsonl$/, "") || null;
   for (const line of String(text ?? "").split("\n")) {
     if (!line.trim()) continue;
     let ev;
@@ -337,6 +356,7 @@ export function sightingsFromTranscript(text, tag = "transcript") {
         out.push({
           key: `transcript:${tag}#${id}#${n}`,
           source: "transcript",
+          session,
           program: p.program,
           argv_tail: p.argv_tail,
           ts: typeof ev.timestamp === "string" ? ev.timestamp : null,
@@ -366,6 +386,174 @@ export function listTranscripts(dir) {
   };
   walk(dir);
   return found.sort();
+}
+
+// -------------------------------------------------------------- sightings ---
+//
+// WHY THIS EXISTS. Capture worked from the day it shipped, and the corpus still
+// did not grow: the log lives at $HOME/.pygram/ (outside the repo) and these
+// containers are ephemeral, so the evidence died with the container unless the
+// session happened to commit it. When a session DID commit, it committed a
+// rewritten tests/pygram/corpus.jsonl — a single shared file that every other
+// branch also rewrites, which conflicts by construction and merges into main
+// approximately never. Measured 2026-08-14: of the 19 branches cut since the
+// corpus landed, 2 carried any growth and neither had reached main; corpus.jsonl
+// had exactly one commit, and every first_seen fell inside one 36-minute window.
+//
+// So the durable unit is not the corpus — it is a PER-SESSION sightings file,
+// tests/pygram/sightings/<session>.jsonl. One writer per path means no branch
+// can conflict with another, an unrelated PR carries an added file rather than a
+// rewritten one, and the corpus becomes a DERIVED artifact regenerated by
+// `npm run pygram:harvest` from whatever sightings have accumulated.
+//
+// Files are written already redacted, seed-guarded and size-capped, because
+// they are committed and the pre-commit secret scan is a backstop, not the
+// filter.
+
+/** Read a published sightings file back as sightings. Keys are preserved
+ *  verbatim — they are what makes a count aggregate correctly across sessions
+ *  and what stops the same evidence being counted twice when a session's own
+ *  log and its own exported file are both inputs to one harvest. */
+export function sightingsFromExport(text) {
+  const out = [];
+  for (const line of String(text ?? "").split("\n")) {
+    if (!line.trim()) continue;
+    let rec;
+    try {
+      rec = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (!rec || typeof rec.program !== "string" || !rec.program || typeof rec.key !== "string") continue;
+    out.push({
+      key: rec.key,
+      source: rec.source && rec.source in SOURCE_RANK ? rec.source : "transcript",
+      session: rec.session ?? null,
+      program: rec.program,
+      argv_tail: Array.isArray(rec.argv_tail) ? rec.argv_tail.map(String) : [],
+      ts: typeof rec.ts === "string" ? rec.ts : null,
+      stdin_sample: rec.stdin_sample ?? null,
+    });
+  }
+  return out;
+}
+
+export function serializeSightings(sightings) {
+  return (
+    sightings
+      .map((s) =>
+        JSON.stringify({
+          key: s.key,
+          source: s.source,
+          session: s.session ?? null,
+          program: s.program,
+          argv_tail: s.argv_tail ?? [],
+          ts: s.ts ?? null,
+        }),
+      )
+      .join("\n") + (sightings.length ? "\n" : "")
+  );
+}
+
+/** A session id, as a filename. Ids are uuids in practice; anything else is
+ *  flattened rather than trusted, since this becomes a path. */
+export function sightingsFileName(session) {
+  const safe = String(session || "unknown").replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 80);
+  return `${safe || "unknown"}.jsonl`;
+}
+
+/**
+ * Fold this container's log and transcripts into per-session files under
+ * `dir`, one file per session, union-by-key with whatever is already there.
+ *
+ * Append-only and idempotent: a key already present is left untouched, so
+ * re-running at every Stop boundary rewrites nothing once the session's
+ * evidence has stabilised, and a rotated-away log never removes a record.
+ */
+export function exportSightings(opts) {
+  const dir = opts.sightings;
+  const gathered = [];
+  if (opts.log) gathered.push(...sightingsFromLog(readIfExists(opts.log), "invocations"));
+  if (opts.transcriptsEnabled && opts.transcripts) {
+    for (const file of listTranscripts(opts.transcripts)) {
+      const tag = relative(opts.transcripts, file) || file;
+      gathered.push(...sightingsFromTranscript(readIfExists(file), tag));
+    }
+  }
+
+  const seeds = seedIds(opts.seed);
+  const bySession = new Map();
+  const skipped = { empty: 0, oversized: 0, seedCollision: 0 };
+  let redactions = 0;
+
+  for (const s of gathered) {
+    const { text: program, hits } = redactSecrets(s.program);
+    redactions += hits;
+    if (!normalizeProgram(program)) {
+      skipped.empty++;
+      continue;
+    }
+    if (Buffer.byteLength(program, "utf8") > MAX_PROGRAM_BYTES) {
+      skipped.oversized++;
+      continue;
+    }
+    // Same rule as the corpus merge: a sighting byte-identical to a seed
+    // program is dropped rather than published, so expectation can never
+    // re-enter the observed record (docs/PYGRAM.md §7a).
+    if (seeds.has(programId(program))) {
+      skipped.seedCollision++;
+      continue;
+    }
+    const session = s.session || "unknown";
+    if (!bySession.has(session)) bySession.set(session, []);
+    bySession.get(session).push({
+      ...s,
+      program,
+      argv_tail: (s.argv_tail ?? []).map((t) => redactSecrets(String(t)).text),
+      session,
+    });
+  }
+
+  const files = [];
+  let added = 0;
+  for (const [session, fresh] of [...bySession.entries()].sort()) {
+    const path = join(dir, sightingsFileName(session));
+    const existing = sightingsFromExport(readIfExists(path));
+    const byKey = new Map(existing.map((s) => [s.key, s]));
+    let newHere = 0;
+    for (const s of fresh) {
+      if (byKey.has(s.key)) continue;
+      byKey.set(s.key, s);
+      newHere++;
+    }
+    const ordered = [...byKey.values()].sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+    const body = serializeSightings(ordered);
+    const before = readIfExists(path);
+    const changed = body !== before;
+    if (changed && !opts.dryRun) {
+      mkdirSync(dirname(resolve(path)), { recursive: true });
+      writeFileSync(path, body);
+    }
+    added += newHere;
+    files.push({ path, session, total: ordered.length, added: newHere, changed });
+  }
+
+  return { files, added, redactions, skipped, gathered: gathered.length };
+}
+
+/** Every published sightings file, oldest name first for determinism. */
+export function listSightingFiles(dir) {
+  if (!dir) return [];
+  let entries;
+  try {
+    entries = readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  return entries
+    .filter((e) => e.isFile() && e.name.endsWith(".jsonl"))
+    .map((e) => join(dir, e.name))
+    .sort();
 }
 
 // ------------------------------------------------------------------- merge ---
@@ -550,19 +738,31 @@ export function defaultPaths(env = process.env) {
     transcripts: env.PYGRAM_TRANSCRIPTS || (home ? join(home, ".claude", "projects") : ""),
     corpus: env.PYGRAM_CORPUS || join(ROOT, "tests", "pygram", "corpus.jsonl"),
     seed: env.PYGRAM_SEED || join(ROOT, "tests", "pygram", "seed-corpus.jsonl"),
+    sightings: env.PYGRAM_SIGHTINGS || join(ROOT, "tests", "pygram", "sightings"),
   };
 }
 
 export function parseArgs(argv) {
-  const opts = { ...defaultPaths(), transcriptsEnabled: true, dryRun: false, quiet: false, json: false };
+  const opts = {
+    ...defaultPaths(),
+    transcriptsEnabled: true,
+    sightingsEnabled: true,
+    exportOnly: false,
+    dryRun: false,
+    quiet: false,
+    json: false,
+  };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--log") opts.log = argv[++i];
     else if (a === "--transcripts") opts.transcripts = argv[++i];
     else if (a === "--corpus") opts.corpus = argv[++i];
     else if (a === "--seed") opts.seed = argv[++i];
+    else if (a === "--sightings") opts.sightings = argv[++i];
     else if (a === "--no-seed-guard") opts.seed = "";
     else if (a === "--no-transcripts") opts.transcriptsEnabled = false;
+    else if (a === "--no-sightings") opts.sightingsEnabled = false;
+    else if (a === "--export") opts.exportOnly = true;
     else if (a === "--dry-run") opts.dryRun = true;
     else if (a === "--quiet") opts.quiet = true;
     else if (a === "--json") opts.json = true;
@@ -594,7 +794,7 @@ export function seedIds(path) {
 
 export function harvest(opts) {
   const sightings = [];
-  const stats = { logLines: 0, transcriptFiles: 0 };
+  const stats = { logLines: 0, transcriptFiles: 0, sightingFiles: 0 };
 
   if (opts.log) {
     const text = readIfExists(opts.log);
@@ -606,6 +806,16 @@ export function harvest(opts) {
       stats.transcriptFiles++;
       const tag = relative(opts.transcripts, file) || file;
       sightings.push(...sightingsFromTranscript(readIfExists(file), tag));
+    }
+  }
+  // The committed evidence from every session that has ever run here — the
+  // only input that outlives a container. Keys collide by design with the
+  // live log's when this session's own file is read back, and mergeSightings
+  // drops the duplicate rather than counting it twice.
+  if (opts.sightingsEnabled && opts.sightings) {
+    for (const file of listSightingFiles(opts.sightings)) {
+      stats.sightingFiles++;
+      sightings.push(...sightingsFromExport(readIfExists(file)));
     }
   }
 
@@ -642,6 +852,25 @@ function main() {
     console.log(readFileSync(fileURLToPath(import.meta.url), "utf8").split("\n").slice(0, 15).join("\n").replace(/^\/\/ ?/gm, ""));
     return;
   }
+  if (opts.exportOnly) {
+    const e = exportSightings(opts);
+    if (opts.json) {
+      console.log(JSON.stringify(e, null, 2));
+      return;
+    }
+    const changed = e.files.filter((f) => f.changed);
+    if (!opts.quiet) {
+      if (e.redactions) console.log(`redacted    : ${e.redactions} credential-shaped token(s)`);
+      if (e.skipped.seedCollision) console.log(`seed guard  : ${e.skipped.seedCollision} sighting(s) dropped as seed-identical`);
+    }
+    // Silence when nothing changed: this runs at every turn boundary.
+    if (changed.length) {
+      const total = changed.reduce((n, f) => n + f.added, 0);
+      console.log(`pygram: exported ${total} new sighting(s) to ${changed.map((f) => relative(ROOT, f.path)).join(", ")}`);
+    }
+    return;
+  }
+
   const r = harvest(opts);
   if (opts.json) {
     console.log(JSON.stringify(r, null, 2));
@@ -650,6 +879,7 @@ function main() {
   if (!opts.quiet) {
     console.log(`log         : ${opts.log || "(none)"} — ${r.logLines} line(s)`);
     console.log(`transcripts : ${opts.transcriptsEnabled ? opts.transcripts : "(skipped)"} — ${r.transcriptFiles} file(s)`);
+    console.log(`published   : ${opts.sightingsEnabled ? opts.sightings : "(skipped)"} — ${r.sightingFiles} file(s)`);
     console.log(`corpus      : ${opts.corpus}`);
     console.log(`sightings   : ${r.sightings}`);
     if (r.redactions) console.log(`redacted    : ${r.redactions} credential-shaped token(s)`);
