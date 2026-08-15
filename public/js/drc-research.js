@@ -899,16 +899,34 @@ export async function runDrcResearch({
   const webOn = typeof webSearch === "function";
   /** @type {Array<{n: number, title: string, url: string}>} */
   const webSources = []; // { n, title, url }
-  let sourceSeq = 0;
-  const numberedResults = (/** @type {any[]} */ items) =>
-    items
-      .map((/** @type {any} */ it) => {
-        sourceSeq++;
-        webSources.push({ n: sourceSeq, title: it.title || it.url, url: it.url });
-        const hi = Array.isArray(it.highlights) ? it.highlights.join(" … ") : "";
-        return `[${sourceSeq}] ${it.title || it.url}\n${it.url}${hi ? "\n" + hi : ""}`;
-      })
-      .join("\n\n");
+  // Deduped by URL, like the server registry this mirrors (src/sources.js
+  // addSources, which has deduped since its first line). Without it a page
+  // found by two of the exchange's sub-questions took two citation numbers:
+  // the Sources list repeated the entry, the step counts double-counted it,
+  // and the model's [n] markers stopped being one-to-one with URLs — so a
+  // single source could be cited as if it were two corroborating ones, which
+  // is the one thing a research tool's citations must never imply.
+  //
+  // Deliberately NOT a shared core with the server's addSources: that function
+  // also enforces per-origin diversity, maintains an overflow backfill list
+  // and honours plan.maxSources, and it keys diversity through the search-source
+  // registry — which a Se/cure client module may not reach (invariant 7, and
+  // the tier gate). The duplication here is one Set.
+  /** @type {Set<string>} */
+  const seenUrls = new Set();
+  const numberedResults = (/** @type {any[]} */ items) => {
+    /** @type {string[]} */
+    const blocks = [];
+    for (const it of items) {
+      if (!it || !it.url || seenUrls.has(it.url)) continue;
+      seenUrls.add(it.url);
+      const n = webSources.length + 1;
+      webSources.push({ n, title: it.title || it.url, url: it.url });
+      const hi = Array.isArray(it.highlights) ? it.highlights.join(" … ") : "";
+      blocks.push(`[${n}] ${it.title || it.url}\n${it.url}${hi ? "\n" + hi : ""}`);
+    }
+    return blocks.join("\n\n");
+  };
   const sourcesList = () =>
     webSources.map((/** @type {any} */ s) => `[${s.n}] ${s.title} — ${s.url}`).join("\n");
   const webLookup = async (/** @type {string} */ query) => {
@@ -1182,6 +1200,15 @@ export async function runDrcResearch({
   // audit early; any failure keeps whatever harvest exists. Each round files
   // its outcome as a detail event (Se/rver's step_done counterpart).
   for (let round = 0; round < plan.gapRounds; round++) {
+    // The wall-clock roof (the paragraph above drcPlanForBudget): an OPTIONAL
+    // phase only starts while its share of the budget remains. A coverage
+    // round still owes a JSON call, a harvest wave and the synthesis to come,
+    // so it needs the larger share. Landing here is the same degraded outcome
+    // the catch below already produces — answer from the harvest we have.
+    if (!withinBudget(GAP_DEADLINE_FRACTION)) {
+      onStatus({ type: "detail", label: "Coverage audit skipped — out of research time" });
+      break;
+    }
     try {
       onStatus({ type: "phase", phase: "gap" });
       const gap = await drcCompleteJson(
@@ -1194,8 +1221,16 @@ export async function runDrcResearch({
         ],
         { signal, baseUrl },
       );
+      // Angles already harvested, so a second round cannot propose one the
+      // first already ran — the server dedups every query it issues
+      // (pipeline-inputs.js takeSearchBatch over state.ranQueries); /cure's
+      // angles ARE `harvest`, so the same guarantee costs one Set. Filtered
+      // BEFORE the cap, or a repeat would consume one of the two or three
+      // follow-up slots.
+      const ran = new Set(harvest.map((h) => h.subquestion.trim().toLowerCase()));
       const missing = (Array.isArray(gap?.missing) && gap.complete === false ? gap.missing : [])
         .filter((/** @type {any} */ s) => typeof s === "string" && s.trim())
+        .filter((/** @type {any} */ s) => !ran.has(s.trim().toLowerCase()))
         .slice(0, plan.maxGapFollowups);
       if (!missing.length) {
         // coverage is complete — no more rounds needed
@@ -1262,7 +1297,16 @@ export async function runDrcResearch({
   // "revise" can carry the WHOLE corrected report (the src/budget.js
   // validateMaxTokens lesson).
   let validated = false;
-  if (plan.validate) {
+  // …and the roof again, at the smaller share the final review needs (it costs
+  // one call, not a call plus a wave). The else-path is this module's own
+  // documented fail-soft outcome — "an unvalidated draft beats no answer" —
+  // and the skip is SHOWN rather than silent, the same way the server emits a
+  // visible "Validation skipped" step when its deadline check cuts the phase.
+  const reviewInBudget = withinBudget(VALIDATE_DEADLINE_FRACTION);
+  if (plan.validate && !reviewInBudget) {
+    onStatus({ type: "detail", label: "Review skipped — out of research time" });
+  }
+  if (plan.validate && reviewInBudget) {
     try {
       onStatus({ type: "phase", phase: "validate" });
       const verdict = await drcCompleteJson(
