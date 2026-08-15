@@ -900,3 +900,81 @@ bodies; `withTimeout`, same name and tier with a cancel hook on one side only).
 covers the two cores pass 18 added. No file was created, moved, renamed or split
 this pass, so neither list, nor `src/assets.js`'s public-module allowlist, needed
 an entry.
+
+---
+
+## Pass 20 — the agent-pipeline pass (2026-08-14)
+
+**Scope:** not the whole repo. The two agent PIPELINES — the Worker's
+`src/pipeline.js` + `chat.js` + `prompts.js` + the three registries, and
+Se/cure's `public/js/drc-research.js` — with the owner explicitly allowing
+**limited behavioural changes**. That last clause is what makes this pass
+unlike the nineteen before it, and it is the method lesson below.
+
+**Cut (structure, no behaviour change):**
+
+1. `src/prompts.js` — five verbatim duplications named: `SOURCES_LIST_RULE`
+   (four tier copies of a rule the file's own comment and a test both call a
+   cross-tier invariant), `AUDIT_SURFACES` (a list naming four `src/` modules
+   by PATH, written twice), `DIRECT_ANSWER_NOTE` + `introspectionAnswerTail`
+   (265 chars and a 4-expression tail shared by the two introspection answer
+   prompts), `SDK_BUILD_HEADER` + `SDK_BUILD_TAIL`.
+2. `src/pipeline.js` — `dispatchAuxPlans` (both aux entry points carried the
+   dispatch/emit/absorb tail, including a byte-identical `search_start` emit);
+   `widenPlanCapacity` (the registry+digest reserve written out twice);
+   `planAuxSource`'s `skipKeys` reduced to one writer; `runSdkBuildTools`'s
+   three staged-file materialisations reduced to one accessor.
+3. `src/enrichment.js` — the agent-declaration gate became DATA
+   (`contextBlock`), matching what the other two registries already declared,
+   with `enrichmentApplies` exporting the composition.
+4. `src/chat.js` — `bashLiteEnabled(env, identity)` computed once instead of
+   five times.
+
+**Behaviour changed, deliberately (six):** SECURITY-RISKS P-7/M-6 closed
+(`gapPrompt` + `validatePrompt` gained `ANTI_INJECTION_NOTE`); the forced
+auxiliary sources now reach the direct-reply answer model; `state.citations` /
+`state.validation` reach both chat-log rows; Se/cure's deadline guards are
+applied; Se/cure's source registry dedups by URL; Se/cure's gap follow-ups are
+checked against the harvest.
+
+**Method lessons.**
+
+- **"Limited behavioural changes allowed" changes what a survey FINDS, not just
+  what it may do.** Four of the six behaviour changes are the same defect
+  shape: *a value the code computes and then fails to use.* A written-and-never-read
+  field, a computed block dropped at two exits, a guard defined and exported and
+  unit-tested and never called, a registered risk whose two-line fix was already
+  prescribed. A strict byte-identical pass cannot report any of them — they are
+  not duplication, and each one's fix is a behaviour change by construction — so
+  nineteen passes walked past them. **When the brief allows it, grep for values
+  that are produced and not consumed; it is the richest seam this codebase had
+  left.**
+- **The scanners still say nothing about `pipeline.js`.** `dup-scan`,
+  `--collisions` and `line-scan --run 8` return zero entries for it. Every cut
+  above came from reading, and three of them from reading a comment against the
+  code beneath it — the comment promised what the code did not do in all three
+  cases ("every exit below answers with it", "enforces the roof with wall-clock
+  deadline guards", "recorded so the revise RATE becomes knowable"). **A
+  paragraph that states a guarantee is a testable claim. Check it.**
+- **Source-text guards are a real cost of doing this work, and the right
+  response is to make them stricter, not to relax them.** Seven guards across
+  five files pinned the exact text this pass moved. Each was repointed at the
+  new shape and strengthened where the new shape allowed a stronger claim —
+  `maxSources` now has exactly ONE writer, assertable only because the widening
+  is one function; the anti-injection coverage guard is DERIVED over all 21
+  builders rather than listing the phases that carry it. Every rewritten guard
+  was checked to still fail when the property it protects is reverted.
+- **Verify with an executable proof where one exists.** The prompt extractions
+  were proved by rendering all 19 exported builders against the pre-change
+  module over 2,400 argument combinations, which is a stronger statement than
+  "the suite is green" and took two minutes to write.
+- **The JSDoc-detachment trap fired twice** (`SDK_BUILD_SHARED`,
+  `runEnrichments`), both times from inserting a helper *above* an existing
+  function. `npm run typecheck` caught both. The skill already warns about it;
+  it is worth re-reading before every insertion, not just when splitting files.
+
+**Seven decline rows recorded**, including the three biggest generalizations the
+survey proposed — one shared tool-round runner, Exa as a registry descriptor,
+and merging the three registries — each declined with the descriptor arithmetic
+that sinks it rather than by assertion.
+
