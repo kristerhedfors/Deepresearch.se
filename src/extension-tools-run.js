@@ -60,6 +60,14 @@ import { clampHostLimit, parseHosts, renderHostAnswer, renderSearchAnswer } from
  * @typedef {{ text: string, isError: boolean, found: boolean }} ToolAnswer
  */
 
+/**
+ * How many billed third-party requests one tool call made. A plain mutable
+ * counter rather than a return value: every leg that spends increments it where
+ * it spends, and the dispatcher meters it in a `finally`, so no early return can
+ * skip the meter.
+ * @typedef {{ calls: number }} OutboundSpend
+ */
+
 /** The field of view a single described frame uses. 90° is what the chat path's
  * cardinal frames use — wide enough to show a building and its neighbours,
  * narrow enough that the description is about something. */
@@ -108,6 +116,7 @@ export async function runExtensionTool(env, log, name, args, billing) {
  * @param {Logger} log
  * @param {any} args
  * @param {{ identity?: any, requestId?: string }} billing
+ * @param {OutboundSpend} spend billed third-party requests, counted as they run
  * @returns {Promise<ToolAnswer>}
  */
 async function runStreetViewLook(env, log, args, billing, spend) {
@@ -284,7 +293,10 @@ async function runStreetViewLook(env, log, args, billing, spend) {
 /** Was this argument actually supplied? Accepts a NUMBER as well as a string —
  * a bearing is a number, the schema says `string`, and a model handed "a
  * direction or a bearing in degrees" produces both. Refusing the number would
- * silently drop the move. */
+ * silently drop the move.
+ * @param {unknown} value
+ * @returns {boolean}
+ */
 function given(value) {
   if (typeof value === "number") return Number.isFinite(value);
   return typeof value === "string" && !!value.trim();
@@ -313,7 +325,8 @@ function unavailableMessage(env, where) {
  * @param {Env} env
  * @param {Logger} log
  * @param {any} args
- * @returns {Promise<{ ok: true, lat: number, lng: number, heading: number, panoId: string, label: string, image: string | null, date: string } | { ok: false, message: string }>}
+ * @param {OutboundSpend} spend
+ * @returns {Promise<{ ok: true, lat: number, lng: number, heading: number, panoId: string, label: string, image: string | null, date: string, target?: { lat: number, lng: number } } | { ok: false, message: string }>}
  */
 async function resolveAnchor(env, log, args, spend) {
   const handle = parseViewHandle(args.view);
@@ -370,6 +383,7 @@ async function resolveAnchor(env, log, args, spend) {
  * @param {Env} env
  * @param {Logger} log
  * @param {any} args
+ * @param {OutboundSpend} spend
  * @returns {Promise<ToolAnswer>}
  */
 async function runPlaceNearby(env, log, args, spend) {
@@ -435,6 +449,7 @@ async function runPlaceNearby(env, log, args, spend) {
  * @param {Env} env
  * @param {Logger} log
  * @param {any} args
+ * @param {OutboundSpend} spend
  * @returns {Promise<ToolAnswer>}
  */
 async function runHostIntel(env, log, args, spend) {
