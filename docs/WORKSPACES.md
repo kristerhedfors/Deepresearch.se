@@ -454,7 +454,7 @@ Everything a Se/cure workspace can do, plus:
 | Hugging Face Hub as a source | `hfIntent`, `src/hf.js` |
 | Sub-agent orchestration | Orchestrator mode — one JSON plan phase, then parallel waves of the same pipeline |
 | Agent Studio | SDK mode — distils this site into an agent or a platform, publishes at `/app/<slug>/` |
-| The pipeline as a tool | `POST /mcp` — `deep_research` + the `sdk_*` tools |
+| The pipeline as a tool | `POST /mcp` — `deep_research` + the literature and extension tool families |
 | Answer recovery across a dropped connection | D1 `answers`, minutes of retention |
 | Aggregation inbox | `/api/knowledge*` — §8 |
 | Lending capability outward | minting grants and workspace links (§3.2) |

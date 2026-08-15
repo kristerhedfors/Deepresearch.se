@@ -1,6 +1,6 @@
 ---
 name: sdk-mode
-description: Load when working on SDK MODE — the green "lovable experience" entry in the chat-mode dropdown (Deep Science / Cyber / Introspection / Agent Studio / Orchestrator / Outrospection / Models) that DISTILLS this site (above all the client-side Se/cure tier) into either a new individual agent OR an entire new platform, self-contained web app, with the DeepResearch Platform SDK (codename DistillSDK) and publishes it live at /app/<slug>/ — or when touching public/js/sdk-core.js (buildSdkContextBlock / SECURE_SOURCE_REFS), src/sdk-tools.js, src/build-pub.js, pipeline.js runSdkBuild, the sdk_mode/build_slug chat fields, the /mcp sdk_* tools, public/js/chat-mode.js, the mode dropdown (#modesel), or the green sdk-mode theme. Also load when a published /app/<slug>/ build misbehaves or the mode dropdown/theming regresses.
+description: Load when working on SDK MODE — the green "lovable experience" entry in the chat-mode dropdown (Deep Science / Cyber / Introspection / Agent Studio / Orchestrator / Outrospection / Models) that DISTILLS this site (above all the client-side Se/cure tier) into either a new individual agent OR an entire new platform, self-contained web app, with the DeepResearch Platform SDK (codename DistillSDK) and publishes it live at /app/<slug>/ — or when touching public/js/sdk-core.js (buildSdkContextBlock / SECURE_SOURCE_REFS), src/sdk-tools.js, src/build-pub.js, pipeline.js runSdkBuild, the sdk_mode/build_slug chat fields, public/js/chat-mode.js, the mode dropdown (#modesel), or the green sdk-mode theme. Also load when a published /app/<slug>/ build misbehaves or the mode dropdown/theming regresses.
 ---
 
 # SDK mode — the "lovable distiller" (2026-07-18; SWE folded in 2026-07-19)
@@ -335,21 +335,26 @@ files, and take it down. Nothing about the publish path changed — the same
 
 ## The shared pure core — public/js/sdk-core.js
 
-One implementation (the bash-core/introspect-core pattern) behind FOUR
+One implementation (the bash-core/introspect-core pattern) behind THREE
 consumers: the `sdk/pair-cli.mjs` CLI (re-exports it — its historical import
 surface is pinned by `sdk/pair-cli.test.mjs`), the Worker (`src/sdk-tools.js`
-façade), the pipeline, and the `/mcp` sdk_* tools. The manifest is read from
+façade), and the pipeline. (A fourth, the `/mcp` `sdk_*` tools, was removed on
+2026-08-15.) The manifest is read from
 the COMMITTED source snapshot (`manifestFromSnapshot`) — by construction the
 deployed manifest, no drift window. Do not re-implement a helper in a
 consumer; extend the core. Unit suite: `public/js/sdk-core.test.js`.
 
 ## MCP + sandbox access ("limit what has to go through bash")
 
-- `POST /mcp` `tools/list` now returns `deep_research` + the four `sdk_*`
-  tools (`SDK_MCP_TOOLS` in src/mcp.js — MCP wants `inputSchema`, the shared
-  defs carry Anthropic's `input_schema`; the mapping is at the export).
-  External agents plan against the SDK directly instead of booting the
-  in-browser VM to run pair-cli.
+- **The four `sdk_*` MCP tools were REMOVED on 2026-08-15** (owner directive):
+  the `/mcp` surface is now shaped for callers without a screen, and a
+  build-planning tool that answers in file trees and dependency orders — with a
+  build to run afterwards — is the clearest case of one such a caller cannot use.
+  Nothing about this mode changed: the same pure core answers from
+  `node sdk/pair-cli.mjs list|show|plan|validate`, from the sandbox route below,
+  and from the mode's own native tool loop. Re-exposing them over MCP is one
+  entry in `ALL_MCP_TOOLS` plus a catalog row if an external planner ever asks
+  for it — see the **mcp-server** skill's add-a-tool checklist.
 - The sandbox path still exists: in dev/SDK mode the source mounts at /src,
   so `node /src/sdk/pair-cli.mjs …` works in-guest when the image ships
   node (bashAgentPrompt teaches this, with a cat/grep fallback).
@@ -502,4 +507,4 @@ arrival — check generated bundles for both, and bake the guards in:
   `/app/<slug>/`, the URL renders the app (and check the response CSP header
   is the sandbox one), then an iteration message republishes the SAME slug.
   Also the deterministic path on a non-Anthropic model (FILE blocks →
-  published), and `/mcp` tools/call `sdk_plan` end to end.
+  published).

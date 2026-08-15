@@ -82,7 +82,7 @@ browser / PWA / MCP client ── Google OIDC session ──> Worker (src/index.
     │     │                  (+ src/search-sources.js: hf.js, arxiv.js, europepmc.js, scholar.js
     │     │                     — the literature legs gated on the agent's declared context)
     │     └── enrichments    src/enrichment.js (via src/extensions.js: shodan.js, maps-enrichment.js)
-    ├── POST /mcp            src/mcp.js (deep_research + literature_* + sdk_* tools; MCP key or session)
+    ├── POST /mcp            src/mcp.js (deep_research + literature_* + street_view_look/place_nearby/host_intel; MCP key or session)
     ├── POST /api/exec/*     src/exec-container.js (DREE/1 → one container per session)
     ├── /admin, /api/admin/* admin console (usage, users, chatlogs, feedback)
     ├── D1  (accounts, quotas, config, chat_logs, feedback, memory_notes, answer recovery, game saves)
@@ -160,7 +160,7 @@ Both SDKs are wired into the app. Their shared core `public/js/sdk-core.js`
 alongside Deep Science, Cyber and Introspection, which distils this site — the
 Se/cure tier above all — into either a new individual agent *or* an entire new
 platform, and publishes it live at `/app/<slug>/`. The CLI, the server pipeline
-(`src/pipeline.js`), and the `/mcp` `sdk_*` tools all read that one manifest
+(`src/pipeline.js`) both read that one manifest
 core, so they stay in sync by construction.
 
 - **`docs/AGENT-PLATFORM.md`** — the Agents SDK reference: the AgentSpec, the

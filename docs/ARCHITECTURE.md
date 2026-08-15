@@ -1527,18 +1527,33 @@ registry — as MCP tools, so other agents (Claude, Cursor, any MCP client)
 can compose with them:
 
 - **Transport**: modern Streamable HTTP — JSON-RPC 2.0 over a single POST,
-  hand-rolled (no dependency; protocol revision `2025-06-18`). Methods:
-  `initialize`, `tools/list`, `tools/call`, plus a no-op ack for
-  `notifications/initialized`.
+  hand-rolled (no dependency). TWO REVISIONS are served side by side
+  (`src/mcp-modern.js`, 2026-08-15): the handshake era `2025-06-18`
+  (`initialize`, `tools/list`, `tools/call`, plus a no-op ack for
+  `notifications/initialized`) and the STATELESS era `2026-07-28`, whose
+  `initialize` is gone — every request carries its own protocol version and
+  client capabilities in `_meta`, mirrors three of those values into HTTP
+  headers, and gets `resultType` (plus caching hints on a listing) back.
+  `server/discover` replaces the handshake. Which era a request belongs to is
+  decided per request, because a stateless protocol leaves nothing to decide it
+  once; an `initialize` selects legacy semantics, which is what keeps every
+  client that can reach us today working.
 - **The tools** (`toolsListResult()` = `DEEP_RESEARCH_TOOL` +
-  `LITERATURE_MCP_TOOLS` + `SDK_MCP_TOOLS`): `deep_research` — question in;
-  cited, validated, source-diverse answer out; the handler mirrors
-  `chat.js`'s per-request setup and runs the same `runPipeline` (quizzes
-  stay off on this channel) — plus the four Platform-SDK registry tools
-  `sdk_list_modules`, `sdk_show_module`, `sdk_plan` and `sdk_validate`,
-  so an agent can plan against `sdk/MANIFEST.json` without shelling into
-  the sandbox (the **sdk-mode** skill). That family is pure: committed
-  data, no network, no D1, no model, nothing to spend.
+  `LITERATURE_MCP_TOOLS` + `OPENAI_MCP_TOOLS` + `EXTENSION_MCP_TOOLS`):
+  `deep_research` — question in; cited, validated, source-diverse answer out;
+  the handler mirrors `chat.js`'s per-request setup and runs the same
+  `runPipeline` (quizzes stay off on this channel). Since 2026-08-15 it also
+  takes an `agent` (answer as a named specialist, resolved through the same
+  registry and grant a chat turn uses, with the build and workflow phases
+  refused) and a `style: "voice"` that returns speakable prose instead of
+  markdown with a numbered source list — plus the three EXTENSION tools
+  `street_view_look`, `place_nearby` and `host_intel`, which arrive from
+  `src/extension-tools.js` (the MCP seam of the extension registry) so this
+  module names no third-party service, and which sit behind BOTH the exposure
+  switch and the account's own extension knob.
+  The four Platform-SDK registry tools were REMOVED in the same change: a
+  build-planning tool is the clearest case of one a caller without a screen
+  cannot use, and the CLI and Agent Studio still drive the same pure core.
 - **Auth — two ways in, both resolving to a real account.** The route is
   wired *after* the identity gate, so a signed-in session and the
   break-glass Basic Auth header work exactly as they always did. External

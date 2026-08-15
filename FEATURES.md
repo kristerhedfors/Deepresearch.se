@@ -321,7 +321,7 @@ Se/cure data path; the sealed envelope is opaque to the server; keys never log.
 Design-first per the interchange-standards discipline — spec the envelope and
 merged shape before wiring UI.
 
-### F-19 · Track MCP's stateless protocol revision — 🔵 OPEN (medium)
+### F-19 · Track MCP's stateless protocol revision — 🟢 SHIPPED (medium)
 
 Filed from user feedback #33 (2026-07-26, "add this mcp update as a task").
 `POST /mcp` (`src/mcp.js`) is the ONE place this project points outward — the
@@ -396,6 +396,31 @@ Verification is the **mcp-server** skill's ladder: unit tests on the pure
 helpers, then a live JSON-RPC probe of both the legacy handshake path and
 the stateless path. Re-read the changelog before starting — this item was
 written against a draft that can still move.
+
+**SHIPPED 2026-08-15.** The draft became the CURRENT revision, dated
+`2026-07-28`, and it was re-read in full before any code was written — the
+substance held, and three details above were wrong or incomplete in ways that
+mattered:
+
+- A *missing* required `_meta` field is `-32602`, not `-32022`. `-32022` is only
+  for a version we do not implement, and a missing or disagreeing mirrored
+  HEADER is a third code, `-32020`. All three answer `400`, and a client reads
+  the code to decide whether to correct the request or fall back — so confusing
+  them silently downgrades every client that connects.
+- An unknown METHOD answers `404`, not `400`, precisely so the JSON-RPC body
+  distinguishes us from a legacy HTTP+SSE host that serves no MCP endpoint.
+- `ttlMs` and `cacheScope` are REQUIRED members of a cacheable result, not
+  optional hints. Ours are `private` on `tools/list` (it is filtered per account)
+  and `public` on `server/discover` (identical for everyone).
+
+Built as `src/mcp-modern.js` — pure, imports nothing, all of the revision's logic
+— consumed by `src/mcp.js`, which decides the era PER REQUEST because a stateless
+protocol leaves nothing to decide it once. `initialize` still selects legacy
+semantics, as the dual-era rule prescribes and as every client that can reach us
+today requires. `src/mcp-modern.test.js` pins the rules, `src/mcp-era.test.js`
+drives both eras through the real handler, and `npm run mcp:probe` gained four
+live checks (`discover`, `modern-tools-list`, `header-mismatch`,
+`unsupported-version`). Not yet run against production.
 
 ### F-20 · Reach the hosted chat clients — the MCP server as a web connector — 🟡 PARTIAL (medium)
 
@@ -558,6 +583,22 @@ its live check.
   workflow can put its output on a real served URL without a live model
   conversation — reuses SDK mode's existing `publishBuild`/caps/opaque-origin
   CSP unchanged rather than building a second publish system.
+- **2026-08-15** — F-19 SHIPPED, and the MCP tool surface reshaped for VOICE
+  callers in the same change. Protocol `2026-07-28` is served beside the
+  handshake revision (`src/mcp-modern.js`: `server/discover`, per-request `_meta`
+  negotiation, the three mirrored headers with their `-32020`/`-32021`/`-32022`
+  refusals at the statuses the spec assigns, `resultType` + caching hints on
+  every result). The four `sdk_*` manifest tools were REMOVED — a build-planning
+  tool is the clearest case of one a caller without a screen cannot use — and
+  three arrived that answer in spoken prose: `street_view_look` (stand somewhere,
+  walk, turn, and hear what is actually visible; its `view` handle is exactly the
+  "server-minted handle passed as a tool argument" the new revision asks for),
+  `place_nearby`, and `host_intel`. `deep_research` gained an `agent` argument
+  (the same registry and grant a chat turn uses, with the build and workflow
+  phases refused) and a `style: "voice"`. The three new tools reach a third
+  party, so they sit behind BOTH the exposure switch and the account's extension
+  knob, and they arrive from `src/extension-tools.js` so `src/mcp.js` still names
+  no service (invariant 7).
 - **2026-07-26** — F-19 opened from user feedback #33 ("add this mcp update as
   a task"): track MCP's stateless protocol revision on `POST /mcp`. Checked the
   upstream draft changelog rather than trusting the feed that prompted the

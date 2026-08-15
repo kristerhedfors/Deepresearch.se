@@ -11,7 +11,7 @@ it was found. The hosted retrieval tier §1 prices also runs inside the
 same reason — §4d records that fix and what a chat request's share of it
 comes to.
 
-**Short answer.** Per call the surface is cheap: 7 of the 11 tools spend
+**Short answer.** Per call the surface is cheap: 3 of the 10 tools spend
 nothing at a provider, the literature family costs €0.002–€0.012, and
 `deep_research` — the only expensive tool — costs €0.05 at the median and
 **€0.62 at its analytic ceiling**. The per-call numbers are not what
@@ -45,7 +45,7 @@ Four cost sources, and only two of them matter.
 
 Workers request and CPU cost is real but rounds to nothing at this
 granularity ($0.02/M requests, $0.02/M CPU-ms): even the 15 MB snapshot
-parse an `sdk_*` call does is ~€0.00001.
+parse a committed-data call does is ~€0.00001.
 
 ## 2. Per-call cost, by tool
 
@@ -58,7 +58,9 @@ parse an `sdk_*` call does is ~€0.00001.
 | `search` (the ChatGPT adapter) | same as 1-angle `literature_search` | €0.0021 | ~1 s |
 | `literature_fetch` (≤20 ids) | `getByIds` key read, no embed, no rerank | ~€0 | ~0.5 s |
 | `literature_corpora` | committed facts + `describe()` | €0 | 621 ms |
-| `sdk_list_modules` / `sdk_show_module` / `sdk_plan` / `sdk_validate` | 15 MB snapshot fetch + parse, no provider call | €0 | 779 ms |
+| `street_view_look` | 1–2 Google imagery fetches + 1 vision description | **Google imagery + ~€0.001 vision** — §2a | not yet measured |
+| `place_nearby` | 1 Places search (+1 free reverse geocode) | **Google Places, €0 at Berget** — §2a | not yet measured |
+| `host_intel` | 1 Shodan lookup or search (+1 DNS resolve per hostname) | **Shodan credits, €0 at Berget** — §2a | not yet measured |
 
 **The reranker is the whole cost of the literature family**, and it was
 measured rather than estimated. `src/dense-rag.js` reranks `CANDIDATES = 50`
@@ -118,9 +120,19 @@ model is cheap and searches are not. And **the highest bills in the log are
 not research runs at all**: the ten most expensive requests ever
 (€0.87–€1.25 each) are zero-search, 300k–435k-prompt-token Claude Sonnet
 calls, which are introspection and Agent Studio mode carrying the source
-snapshot as context. `deep_research` takes no `chat_mode` argument and
-cannot reach that path — worth knowing precisely because it is the cost
-shape someone will find in the log and wrongly attribute to MCP.
+snapshot as context.
+
+**That last claim changed on 2026-08-15 and the ceiling above has not been
+re-derived.** `deep_research` now takes an `agent` argument, and `introspection`
+is one of the agents it accepts — which is exactly the shape that produced those
+€0.87–€1.25 requests. Three things bound it rather than the old
+cannot-reach-it argument: the agent must pass the account's own
+`developer_mode` grant (`chatModesAvailable`, the same one a chat turn uses), the
+build and workflow phases are refused outright on this surface
+(`MCP_AGENT_PHASES` in `src/mcp.js`), and the four-window quota meters it like
+any other spend. Someone re-deriving §3's ceiling should start here: a
+snapshot-carrying agent on the priciest model is the new worst case, and it is
+NOT the 34-search figure §3 computes.
 
 ### The measured worst case
 
@@ -243,10 +255,12 @@ finishes, so N concurrent calls all read the same pre-spend usage and all
 pass. On `/mcp` that N was unbounded, and it multiplied the per-hour figures
 in (1) directly.
 
-`src/mcp.js` now reserves a slot for the four tools that reach a provider —
-`deep_research`, `literature_search`, `literature_similar` and the `search`
-adapter (`SPENDING_TOOL_NAMES`) — and releases it in a `finally` covering
-success, a tool-level failure and a thrown error. The seven tools that cost
+`src/mcp.js` now reserves a slot for every tool that reaches a provider —
+`deep_research`, `literature_search`, `literature_similar`, the `search`
+adapter, and (since 2026-08-15) the three extension tools `street_view_look`,
+`place_nearby` and `host_intel` (`SPENDING_TOOL_NAMES`, whose extension half
+comes from `src/extension-tools.js`) — and releases it in a `finally` covering
+success, a tool-level failure and a thrown error. The three tools that cost
 nothing stay outside it, because a slot held there could only deny the caller
 its own next call. A refusal is a JSON-RPC result with `isError`, not an HTTP
 429: an MCP client reads the envelope, and a bare 429 reads to it as a
@@ -354,10 +368,9 @@ unbounded in the sense that mattered, because nothing counted it at all.
 
 ## 5. Verdict
 
-Publishing the **free seven** — the four `sdk_*` tools, `literature_fetch`,
+Publishing the **free three** — `literature_fetch`,
 `literature_corpora`, and `fetch` — carries no provider cost at all. Their
-only exposure is Workers CPU, and the `sdk_*` snapshot parse is the one
-worth watching (779 ms per call, uncached).
+only exposure is Workers CPU.
 
 Publishing `deep_research` is affordable as it stands: the quota bounds an
 account at ~€111/month, and the per-call ceiling is €0.63. Tightening
@@ -383,7 +396,7 @@ Reproducible; nothing here is an estimate where a measurement was available.
 | rerank tokens per leg | one live `POST /v1/rerank` with 50 × 900-char documents; read `usage.total_tokens` from the response |
 | model prices | `GET /api/models` (site catalog) and Berget `GET /v1/models` (reranker + embedder, which the site catalog does not carry) |
 | leg counts | `npm run mcp:probe` — "600 candidates examined" for the 6-angle batch |
-| tool latency | `npm run mcp:probe`, plus direct timed `tools/call` posts for `sdk_list_modules` and `literature_corpora` |
+| tool latency | `npm run mcp:probe`, plus direct timed `tools/call` posts for `literature_corpora` |
 | cost distribution | all 1,208 `chat_logs` rows via `/api/admin/chatlogs?limit=200&before_id=…`, priced per row against the catalog |
 | answer/JSON split | `/api/admin/user-cost` (`usage_model_events`), which attributes per model bucket |
 | the worst-case run | one `tools/call` at `time_budget_s: 600`, `model: gpt-5.6-sol`; costs read back from `chat_logs` #1209 and the h5 usage window |

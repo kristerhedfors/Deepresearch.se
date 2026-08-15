@@ -163,7 +163,9 @@ the summaries below with the parser in `introspect-core.js` if a skill's
 - **local-web-search** — running your own web-search service as an Exa
   alternative, configurable in both tiers.
 - **mcp-server** — the site exposed AS an MCP tool (`POST /mcp`, hand-rolled
-  JSON-RPC 2.0): the `deep_research`, `literature_*` and `sdk_*` families,
+  JSON-RPC 2.0, two protocol revisions side by side): the `deep_research`,
+  `literature_*` and extension (`street_view_look` / `place_nearby` /
+  `host_intel`) families,
   the MCP key, the bare-origin `https://mcp.deepresearch.se`, and the
   per-account exposure config.
 - **merge-branches** — reconciling the repo's unmerged feature branches; the
@@ -213,7 +215,7 @@ the summaries below with the parser in `introspect-core.js` if a skill's
   cold/warm battery, the agent-turn trace, and the two traps that void a run.
 - **sdk-mode** — Agent Studio: the mode that distils this site into a new agent
   or a whole platform using the Platform SDK, publishes it at `/app/<slug>/`,
-  and exposes the `sdk_*` MCP tools.
+  and drives Agent Studio's build flow.
 - **secure-workspaces** — offline workspace links (`/cure/workspace#w=…`), the
   cloned crypto, the quota-adjust surfaces, and the workspace concept across
   both tiers (`docs/WORKSPACES.md`).
