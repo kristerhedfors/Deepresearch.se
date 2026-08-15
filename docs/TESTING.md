@@ -3,7 +3,7 @@
 The full test-surface enumeration, moved out of CLAUDE.md (2026-07-17).
 The commands and the live-verification rule stay in CLAUDE.md; this file
 is the per-suite detail: what each unit suite covers, the end-to-end
-(Playwright) projects and their fixtures/sandbox quirks, and the five
+(Playwright) projects and their fixtures/sandbox quirks, and the six
 eval harnesses. Keep it current in the same commit that adds a test
 suite (the update-docs skill's drift greps target this file).
 
@@ -18,12 +18,14 @@ inferred (`npm run coverage`), with the five testability tiers, a
 capability-by-capability classification, and the coverage ratchet that keeps
 the untested surface from growing back.
 
-## Unit tests (`src/`, `public/js/`, `public/games/`, `sdk/`, `scripts/`, `tests/`)
+## Unit tests (`src/`, `public/js/`, `public/app-kit/`, `public/games/`, `sdk/`, `scripts/`, `tests/`)
 
-`npm test` runs six globs: `src/*.test.js`, `public/js/*.test.js`,
-`public/games/*/js/*.test.js`, `sdk/*.test.mjs`, `scripts/*.test.mjs` and
-`tests/*.test.js`. The first three are the Worker and the client, described
-below; the last three are the tooling suites, in their own section at the end.
+`npm test` runs nine globs: `src/*.test.js`, `public/js/*.test.js`,
+`public/app-kit/*.test.js`, `public/games/*/js/*.test.js`, `sdk/*.test.mjs`,
+`scripts/*.test.mjs`, `scripts/*/*.test.mjs`, `tests/*.test.js` and
+`tests/pygram/*.test.mjs`. The first four are the Worker and the client,
+described below; the last five are the tooling suites, in their own section at
+the end.
 
 Node's built-in test runner (`node:test` + `node:assert/strict` — no test
 framework, matching the project's minimal-dependency stance; the suite does
@@ -891,6 +893,16 @@ captions incl. escaping, since the pane writes them with `innerHTML`, and the
 overlay placement style clamped against hostile numbers). The DOM wiring in
 `street.js` / `map.js` / `game.js` stays browser-only and is verified live.
 
+One directory further over sits `public/app-kit/*.test.js`:
+`dr-provider-kit.test.js`, which loads the app kit the way a published build
+does — as a classic script evaluated against a stub global, not a module,
+because an opaque-origin sandbox is the least forgiving place to rely on
+module resolution. Its load-bearing claim is PARITY: the kit's provider
+registry is a frozen copy of `public/js/drc-providers.js` plus the country
+flags from `public/js/provider-region.js`, and every app Agent Studio has ever
+published carries that snapshot, so the suite fails when the site's registry
+moves and the copy does not.
+
 These run in Node unmodified since `File`, `Blob`,
 `DecompressionStream`, and `TextDecoder` are all standard Node globals
 — no DOM needed for this subset of client code.
@@ -921,20 +933,23 @@ Worker's own entry points rather than their extracted pieces:
 
 ```bash
 npm test            # from the repo root: node --test src/*.test.js public/js/*.test.js
+                    #                     public/app-kit/*.test.js
                     #                     public/games/*/js/*.test.js
                     #                     sdk/*.test.mjs scripts/*.test.mjs
-                    #                     tests/*.test.js
+                    #                     scripts/*/*.test.mjs
+                    #                     tests/*.test.js tests/pygram/*.test.mjs
 npm run typecheck   # zero-build-step tsc: src/ (tsconfig.json, Workers types)
                     # + public/ (tsconfig.public.json, DOM lib) — strict,
                     # opt-in per file via // @ts-check; both must stay clean
 ```
 
-### The tooling suites (`sdk/*.test.mjs`, `scripts/*.test.mjs`, `tests/*.test.js`)
+### The tooling suites (`sdk/`, `scripts/`, `tests/`)
 
-Three more globs in the same `npm test` run. None of this ships, but the
-shipped corpora and ledgers are built by it, so a bug here is a bug in the
-data. They get a section because a suite nobody documents is a suite nobody
-maintains.
+Five more globs in the same `npm test` run — `sdk/*.test.mjs`,
+`scripts/*.test.mjs`, `scripts/*/*.test.mjs`, `tests/*.test.js` and
+`tests/pygram/*.test.mjs`. None of this ships, but the shipped corpora and
+ledgers are built by it, so a bug here is a bug in the data. They get a
+section because a suite nobody documents is a suite nobody maintains.
 
 **`sdk/`** — `pair-cli.test.mjs` pins the Platform SDK's CLI and registry:
 `sdk/MANIFEST.json` parses, every module id resolves to a skill, `plan` orders
@@ -980,7 +995,14 @@ video pipeline's whole editing model — which spans of a recording are provably
 dead air, what the cut plan does with them, the ffmpeg filter graph and argv,
 and LinkedIn's delivery fences — WITHOUT ffmpeg, because no agent container
 here has it and a plan that can only be checked by encoding is a plan nobody
-checks.
+checks. One directory deeper — the `scripts/*/*.test.mjs` glob —
+`pygram-capture/harvest.test.mjs` pins the harvester that grows pygram's
+COMMITTED corpus, which is the spec pygram is built against: dedup (one record
+per program however often it was seen), normalization (line endings and
+trailing space do not mint a second record, but indentation does, because
+indentation is Python syntax), idempotency (a re-run over the same inputs
+changes nothing, which is what makes the harvest safe to put in a loop), and
+the privacy contract that nothing credential-shaped reaches the corpus.
 
 **`tests/`** — the two eval harnesses' pure helpers, unit-tested so a scoring
 change is a caught diff rather than a silently different ledger:
@@ -988,9 +1010,17 @@ change is a caught diff rather than a silently different ledger:
 verdict) and `hf-bench-lib.test.js` (`aggregateHfScores`, including that it
 counts leak-tainted runs separately instead of averaging them in), plus
 `bench-sources.test.js`, the source-coverage guard described under "Source
-coverage is a build-time invariant" below. The
-Playwright specs in `tests/e2e/` are a different runner entirely; next
-section.
+coverage is a build-time invariant" below. Under `tests/pygram/` — its own
+glob — sit the two pygram gates: `conformance.test.mjs` pins the two
+independent defences that stop the conformance runner feeding the corpus it is
+measuring (`referencePython()` resolves a real CPython ELF rather than the
+capture shim, and `runOne()` spawns with `PYGRAM_CAPTURE=0`), and
+`shims.test.mjs` runs every frozen shim twice in one interpreter — once
+against CPython's stdlib, once against `pygram/lib` — asserting byte-identical
+output, with the MicroPython C modules replaced by stand-ins cut back to the
+surface MicroPython actually ships, so a shim leaning on a CPython convenience
+fails here rather than in the sandbox. The Playwright specs in `tests/e2e/`
+are a different runner entirely; next section.
 
 This adds to the live-verification convention rather than replacing it:
 anything touching an external provider or D1 (or, on the client side, the
@@ -998,22 +1028,28 @@ DOM/`<canvas>`/pdf.js) is still verified live, since that is where this
 project's actual bugs have come from historically (see the **live-verify**
 skill). The root `package.json`
 exists solely to run this suite and the type-checker — no build step,
-dev-only dependencies (`typescript`, `@cloudflare/workers-types`);
+dev-only dependencies (`typescript`, `@cloudflare/workers-types`, `cheerio`);
 deploy still reads `src/` and `public/` as plain JS/static assets via
 `npx wrangler deploy`.
 
 ## CI (`.github/workflows/ci.yml`)
 
-`npm ci && npm test && npm run typecheck` on every push, every pull request,
-and on demand (`workflow_dispatch`), Node 22, per-branch concurrency so a new
-push supersedes an in-flight run. The whole unit surface needs no credentials,
-no D1, and no network, which is why it runs here; the e2e and eval harnesses
-deliberately do NOT (they spend tokens and need the break-glass creds).
+`npm ci && npm test && npm run typecheck` on every push to `main`, every pull
+request, and on demand (`workflow_dispatch`), Node 22, per-branch concurrency
+so a new push supersedes an in-flight run. The trigger list is deliberately
+`push: branches: [main]` rather than `push: ["**"]`: a branch with an open PR
+fires both events on the same SHA, so feature-branch pushes are covered by the
+PR run and a push to a branch with no PR runs nothing.
+
+The whole unit surface needs no credentials, no D1, and no network, which is
+why it runs here; the e2e and eval harnesses deliberately do NOT (they spend
+tokens and need the break-glass creds).
 
 The `npm ci` step matters beyond CI: the root devDependencies
-(`typescript`, `@cloudflare/workers-types`) are never installed automatically,
-so `npm run typecheck` in a fresh clone fails with a confusing `TS2688` until
-someone runs an install.
+(`typescript`, `@cloudflare/workers-types`, `cheerio`) are never installed
+automatically, so `npm run typecheck` in a fresh clone fails with a confusing
+`TS2688` until someone runs an install, and `arxiv-html.test.mjs` fails on a
+missing `cheerio`.
 
 A second JOB (`e2e`) runs the **browser suite against a Worker started on the
 runner** — `cd tests && npm run test:local`, 63 tests, no credentials and no
@@ -1451,9 +1487,15 @@ models, and writes a video plus an activity timeline per run for
 
 ```bash
 cd tests && npm install
-npm run capture -- --agents research --models <id> --dry-run   # the matrix, no browser
-npm run capture -- --agents research,introspection --models <id> --per-agent 2
+npm run capture -- --agents scholar --models <id> --dry-run   # the matrix, no browser
+npm run capture -- --agents scholar,introspection --models <id> --per-agent 2
 ```
+
+`--agents` takes agent ids, not mode ids, and an unknown one is refused by name
+against the seven the composer can drive (`scholar`, `cyber`, `introspection`,
+`agent-builder`, `orchestrator`, `outrospection`, `models`). `scholar` — Deep
+Science — is the default, since the general `research` agent was retired
+(2026-08-13).
 
 It is listed here because it shares the e2e suite's plumbing and its traps —
 break-glass Basic Auth, `stripCrossOriginAuth`, the pre-installed Chromium
@@ -1472,7 +1514,8 @@ in a container that has none.
 ### The theme audit (`tests/theme-contrast.mjs`) — every agent switch, measured
 
 A standalone Playwright script, not part of either project, because it walks
-all 49 ordered mode pairs and samples computed colour on each — too slow for
+all 42 ordered mode pairs — each of the seven modes switched to every other,
+plus a boot check per mode — and samples computed colour on each: too slow for
 the mocked run, and the two claims it makes are pinned there in cheaper form
 (`ui.spec.js`'s switching matrix, `chat-mode.test.js`'s class algebra).
 

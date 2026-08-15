@@ -59,7 +59,7 @@ frequently the wrong target). **Δ** = the gap worth acting on; a **negative**
 | P13 | Minimal dependencies / no build step | 90% | 95% | +5 | Zero runtime deps holds; 4 of 6 vendored libs lack the SHA-256 pin xterm/transformers have (L-12) |
 | P14 | Swedish/English parity in **all** deterministic routing | 100% | 100% | 0 | Zero deviations across 12 gate families — the repo's cleanest discipline |
 | P15 | Pure-core + façade / single source of truth | 90% | 90% | 0 | Widely applied; keep applying as new gated features land |
-| P16 | Docs-as-verifiable-truth (committed artifacts, drift tests, self-documented risks) | 90% | 95% | +5 | Strong machinery; a few prose overclaims (P2, P10) to reconcile |
+| P16 | Docs-as-verifiable-truth (committed artifacts, drift tests, self-documented risks) | 90% | 95% | +5 | Strong machinery; the two prose overclaims it named (P2, P10) are reconciled — 2026-07-23 / 2026-08-15 |
 
 ### IV. Platform & product direction
 
@@ -68,7 +68,7 @@ frequently the wrong target). **Δ** = the gap worth acting on; a **negative**
 | P17 | Zero-or-one-server property + the distillable platform abstraction | 85% | 85% | 0 | Property holds; the Platform SDK only partly wired (SDK mode live, 34-module manifest mostly design) |
 | P18 | Spec-leads-code interchange standards (DRSW / DRPL / stackless) | 40% | *choose* | — | **Deliberately** ahead of code; the open question is whether to fund a second node or park the bet |
 | P19 | Hand-rolled durability over platform primitives (Workflows **not** adopted) | 100% | *conditional* | — | Correct today; the value of *reversing* it rises exactly with P4/P7 fan-out |
-| P20 | MCP as a product surface, not internal plumbing | 95% | 95% | 0 | Shipped (`/mcp` + `sdk_*`); extension is more tools, not more architecture |
+| P20 | MCP as a product surface, not internal plumbing | 95% | 95% | 0 | Shipped (`/mcp`: `deep_research`, the `literature_*` tools, ChatGPT's `search`/`fetch` adapters and the extension tools); extension is more tools, not more architecture |
 
 ---
 
@@ -404,12 +404,21 @@ check trips), `CODE-LAYOUT.md` is mirror-disciplined, and the risk register is
 self-documented P-4/P-5/P-6 deviations this review leans on. The project ships
 its own gap list.
 
-**The gap:** a few prose overclaims where the docs are less honest than the
-code — "every helper phase fails soft" (P2, the answer phases throw) and
-"exactly two exceptions" (P10, two classes / three families). **Value:**
-medium. Run the existing `docs-drift-validation` / `anti-ai-smell` loop over
-these specific claims. A principle called *docs-as-truth* is only as good as
-its least honest sentence.
+**The gap, now closed:** two prose overclaims where the docs read less honestly
+than the code — "every helper phase fails soft" (P2, the answer phases throw)
+and "exactly two exceptions" (P10, two classes / three families). **Value:**
+medium, and on honesty rather than behavior. *(P2 closed 2026-07-23:
+`ARCHITECTURE.md` §4.2 now states outright that the ANSWER phases are
+deliberately NOT fail-soft, and gives the split — helpers degrade silently to a
+lesser result, the answer degrades to an honest, correlatable error;
+`CLAUDE.md` invariant 2 is scoped to helper phases by name. P10 closed
+2026-08-15: the canon was rewritten to FOUR deliberate, bounded, opt-in,
+quota-metered exceptions (owner ruling), adding shared compute and workspace
+knowledge to the web-search grant and the secure-research-space proxy bundle;
+`PRIVACY-MODEL.md` §"FOUR deliberate, bounded, disclosed exceptions" still
+counts the first two as exposure classes against three credential families.)*
+A principle called *docs-as-truth* is only as good as its least honest
+sentence.
 
 ---
 
@@ -479,9 +488,11 @@ rather than extending the hand-built recovery again.
 
 Both halves of the roadmap's verdict shipped: integrations were *not* rebuilt
 on MCP (they share the internal enrichment contract instead), and DeepResearch
-is exposed *as* an MCP server (`/mcp` `deep_research` plus the four `sdk_*`
-tools), wired after the identity gate so it inherits access control and usage
-recording. Mature; extension means more exposed tools, not new architecture.
+is exposed *as* an MCP server (`/mcp` `deep_research` plus the four
+`literature_*` corpus tools, ChatGPT's `search`/`fetch` adapters and the
+three extension tools), wired after the identity gate so it inherits access
+control and usage recording. Mature; extension means more exposed tools, not
+new architecture.
 
 ---
 

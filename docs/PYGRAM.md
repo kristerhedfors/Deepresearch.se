@@ -479,7 +479,7 @@ deletes 138 of `main`'s own records, which is how that rule got tested.)
 | # | piece | artifact | state |
 |---|---|---|---|
 | 1 | implementation survey, ranked on cold cost | `docs/PYGRAM-RESEARCH.md` | **done** — MicroPython variant, musl, i386 |
-| 2 | subset spec + seed corpus | `docs/PYGRAM-SUBSET.md`, `tests/pygram/seed-corpus.jsonl` | **done** — 139 entries, tiered |
+| 2 | subset spec + seed corpus | `docs/PYGRAM-SUBSET.md`, `tests/pygram/seed-corpus.jsonl` | **done** — 161 entries, tiered |
 | 3 | conformance runner + build gate | `tests/pygram/conformance.mjs`, `scripts/pygram-gate.mjs` | **done** — both proven against stubs |
 | 4 | charter | this file | **done** |
 | 5 | capture harness + corpus growth | `scripts/pygram-capture/` | in progress |

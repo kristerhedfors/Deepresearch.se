@@ -26,11 +26,11 @@
 //
 // Since SDK mode was wired into the application (2026-07-18), the pure
 // manifest logic lives in the SHARED core public/js/sdk-core.js — the ONE
-// implementation this CLI, the Worker (src/sdk-tools.js), the /mcp sdk_*
-// tools, and the browser all use. This file is the disk-reading CLI façade;
-// it re-exports the helpers so its historical import surface
-// (sdk/pair-cli.test.mjs and any external consumer) is unchanged. Do not
-// re-implement a helper here — extend sdk-core.js.
+// implementation this CLI, the Worker (src/sdk-tools.js) and the browser all
+// use. This file is the disk-reading CLI façade; it re-exports the helpers so
+// its historical import surface (sdk/pair-cli.test.mjs and any external
+// consumer) is unchanged. Do not re-implement a helper here — extend
+// sdk-core.js.
 
 import { readFileSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";

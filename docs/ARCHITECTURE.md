@@ -323,8 +323,10 @@ Known provider limits baked into the design:
 The table above lists *network* dependencies, the services the Worker calls
 at request time. *Code* dependencies are a separate, deliberately narrow set
 (invariant 5): `package.json` carries **zero runtime dependencies** for the
-Worker or client, only two dev-only tools (`typescript`,
-`@cloudflare/workers-types`) used for `npm run typecheck` and never shipped.
+Worker or client, only three dev-only tools — `typescript` and
+`@cloudflare/workers-types` for `npm run typecheck`, and `cheerio` for one
+offline harvest script's DOM walk (which is why `npm test` needs an
+`npm install` first). None of the three is shipped.
 There is no build step, no bundler, and no lockfile drift to audit. The
 exceptions are third-party JS that isn't npm-managed: the hand-vendored,
 SHA-256-pinned libraries in `public/vendor/` (`docs/CODE-LAYOUT.md`'s vendor
@@ -372,11 +374,16 @@ L-12.
   one ephemeral Cloudflare Container per research session, `standard-1`,
   EU jurisdiction, `max_instances` as the global fence. Same
   resource-must-exist-first rule, which is why it shipped commented out
-  until the image was pushed; the deploy that first carries it is the
-  switch, and none has yet. Absent, `/api/settings` reports
-  `available.exec_container: false` and the picker omits the option.
-- `[vars] LOG_LEVEL = "info"`; `[observability] enabled = true` persists
-  logs to Workers Logs.
+  until the image was pushed; the block has been live on `main` since
+  2026-08-06, pinned to the `deepresearch-exec:2` image, so the deployed
+  configuration carries the binding and `/api/settings` reports
+  `available.exec_container: true` for a signed-in account. Without them it
+  reports `false` and the picker omits the option.
+- `[vars] LOG_LEVEL` — `"debug"` in production since 2026-07-12, time-boxed
+  for heavy sandbox-filesystem testing; the code default in `src/log.js` is
+  `info`, and reverting the deployed value is open item P-10 in
+  `SECURITY-RISKS.md`. `[observability] enabled = true` persists logs to
+  Workers Logs.
 - Secrets are set only in the dashboard/CLI, never in the repo. Required:
   `BERGET_API_TOKEN`, `EXA_API_KEY`, `SESSION_SECRET`, `ADMIN_USER`,
   `ADMIN_PASS` (legacy fallbacks `BASIC_AUTH_USER`/`BASIC_AUTH_PASS`),
@@ -691,11 +698,15 @@ nothing about the agent architecture depends on them, and the core must
 keep working — and keep reading — as if they did not exist (owner
 directive, 2026-07-25).
 
-So `src/extensions.js` is the **one** module in `src/` allowed to name an
-individual third-party service at the architectural seam, and the only one
-the core imports. Everything upstream of it — `pipeline.js`,
-`enrichment.js`, `chat.js`, `settings.js`, `validation.js`, `prompts.js`,
-`mcp.js`, `types.d.ts` — talks to the registry generically. Everything
+So `src/extensions.js` is the module in `src/` allowed to name an individual
+third-party service at the **chat-turn** seam, where it owns an integration's
+six hooks. One sibling does the same job for the `/mcp` tool seam —
+`src/extension-tools.js`, the seventh hook, kept separate so the pure config
+layer (`src/mcp-config.js`) can import it without dragging the enrichment
+runners in. Those two registries are the only service-naming modules the core
+imports. Everything upstream of them — `pipeline.js`, `enrichment.js`,
+`chat.js`, `settings.js`, `validation.js`, `prompts.js`, `mcp.js`,
+`types.d.ts` — talks to them generically. Everything
 downstream (`shodan.js`, `shodan-enrichment.js`, `googlemaps*.js`,
 `maps-enrichment.js`) is as service-specific as it likes.
 
@@ -940,11 +951,14 @@ The UI slider sends `time_budget_s`; the planner decides how to spend it.
     can't hold it plus a minimal two-search plan.
   - ~60% of the remainder buys initial search angles (1–4, up to 6 at
     ≥240 s budgets).
-  - What's left buys gap rounds (each ≈ gap check + 2 searches; up to 4
-    rounds at ≥300 s). Bigger budgets also raise follow-ups per round
-    (3→5), the search cap (up to 20), the source registry (18→24) and the
-    digest size (14K→18K chars). The two source caps move **together**: when
-    an auxiliary source's first result reserves registry slots
+  - What's left buys gap rounds, each costed at its real price (gap check +
+    a full follow-up wave, not a nominal two): up to 3 rounds at ≥60 s, 4 at
+    ≥240 s, 6 at ≥300 s and 8 at ≥420 s. Bigger budgets also raise
+    follow-ups per round (3; 4 at ≥240 s; 5 at ≥420 s), the search cap (20
+    standard, 26 extended, 34 full), the source registry (18→24, and 28 at
+    the full tier) and the digest size (14K→18K, and 24K at the full tier).
+    The two source caps move **together**: when an auxiliary source's first
+    result reserves registry slots
     (`absorbAuxResult`), `plan.digestCap` is widened by the same count ×
     `DIGEST_CHARS_PER_SOURCE` (1300) alongside `plan.maxSources`, up to
     `DIGEST_CAP_CEILING` (36,000 chars) — see §4.3d.
@@ -1477,9 +1491,11 @@ quota accounting.
 
 `index.html` is pure markup; all styling in `css/app.css`, all behavior in
 ES modules under `js/`, vendored libraries in `vendor/` (`marked`,
-`DOMPurify`, `jsPDF`, `pdf.js` — **no CDN**, everything stays behind
-auth). `docs/CODE-LAYOUT.md`'s table is the authoritative per-module list;
-the architectural highlights:
+`DOMPurify`, `jsPDF`, `pdf.js` — **no CDN**, all served same-origin). The
+ones the Se/cure tier needs (`marked`, `DOMPurify`, `pdf.js`, mermaid, xterm,
+transformers.js) are allowlisted as public assets in `src/assets.js`; the
+rest stay behind auth. `docs/CODE-LAYOUT.md`'s table is the authoritative
+per-module list; the architectural highlights:
 
 | Area | Modules | Notes |
 |---|---|---|
@@ -1880,14 +1896,20 @@ Three layers (all dependency-minimal, matching invariant 5):
   `/api/chat` and friends intercepted; real UI, real client-side parsers,
   assertions on the captured request payloads and the PDF report) and
   `npm run test:live` (5 serial tests spending real tokens + one Exa run).
-- **Eval harnesses (`tests/`)** — the three-legged stool, each with an
-  append-only findings ledger: `model-eval.mjs` (per-model SSE-trace
-  batteries → `MODEL-EVAL-FINDINGS.md`), `eval-bench.mjs` (LLM-judged
-  rubric scores on ~27 fixed synthetic questions →
-  `EVAL-BENCH-FINDINGS.md`), and `hf-bench.mjs` (accuracy against external
-  gold-answer HF question sets chosen for low training-data contamination
-  → `HF-BENCH-FINDINGS.md`), plus `denoise-driver.mjs` for
-  multi-sample-per-cell A/Bs. Disciplines: fixed seed/judge/budget across
+- **Eval harnesses (`tests/`)** — five of them, each with an append-only
+  findings ledger: `model-eval.mjs` (per-model SSE-trace batteries →
+  `MODEL-EVAL-FINDINGS.md`), `eval-bench.mjs` (LLM-judged rubric scores on
+  ~27 fixed synthetic questions → `EVAL-BENCH-FINDINGS.md`), `hf-bench.mjs`
+  (accuracy against external gold-answer HF question sets chosen for low
+  training-data contamination → `HF-BENCH-FINDINGS.md`), `dr-eval.mjs`
+  (2026-08-05: published gold answers over `POST /mcp`, a loss breakdown
+  that separates a retrieval miss from a synthesis miss, and a no-search
+  control arm that measures the memorised share →
+  `DR-EVAL-FINDINGS.md`), and `starter-eval.mjs` (the starter-prompt
+  battery → `STARTER-EVAL-FINDINGS.md`), plus `denoise-driver.mjs` for
+  multi-sample-per-cell A/Bs. A sixth lives outside `tests/`:
+  `scripts/rag-eval.mjs`, the retrieval-only instrument, whose ledger is
+  `docs/RAG-EVAL-LEDGER.md`. Disciplines: fixed seed/judge/budget across
   a comparison, don't deploy mid-battery, append — never edit — the
   ledgers.
 
@@ -1960,10 +1982,11 @@ server-side from the `ASSETS` binding under a stamp guard, so a warm container
 pays nothing and the tree is by construction this deploy's source. Per-session
 fences (idle destroy, one-hour lifetime, a 400-command budget) live in the
 module; `max_instances` is the global one. Availability follows the optional
-`EXEC_SANDBOX` binding (§2) — absent, the option is invisible. **Nothing has run
-in a real container yet**: no deploy has carried the binding, so everything known
-about that path comes from the fake in `src/exec-container.test.js` and the image
-battery (`docs/EXECUTION-ENVIRONMENTS.md` §9–§10).
+`EXEC_SANDBOX` binding (§2) — absent, the option is invisible. The deployed
+configuration has carried that binding since 2026-08-06 (`wrangler.toml`, image
+`deepresearch-exec:2`), but **the path still has no live evidence behind it**:
+everything known about it comes from the fake in `src/exec-container.test.js`
+and the image battery (`docs/EXECUTION-ENVIRONMENTS.md` §9–§10).
 
 **The same two-call shape, one surface over:** Orchestrator's `swarm`
 sub-agent kind (2026-07-25) reasons with many tiny Bonsai models running at
@@ -1996,9 +2019,11 @@ introspection has a name on the wire (`chat_mode`, resolved once by
 `public/js/chat-mode-core.js`), the availability gate answers only whether this
 identity may use the non-default modes at all (`chatModesAvailable`), and
 whether the site's own source is in context follows from the mode
-(`modeCarriesSource` — every non-normal mode carries it). `developer_mode: false`
-survives as a documented off-only override that forces a single request back to
-plain research.
+(`modeCarriesSource` — an explicitly declared set: `introspection`, `sdk`,
+`orchestrator`, `outrospection` and `models`; the domain modes `science` and
+`cyber` are deliberately absent, so a new domain mode inherits nothing by
+accident). `developer_mode: false` survives as a documented off-only override
+that forces a single request back to plain research.
 
 When the mode is on, the server enrichment (`src/introspect.js`) retrieves the
 source chunks most relevant to the question from a COMMITTED dense index

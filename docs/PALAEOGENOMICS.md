@@ -6,11 +6,11 @@ The ancient-DNA research agent, and the two data legs it runs on. Shipped
 ## 1. What it is
 
 `palaeogenomics` is an agent in `sdk/AGENTS.json` — data, not code. It derives
-from `research`, runs the ordinary deep-research pipeline, and is reached by id
-on the `/api/chat` request (`agent: "palaeogenomics"`). It is bound to no chat
-mode, has no settings knob and no request flag, and no row in the registry's
-`defaults` table addresses it. Deleting its entry from `sdk/AGENTS.json` removes
-the whole capability.
+from `baseplate`, runs the ordinary deep-research pipeline, and is reached by
+id on the `/api/chat` request (`agent: "palaeogenomics"`). It is bound to no
+chat mode, has no settings knob and no request flag, and no row in the
+registry's `defaults` table addresses it. Deleting its entry from
+`sdk/AGENTS.json` removes the whole capability.
 
 That reachability is the point. The domain is narrow; the platform is not. The
 agent adds two source legs and two context blocks, and touches nothing any other

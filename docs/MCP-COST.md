@@ -314,9 +314,10 @@ in the first and there is no limit to hide in the second.
   leaked key is spend, not data.
 - `literature_fetch` and `literature_corpora` sit outside the quota
   deliberately and cost nothing, so that exemption carries no spend risk.
-- Since 2026-08-05 the four provider-touching tools also hold a concurrency
-  slot (§4b(2)), so the ceilings in 4a are per account rather than per
-  simultaneous connection.
+- The provider-touching tools also hold a concurrency slot (§4b(2)) — the
+  four named there since 2026-08-05, seven since the three extension tools
+  joined on 2026-08-15 — so the ceilings in 4a are per account rather than
+  per simultaneous connection.
 
 ### 4d. The same hole on the higher-traffic path — FIXED 2026-08-05
 

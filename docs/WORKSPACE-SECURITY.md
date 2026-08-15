@@ -109,6 +109,7 @@ default is ~71 bits, far beyond brute force even without the KDF).
 | `conversations` | plain chat turns | the shared conversations, nothing else |
 | `grants.ws` | a `wsk1.…` web-search grant token | a **bounded, metered** number of server-paid searches — same exposure class as an admin `?ws=` link |
 | `grants.proxy` | `prg1.…` proxy GRANT tokens (web / api) | a **bounded, metered** allowance on the minter's account — same exposure class as an admin `?rp=…#rk=…` link |
+| `grants.pool` | a `pt1.…` shared-compute pool token (minted fresh for the workspace when the sharer includes grants) | prompts relayed through this server to the pool owner's machine: a **bounded, metered**, revocable allowance, but *the owner's machine sees everything sent* — every recipient is shown the shared-compute data-flow notice on unlock (`public/js/pool-core.js`) and the crossing needs mutual consent (`docs/COMPUTE-SHARING.md` §8b) |
 
 Two deliberate token rules:
 
@@ -116,7 +117,9 @@ Two deliberate token rules:
    (`wsk1`, designed for `?ws=` links) and the proxy **grant** tokens
    (`prg1`, the "token-granting tokens" designed to ride URLs) — never the
    working `prx1` proxy tokens, which stay out of every URL by the two-tier
-   design (`src/proxy-grant.js`).
+   design (`src/proxy-grant.js`). The `pt1` pool token qualifies by the same
+   reasoning: it authorizes only submitting completion jobs to the one pool
+   it names, and is quota- and revocation-governed on that pool's row.
 2. **The workspace itself opens offline; grants hydrate opportunistically.**
    Applying keys/settings/chats needs no network. The embedded grant tokens
    are handed to the existing fail-soft paths (`/api/websearch/status`
@@ -191,9 +194,29 @@ symmetric workspace below is unchanged.
 
 ## 7. Relationship to invariant 4 (the privacy split)
 
-Secure workspaces add **no new server data path**. The transport is
-fragment-only (server-blind), and the only server-touching contents (the
-grant tokens) are exactly the two existing, deliberate, bounded exceptions
-(the web-search grant and the secure-research-space proxy bundle), reused
-under their existing meters and governance. The quota-adjust endpoints are
-new *control* surfaces over those existing meters, not new data paths.
+The workspace TRANSPORT still adds no server data path: it is fragment-only
+(server-blind), and the grant tokens it carries for the first two exceptions
+(`grants.ws`, `grants.proxy` — the web-search grant and the
+secure-research-space proxy bundle) are reused under their existing meters
+and governance. The quota-adjust endpoints are new *control* surfaces over
+those meters, not new data paths.
+
+Two things a workspace enables DO reach this server and are counted as the
+third and fourth exceptions to invariant 4 (owner ruling, 2026-08-15):
+
+1. **Shared compute** — `grants.pool` carries a `pt1` pool token
+   (`public/js/workspace-core.js`; minted in `public/cure/drc.js`). Using it
+   relays the consumer's prompt through the server's blind job queue to the
+   pool owner's machine (`/api/pool/llm`, `src/pool.js`). Governed by the
+   compute-sharing framing, the mutual-consent gate and the data-flow notice
+   every recipient sees (`docs/COMPUTE-SHARING.md` §8b,
+   `docs/PRIVACY-MODEL.md`).
+2. **Workspace knowledge** — the curation flow seals a conclusion to the
+   site's import-agent public key and POSTs it to `/api/knowledge/submit`
+   under that same pool token. The envelope rests as ciphertext in D1
+   `knowledge_inbox`, but the agent's private half is in D1
+   `knowledge_agent.private_jwk`, so **the server can decrypt it**
+   (`src/knowledge.js`). That is a deliberate, disclosed data path of its
+   own, not a reuse of the first two exceptions. For knowledge the server
+   must never read, the DRCR/1 campaign path (§6a, client-held keys) is the
+   tool.

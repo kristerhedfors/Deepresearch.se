@@ -42,10 +42,15 @@ of data rather than a rule spread through the pipeline:
 | arXiv | `literature-arxiv` | **Deep Science** only, and only when the reader names the preprint record |
 | PubMed | `literature-pubmed` | **Deep Science**, and **Palaeogenomics** — for which the life-science record is the only literature leg |
 
-Both doors stay open to **`POST /mcp`**, which has no concept of an agent: a
-request that resolved no agent keeps every source. That is deliberate, and it is
-why the `literature_*` MCP tools and the ground-truth batteries still reach both
-corpora unchanged.
+**`POST /mcp`** keeps both doors open when no agent is addressed: a request that
+resolved no agent keeps every source, because `capabilityAllowsSource`
+(`src/search-sources.js`) reads a null capability as *no agent was resolved*
+rather than as *an agent declared nothing*. Since 2026-08-15 `deep_research`
+also takes an `agent` argument (`src/mcp.js`), and a named agent carries its
+capability into the source registry, so the ownership above governs that call
+exactly as it governs a chat turn. The `literature_*` MCP tools sit outside
+agent routing entirely, which is why they and the ground-truth batteries still
+reach both corpora unchanged.
 
 ---
 
@@ -132,10 +137,13 @@ ageing population" is boilerplate in papers about fall-detection or elder-care
 robotics — including a Chandra catalogue of M31 whose ageing population is
 X-ray binaries.
 
-**Coverage of what those questions cite:** 260 cited arXiv ids across all sets,
-0 unanswerable. 386 cited PMIDs, 1 unanswerable — `pmid:10970224`, whose record
+**Coverage of what those questions cite:** 260 cited arXiv ids, 0 unanswerable.
+Longevity cites no arXiv ids of its own, so that measurement — taken over the
+four sets that predate it — still covers all five. The PMID side does not: 386
+cited PMIDs across those four, 1 unanswerable — `pmid:10970224`, whose record
 carries a zero-length abstract and therefore cannot be embedded at all. One
-question in 746.
+question in 596. All five sets together cite 562 PMIDs across 776 questions; the
+176 longevity added have not been re-checked against the index.
 
 That last case is worth understanding, because it is the only *permanent* kind
 of miss. A paper with no abstract has nothing to embed; it is not retrievable

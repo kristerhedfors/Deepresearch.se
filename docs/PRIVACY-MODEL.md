@@ -114,13 +114,20 @@ The plan call that precedes it (`POST /api/orchestrator/plan`) carries
 the conversation exactly as `/api/chat` would, plus the model id this
 device can host. Se/cure is not wired for this at all: it has no chat
 modes.
-**TWO deliberate, bounded exceptions to "the server is in NO DRC data
-path".** Count precisely: two is the number of *exposure classes* — `web`
-(query-only) and `api` (content-bearing) — while the credential FAMILIES
-able to reach them are currently three: the legacy `wsk1` web-search
-grants, the legacy `prg1`/`prx1` proxy bundle, and the consolidated
-Se/rver TOKEN (2026-07-16) that subsumes both going forward. A newer key
-shape for the same two classes — never a third kind of data crossing.
+**FOUR deliberate, bounded, disclosed exceptions to "the server is in NO
+DRC data path"** (owner ruling, 2026-08-15). The FIRST TWO govern the
+GRANT subsystem and are counted as *exposure classes* — `web` (query-only)
+and `api` (content-bearing); the credential FAMILIES able to reach them are
+three (the legacy `wsk1` web-search grants, the legacy `prg1`/`prx1` proxy
+bundle, and the consolidated Se/rver TOKEN of 2026-07-16 that subsumes both
+going forward), a newer key shape for the same two classes rather than a
+third kind of data crossing. The SECOND TWO arrived with the `pt1`
+pool-token family and have their own sections below: **shared compute**
+(using a pool token relays the consumer's prompt through this server to a
+named peer's machine) and **workspace knowledge** (a sealed conclusion
+POSTed to `/api/knowledge/submit` rests as ciphertext in D1 that the server
+can decrypt). Both are bounded, metered, revocable, and disclosed at the
+point of use.
 The FIRST exception (2026-07-14 directive) is the **temporary web-search
 GRANT subsystem**
 (`src/websearch.js` + `src/websearch-key.js`; client glue in
@@ -173,9 +180,11 @@ borrowed Se/cure session run the same client-side RAG the signed-in tier
 does, on Berget's e5 model, an embedding being the same exposure class of
 upstream call as the completion the grant already lends). **The `api` grant
 DOES route the conversation through the server** (an LLM call carries the
-prompt; an embedding carries the document text) — this is the one place a
-Se/cure session's *content* touches the server — so it is OPT-IN,
-quota-metered, time-limited, Berget-ONLY (bounded account exposure),
+prompt; an embedding carries the document text) — this is the GRANT
+subsystem's one content-bearing exposure; the two other Se/cure content
+paths, peer-relayed pool completions and the workspace knowledge inbox, are
+specified below — so it is OPT-IN, quota-metered, time-limited,
+Berget-ONLY (bounded account exposure),
 and **clearly DISCLOSED in the Se/cure UI** ("which APIs are connected"): a
 connected-APIs banner + a Settings row + a master toggle that turns the whole
 borrowed space off. **TWO-TIER tokens** (the owner's directive): the bundle
@@ -192,14 +201,19 @@ authed `POST /api/proxy/grant` (ghost, reuse-per-user) and
 `POST /api/admin/proxy` (link). Same FAIL-SAFE posture (no D1 → 503, no
 unmetered spend), the same atomic reserve/refund meter, and per-service
 quota/TTL + a shared global `budget` ceiling governed in the control panel.
-**SECURE WORKSPACES (2026-07-15) add NO third exception:** a workspace
-link (`/cure/workspace#w=<ciphertext>` — `public/js/workspace-core.js`,
-`docs/WORKSPACE-SECURITY.md`) travels entirely in the URL FRAGMENT, which
-never reaches any server; the only server-touching things it can carry are
-the two grant families above, reused under their existing meters — plus
-the per-token quota-ADJUST control surfaces (authed
-`/api/websearch/adjust`, `/api/proxy/adjust`; admin PATCH), which move a
-grant row's allowance without changing any token in circulation.
+**SECURE WORKSPACES (2026-07-15) add no exception of their own:** a
+workspace link (`/cure/workspace#w=<ciphertext>` —
+`public/js/workspace-core.js`, `docs/WORKSPACE-SECURITY.md`) travels
+entirely in the URL FRAGMENT, which never reaches any server. The
+server-touching things it can carry are the two grant families above,
+reused under their existing meters, PLUS a `pt1` shared-compute POOL TOKEN
+(`grants.pool` — `public/js/workspace-core.js`, minted by the sharer in
+`public/cure/drc.js`), whose use relays the consumer's prompt through this
+server to a peer's machine under the compute-sharing framing and
+mutual-consent gate below, and which is also what authorizes a submission
+to the workspace knowledge inbox. The per-token quota-ADJUST control
+surfaces (authed `/api/websearch/adjust`, `/api/proxy/adjust`; admin PATCH)
+move a grant row's allowance without changing any token in circulation.
 **THE CONSOLIDATED Se/rver TOKEN (2026-07-16) also adds NO new exception —
 it unifies the two above going forward:** "one ticket, one JWT"
 (`src/server-token.js` + `src/server-grants.js`, D1 `server_tokens`,
@@ -276,8 +290,8 @@ expires (`app_ttl_hours`, default 30 days, renewed by republishing), and it is
 revocable and adjustable from the admin surface like any other. It is opt-in per
 build: nothing is minted unless the build asks for hosted access. What is spent
 is a bounded number of completions on the publisher's account — never an
-account, never a data path. Se/cure's exactly-two bounded exceptions are
-untouched: this is Se/rver, where the server is inside the trust boundary. The
+account, never a data path. Se/cure's bounded exceptions are untouched — this
+adds none: it is Se/rver, where the server is inside the trust boundary. The
 honest disclosure is required in the app's own UI (`llm.note()`), because a
 hosted conversation crosses this site's server and the bring-your-own-key mode
 that a build may still choose does not.
@@ -406,10 +420,10 @@ runs the commands. What that costs is bounded by tier, not by policy:
   (`public/js/exec-backends-core.js`) requires an explicit `tier:"server"`, so a
   Se/cure caller — or any caller that forgets to say — lands on the browser VM;
   and `/api/exec/*` sits behind the identity gate, which Se/cure never passes.
-  **The count of Se/cure's deliberate server-touching exceptions is therefore
-  UNCHANGED at two** (the web-search grant and the research-space proxy bundle).
-  A hand-edited sealed state naming the backend gets the browser VM, not a third
-  channel. Pinned by `public/js/exec-backends-core.test.js`.
+  **The server container therefore adds NOTHING to Se/cure's enumerated
+  server-touching exceptions** — it is a Se/rver-only execution environment, and
+  a hand-edited sealed state naming the backend gets the browser VM rather than a
+  channel of its own. Pinned by `public/js/exec-backends-core.test.js`.
 
 The container starts with `enableInternet:false` — no internet, no LAN, matching
 the browser VM — and on EU-jurisdiction infrastructure. The table in
@@ -417,7 +431,7 @@ the browser VM — and on EU-jurisdiction infrastructure. The table in
 a deploy without the (optional, off-by-default) container binding the option is
 absent entirely.
 
-## Compute sharing — peer-operated upstream (2026-07-23, PROPOSED framing, owner sign-off pending)
+## Compute sharing — peer-operated upstream (2026-07-23; framing settled 2026-08-15)
 
 `docs/COMPUTE-SHARING.md` designs a capability where a signed-in user LENDS
 their local LLM as pooled capacity: the server is a thin BROKER that relays a
@@ -425,19 +439,16 @@ consumer's completion request to the sharer's browser, which runs it against
 their local model. This adds the `pt1` **pool-token** family
 (`src/pool-token.js`) and the D1 job-queue broker (`src/pool.js`).
 
-It touches this model in one place that is genuinely NEW and is therefore
-flagged, NOT silently adopted: **consuming a pool routes the consumer's prompt
-through the server to ANOTHER NAMED USER'S machine** — a peer-operated upstream,
-not the server's own Exa/Berget keys. The recommended framing (this section is
-descriptive; the CLAUDE.md invariant 4 text is unchanged pending the owner's
-decision) is to treat pool consumption as a **documented variant of the existing
-`api` exception** — "an upstream LLM, operated by a peer instead of Berget" —
-reusing the connected-APIs disclosure PLUS a stronger, unmissable line at the
-point of use: *the pool owner's machine can read everything you send.* Under that
-framing the "EXACTLY TWO exceptions" count is unchanged in spirit (peer compute
-is a variant of the second, a server-relayed upstream completion). The
-alternative — a literal THIRD exception, amending the invariant to say three —
-is cleaner to audit but rewrites a load-bearing owner-directive sentence.
+It touches this model in one place that is genuinely NEW: **consuming a pool
+routes the consumer's prompt through the server to ANOTHER NAMED USER'S
+machine** — a peer-operated upstream, not the server's own Exa/Berget keys.
+The owner ruled on 2026-08-15 that this is intended and stands: shared compute
+is the THIRD bounded, disclosed exception in its own right rather than a
+variant of the `api` grant, and invariant 4 now counts four. It reuses the
+connected-APIs disclosure PLUS a stronger, unmissable line at the point of
+use: *the pool owner's machine can read everything you send*
+(`public/js/pool-core.js`; the governing spec is `docs/COMPUTE-SHARING.md`
+§8b).
 
 What is already firm and enforced by code: a pool token carries THE POOL-TOKEN
 GUARANTEE (upstream/peer completion access ONLY, never Se/rver data, never a
@@ -463,3 +474,29 @@ line at the point of use is therefore a question the person has to answer, not
 a notice they can scroll past.
 `docs/COMPUTE-SHARING.md` §8b; enforced in `src/pool.js`, worded once in
 `public/js/pool-core.js`, verified live by `tests/e2e/llm-sharing.live.spec.js`.
+
+## Workspace knowledge — the sealed-conclusions inbox (2026-08-15, settled)
+
+`POST /api/knowledge/submit` (`src/knowledge.js`, `docs/COMPUTE-SHARING.md`
+§9b) is the FOURTH exception. A Se/cure participant holding the workspace's
+`pt1` pool token can curate a conclusion, SEAL it to the site's import-agent
+public key (the `drskn` envelope — ECDH P-256 → HKDF-SHA-256 →
+AES-256-GCM, `public/js/knowledge-core.js`) and pass it along. The envelope
+rests as ciphertext in D1 `knowledge_inbox` until the workspace owner lists
+and imports it in their Se/rver panel.
+
+State the posture as plainly as the module does: **the server CAN decrypt
+these envelopes.** The import agent's private key lives in D1
+`knowledge_agent.private_jwk`, generated by the site itself on first use
+(`ensureKnowledgeAgent`) — so it derives from none of the roots in
+`docs/ENCRYPTION.md` §4 and is the one generated, server-held key in the
+system. That is the deliberate design (owner ask: "encrypted with the server
+agent's public key") and it is disclosed in the data-flow notice every
+participant sees.
+
+What the seal buys: a leaked inbox dump is unreadable without the agent row;
+plaintext exists server-side only in the moment the owner asks for an import,
+and is returned only to them; nothing about a conclusion is logged beyond ids
+and sizes. For knowledge the server must never be able to read, the DRCR/1
+campaign path is the tool — there the organizer holds the private half and
+the site never sees it (`docs/CROWD-RESEARCH.md`).

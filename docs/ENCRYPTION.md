@@ -140,7 +140,8 @@ Every cryptographic mechanism in the application layer, exhaustively:
 | Primitive | Parameters | Used for | Implementation |
 |---|---|---|---|
 | **AES-256-GCM** | 256-bit keys, 12-byte IV, 16-byte tag, WebCrypto `crypto.subtle` | All content encryption: chat history, files, vault archives, Se/cure sealed state, workspace links, proxy bundles | `public/js/history-store.js`, `public/js/vault-core.js`, `public/js/workspace-core.js`, `public/js/proxy-bundle.js` |
-| **HMAC-SHA-256** | Key = env secret (raw UTF-8 import), hex tag | Session cookies, OAuth state, all three grant-token families; per-user history-key derivation | `src/token-crypto.js`, `src/auth.js`, `src/history-key.js` |
+| **HMAC-SHA-256** | Key = env secret (raw UTF-8 import), hex tag (base64url for the Se/rver-token JWT — same HMAC, different rendering) | Session cookies, OAuth state, every grant/bearer token family (`wsk1`, `prg1`/`prx1`, the `pt1` pool token, the `mck1` MCP key, the five OAuth client/code/access/refresh/consent families, and the consolidated Se/rver token); per-user history-key derivation | `src/token-crypto.js`, `src/auth.js`, `src/history-key.js`, `src/server-token.js`, `src/pool-token.js`, `src/mcp-key.js`, `src/oauth-store.js` |
+| **ECIES sealed box** | ECDH P-256 key agreement → HKDF-SHA-256 (salt = the ephemeral public key, `info` = a versioned domain string) → AES-256-GCM; a fresh ephemeral sender key per envelope | Sealing a curated conclusion to the site's import agent (workspace knowledge, `drskn`) and to a campaign key (crowd research, DRCR/1) | `public/js/knowledge-core.js`, `public/js/research-seal-core.js` (server side: `src/knowledge.js`) |
 | **HKDF-SHA-256** | Salt = 32 zero bytes (see §9), domain-separating `info` strings | Deriving locator IDs + AES keys from the 160-bit DR1 user secrets (vault, Se/cure profile) | `public/js/vault-core.js`, `public/js/drc-core.js` |
 | **Iterative SHA-512 KDF** | 8192 rounds, full 64-byte state per round, sliced to 32 | Workspace-link key derivation (provenance clone of hacka.re, §5.5) | `public/js/workspace-core.js` |
 | **SHA-256** | First 8 hex chars of digest | Workspace local-storage namespace (non-secret label) | `public/js/workspace-core.js` |
@@ -156,8 +157,10 @@ signatures are validated in the OIDC flow); no third-party crypto libraries.
 
 ## 4. Root secrets
 
-Everything below derives from one of these roots. "At rest" means written to
-disk-backed storage in any form.
+Everything below derives from one of these roots, with one generated
+exception noted in the table: the import-agent keypair, which the site
+creates rather than derives. "At rest" means written to disk-backed storage
+in any form.
 
 | Root secret | Held by | At rest? | Derives / protects | Rotation impact |
 |---|---|---|---|---|
@@ -170,6 +173,7 @@ disk-backed storage in any form.
 | **Workspace password** | **Users sharing a link** (out-of-band) | Never in the link, never server-side | Link key + local master key via iterative KDF (§5.5) | Re-seal with a new password → new, unlinkable blob |
 | Per-user history key (derived) | Browser **page memory only** — fetched per page load over an authenticated `GET /api/history-key` | **Never** (not localStorage, not IndexedDB, not sessionStorage) | AES-256-GCM over history/projects/files | Re-fetched every page load; nothing to rotate client-side |
 | Proxy-bundle key (ephemeral) | URL **anchor** (`#rk=`) — never sent to any server | Never | One AES-256-GCM bundle seal (§5.6) | Fresh random key per bundle |
+| **Import-agent ECDH private key** | The site itself — D1 `knowledge_agent.private_jwk`, generated on first use (`src/knowledge.js` `ensureKnowledgeAgent`) | **Yes — in D1**, not the Cloudflare secret store | Opening sealed workspace-knowledge envelopes (`drskn`) on the owner's request (§7-7); the matching public half is served at `GET /api/knowledge/key` | Rotation orphans every un-imported `knowledge_inbox` envelope — they become permanently unreadable |
 
 ---
 
@@ -194,6 +198,10 @@ flowchart TB
     SS -->|"HMAC ns: websearch."| WSK["wsk1 web-search grant"]
     SS -->|"HMAC ns: proxygrant."| PRG["prg1 proxy grant"]
     SS -->|"HMAC ns: proxytoken."| PRX["prx1 proxy token"]
+    SS -->|"HMAC ns: pool."| PT["pt1 pool token"]
+    SS -->|"HMAC ns: mcpkey."| MCK["mck1 MCP key"]
+    SS -->|"HMAC ns: oauthclient./oauthcode./<br/>oauthaccess./oauthrefresh./oauthconsent."| OAF["OAuth families<br/>orc1 / oac1 / oat1 / ort1 / oct1"]
+    SS -->|"HS256 over the JWS signing input<br/>(no namespace, base64url tag)"| SRT["Se/rver token (JWT)"]
 
     HKS -->|"HMAC('history-key.v1.'+uid)"| HK["Per-user history key<br/>AES-256-GCM, memory-only"]
 
@@ -210,11 +218,14 @@ flowchart TB
 
 ### 5.1 HMAC token families (`SESSION_SECRET`)
 
-One HMAC-SHA-256 key (`SESSION_SECRET`, imported raw) signs five mutually
+One HMAC-SHA-256 key (`SESSION_SECRET`, imported raw) signs thirteen mutually
 unforgeable token families. Family separation is by **message namespace**: the
 tag is computed over `<namespace> + <message>`, and each family verifies only
 its own namespace, so a valid token of one family can never verify as another
-(`src/token-crypto.js` `sign`; pinned by `token-crypto.test.js`).
+(`src/token-crypto.js` `sign`; pinned by `token-crypto.test.js`). Two families
+carry no namespace and are separated by message shape instead — the session
+cookie's legacy `<uid>.<exp>` message, and the Se/rver token's JWS signing
+input, which always contains a dot a namespaced payload never can.
 
 | Family | Wire format | Namespace | Signed message | Claims / content | Lifetime | Metering |
 |---|---|---|---|---|---|---|
@@ -223,6 +234,14 @@ its own namespace, so a valid token of one family can never verify as another
 | Web-search grant | `wsk1.<b64url(JSON)>.<tag>` | `websearch.` | the payload | `{jti, uid, quota, iat, exp}` | Config TTL | D1 `websearch_grants` row keyed by `jti`; atomic `UPDATE … WHERE used < quota` |
 | Proxy grant ("token-granting token") | `prg1.<b64url(JSON)>.<tag>` | `proxygrant.` | the payload | `{jti, uid, svc: web\|api, quota, iat, exp}` | Config TTL | D1 `proxy_grants` row |
 | Proxy token (working credential) | `prx1.<b64url(JSON)>.<tag>` | `proxytoken.` | the payload | same claims, same `jti` | Config TTL | same row |
+| Pool token (shared compute) | `pt1.<b64url(JSON)>.<tag>` | `pool.` | the payload | `{jti, pool, sub, iat, exp}` — the pool it may submit to, never a quota number | Config TTL | D1 `pool_tokens` row keyed by `jti`; adjust/pause/revoke without re-issuing |
+| MCP key | `mck1.<b64url(JSON)>.<tag>` | `mcpkey.` | the payload | `{v, sub, jti, iat, exp}` — what it may call is per-account config read at call time, never baked in | 365 d | Account row holds the live `jti`; re-issuing revokes the previous key (`src/mcp-api.js`) |
+| OAuth client id | `orc1.<b64url(JSON)>.<tag>` | `oauthclient.` | the payload | `{ru, nm, iat}` — deliberately readable; a client id is public | No expiry | Stateless: the identifier *is* the registration |
+| OAuth authorization code | `oac1.<b64url(JSON)>.<tag>` | `oauthcode.` | the payload | `{v, jti, iat, exp}` — the `jti` is the only thing the code discloses | 60 s | D1 `oauth_codes` row holds user, client, redirect, PKCE challenge, scope |
+| OAuth access token | `oat1.<b64url(JSON)>.<tag>` | `oauthaccess.` | the payload | `{v, sub, scope, jti, iat, exp}` | 1 h | Stateless; narrowed further by per-account MCP config at call time |
+| OAuth refresh token | `ort1.<b64url(JSON)>.<tag>` | `oauthrefresh.` | the payload | `{v, jti, fam, iat, exp}` — `fam` is the reuse-detection lineage handle | 90 d | D1 `oauth_refresh_tokens`; a detected replay revokes the whole `family_id` |
+| OAuth consent | `oct1.<b64url(JSON)>.<tag>` | `oauthconsent.` | the payload | `{v, sub, cid, ru, cc, sc, st, res, exp}` — the authorization request the rendered screen approves, bound to the signed-in user | 600 s | — |
+| Se/rver token (consolidated) | standard HS256 JWT (`<header>.<payload>.<b64url tag>`) | *(none — the JWS signing input is the message)* | `<header>.<payload>` | `{sub, jti, perms, iat, exp}` — `perms` from the closed vocabulary only | The grant's one duration | Per-permission D1 `server_tokens` quota rows, same reserve/refund meter |
 
 Design points an assessor should note:
 
@@ -237,6 +256,10 @@ Design points an assessor should note:
   lives in a D1 row keyed by the token's `jti`. Deleting the row revokes the
   token instantly; no D1 → HTTP 503, so unmetered spend is impossible
   (fail-safe, §10).
+- **One encoding divergence**: `src/token-crypto.js` `sign` renders the tag as
+  hex; `src/server-token.js`'s `hs256` renders the same HMAC bytes base64url,
+  as RFC 7515 requires. The difference is load-bearing rather than cosmetic —
+  a hex tag can never parse as a JWT segment.
 - **Two-tier proxy design**: the `prg1` grant travels in URLs (inside an
   encrypted bundle); the client exchanges it (`POST /api/proxy/exchange`) for
   the `prx1` working token, which **never appears in a URL** — a leaked link
@@ -455,7 +478,7 @@ here).
 | OPFS `originals/` (Se/rver) | Attached-file original bytes | `IV ‖ ciphertext` | Same history key | Same. **Exception:** RAG-indexed documents rest readable (§7-2) |
 | IndexedDB `dr_rag` (Se/rver) | RAG chunks + vectors, file metadata rows (name/type/size) | **Readable** | — | Anyone with the browser profile (§7-2) |
 | localStorage (Se/cure) | The whole sealed state: chats, settings, RAG index, **provider API keys** | `IV ‖ ciphertext` AES-256-GCM, keyed by the derived 160-bit `blobId` | `blobKey` from the user's DR1 master secret | **Only the secret holder** — server excluded by construction |
-| localStorage flags (both tiers) | UI preferences (`dr_dev_mode`, intro-seen flags, …) | Readable | — | Non-sensitive by policy: booleans/counters only, no content |
+| localStorage flags (both tiers) | UI preferences (`dr_chat_mode`, intro-seen flags, …) | Readable | — | Non-sensitive by policy: booleans/counters only, no content |
 
 ### Server-side stores
 
@@ -499,20 +522,40 @@ an assessor should verify the *boundary* of each rather than their absence.
    can retrieve from them). Disclosed in the settings UI and the first-run
    notice. **Se/cure's client-side RAG is stricter**: its index (chunks and
    vectors) rests *inside* the sealed blob — ciphertext at rest.
-3. **Proxy `api` grant** — the one place a Se/cure conversation's content
-   touches the server: an LLM call through the borrowed Berget proxy carries
-   the prompt (transient, in-memory processing; the chat log does not apply).
-   Opt-in, quota-metered, time-limited, Berget-only, and disclosed in the
-   Se/cure UI via the connected-APIs banner. The `web` grants carry only the
-   search query — never the conversation.
+3. **Proxy `api` grant** — the grant subsystem's one content-bearing path:
+   an LLM call through the borrowed Berget proxy carries the prompt
+   (transient, in-memory processing; the chat log does not apply). Opt-in,
+   quota-metered, time-limited, Berget-only, and disclosed in the Se/cure UI
+   via the connected-APIs banner. The `web` grants carry only the search
+   query — never the conversation. The two other Se/cure content paths are
+   shared compute (a `pt1` pool token relays the prompt through this server
+   to a named peer's machine; the body rests in D1 `pool_jobs` until the
+   sharer's tab collects it, then is deleted or expired) and the knowledge
+   inbox at item 7. `docs/PRIVACY-MODEL.md` counts all four.
 4. **Published replays (R2 `pub/`)** — frozen research sessions published
    deliberately as public pages.
 5. **The answer-recovery buffer (D1 `answers`)** — finished answers parked
    ≤ 15 minutes so a disconnected client can collect them; deleted on ack,
    purged on every read/write past TTL, readable only by the asking user.
-6. **Operational surfaces** — accounts, quotas, grant meters, feedback,
-   admin boards: no conversation content by construction (`user_messages`
-   deliberately has no content column).
+6. **Operational surfaces** — accounts, quotas, grant meters, admin boards:
+   no conversation content by construction (`user_messages` deliberately has
+   no content column). **The one exception is FEEDBACK**: a submitted entry
+   carries the whole conversation verbatim in D1 `feedback.context` (capped
+   at 120 000 chars), plus `question` / `answer_excerpt` and any attached
+   screenshots in `feedback_images` — written even for an INCOGNITO turn,
+   where no `chat_logs` row exists, because sending a report to the
+   developers is explicit intent to hand that conversation over (owner
+   directive, 2026-07-24; `src/feedback.js`, `src/chat.js`).
+7. **The workspace knowledge inbox (D1 `knowledge_inbox`)** — sealed
+   conclusions submitted from a Se/cure workspace rest as ciphertext, but the
+   import agent's private key lives in D1 `knowledge_agent.private_jwk`, so
+   **the server can decrypt them** (§4; `src/knowledge.js`). Deliberate and
+   disclosed in the data-flow notice every participant sees. What the seal
+   buys: a leaked inbox dump is unreadable without the agent row, plaintext
+   exists server-side only in the moment the workspace owner imports, and
+   nothing about a conclusion is logged beyond ids and sizes. The DRCR/1
+   campaign path (`docs/CROWD-RESEARCH.md`) is the client-keyed variant where
+   no server-held private key exists.
 
 ---
 

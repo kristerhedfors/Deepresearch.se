@@ -19,11 +19,13 @@ they are.
 > **Status: designed 2026-07-16; WIRED into the running application since
 > 2026-07-18.** The manifest logic and the SDK-mode tool surface live in the
 > shared core `public/js/sdk-core.js` (server façade `src/sdk-tools.js`;
-> `pair-cli.mjs` re-exports it), consumed by Agent Studio, the `/mcp` `sdk_*`
-> tools, and the sandbox's `/src` mount. This Platform SDK builds a whole
-> DeepResearch.se-like platform; its companion, the **DeepResearch Agents
-> SDK** (`sdk/AGENTS.json`, `docs/AGENT-PLATFORM.md`), builds a single agent
-> and is tailored to Agent Studio and the integrated Linux environment.
+> `pair-cli.mjs` re-exports it), consumed by Agent Studio and the sandbox's
+> `/src` mount. (The four `/mcp` `sdk_*` tools were removed 2026-08-15 when
+> that surface was reshaped for callers without a screen.) This Platform SDK
+> builds a whole DeepResearch.se-like platform; its companion, the
+> **DeepResearch Agents SDK** (`sdk/AGENTS.json`, `docs/AGENT-PLATFORM.md`),
+> builds a single agent and is tailored to Agent Studio and the integrated
+> Linux environment.
 
 The SDK's complete standalone documentation — the abstraction, capability
 classes, contracts, full module catalog, CLI and implementation order in one
@@ -37,7 +39,7 @@ the catalog front page of the `sdk/` directory itself.
 |---|---|
 | `DESIGN.md` | The platform abstraction: the zero-or-one-server property, capability classes (C/S/B/X/D), contracts **PA-1…PA-10**, the module model, the design decisions |
 | `MANIFEST.json` | The machine-readable module registry: 34 modules with layer, class, dependencies, skill path, reference files, acceptance criteria |
-| `ROADMAP.md` | The implementation-order rationale: six phases, why each module lands where it does, exit criteria per phase |
+| `ROADMAP.md` | The implementation-order rationale: seven phases (0–6), why each module lands where it does, exit criteria per phase |
 | `skills/<module>/SKILL.md` | One buildable capability module per skill — the complete capability foundation of deepresearch.se |
 | `pair-cli.mjs` | The dependency-free CLI over the manifest: `list`, `show <id>`, `plan <id …>` (dependency closure → build order), `validate` (integrity + class rules). Runs on any desktop Node and inside the sandbox VM (`node /src/sdk/pair-cli.mjs …`); unit-tested by `pair-cli.test.mjs` in the repo's `npm test` |
 | `drpl.mjs` | The DRPL/1 pipeline-language reference tooling: `validate`, `show`, `fingerprint`, `diff` over `*.drpl.json` documents — the formal, implementation-neutral language declaring a deep-research pipeline's structure (phases, dataflow, failure contracts, model routing, and privacy PLACEMENT), with canonical structural fingerprints for comparing pipelines across nodes. Spec: `docs/PIPELINE-LANGUAGE.md`; examples: `docs/examples/*.drpl.json`; unit-tested by `drpl.test.mjs` in the repo's `npm test` |

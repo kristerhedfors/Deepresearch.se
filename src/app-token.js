@@ -36,7 +36,7 @@
 //     hosted mode (`buildNeedsHostedLlm`).
 // This is the Se/rver tier, where the server is inside the trust boundary
 // (owner directive, 2026-07-24) — it is not a new hole in Se/cure's posture,
-// which keeps its exactly-two bounded exceptions untouched.
+// whose enumerated bounded exceptions (invariant 4) this adds nothing to.
 //
 // Fail-soft, per invariant 2: if tokens are disabled, D1 is absent, or the
 // budget is spent, the config file is still written — carrying no token — so

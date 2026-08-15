@@ -155,15 +155,15 @@ is the escape-hatch row, "…or ANY other OpenAI-compatible endpoint".
 
 ### 2.5 The prepackaged ask demo — `#askdemo`
 
-Four chips (*What is this? / Is it private? / How is it built? / What does it
-cost?*) and a free-text box, answered by `public/js/canned-faq.js` with
-`tier: "drs"`. **No language model is in this path** — there cannot be one, the
-visitor is signed out. Every reply carries the `CANNED_LABEL` badge so it can
-never be mistaken for the research model, and the answers follow the language
-of the question (EN/SV, invariant 6). The five ids `#askdemo`, `#askchips`,
-`#askmsgs`, `#askform`, `#askinput` are load-bearing: the inline module looks
-each up by id and throws on the first missing one, taking the rest of the
-script with it.
+Five chips (*What is this? / Is it private? / How is it built? / What does it
+cost? / How do I sign in?*) and a free-text box, answered by
+`public/js/canned-faq.js` with `tier: "drs"`. **No language model is in this
+path** — there cannot be one, the visitor is signed out. Every reply carries
+the `CANNED_LABEL` badge so it can never be mistaken for the research model,
+and the answers follow the language of the question (EN/SV, invariant 6). The
+five ids `#askdemo`, `#askchips`, `#askmsgs`, `#askform`, `#askinput` are
+load-bearing: the inline module looks each up by id and throws on the first
+missing one, taking the rest of the script with it.
 
 ### 2.6 The doors onward — `.links`
 

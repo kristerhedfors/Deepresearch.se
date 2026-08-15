@@ -94,7 +94,7 @@ The SDK has three parts:
 |---|---|
 | `sdk/DESIGN.md` | The platform abstraction: zero-or-one server, capability classes C/S/B/X/D, contracts PA-1…PA-10, the module model, the design decisions |
 | `sdk/MANIFEST.json` | The module registry: 34 modules with layer, class, dependencies, skill path, reference files, acceptance criteria |
-| `sdk/ROADMAP.md` | The implementation order: six phases, why each module lands where it does, exit criteria per phase |
+| `sdk/ROADMAP.md` | The implementation order: seven phases (0–6), why each module lands where it does, exit criteria per phase |
 | `sdk/skills/<id>/SKILL.md` | One buildable capability module per skill |
 | `sdk/README.md` | The catalog-and-usage front page of the `sdk/` directory |
 | `sdk/pair-cli.mjs` | The dependency-free CLI over the manifest (`list` / `show` / `plan` / `validate`), unit-tested in `npm test` |
@@ -390,6 +390,7 @@ edge set, the generator's topological order.
 |---|---|---|---|
 | `pair-generator` | D | pair-architecture | Selection → dependency closure → module-at-a-time generation; adoption mode for wiring an existing product. Meta — used from day one, listed last |
 | `pair-studio` | X | vm-toolchain, secure-tier, pair-generator | The in-app builder: prompt → SDK-guided generation in the VM → preview deploy in the same UI → save as a runnable test application |
+| `agent-platform` | X | pair-studio, symbol-language, grant-bridge | AgentSpec — an agent DEFINED by its chat-input-pane controls, animations, theme, seed examples, share-link quota and (spec 0.2.0) its CAPABILITY block; the ten shipped agents; composer renderer + visual proof + example generation + share-link minting (`docs/AGENT-PLATFORM.md`) |
 | `deploy-pipeline` | S | workspace-fs, pair-studio, grant-bridge | Deploy the workspace and try it LIVE: a same-origin preview URL for client-tier builds, a push to the user's own edge account for server-tier builds (never the platform's origin). Server-tier only |
 
 ### The skill shape
@@ -445,7 +446,7 @@ server tier before cloud storage).
 | **3 — Privacy & storage** | ciphertext-storage, client-rag, grant-bridge, offline-workspaces | Every module here is defined by which tier it must NOT touch; the bridge builds last against stable subsystems | Cross-subsystem grant invariant suite green; a workspace link round-trips mint → seal → open → hydrate → spend → pause → revoke |
 | **4 — Operations & loops** | observability, eval-harness, decision-boards, feedback-loops, agent-dev-workflow | Timed by people, not code: land when real users generate signal and agent sessions work in parallel | A keyword-only bug report can be traced, fixed with the verbatim message as a regression test, and verified live |
 | **5 — Extensions** | execution-sandbox, introspection-help, mcp-surface, publish-replays, symbol-language, games-shelf, exec-engine, vm-toolchain, workspace-fs | All leaves; order by product priority, not dependency | Each lands independently with its own acceptance |
-| **6 — Generation, studio & deploy** | pair-generator, pair-studio, deploy-pipeline | The generator is used from day one (meta); the studio is the capstone — the generator's walk moved into the product | Prompt → generated client-tier app previewed in-session → exported bundle runs from a plain static host; a built workspace deploys to a live URL |
+| **6 — Generation, studio & deploy** | pair-generator, pair-studio, agent-platform, deploy-pipeline | The generator is used from day one (meta); the studio is the capstone — the generator's walk moved into the product | Prompt → generated client-tier app previewed in-session → exported bundle runs from a plain static host; a built workspace deploys to a live URL |
 
 Sequencing note (PA-10): if any pipeline-quality tuning beyond the defaults is
 planned, pull `eval-harness` forward to land immediately after
@@ -504,8 +505,14 @@ checklist satisfied before starting the next.
 
 ## 10. Relationship to the existing application (adoption mode)
 
-Nothing in `sdk/` is imported by `src/` or `public/` today. The later wiring
-task proceeds per module, in the manifest's dependency order:
+No `src/` or `public/` module imports SDK *code* from `sdk/` — the dependency
+runs the other way, with `sdk/pair-cli.mjs` re-exporting the shared core
+`public/js/sdk-core.js`. What the running Worker consumes is the SDK's DATA:
+`sdk/MANIFEST.json`, read out of the committed source snapshot
+(`src/pipeline.js` `runSdkBuild` → `manifestFromSnapshot`) on every Agent
+Studio build, and `sdk/AGENTS.json` (`src/agent-registry.js`) on the routing
+path of every chat request. Binding the remaining modules' code proceeds per
+module, in the manifest's dependency order:
 
 1. Pick a module; read its skill's "reference implementation" map.
 2. Extract/align the reference files to the module's stated contract (usually

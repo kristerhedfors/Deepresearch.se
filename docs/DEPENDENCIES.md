@@ -198,11 +198,15 @@ work; the Worker is written against workerd, not Node.
 | `DB` | D1 `deepresearch-se` | No | Google sign-in disabled; break-glass admin auth only |
 | `STORAGE` | R2 `deepresearch-se-storage` | No | Cloud storage feature reports unavailable, UI hides it |
 | `RAG_INDEX` | Vectorize `deepresearch-se-rag` (1024 dims, cosine) | No | Document RAG unavailable |
+| `ARXIV_INDEX` | Vectorize `deepresearch-se-arxiv` (1024 dims, cosine) | No | The hosted arXiv dense tier reports itself unavailable and `src/arxiv.js` uses the live arXiv API instead (`docs/ARXIV-RAG.md`) |
+| `PUBMED_INDEX` | Vectorize `deepresearch-se-pubmed` (1024 dims, cosine) | No | The PubMed dense tier falls through to the live Europe PMC API in `src/europepmc.js` (`docs/PUBMED-RAG.md`) |
+| `EXEC_SANDBOX` | Durable Object `ExecSandbox` + `[[containers]]` (image `deepresearch-exec:2`, `standard-1`, EU jurisdiction) | No | `/api/settings` reports `available.exec_container: false` and the cloud execution environment is hidden; the browser VM and a DREE/1 runner on the user's own machine remain (`docs/EXECUTION-ENVIRONMENTS.md`) |
 | — | Workers **Paid** plan | Yes, as configured | `[limits] cpu_ms = 300_000` is rejected outright by the deploy API on the Free plan. Delete the `[limits]` block to deploy free. |
 | — | Workers Logs (`[observability]`) | No | No queryable logs |
 
-The R2 and Vectorize bindings must not be declared before the resources exist —
-a declared-but-missing binding fails the whole deploy, not just the feature.
+The R2, Vectorize and container bindings must not be declared before the
+resources exist — a declared-but-missing binding fails the whole deploy, not
+just the feature.
 
 ---
 

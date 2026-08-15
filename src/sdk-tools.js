@@ -3,12 +3,11 @@
 // operations, the SDK/build tool schemas and executors, and the generated-app
 // file staging rules — lives in ONE shared module, public/js/sdk-core.js (the
 // bash-core.js / introspect-core.js pattern), so the CLI (sdk/pair-cli.mjs),
-// the DRS pipeline (src/pipeline.js runSdkBuild), and the MCP server
-// (src/mcp.js sdk_* tools) all use a single source of truth. The core lives
-// under public/ because the browser can only import served modules, while the
-// Worker bundler can import from anywhere — so the server reaches it through
-// this re-export. New shared SDK logic goes in sdk-core.js; do not
-// reintroduce a copy.
+// the DRS pipeline (src/pipeline.js runSdkBuild) and the browser all use a
+// single source of truth. The core lives under public/ because the browser can
+// only import served modules, while the Worker bundler can import from
+// anywhere — so the server reaches it through this re-export. New shared SDK
+// logic goes in sdk-core.js; do not reintroduce a copy.
 
 export {
   APP_CONFIG_PATH,
