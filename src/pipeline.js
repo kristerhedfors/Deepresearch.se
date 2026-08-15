@@ -66,6 +66,7 @@ import {
 import { runEnrichments } from "./enrichment.js";
 import { focusQueriesOnSubject } from "./query-focus.js";
 import { fetchContents, webSearch } from "./exa.js";
+import { extractNamedUrls, readNamedUrls } from "./named-urls.js";
 import { SEARCH_SOURCES, capabilityAllowsSource, leadSourceIds } from "./search-sources.js";
 // Folds a source's reported dense-retrieval spend into the request's tally —
 // the one thing the orchestrator does with it; pricing is billing.js's.
@@ -82,6 +83,7 @@ import {
 } from "./sources.js";
 import { extractNotes, mergeNotes, notesEntities } from "./notes.js";
 import {
+  auxReplyMessages,
   buildContinuationTurns,
   collectConflicts,
   conflictsSection,
@@ -187,6 +189,14 @@ import {
  * import('./types.js').RequestState) plus the fields the pipeline itself
  * lays down as phases run. `plan` is re-declared against budget.js's own
  * typedef, whose `estimates` also carries the budget-gated phases.
+ *
+ * The three aux-search CONTROL fields an enrichment writes (`forceAux`,
+ * `auxOnly`, `auxMaxPerRequest`) are declared on RequestState itself, so the
+ * writers and these readers are checked against ONE declaration — they used to
+ * be declared nowhere and reached through `any` casts on both sides. What
+ * belongs here is only the latch the orchestrator lays down itself:
+ * `auxLeadReleased`, set by runSearches when a leading source found nothing,
+ * after which the request is an ordinary one.
  * @typedef {import('./types.js').RequestState & {
  *   plan: BudgetPlan,
  *   quizzes?: boolean,
@@ -199,6 +209,9 @@ import {
  *   notesCursor?: number,
  *   fetchedUrls?: Set<string>,
  *   aux?: Record<string, AuxSourceState>,
+ *   auxLeadReleased?: boolean,
+ *   citations?: { cited: number, dangling: number, unused: number },
+ *   validation?: { verdict: string, issues: number, draft_chars: number, revised_chars: number },
  *   failoverModel?: string,
  *   feedbackCapture?: boolean,
  *   capability?: import('./agent-spec.js').AgentCapability | null,
@@ -596,7 +609,7 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
     // to a sourceless answer just because the message didn't name the hub. The
     // agent's `auxSources` declaration still outranks both: an agent that says
     // it uses no auxiliary sources uses none, forced or not.
-    const forcedAux = Array.isArray(/** @type {any} */ (state).forceAux) ? /** @type {any} */ (state).forceAux : [];
+    const forcedAux = Array.isArray(state.forceAux) ? state.forceAux : [];
     // cleanLastUser here too, and for the same reason as the two gates in
     // planAuxSource/leadingSources: whether a source APPLIES is a fact about
     // what the user asked, never about prose an enrichment appended to it.
@@ -649,16 +662,45 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
     // must come from the user's own words, not an enrichment block's prose.
     quizReq = { questions: quizQuestionCount(ctx.cleanLastUser) || DEFAULT_QUIZ_QUESTIONS };
   }
-  if (decision.action === "direct") {
+  // Clarify first, and it is deliberately NOT overridden below: it asks the
+  // user a question rather than answering, so it cannot produce the failure
+  // the direct branch does, and no page needs reading to serve it.
+  if (decision.action === "clarify") return runClarify(ctx, decision.question);
+
+  // ---- Phase 1.5: read the pages the user NAMED --------------------------
+  // Before searching for sources, read the ones we were handed. See
+  // runNamedUrlReads / src/named-urls.js — feedback #67 was a question whose
+  // five pasted URLs the run then spent fifteen search angles failing to
+  // rediscover.
+  //
+  // ABOVE the direct branch, because what it reads decides that branch.
+  await runNamedUrlReads(ctx, extractNamedUrls(ctx.cleanLastUser));
+  // Pages we actually READ override a `direct` decision. Pasting a link and
+  // asking about it IS a research request over that page, and a direct reply
+  // cannot serve it: the answer model has no browser, so triage routing this
+  // turn to a direct completion produces the one answer that is both useless
+  // and wrong — "I can't browse arbitrary URLs" — for a question whose whole
+  // content is a URL we are perfectly able to read. Found by probing the
+  // deployed site, not by a test: this phase used to sit BELOW the branch, so
+  // it never ran on exactly the messages it was written for (verbatim probe,
+  // chat_logs #1743 — `named_urls: 0`, no queries, no sources).
+  //
+  // Gated on what came BACK, not on what was linked: if nothing could be
+  // read, the direct reply is still the better answer, and synthesis over an
+  // empty source set would be a worse one.
+  if (decision.action === "direct" && !state.namedUrlCount) {
     // Quiz from the material already in front of us (conversation, attached
     // documents, project materials) — triage decided no web sources needed.
     if (quizReq && (await runQuizGeneration(ctx, quizReq))) return;
     return runDirectReply(ctx);
   }
-  if (decision.action === "clarify") return runClarify(ctx, decision.question);
 
   // ---- Phase 2: initial search wave -------------------------------------
-  await runSearches(ctx, decision.queries, 1);
+  // An overridden direct decision planned no angles, and that is the right
+  // outcome rather than a hole to paper over: "what does this page say?" is
+  // answered by the page, so the run goes straight to synthesis over what was
+  // read instead of inventing keyword angles for a URL we already have.
+  await runSearches(ctx, decision.action === "research" ? decision.queries : [], 1);
   // Quiz from web research: one search wave gathers the material, then the
   // quiz IS the answer — gap rounds, synthesis, and validation don't apply
   // (nothing streams that could be fact-checked; the quiz's own prompt pins
@@ -915,13 +957,21 @@ async function runQuizGeneration(ctx, quizReq) {
   return true;
 }
 
-/** @param {PipelineCtx} ctx */
-async function runDirectReply(ctx) {
+/**
+ * @param {PipelineCtx} ctx
+ * @param {string} [auxBlock] The numbered digest a forced auxiliary source
+ *   produced for this turn, when the caller has one (runSourceResearch). ""
+ *   for every other caller, which keeps their message array byte-identical.
+ */
+async function runDirectReply(ctx, auxBlock = "") {
   await streamCompletion(ctx, [
     // webSearchOn: this branch produced no sources, and without the knob's
     // actual value the model has been observed explaining that away by
     // inventing an off toggle (prompts.js SEARCH_ON_BUT_UNUSED_NOTE).
-    { role: "system", content: phasePrompt(ctx.state, "research", "answer-direct")({ hasShell: !!ctx.shellBlock, hasSource: !!ctx.hasSource, spaceScene: ctx.spaceScene, demoSurface: ctx.demoSurface, webSearchOn: ctx.state.webSearch !== false, capability: ctx.state.capability }) },
+    // …unless a forced auxiliary source DID produce sources, in which case
+    // there is nothing to explain away and citing them is the whole point.
+    { role: "system", content: phasePrompt(ctx.state, "research", "answer-direct")({ hasShell: !!ctx.shellBlock, hasSource: !!ctx.hasSource, spaceScene: ctx.spaceScene, demoSurface: ctx.demoSurface, webSearchOn: ctx.state.webSearch !== false, externalSources: !!auxBlock, capability: ctx.state.capability }) },
+    ...auxReplyMessages(auxBlock),
     ...shellReplyMessages(ctx.shellBlock),
     ...withImageNudge(ctx.conversation),
   ]);
@@ -1146,7 +1196,7 @@ async function runSdkBuild(ctx) {
  * @param {PipelineCtx} ctx
  * @param {Array<{ path: string, content: string }>} files
  * @param {string} title
- * @returns {Promise<{ slug: string, url: string, files: number, bytes: number } | null>}
+ * @returns {Promise<{ slug: string, url: string, files: number, bytes: number, paths: string[] } | null>}
  */
 async function publishSdkFiles(ctx, files, title) {
   try {
@@ -1183,8 +1233,10 @@ async function runSdkBuildTools(ctx, snapshot, manifest, secureDigest, sdk) {
   const readBudget = { used: 0 };
   /** @type {Map<string, string>} */
   const staged = new Map();
-  /** @type {{ slug: string, url: string, files: number, bytes: number } | null} */
-  let published = null;
+  // The staged map as the publish/summary shape. Written three times over
+  // three frames before, which is one edit away from a publish and a summary
+  // describing different collections.
+  const stagedFiles = () => [...staged].map(([path, content]) => ({ path, content }));
   let calls = 0;
   const fileCheck = snapshotFileCheck(snapshot);
   const buildSlug = /** @type {any} */ (ctx.state).buildSlug;
@@ -1201,9 +1253,8 @@ async function runSdkBuildTools(ctx, snapshot, manifest, secureDigest, sdk) {
       return res.ok ? `Staged ${res.path} (${res.bytes} bytes). ${staged.size} file${staged.size === 1 ? "" : "s"} staged.` : res.error;
     }
     if (name === "publish_app") {
-      const files = [...staged].map(([path, content]) => ({ path, content }));
       const title = String(input?.title || "").trim() || sdkBuildTitle(ctx);
-      return publishSdkFiles(ctx, files, title).then((result) =>
+      return publishSdkFiles(ctx, stagedFiles(), title).then((result) =>
         result
           ? `Published ${result.files} file${result.files === 1 ? "" : "s"} — the live URL is ${result.url} (include it in your reply as a link).`
           : "Publishing failed on the server — finish the reply and tell the user honestly that no live URL is available this turn.",
@@ -1260,17 +1311,17 @@ async function runSdkBuildTools(ctx, snapshot, manifest, secureDigest, sdk) {
   addUsage(ctx.state.totals, result.usage);
   recordPhase(ctx.model, "synth", Date.now() - startedAt);
 
-  // The model staged files but never published (round cap, or it forgot):
-  // publish for it, fail-soft — the "describe it, get a link" promise should
-  // not hinge on the model remembering the last call.
-  if (staged.size && !published) published = /** @type {any} */ (ctx.state).buildResult || null;
-  if (staged.size && !published) {
-    published = await publishSdkFiles(
-      ctx,
-      [...staged].map(([path, content]) => ({ path, content })),
-      sdkBuildTitle(ctx),
-    );
-  }
+  // What the run actually shipped. The `publish_app` tool publishes through
+  // publishSdkFiles, which stashes its result on the STATE (ctx.state.
+  // buildResult) — so the state is the source of truth here, not a local the
+  // tool arm never writes.
+  //
+  // Then: the model staged files but never published (round cap, or it
+  // forgot). Publish for it, fail-soft — the "describe it, get a link"
+  // promise should not hinge on the model remembering the last call.
+  /** @type {{ slug: string, url: string, files: number, bytes: number, paths: string[] } | null} */
+  let published = staged.size ? /** @type {any} */ (ctx.state).buildResult || null : null;
+  if (staged.size && !published) published = await publishSdkFiles(ctx, stagedFiles(), sdkBuildTitle(ctx));
 
   ctx.stepDone(
     "source",
@@ -1294,7 +1345,6 @@ async function runSdkBuildTools(ctx, snapshot, manifest, secureDigest, sdk) {
     throw new Error("SDK tool run truncated (max_tokens) before staging any file");
   }
   ctx.step("synth", "Writing report…");
-  const stagedFiles = [...staged].map(([path, content]) => ({ path, content }));
   if (text) {
     emitChunked(ctx, text);
     // sdkReplyTail guarantees the requested closing shape (feedback #13):
@@ -1305,12 +1355,12 @@ async function runSdkBuildTools(ctx, snapshot, manifest, secureDigest, sdk) {
     // tail rides the answer text, so it also survives a dropped-stream
     // recovery, where only the text is replayed (the `build` status event
     // is not).
-    if (published) emitChunked(ctx, sdkReplyTail(text, stagedFiles, published));
+    if (published) emitChunked(ctx, sdkReplyTail(text, published));
   } else if (published) {
     // Built and published, but the model never wrote the report (round cap,
     // or a truncated final call): compose it server-side rather than throw
     // the finished build away into a full deterministic rebuild.
-    emitChunked(ctx, `Your app is built and live.${sdkReplyTail("", stagedFiles, published)}`);
+    emitChunked(ctx, `Your app is built and live.${sdkReplyTail("", published)}`);
   }
   ctx.stepDone("synth", "Report drafted");
 }
@@ -1442,7 +1492,7 @@ async function runSdkBuildDeterministic(ctx, manifest, secureDigest, sdk = { tar
     buildFilesSummary(files),
   );
   if (prose) emitChunked(ctx, prose);
-  emitChunked(ctx, sdkReplyTail(prose, files, published));
+  emitChunked(ctx, sdkReplyTail(prose, published));
   // Complete files shipped, one didn't: say which, rather than leaving a build
   // that silently lacks a file the reply talks about.
   if (cut) emitChunked(ctx, sdkCutOffNote(cut.path, !!published));
@@ -1502,7 +1552,7 @@ function auxQueryBatch(ctx) {
  */
 async function runForcedAuxSearches(ctx) {
   const { state } = ctx;
-  const forced = Array.isArray(/** @type {any} */ (state).forceAux) ? /** @type {any} */ (state).forceAux : [];
+  const forced = Array.isArray(state.forceAux) ? state.forceAux : [];
   // The agent's own declaration still outranks the force: an agent that says
   // it uses no auxiliary sources uses none (same rule as runAuxSearches).
   if (!forced.length || !searchPolicyFor(state).auxSources) return "";
@@ -1540,8 +1590,10 @@ async function runSourceResearch(ctx) {
 
   if (!snapshot || !Array.isArray(snapshot.files) || !snapshot.files.length) {
     // No readable snapshot — answer from the excerpts the enrichment already
-    // injected (still hasSource), exactly the pre-read-loop behavior.
-    return runDirectReply(ctx);
+    // injected (still hasSource), exactly the pre-read-loop behavior. With the
+    // forced sources, per the comment above: the promise that "every exit
+    // below answers with it" was prose only until the block was threaded here.
+    return runDirectReply(ctx, auxBlock);
   }
 
   // Native tool-use path (owner-authorized invariant-1 exception, 2026-07-12):
@@ -1621,9 +1673,11 @@ async function runSourceResearch(ctx) {
   if (!reads.length) {
     // The model didn't need to read any files (e.g. a non-implementation
     // question asked while dev mode happens to be on). Answer from the excerpts
-    // the enrichment already injected — the pre-read-loop behavior.
+    // the enrichment already injected — the pre-read-loop behavior — plus any
+    // forced auxiliary sources, which the user is ALREADY being shown in the
+    // source panel and which this exit used to drop on the floor.
     ctx.stepDone("source", "Answered from the retrieved excerpts");
-    return runDirectReply(ctx);
+    return runDirectReply(ctx, auxBlock);
   }
   ctx.stepDone(
     "source",
@@ -2105,7 +2159,7 @@ async function runSynthesis(ctx) {
     unused: audit.unused.length,
     sources: state.sources.length,
   });
-  /** @type {any} */ (state).citations = {
+  state.citations = {
     cited: audit.cited.length,
     dangling: audit.dangling.length,
     unused: audit.unused.length,
@@ -2231,6 +2285,12 @@ async function runSinglePassValidation(ctx, draft, digest) {
 // happened, and no retrospective scan can recover it. Ranking the
 // section-scoped-revision backlog item needs this number, and `draft_chars`
 // vs `revised_chars` is a free proxy for how much a rewrite churns.
+//
+// Both halves matter and only one used to exist: the log line makes it visible
+// LIVE, the state field makes it QUERYABLE afterwards — which is what the
+// paragraph above is actually asking for. The field sat written-and-never-read
+// until both chat-log rows picked it up (chat.js / mcp.js meta), so the revise
+// rate was as unknowable as before.
 /**
  * @param {PipelineCtx} ctx
  * @param {string} verdict
@@ -2241,7 +2301,7 @@ async function runSinglePassValidation(ctx, draft, digest) {
 function recordValidation(ctx, verdict, issues, draftChars, revisedChars) {
   const row = { verdict, issues, draft_chars: draftChars, revised_chars: revisedChars };
   ctx.log.info("chat.validate_verdict", row);
-  /** @type {any} */ (ctx.state).validation = row;
+  ctx.state.validation = row;
 }
 
 // Claim-level validation (high tiers): extract the draft's check-worthy claims
@@ -2426,6 +2486,70 @@ async function jsonPhase(ctx, { label, statKey, messages, maxTokens, recordStat 
 // (citations) stays deterministic regardless of which fetch happens to
 // resolve first.
 /**
+ * Phase 1.5 — direct web browsing of the URLs the latest user message named.
+ *
+ * A COMPLEMENT to the search index, never a replacement: it runs before the
+ * first wave so the pages the user pointed at are numbered first and are in
+ * front of every later phase (gap check, digest, synthesis, validation), and
+ * the wave then runs exactly as it would have. Feedback #67 (chat_logs
+ * #1729): five URLs were pasted with per-URL instructions, and the run
+ * reported one of them "not retrieved by any of the angles run".
+ *
+ * Fail-soft in every branch (invariant 2) — a page that refuses, stalls or
+ * returns something unreadable is one source fewer, never a broken chat.
+ * @param {PipelineCtx} ctx
+ * @param {string[]} urls the URLs the caller already extracted (it needs them
+ *   before triage's branch, so they are not re-derived here)
+ */
+async function runNamedUrlReads(ctx, urls) {
+  const { env, log, emit, state } = ctx;
+  if (!urls?.length) return;
+
+  // Rendered as a SEARCH card rather than a plain step, so the pages read
+  // land in the research trail as the same expandable list of clickable
+  // sources every other leg produces. The client pairs the two events on
+  // `source|query`, so both must carry the identical pair — hence the label
+  // is built once, from the count we have at the start.
+  const label = `${urls.length} linked page${urls.length === 1 ? "" : "s"}`;
+  const card = { round: 0, query: label, source: "named-urls", service: "Direct page read" };
+  emit({ status: { type: "search_start", ...card } });
+
+  let result = null;
+  try {
+    result = await readNamedUrls(env, log, urls);
+  } catch (/** @type {any} */ err) {
+    log.warn("chat.named_urls_failed", { error: err?.message || String(err) });
+  }
+  recordPhase(ctx.model, "fetch", result?.durationMs || 0);
+  const items = result?.items || [];
+  state.namedUrlCount = items.length;
+  const finish = (/** @type {any[]} */ sources) =>
+    emit({
+      status: {
+        type: "search_done",
+        ...card,
+        results: sources.length,
+        duration_ms: result?.durationMs || 0,
+        sources,
+      },
+    });
+  if (!items.length) {
+    // Nothing readable. The card still resolves — a leg that vanishes reads
+    // as a leg that never ran, which is the visibility complaint in the same
+    // feedback entry.
+    finish([]);
+    return;
+  }
+  // The registry and the digest are both capped, and these pages were asked
+  // for BY NAME: widen both so a linked page cannot be pushed out by the
+  // search results that follow it. Same reasoning (and the same feedback-#61
+  // precedent) as the aux-source reserve in absorbAuxResult.
+  widenPlanCapacity(state.plan, items.length);
+  addSources(state, items);
+  finish(items.map((i) => ({ title: i.title, url: i.url })));
+}
+
+/**
  * @param {PipelineCtx} ctx
  * @param {string[]} queries
  * @param {number} round 1 for the initial wave, then one per gap round.
@@ -2455,28 +2579,62 @@ async function runSearches(ctx, queries, round) {
   // the three complaints in feedback #44 ("the arXiv searches took close to a
   // minute"). Results are still absorbed in a fixed order (web, then registry
   // order) so source numbering stays deterministic.
+  //
+  // …UNLESS this request declares `state.webAfterAux` (feedback #69), in which
+  // case both legs are still DISPATCHED together — the latency lesson of #44
+  // is not spent to buy the ordering — but the web leg is ABSORBED second, so
+  // the registry numbers the auxiliary sources ahead of it. That is the whole
+  // of the ordering: for an agent whose evidence is a corpus and whose web leg
+  // only corroborates it, "the literature first, the web after" has to be true
+  // of the numbered list the answer model reads, not merely of the order two
+  // fetches were started in. Declared per request and read generically here —
+  // core never learns which agent asked for it, the same seam as forceAux /
+  // auxOnly.
+  const webLast = state.webAfterAux === true;
   const auxWave = startAuxSearches(ctx, batch, round, lead);
-  if (web) await runWebLeg(ctx, batch, round);
+  const webWave = web ? startWebLeg(ctx, batch, round) : null;
+  if (webWave && !webLast) await webWave();
   const auxItems = await auxWave();
+  if (webWave && webLast) await webWave();
 
   // Fail-soft on the lead itself (invariant 2): "only arXiv" must never become
   // "no sources at all". A leading source that contributed nothing releases
   // the lead — the web leg runs for this same batch, and later waves are
   // ordinary waves again.
   if (lead.length && !auxItems && policy.web) {
-    /** @type {any} */ (state).auxLeadReleased = true;
+    state.auxLeadReleased = true;
     log.info("search.lead_released", { sources: lead, round });
     await runWebLeg(ctx, batch, round);
   }
 }
 
 /**
- * The Exa leg of one wave: every planned query, concurrently.
+ * The Exa leg of one wave, dispatched and awaited in one go. The fail-soft
+ * lead release is its only remaining caller — every ordinary wave goes through
+ * startWebLeg so it can overlap the auxiliary sources.
  * @param {PipelineCtx} ctx
  * @param {string[]} batch
  * @param {number} round
  */
 async function runWebLeg(ctx, batch, round) {
+  await startWebLeg(ctx, batch, round)();
+}
+
+/**
+ * Dispatch the Exa leg of one wave — every planned query, concurrently — and
+ * return the awaiter that absorbs the results into the registry.
+ *
+ * Split in two for the same reason startAuxSearches is: the caller decides
+ * WHEN the results land without deciding when the fetches start. Absorption is
+ * what fixes a source's number, so an agent that wants its corpus numbered
+ * ahead of the web (state.webAfterAux) can have that without either leg
+ * waiting on the other.
+ * @param {PipelineCtx} ctx
+ * @param {string[]} batch
+ * @param {number} round
+ * @returns {() => Promise<void>}
+ */
+function startWebLeg(ctx, batch, round) {
   const { env, log, emit, state } = ctx;
   state.searchCount += batch.length;
   // ISSUED, not planned. `ranQueries` is written by takeSearchBatch before the
@@ -2494,9 +2652,11 @@ async function runWebLeg(ctx, batch, round) {
   // …and every search honours the source the user's "Exa web
   // search" setting selects (state.searchSource — "" = whatever the site is
   // configured to use).
-  const results = await Promise.all(
+  const running = Promise.all(
     batch.map((query) => webSearch(env, log, query, state.plan.searchDepth, { source: state.searchSource || "" })),
   );
+  return async () => {
+  const results = await running;
   for (let i = 0; i < batch.length; i++) {
     const query = batch[i];
     const result = results[i];
@@ -2520,8 +2680,35 @@ async function runWebLeg(ctx, batch, round) {
         cached: !!result.cached,
       },
     });
-    addSources(state, result.items);
+    addSources(state, labelWebItems(state, result.items));
   }
+  };
+}
+
+/**
+ * Stamp this request's web results with the standing caveat the request
+ * declared for them (`state.webSourceNote`), as their FIRST highlight.
+ *
+ * The digest is what the answer model reads, so a caveat has to travel on the
+ * source itself to be reliably applied to it — the same reasoning that puts
+ * "Preprint, not peer-reviewed" at the head of every arXiv item rather than in
+ * a prompt sentence about arXiv. An agent whose evidence is a peer-reviewed
+ * corpus needs its web leg to arrive visibly labelled as the weaker thing it
+ * is, or the numbered list flattens the distinction the agent exists to make.
+ *
+ * Generic: core reads a string off the state and never learns which agent set
+ * it, or why. Most requests set nothing and the items pass through untouched.
+ * @param {PipelineState} state
+ * @param {import('./search-sources.js').SearchSourceItem[]} items
+ * @returns {import('./search-sources.js').SearchSourceItem[]}
+ */
+export function labelWebItems(state, items) {
+  const note = state.webSourceNote;
+  if (typeof note !== "string" || !note.trim() || !Array.isArray(items)) return items || [];
+  return items.map((item) => ({
+    ...item,
+    highlights: [note, ...(Array.isArray(item?.highlights) ? item.highlights : [])],
+  }));
 }
 
 // Auxiliary search sources (src/search-sources.js) alongside a wave's Exa
@@ -2572,6 +2759,24 @@ const DIGEST_CHARS_PER_SOURCE = 1300;
 const DIGEST_CAP_CEILING = 36_000;
 
 /**
+ * Widen the registry AND the digest by `n` sources' worth, clamped at the
+ * ceiling.
+ *
+ * The two caps must move together or the reserve is a lie — see
+ * DIGEST_CHARS_PER_SOURCE above for why (feedback #61: admitting more sources
+ * without paying for their prose pushes the highest-numbered ones out of the
+ * window unread). Both callers — the named-URL reads and the aux-source
+ * reserve — wrote that pairing out by hand, which is one edit away from a
+ * reserve that widens one cap and not the other.
+ * @param {PipelineState['plan']} plan
+ * @param {number} n
+ */
+function widenPlanCapacity(plan, n) {
+  plan.maxSources += n;
+  plan.digestCap = Math.min(plan.digestCap + n * DIGEST_CHARS_PER_SOURCE, DIGEST_CAP_CEILING);
+}
+
+/**
  * One planned aux search: which source runs which of the wave's angles, and
  * which attempt keys its own ladder should skip. Planning is separated from
  * running so the whole wave can be dispatched at once (and so the bookkeeping
@@ -2599,7 +2804,7 @@ const DIGEST_CAP_CEILING = 36_000;
  */
 function leadingSources(ctx) {
   const { state } = ctx;
-  if (/** @type {any} */ (state).auxLeadReleased) return [];
+  if (state.auxLeadReleased) return [];
   // An agent that declines the auxiliary sources cannot be led by one.
   if (!searchPolicyFor(state).auxSources) return [];
   // Read from the CLEAN, pre-enrichment message (see cleanLastUser's note, and
@@ -2630,7 +2835,7 @@ function leadingSources(ctx) {
   // either, same reasoning one step further in: auxOnly is the per-request
   // narrowing an enrichment writes, `requiresContext` the standing one the
   // agent's own spec declares.
-  const only = /** @type {any} */ (state).auxOnly;
+  const only = state.auxOnly;
   return Array.isArray(only) && only.length ? allowed.filter((id) => only.includes(id)) : allowed;
 }
 
@@ -2655,6 +2860,26 @@ function startAuxSearches(ctx, batch, round, lead = []) {
   for (const source of SEARCH_SOURCES) {
     plans.push(...planAuxSource(ctx, source, batch, lead.includes(source.id)));
   }
+  return dispatchAuxPlans(ctx, plans, round);
+}
+
+/**
+ * Fire a planned aux wave and hand back the awaiter that absorbs it.
+ *
+ * The dispatch half of every aux search, in one place: both entry points
+ * (`startAuxSearches` over the whole registry, `runAuxSearch` over one source)
+ * used to carry their own copy, including a byte-identical `search_start`
+ * emit — so the provider-identity rule below was stated twice and could be
+ * fixed in one of them.
+ *
+ * Absorption stays in PLAN ORDER however the fetches resolve, which is what
+ * keeps source numbering deterministic across a wave.
+ * @param {PipelineCtx} ctx
+ * @param {AuxPlan[]} plans
+ * @param {number} round
+ * @returns {() => Promise<number>} awaiter resolving to the item count absorbed
+ */
+function dispatchAuxPlans(ctx, plans, round) {
   // The provider identity rides as source/service (not baked into the query
   // text): the client renders the service name on the card, so hub and web
   // searches are visibly distinct.
@@ -2688,20 +2913,23 @@ function planAuxSource(ctx, source, batch, leading) {
   // built around it) lists that source's id and it runs every turn. Generic by
   // construction — this reads ids off the state and never names one, exactly
   // like the rest of the registry loop.
-  const forced = Array.isArray(/** @type {any} */ (state).forceAux)
-    && /** @type {any} */ (state).forceAux.includes(source.id);
+  const forced = Array.isArray(state.forceAux)
+    && state.forceAux.includes(source.id);
   // `state.auxOnly` is the mirror image and, unlike forceAux, purely
   // NARROWING: when present, only the listed source ids may run this request
   // at all — a source's own intent, and even a lead, cannot get it in.
   //
   // It exists because an agent can be defined by what it must NOT consult as
-  // much as by what it must. The Deep Science agent answers exclusively from
-  // peer-reviewed publications, and its `search.web: false` only stands the
-  // Exa leg down; without this, arXiv would still fire on a physics question
-  // and hand it preprints, which is precisely the thing that agent promises
-  // not to do. Read generically here — ids off the state, no source named —
-  // so it composes with any future agent that needs the same restriction.
-  const only = /** @type {any} */ (state).auxOnly;
+  // much as by what it must. The Deep Science agent's SCIENTIFIC evidence is
+  // peer-reviewed publications; without this, arXiv would still fire on a
+  // physics question and hand it preprints, which is precisely the thing that
+  // agent promises not to do. Note that this narrows the AUXILIARY sources
+  // only: since 2026-08-14 that agent also runs a web leg, behind the
+  // literature and labelled as web reporting (state.webAfterAux /
+  // webSourceNote), and auxOnly has nothing to say about it. Read generically
+  // here — ids off the state, no source named — so it composes with any future
+  // agent that needs the same restriction.
+  const only = state.auxOnly;
   if (Array.isArray(only) && only.length && !only.includes(source.id)) return [];
   // …and the STANDING narrowing beside that per-request one: a source may
   // declare a `requiresContext` naming a context block the answering agent has
@@ -2735,7 +2963,7 @@ function planAuxSource(ctx, source, batch, leading) {
   // hf for answers"). Read generically: ids come off the state, and the
   // cross-wave dedup below still stops repeat searches, so a raised cap buys
   // DISTINCT queries, never the same one twice.
-  const override = /** @type {any} */ (state).auxMaxPerRequest?.[source.id];
+  const override = state.auxMaxPerRequest?.[source.id];
   const declared = (leading ? source.leadMaxPerRequest ?? source.maxPerRequest : source.maxPerRequest);
   const cap = typeof override === "number" && override > 0 ? override : (declared ?? MAX_AUX_SEARCHES_DEFAULT);
   // A leading source takes as many of the wave's angles as its ceiling allows;
@@ -2748,29 +2976,30 @@ function planAuxSource(ctx, source, batch, leading) {
   // them — no re-fetching identical result sets), while the fresh keys
   // themselves must stay searchable this call.
   const before = new Set(st.ran);
-  /** @type {AuxPlan[]} */
-  const plans = [];
+  /** @type {{ source: import('./search-sources.js').SearchSource, query: string, key: string }[]} */
+  const picks = [];
   // The wave's most on-topic angles for THIS source (pickQuery — arxiv scores
   // the planner's angles against what the user actually asked; hf prefers the
   // entity/identifier-bearing one, the web→hub insight flow); batch[0] when
   // the source doesn't care. Each pick is removed from the pool, so a leading
   // source's several searches are DISTINCT angles rather than the same one.
   let pool = batch.filter((q) => !st.ran.has(keyOf(q)));
-  while (plans.length < want && pool.length) {
+  while (picks.length < want && pool.length) {
     const query = source.pickQuery ? source.pickQuery(pool, ctx.lastUser) : pool[0];
     const key = keyOf(query);
     pool = pool.filter((q) => keyOf(q) !== key);
     if (st.ran.has(key)) continue;
     st.ran.add(key);
     st.count++;
-    plans.push({ source, query, key, skipKeys: before });
+    picks.push({ source, query, key });
   }
   // A wave's picks run CONCURRENTLY, so each one's ladder must also skip its
   // siblings' keys — otherwise two of them can collapse onto the same rung and
-  // fetch identical results.
-  const picked = plans.map((p) => p.key);
-  for (const p of plans) p.skipKeys = new Set([...before, ...picked.filter((k) => k !== p.key)]);
-  return plans;
+  // fetch identical results. Built here rather than assigned in the loop above
+  // and overwritten here, so `skipKeys` has exactly one writer: the sibling set
+  // is not knowable until every pick is chosen.
+  const picked = picks.map((p) => p.key);
+  return picks.map((p) => ({ ...p, skipKeys: new Set([...before, ...picked.filter((k) => k !== p.key)]) }));
 }
 
 /**
@@ -2783,7 +3012,14 @@ function planAuxSource(ctx, source, batch, leading) {
 async function runOneAuxSearch(ctx, plan) {
   const { env, log } = ctx;
   try {
-    const r = await plan.source.search(env, log, plan.query, { skipKeys: plan.skipKeys });
+    // `asked` is the CLEAN, pre-enrichment user message (gateLastUser), handed
+    // to every source for the same reason pickQuery already gets it: a planned
+    // angle is triage's paraphrase, and a source whose behaviour turns on what
+    // the READER asked cannot read it off that paraphrase without inheriting
+    // triage's word choices. Pre-enrichment for the reason leadingSources
+    // documents at length — prose this pipeline appended to the message must
+    // never be able to trip a gate the user did not trip themselves.
+    const r = await plan.source.search(env, log, plan.query, { skipKeys: plan.skipKeys, asked: ctx.gateLastUser });
     // Provider spend the source reported (search-sources.js `spend`): the
     // hosted dense tiers cost Berget money per leg, and a request runs several
     // — multiple angles, two corpora, several gap rounds — so it ACCUMULATES
@@ -2839,8 +3075,6 @@ function absorbAuxResult(ctx, plan, result, round) {
   // compete for real slots instead of leftovers.
   if (result.items.length && !st.reserved) {
     st.reserved = true;
-    const widened = Math.min(result.items.length, 8);
-    state.plan.maxSources += widened;
     // Widen the DIGEST in step, or the reserve is a lie. The digest is a
     // character budget filled in arrival order, so admitting more sources
     // without paying for their prose does not add them to what synthesis
@@ -2853,10 +3087,7 @@ function absorbAuxResult(ctx, plan, result, round) {
     // interview and the subject's own university page sat unread at [17]
     // through [26]. Absence of evidence is the one thing a research tool
     // must never invent, so the reserve now covers both caps.
-    state.plan.digestCap = Math.min(
-      state.plan.digestCap + widened * DIGEST_CHARS_PER_SOURCE,
-      DIGEST_CAP_CEILING,
-    );
+    widenPlanCapacity(state.plan, Math.min(result.items.length, 8));
   }
   addSources(state, result.items);
 }
@@ -2870,12 +3101,6 @@ function absorbAuxResult(ctx, plan, result, round) {
  * @param {number} round
  */
 async function runAuxSearch(ctx, source, batch, round) {
-  const plans = planAuxSource(ctx, source, batch, false);
-  if (!plans.length) return;
-  for (const p of plans) {
-    ctx.emit({ status: { type: "search_start", round, query: p.key || p.query, source: p.source.id, service: p.source.service } });
-  }
-  const results = await Promise.all(plans.map((p) => runOneAuxSearch(ctx, p)));
-  for (let i = 0; i < plans.length; i++) absorbAuxResult(ctx, plans[i], results[i], round);
+  await dispatchAuxPlans(ctx, planAuxSource(ctx, source, batch, false), round)();
 }
 

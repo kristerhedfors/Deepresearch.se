@@ -25,7 +25,13 @@ import {
   looksPythonish,
   sightingsFromLog,
   sightingsFromTranscript,
+  sightingsFromExport,
+  serializeSightings,
+  sightingsFileName,
+  exportSightings,
+  listSightingFiles,
   mergeSightings,
+  seedIds,
   parseCorpus,
   serializeCorpus,
   harvest,
@@ -338,4 +344,274 @@ test("parseArgs: flags and defaults", () => {
   assert.equal(o.transcriptsEnabled, false);
   assert.equal(o.dryRun, true);
   assert.throws(() => parseArgs(["--nope"]), /unknown argument/);
+});
+
+// --- the seed-collision guard -------------------------------------------------
+// docs/PYGRAM.md §7 keeps the two corpus files separate so expectation cannot
+// inflate the frequency table that decides build order. Separate FILES did not
+// achieve that: the conformance runner executes every seed program, and while
+// the capture shim was on PATH for those runs each execution was logged as a
+// real invocation and merged back. The first harvest ended up with 138 of 197
+// "observed" programs byte-identical to seed programs, 139 at count=8.
+
+test("mergeSightings: a sighting identical to a seed program is dropped", () => {
+  const seedProg = 'print("seeded")';
+  const seen = new Set([programId(seedProg)]);
+  const sightings = [
+    { key: "shim:l#1", source: "shim", program: seedProg, argv_tail: [], ts: "2026-01-01T00:00:00Z" },
+    { key: "shim:l#2", source: "shim", program: 'print("organic")', argv_tail: [], ts: "2026-01-01T00:00:01Z" },
+  ];
+  const { records, skipped } = mergeSightings([], sightings, seen);
+  assert.equal(skipped.seedCollision, 1);
+  assert.deepEqual(records.map((r) => r.program), ['print("organic")']);
+});
+
+test("mergeSightings: the guard is whitespace-insensitive, like every other id", () => {
+  // Normalization is what makes the id stable, so a re-logged seed program that
+  // picked up a trailing space or CRLF must not slip past the guard.
+  const seen = new Set([programId('print("x")')]);
+  const { records, skipped } = mergeSightings([], [
+    { key: "shim:l#1", source: "shim", program: 'print("x")  \r\n', argv_tail: [], ts: "2026-01-01T00:00:00Z" },
+  ], seen);
+  assert.equal(skipped.seedCollision, 1);
+  assert.equal(records.length, 0);
+});
+
+test("mergeSightings: the guard stops an ALREADY-laundered record's count growing", () => {
+  // The 138 contaminated records stay in the committed corpus — this is a guard
+  // against new contamination, not a rewrite of evidence — but re-running the
+  // conformance suite must no longer inflate them.
+  const prog = 'print("seeded")';
+  const existing = [{ id: programId(prog), program: prog, argv_tail: [], source: "shim", first_seen: "2026-01-01T00:00:00Z", count: 8, stdin_sample: null }];
+  const sightings = Array.from({ length: 5 }, (_, i) => ({ key: `shim:l#${i}`, source: "shim", program: prog, argv_tail: [], ts: "2026-02-01T00:00:00Z" }));
+  const { records, skipped } = mergeSightings(existing, sightings, new Set([programId(prog)]));
+  assert.equal(skipped.seedCollision, 5);
+  assert.equal(records.length, 1);
+  assert.equal(records[0].count, 8, "count must not grow from seed-identical sightings");
+});
+
+test("mergeSightings: with no seed set the old behaviour is unchanged", () => {
+  const { records, skipped } = mergeSightings([], [
+    { key: "shim:l#1", source: "shim", program: 'print("x")', argv_tail: [], ts: "2026-01-01T00:00:00Z" },
+  ]);
+  assert.equal(skipped.seedCollision, 0);
+  assert.equal(records.length, 1);
+});
+
+test("seedIds: reads the seed corpus, tolerates a missing file", () => {
+  const dir = mkdtempSync(join(tmpdir(), "pygram-seed-"));
+  const f = join(dir, "seed.jsonl");
+  writeFileSync(f, JSON.stringify({ id: "x", program: 'print("a")' }) + "\n" + JSON.stringify({ id: "y", program: 'print("b")' }) + "\n");
+  const ids = seedIds(f);
+  assert.equal(ids.size, 2);
+  assert.ok(ids.has(programId('print("a")')));
+  assert.equal(seedIds(join(dir, "missing.jsonl")).size, 0);
+  assert.equal(seedIds("").size, 0);
+});
+
+// A hand-applied `tags` array is the ONLY field on a corpus record that cannot
+// be re-derived from a sighting, and the conformance runner reads it to exempt
+// an entry it must not compare (tests/pygram/conformance.mjs — nondeterministic,
+// seeded, interpreter-specific, implementation-defined). The merge rebuilds
+// every record from an explicit field list, so `tags` has to be carried through
+// deliberately: before it was, tagging an entry "worked" until the next harvest
+// silently erased it and CI went red with no diff to explain why. Found on the
+// json-error-message divergence (pygram/lib/README.md #19).
+test("mergeSightings: a hand-applied tag survives the rebuild", () => {
+  // The id must be the program's own hash, as it is in the real corpus —
+  // otherwise a later sighting of the same program lands on a different id and
+  // the two never meet, which is a property of the test rather than the code.
+  const tagged = {
+    id: programId("print(1)"), program: "print(1)", argv_tail: [], source: "shim",
+    first_seen: "2026-01-01T00:00:00Z", count: 2, stdin_sample: null,
+    tags: ["implementation-defined"],
+  };
+  const { records } = mergeSightings([tagged], []);
+  assert.deepEqual(records[0].tags, ["implementation-defined"]);
+  // …and survives a sighting landing on the same program, which is the case
+  // that actually happens: the entry keeps being invoked.
+  const again = mergeSightings([tagged], [
+    { key: "shim:l#9", source: "shim", program: "print(1)", argv_tail: [], ts: "2026-02-01T00:00:00Z" },
+  ]);
+  assert.equal(again.records.length, 1, "the sighting merged onto the tagged record");
+  assert.deepEqual(again.records[0].tags, ["implementation-defined"]);
+  // A sighting carries no tags of its own, and an untagged record carries no
+  // `tags` key at all — see the projection's note on churn and round-tripping.
+  const fresh = mergeSightings([], [
+    { key: "shim:l#1", source: "shim", program: "print(2)", argv_tail: [], ts: "2026-01-01T00:00:00Z" },
+  ]);
+  assert.equal("tags" in fresh.records[0], false);
+  // Junk in the field is dropped rather than trusted.
+  const junk = mergeSightings([{ ...tagged, tags: ["ok", 7, null, { a: 1 }] }], []);
+  assert.deepEqual(junk.records[0].tags, ["ok"]);
+});
+
+test("serializeCorpus: tags round-trip, and an untagged line is byte-identical", () => {
+  const untagged = { id: "u", program: "print(1)", argv_tail: [], source: "shim", first_seen: "t", count: 1, stdin_sample: null };
+  // The 200-odd untagged records must not all churn when one entry is tagged,
+  // so the key is emitted only when there is something to emit.
+  assert.equal(
+    serializeCorpus([untagged]).trim(),
+    JSON.stringify({ id: "u", program: "print(1)", argv_tail: [], source: "shim", first_seen: "t", count: 1, stdin_sample: null }),
+  );
+  assert.equal(serializeCorpus([{ ...untagged, tags: [] }]).trim().includes("tags"), false);
+  assert.deepEqual(parseCorpus(serializeCorpus(mergeSightings([untagged], []).records)), mergeSightings([untagged], []).records);
+  const round = parseCorpus(serializeCorpus([{ ...untagged, tags: ["seeded"] }]));
+  assert.deepEqual(round[0].tags, ["seeded"]);
+});
+
+test("parseArgs: the seed guard has a path and an escape hatch", () => {
+  assert.equal(parseArgs(["--seed", "/s"]).seed, "/s");
+  assert.equal(parseArgs(["--no-seed-guard"]).seed, "");
+});
+
+// --- durability: the per-session sightings files -------------------------------
+// The log lives outside the repo and these containers are ephemeral, so evidence
+// only survives if it reaches the tree. Folding it into the single shared
+// corpus.jsonl did not achieve that: every session rewrites that one file, so
+// branches conflict and the merge never happens. Measured 2026-08-14 — of the 19
+// branches cut since the corpus landed, 2 carried growth and neither reached
+// main. The durable unit is one file per session, which nothing else writes.
+
+test("sightingsFromLog: the key is namespaced by the session that wrote the record", () => {
+  // A line number is unique only inside one container's log. Without the
+  // session, session B's line 1 and session A's line 1 are the same key, and
+  // one of them is silently dropped as a duplicate when both are folded in.
+  const text =
+    JSON.stringify({ kind: "python_invocation", ts: "2026-08-13T10:00:00Z", session: "sess-A", program: "print(1)" }) +
+    "\n" +
+    JSON.stringify({ kind: "bash_command", ts: "2026-08-13T10:00:01Z", session: "sess-A", command: `python3 -c 'print(2)'` }) +
+    "\n";
+  const s = sightingsFromLog(text, "invocations");
+  assert.deepEqual(s.map((x) => x.key), ["shim:sess-A#1", "hook:sess-A#2#0"]);
+  assert.deepEqual(s.map((x) => x.session), ["sess-A", "sess-A"]);
+});
+
+test("sightingsFromLog: a record with no session falls back to the tag", () => {
+  const s = sightingsFromLog(logLine({ program: "print(1)" }) + "\n", "t");
+  assert.equal(s[0].key, "shim:t#1");
+  assert.equal(s[0].session, null);
+});
+
+test("sightingsFromTranscript: the session comes from the transcript filename", () => {
+  const text =
+    JSON.stringify({
+      timestamp: "2026-08-12T10:00:00Z",
+      message: { content: [{ type: "tool_use", id: "toolu_1", name: "Bash", input: { command: `python3 -c 'print(1)'` } }] },
+    }) + "\n";
+  assert.equal(sightingsFromTranscript(text, "proj/sess-B.jsonl")[0].session, "sess-B");
+});
+
+test("sightingsFileName: a session id becomes a safe filename", () => {
+  assert.equal(sightingsFileName("42d12fc7-74e1-5f47"), "42d12fc7-74e1-5f47.jsonl");
+  assert.equal(sightingsFileName("../../etc/passwd"), ".._.._etc_passwd.jsonl");
+  assert.equal(sightingsFileName(""), "unknown.jsonl");
+});
+
+test("sightingsFromExport / serializeSightings: a published file round-trips", () => {
+  const s = [{ key: "shim:sess-A#1", source: "shim", session: "sess-A", program: "print(1)", argv_tail: ["x"], ts: "2026-08-13T10:00:00Z" }];
+  assert.deepEqual(sightingsFromExport(serializeSightings(s)), [{ ...s[0], stdin_sample: null }]);
+  assert.deepEqual(sightingsFromExport("not json\n{}\n"), [], "corrupt or programless lines are dropped, not thrown");
+});
+
+function exportFixture(records) {
+  const dir = mkdtempSync(join(tmpdir(), "pygram-export-"));
+  const log = join(dir, "invocations.jsonl");
+  writeFileSync(log, records.map((r) => JSON.stringify({ kind: "python_invocation", ts: "2026-08-13T10:00:00.000Z", session: "sess-A", ...r })).join("\n") + "\n");
+  return { dir, log, sightings: join(dir, "sightings"), opts: { log, transcriptsEnabled: false, sightings: join(dir, "sightings"), seed: "", dryRun: false } };
+}
+
+test("exportSightings: one file per session, named for it", () => {
+  const f = exportFixture([{ program: "print(1)" }, { program: "print(2)" }]);
+  const r = exportSightings(f.opts);
+  assert.equal(r.added, 2);
+  assert.equal(r.files.length, 1);
+  assert.equal(r.files[0].path, join(f.sightings, "sess-A.jsonl"));
+  assert.deepEqual(listSightingFiles(f.sightings), [join(f.sightings, "sess-A.jsonl")]);
+});
+
+test("exportSightings: re-running is a union by key, byte-identical when nothing is new", () => {
+  const f = exportFixture([{ program: "print(1)" }]);
+  exportSightings(f.opts);
+  const first = readFileSync(join(f.sightings, "sess-A.jsonl"), "utf8");
+  const second = exportSightings(f.opts);
+  assert.equal(second.added, 0);
+  assert.equal(second.files[0].changed, false);
+  assert.equal(readFileSync(join(f.sightings, "sess-A.jsonl"), "utf8"), first);
+
+  // A later turn in the same session appends to the log; only the new line lands.
+  writeFileSync(f.log, readFileSync(f.log, "utf8") + JSON.stringify({ kind: "python_invocation", ts: "2026-08-13T11:00:00Z", session: "sess-A", program: "print(9)" }) + "\n");
+  const third = exportSightings(f.opts);
+  assert.equal(third.added, 1);
+  assert.equal(sightingsFromExport(readFileSync(join(f.sightings, "sess-A.jsonl"), "utf8")).length, 2);
+});
+
+test("exportSightings: published files are redacted and seed-guarded BEFORE they are committed", () => {
+  // These files are committed, so the filter runs here — the pre-commit secret
+  // scan is the backstop, not the filter. And a seed-identical sighting must
+  // not be published at all, or it re-enters the corpus at the next fold and
+  // inflates the very frequency table that decides build order.
+  const fake = "sk-" + "A".repeat(32);
+  const seedProg = 'print("seeded")';
+  const f = exportFixture([{ program: `t="${fake}"` }, { program: seedProg }, { program: 'print("organic")' }]);
+  const seedFile = join(f.dir, "seed.jsonl");
+  writeFileSync(seedFile, JSON.stringify({ id: "s", program: seedProg }) + "\n");
+  const r = exportSightings({ ...f.opts, seed: seedFile });
+  assert.equal(r.skipped.seedCollision, 1);
+  assert.equal(r.redactions, 1);
+  const body = readFileSync(join(f.sightings, "sess-A.jsonl"), "utf8");
+  assert.equal(body.includes(fake), false, "the raw token must never reach a committed file");
+  assert.ok(body.includes("[REDACTED sk-A 35 chars]"));
+  assert.equal(body.includes("seeded"), false);
+});
+
+test("exportSightings: --dry-run writes nothing", () => {
+  const f = exportFixture([{ program: "print(1)" }]);
+  const r = exportSightings({ ...f.opts, dryRun: true });
+  assert.equal(r.added, 1);
+  assert.equal(existsSync(join(f.sightings, "sess-A.jsonl")), false);
+});
+
+test("harvest: a published sightings file carries evidence whose log is gone", () => {
+  const f = exportFixture([{ program: "print(1)" }, { program: "print(2)" }]);
+  exportSightings(f.opts);
+  // The container is reclaimed: the log goes with it, the committed file stays.
+  const corpus = join(f.dir, "corpus.jsonl");
+  const r = harvest({ log: join(f.dir, "gone.jsonl"), transcriptsEnabled: false, sightingsEnabled: true, sightings: f.sightings, corpus, dryRun: false });
+  assert.equal(r.sightingFiles, 1);
+  assert.deepEqual(parseCorpus(readFileSync(corpus, "utf8")).map((x) => x.program).sort(), ["print(1)", "print(2)"]);
+});
+
+test("harvest: the live log and this session's own published file do not double-count", () => {
+  // The fold reads both, and both describe the same invocations. Sighting keys
+  // are what stop it counting twice — which is exactly why the key had to stop
+  // being a bare line number.
+  const f = exportFixture([{ program: "print(1)" }, { program: "print(1)" }, { program: "print(1)" }]);
+  exportSightings(f.opts);
+  const corpus = join(f.dir, "corpus.jsonl");
+  const r = harvest({ log: f.log, transcriptsEnabled: false, sightingsEnabled: true, sightings: f.sightings, corpus, dryRun: false });
+  assert.equal(r.sightings, 6, "three from the log, three read back from the published file");
+  const recs = parseCorpus(readFileSync(corpus, "utf8"));
+  assert.equal(recs.length, 1);
+  assert.equal(recs[0].count, 3, "three invocations happened, so the count is three");
+});
+
+test("harvest: --no-sightings and a missing sightings dir are both fine", () => {
+  const f = exportFixture([{ program: "print(1)" }]);
+  const corpus = join(f.dir, "corpus.jsonl");
+  const off = harvest({ log: f.log, transcriptsEnabled: false, sightingsEnabled: false, sightings: f.sightings, corpus, dryRun: true });
+  assert.equal(off.sightingFiles, 0);
+  const missing = harvest({ log: f.log, transcriptsEnabled: false, sightingsEnabled: true, sightings: join(f.dir, "nope"), corpus, dryRun: true });
+  assert.equal(missing.sightingFiles, 0);
+  assert.deepEqual(listSightingFiles(join(f.dir, "nope")), []);
+  assert.deepEqual(listSightingFiles(""), []);
+});
+
+test("parseArgs: the export path has its own flags", () => {
+  const o = parseArgs(["--export", "--sightings", "/s"]);
+  assert.equal(o.exportOnly, true);
+  assert.equal(o.sightings, "/s");
+  assert.equal(parseArgs([]).exportOnly, false);
+  assert.equal(parseArgs(["--no-sightings"]).sightingsEnabled, false);
+  assert.ok(parseArgs([]).sightings.endsWith(join("tests", "pygram", "sightings")));
 });

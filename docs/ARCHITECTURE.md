@@ -160,7 +160,7 @@ rest of the document elaborates.
 | **On-device model** | browser, WebGPU | downloaded weights in OPFS | the browser only | answers with no provider and no server in the path |
 | **Worker** (`src/index.js`) | Cloudflare edge | request state only | the operator | routing, the identity gate, every server capability |
 | **Agent registry** (`src/agent-registry.js`, `sdk/AGENTS.json` served as `public/introspect/agents.json`) | Worker, cached per isolate | the shipped agent specs — no user data at all | anyone; it is a public build artifact | resolving the turn's agent and its **capability**, which decides which corpora, which retrieval blocks and which third-party intelligence the turn may reach. Consulted on every request since 2026-08-13 |
-| **Research pipeline** (`src/pipeline.js`) | Worker | the request while it runs | the operator (`chat_logs` unless incognito) | triage → search → gap → synthesis → validation, deterministic, no function calling |
+| **Research pipeline** (`src/pipeline.js`) | Worker | the request while it runs | the operator (`chat_logs` unless incognito) | triage → read linked pages → search → gap → synthesis → validation, deterministic, no function calling |
 | **Grants & tokens** (`src/websearch.js`, `src/proxy*.js`, `src/server-token.js`, `src/pool-token.js`) | Worker + D1 | a `jti`, a quota, a counter — **no content** | the operator; the minting account | lending a Se/cure session bounded capability without giving it an account |
 | **Knowledge inbox** (`src/knowledge.js`) | Worker + D1 | sealed conclusion envelopes | the workspace admin at import; **the server can decrypt** (agent key in D1) | aggregating findings from many participants into one place |
 | **D1** | Cloudflare | accounts, quotas, config, `chat_logs`, meters, boards, game saves | the operator | identity, quotas, logging, every metered surface |
@@ -532,7 +532,8 @@ flowchart TD
     QZ -- no --> T["Phase 1 · Triage (JSON)<br/>direct | clarify | research plan<br/>+ complexity · sub-questions · quiz flag"]
     T -- direct --> DR["Stream direct answer"] --> DONE
     T -- clarify --> CL["Emit one clarifying question"] --> DONE
-    T -- "research (or triage failed → fallback query)" --> SW["Phase 2 · Search wave<br/>Exa + registry sources (HF Hub)<br/>dedupe · cap · source registry"]
+    T -- "research (or triage failed → fallback query)" --> NU["Phase 1.5 · Read linked pages<br/>URLs the message named, fetched<br/>direct from the Worker (named-urls.js)"]
+    NU --> SW["Phase 2 · Search wave<br/>Exa + registry sources (HF Hub)<br/>dedupe · cap · source registry"]
     SW --> GAP{"Phase 3 · Gap loop<br/>fitsDeadline? searches < cap?"}
     GAP -- "budget cut / cap" --> SY
     GAP -- proceed --> GC["Gap check (JSON)<br/>audit coverage vs source digest<br/>+ sub-questions · domain dominance"]
@@ -2040,15 +2041,19 @@ as bespoke subsystems:
   **The roster is specific, with no general member** (owner directive,
   2026-08-13). `research` / mode `normal` — the catch-all labeled Deep Research
   — is retired; `science` is the default and the terminal fallback, so an
-  unrouted request gets a policy (literature-first, `search.web: false`) rather
+  unrouted request gets a policy (literature-first — the peer-reviewed record
+  leads and is numbered first, with a knob-gated web leg behind it since
+  2026-08-14) rather
   than open-web research, and `scholar` alone declares `requires: []` because a
   fallback must be reachable by any caller. `capability.context` became
   EXECUTED with the same change: Deep Science exclusively owns arXiv, PubMed and
   the peer-reviewed leg (`palaeogenomics` keeps `literature-pubmed`), and Cyber
   exclusively owns host intelligence, street imagery, the two OSINT methods and
-  the OWASP corpus. Deep Science (`docs/SCHOLAR.md`) answers from peer-reviewed
-  publications with the web leg structurally off and integrates Google Scholar
-  as far as Scholar's robots.txt permits.
+  the OWASP corpus. Deep Science (`docs/SCHOLAR.md`) rests its scientific claims
+  on peer-reviewed publications, runs a knob-gated web leg behind that record
+  for what the record cannot report on itself (retractions, corrections,
+  who reported what and when), and integrates Google Scholar as far as
+  Scholar's robots.txt permits.
 - **DeepResearch Platform SDK** (`sdk/MANIFEST.json`, `docs/DISTILLSDK.md`)
   — 34 modules, one buildable skill each, for distilling a whole
   DeepResearch.se-like platform. Module ids map back to the repo files that

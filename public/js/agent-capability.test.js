@@ -732,6 +732,23 @@ test("the implied-requirement table agrees with the real registry", () => {
   assert.deepEqual(requirementsFor(findAgent(realRegistry(), "agent-builder")), ["developer_mode"]);
 });
 
+test("Deep Science declares a web leg the reader's knob still governs", () => {
+  // feedback #69 (2026-08-14): the agent used to declare `search.web: false`,
+  // which capSearch could only narrow — so the knob was inert and the open
+  // record was unreachable, including for the one question (what a retracted
+  // paper claimed) that ONLY the open record answers. The declaration is now
+  // true, which restores the knob as the decider rather than making the web
+  // leg unconditional.
+  const cap = resolveCapability(findAgent(realRegistry(), "scholar"));
+  assert.equal(cap.search.web, true, "the declaration no longer vetoes the knob");
+  assert.equal(capSearch(cap, { web: true }).web, true, "knob on → the leg runs");
+  assert.equal(capSearch(cap, { web: false }).web, false, "knob off → it does not");
+  // The auxiliary half is untouched: the literature legs are what it leads with.
+  assert.equal(cap.search.auxSources, true);
+  // And it stays the terminal fallback, reachable by any caller.
+  assert.deepEqual(cap.requires, []);
+});
+
 test("a self-declared `requires: []` cannot buy a privileged selection", () => {
   // THE escalation this stage exists to close. The routing gate checks what a
   // spec claims to need; a spec is data, and hostile data claims to need

@@ -44,6 +44,7 @@ import assert from "node:assert/strict";
 import test, { describe } from "node:test";
 
 import { extensionEnrichments, getExtension, resolveExtensionState } from "./extensions.js";
+import { enrichmentApplies } from "./enrichment.js";
 import { runGoogleMapsEnrichment } from "./maps-enrichment.js";
 import { withFakeFetch } from "./test-helpers/fetch.js";
 
@@ -352,7 +353,9 @@ describe("the knob gates the runner at the registry seam", () => {
     await withFakeFetch(googleRoutes(), async (s) => {
       stub = s;
       for (const e of extensionEnrichments()) {
-        if (!e.enabled(state)) continue;
+        // The gate as runEnrichments applies it — the knob AND the agent's
+        // declared context block, composed in the one place that may compose them.
+        if (!enrichmentApplies(e, state)) continue;
         convo = await e.run({
           env: envWithKeys(),
           log: { info() {}, warn() {}, error() {}, debug() {} },
@@ -395,7 +398,7 @@ describe("the knob gates the runner at the registry seam", () => {
     const conversation = convoOf(ADDRESS_MESSAGE);
     await withFakeFetch(googleRoutes(), async (stub) => {
       for (const e of extensionEnrichments()) {
-        assert.equal(e.enabled(state), false, e.id);
+        assert.equal(enrichmentApplies(e, state), false, e.id);
       }
       assert.deepEqual(stub.requests, []);
     });

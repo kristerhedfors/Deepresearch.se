@@ -54,6 +54,7 @@ import assert from "node:assert/strict";
 import test, { describe } from "node:test";
 
 import { extensionEnrichments } from "./extensions.js";
+import { enrichmentApplies } from "./enrichment.js";
 import { runShodanEnrichment } from "./shodan-enrichment.js";
 import { runShodanLookup } from "./shodan.js";
 import { fakeLog } from "./test-helpers/env.js";
@@ -274,18 +275,50 @@ describe("silent — nothing to look up", () => {
     await assertSilent("Tell me about the history of Rome.");
   });
 
+  /**
+   * The service was named outright and NOTHING could be resolved. No request
+   * goes out and no block is appended — but unlike a turn that was never
+   * about host intelligence, the miss is VISIBLE.
+   *
+   * Silence here is what produced feedback #68 (2026-08-14): the answer had
+   * no way to know Shodan was never called, and described a shodan.io search
+   * page that the WEB search had returned as though it were Shodan output.
+   * @param {string} text
+   */
+  async function assertNamedUnresolved(text, opts) {
+    const { out, steps, conversation, slice, stub } = await run(text, opts);
+    assert.equal(out, conversation, "the SAME array reference comes back — no block appended");
+    assert.equal(steps.length, 2, "one start step and one done step");
+    assert.deepEqual(steps[0].slice(0, 2), ["start", "shodan"]);
+    assert.deepEqual(steps[1].slice(0, 2), ["done", "shodan"]);
+    assert.match(steps[1][2], /nothing to look up/i);
+    // Distinct from "none" so chat_logs can tell "the turn wasn't about host
+    // intelligence" from "the user asked for Shodan and we had no target".
+    assert.deepEqual(slice, { on: true, count: 0, intent: "named-unresolved" });
+    assert.deepEqual(stub.requests, [], "nothing goes out to Shodan");
+    return { out, steps };
+  }
+
   // Verbatim production messages (chat_logs #1671, #1672) that NAME the
   // service and clearly intend a lookup. With NO prior turn to walk back to
   // there is still nothing to query — inventing a target would be worse than
-  // answering without one — so these stay silent. What changed on 2026-08-07
-  // is that the same two messages AFTER a turn naming a host now fire; see
-  // the walk-back tests below.
-  test("'Shodan' alone, first message, has nothing to walk back to — silent", async () => {
-    await assertSilent(PROD_QUIET_1);
+  // answering without one — so no request goes out. What changed on
+  // 2026-08-07 is that the same two messages AFTER a turn naming a host now
+  // fire (see the walk-back tests below); what changed on 2026-08-14 is that
+  // the dead end is now SHOWN rather than swallowed.
+  test("'Shodan' alone, first message, has nothing to walk back to — visible dead end", async () => {
+    await assertNamedUnresolved(PROD_QUIET_1);
   });
 
-  test("'Run through shodan to answer!' as a first message — silent", async () => {
-    await assertSilent(PROD_QUIET_2);
+  test("'Run through shodan to answer!' as a first message — visible dead end", async () => {
+    await assertNamedUnresolved(PROD_QUIET_2);
+  });
+
+  test("a turn that never mentioned the service stays fully silent", async () => {
+    // The asymmetry is the point: only an explicit ask earns a step. An
+    // ordinary question must not grow a Shodan line in its research trail.
+    await assertSilent("Who founded the company?");
+    await assertSilent("What ports does a typical mail server use?");
   });
 
   test("only private / loopback / link-local / CGNAT IPs is silent", async () => {
@@ -361,6 +394,114 @@ describe("walk-back — a host named in an EARLIER turn", () => {
     assert.equal(out, conversation);
     assert.deepEqual(steps, []);
     assert.deepEqual(stub.requests, []);
+  });
+});
+
+// ============================================================================
+// THE ORG WALK-BACK — the subject blind spot, closed 2026-08-14 (feedback #68)
+// ============================================================================
+
+describe("org walk-back — the SUBJECT an earlier turn established", () => {
+  const SEARCH = /api\.shodan\.io\/shodan\/host\/search/;
+
+  /** The verbatim chat_logs #1741 conversation. */
+  const PROD_68 = [
+    { role: "user", content: "Quick basalt osint network-perspective" },
+    { role: "assistant", content: "Basalt here resolves to KyleDerZweite/basalt on GitHub…" },
+    { role: "user", content: "No the swedish company basalt ab" },
+    { role: "assistant", content: "Basalt AB (org.nr 556778-7956) is a Swedish consultancy…" },
+    { role: "user", content: "Shodan view" },
+  ];
+
+  /** @param {object} payload what /shodan/host/search answers */
+  const searchRoutes = (payload) => [[SEARCH, payload]];
+
+  test("'Shodan view' searches the company the conversation was about", async () => {
+    // Before this route the same turn resolved NOTHING: shodan_intent came
+    // back "none", no request went out, and the answer then described a
+    // shodan.io page returned by the WEB search as if it were Shodan output.
+    const { out, steps, stub, slice } = await run(null, {
+      conversation: PROD_68,
+      routes: searchRoutes({
+        total: 2,
+        matches: [
+          { ip_str: "203.0.113.10", port: 443, org: "Basalt AB", location: { country_name: "Sweden" } },
+          { ip_str: "203.0.113.11", port: 22, org: "Basalt AB", location: { country_name: "Sweden" } },
+        ],
+      }),
+    });
+    assert.equal(slice.intent, "org-walk-back");
+    assert.equal(
+      new URL(stub.matching(SEARCH)[0].url).searchParams.get("query"),
+      'org:"basalt ab"',
+      "the org the user established two turns earlier",
+    );
+    assert.deepEqual(steps.map((s) => s[0]), ["start", "done"]);
+    assert.match(steps[1][2], /from an earlier message/, "the subject was not typed in this turn");
+    assert.notEqual(out, PROD_68, "the block landed");
+  });
+
+  test("only the org query crosses the wire — never the conversation (invariant 4)", async () => {
+    const { stub } = await run(null, {
+      conversation: PROD_68,
+      routes: searchRoutes({ total: 0, matches: [] }),
+    });
+    for (const rec of stub.requests) {
+      const url = new URL(rec.url);
+      assert.equal(url.searchParams.get("query"), 'org:"basalt ab"');
+      // None of the user's actual words, and nothing the assistant said.
+      assert.doesNotMatch(rec.url, /osint|network-perspective|swedish|org\.nr|556778/i);
+    }
+  });
+
+  test("no matches still reports honestly rather than going quiet", async () => {
+    const { steps, slice } = await run(null, {
+      conversation: PROD_68,
+      routes: searchRoutes({ total: 0, matches: [] }),
+    });
+    assert.equal(slice.count, 0);
+    assert.match(steps[1][2], /no hosts match org:"basalt ab" \(from an earlier message\)/);
+  });
+
+  test("a host named earlier outranks an org named earlier", async () => {
+    const conversation = [
+      { role: "user", content: "attack surface of Basalt AB at basalt.se" },
+      { role: "assistant", content: "…" },
+      { role: "user", content: "Shodan" },
+    ];
+    const { slice, stub } = await run(null, {
+      conversation,
+      routes: routes({ "basalt.se": "203.0.113.10" }, { "203.0.113.10": hostPayload("203.0.113.10") }),
+    });
+    assert.equal(slice.intent, "walk-back");
+    assert.deepEqual(stub.matching(SEARCH), [], "no org search when a literal host is available");
+  });
+
+  test("without host-intel intent the subject is left alone", async () => {
+    // The org walk-back is gated on intent for the same reason the host
+    // walk-back is: an ordinary follow-up must not bill a Shodan search for
+    // whatever company the conversation happens to be about.
+    const conversation = [
+      { role: "user", content: "No the swedish company basalt ab" },
+      { role: "assistant", content: "…" },
+      { role: "user", content: "who is their CEO?" },
+    ];
+    const { out, steps, stub } = await run(null, { conversation });
+    assert.equal(out, conversation);
+    assert.deepEqual(steps, []);
+    assert.deepEqual(stub.requests, []);
+  });
+
+  test("assistant turns are never the source of an org (invariant 4)", async () => {
+    const conversation = [
+      { role: "user", content: "who makes this?" },
+      { role: "assistant", content: "It is built by Acme Inc and hosted at Bahnhof AB." },
+      { role: "user", content: "Shodan" },
+    ];
+    const { steps, stub, slice } = await run(null, { conversation });
+    assert.deepEqual(stub.requests, [], "nothing the ASSISTANT named goes to Shodan");
+    assert.equal(slice.intent, "named-unresolved");
+    assert.match(steps[1][2], /nothing to look up/i);
   });
 });
 
@@ -817,24 +958,24 @@ describe("wiring — the extension registry actually reaches this runner", () =>
     // knob the test was originally written for.
     const e = shodanEntry();
     const cyber = { context: ["host-intel"] };
-    assert.equal(e.enabled({ ext: { shodan: { on: true, count: 0 } }, capability: cyber }), true);
-    assert.equal(e.enabled({ ext: { shodan: { on: false, count: 0 } }, capability: cyber }), false);
+    assert.equal(enrichmentApplies(e, { ext: { shodan: { on: true, count: 0 } }, capability: cyber }), true);
+    assert.equal(enrichmentApplies(e, { ext: { shodan: { on: false, count: 0 } }, capability: cyber }), false);
     // Knob on, no declaration — every agent that is not Cyber.
-    assert.equal(e.enabled({ ext: { shodan: { on: true, count: 0 } } }), false);
-    assert.equal(e.enabled({ ext: { shodan: { on: true, count: 0 } }, capability: { context: [] } }), false);
-    assert.equal(e.enabled({ ext: {}, capability: cyber }), false);
-    assert.equal(e.enabled({}), false);
+    assert.equal(enrichmentApplies(e, { ext: { shodan: { on: true, count: 0 } } }), false);
+    assert.equal(enrichmentApplies(e, { ext: { shodan: { on: true, count: 0 } }, capability: { context: [] } }), false);
+    assert.equal(enrichmentApplies(e, { ext: {}, capability: cyber }), false);
+    assert.equal(enrichmentApplies(e, {}), false);
   });
 
   test("with the knob OFF the runner is never reached — no step, no request", async () => {
     const e = shodanEntry();
     const state = { ext: { shodan: { on: false, count: 0 } } };
-    assert.equal(e.enabled(state), false);
+    assert.equal(enrichmentApplies(e, state), false);
     // And if something did call run() anyway, prove nothing was consumed by
     // asserting through the same path the pipeline uses.
     const steps = [];
     await withFakeFetch(routes({}), async (stub) => {
-      if (e.enabled(state)) {
+      if (enrichmentApplies(e, state)) {
         await e.run({
           env: { SHODAN_API_KEY: KEY },
           log: fakeLog(),
@@ -896,7 +1037,10 @@ describe("wiring — the extension registry actually reaches this runner", () =>
       "none",
       "ran, matched nothing",
     );
-    for (const intent of ["latest-host", "walk-back", "org-search", "filter-query"]) {
+    for (const intent of [
+      "latest-host", "walk-back", "org-search", "filter-query",
+      "org-walk-back", "named-unresolved",
+    ]) {
       assert.equal(
         extensionLogMeta({ ext: { shodan: { on: true, count: 1, intent } } }).shodan_intent,
         intent,

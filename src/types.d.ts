@@ -319,6 +319,9 @@ export interface RequestState {
   searchCount: number;
   /** Searches served from the Exa result cache (not billed). */
   cachedSearchCount: number;
+  /** Pages read directly because the user's message named their URL
+   * (src/named-urls.js). 0 when the message linked nothing readable. */
+  namedUrlCount: number;
   /** Search waves that ran (initial + gap rounds). */
   iterations: number;
   /** Queries PLANNED this request, for in-request dedup. Written before the
@@ -327,6 +330,32 @@ export interface RequestState {
   /** Queries actually DISPATCHED to a provider. The subset of ranQueries that
    * genuinely happened — the only one the answer model may be shown. */
   issuedQueries?: Set<string>;
+  /**
+   * The auxiliary-search CONTROL fields: how an agent built AROUND a search
+   * source narrows the wave on its way in. Declared here, on the shape both
+   * channels build and every enrichment receives, because the writers are
+   * enrichments and the readers are the orchestrator — so leaving them
+   * undeclared meant nothing checked the two against each other.
+   *
+   * All four hold source IDS, never source names: core reads them generically
+   * and never learns which source it is deciding for (invariant 7).
+   *
+   * `forceAux` runs the listed sources whether or not the message engages
+   * them; `auxOnly` narrows the wave to the listed ones (the mirror image);
+   * `auxMaxPerRequest` raises one source's per-request search ceiling.
+   */
+  forceAux?: string[];
+  auxOnly?: string[];
+  auxMaxPerRequest?: Record<string, number>;
+  /**
+   * …and the two ORDERING/LABELLING declarations beside them (feedback #69):
+   * `webAfterAux` absorbs the web leg's results AFTER the auxiliary ones, so
+   * the declared sources occupy the low citation numbers; `webSourceNote` is
+   * the caveat every web source carries into the digest, so a distinction the
+   * agent promises survives onto the sources themselves.
+   */
+  webAfterAux?: boolean;
+  webSourceNote?: string;
   /** Numbered source registry, deduped by URL. */
   sources: SourceEntry[];
   /** URL -> registry entry, for dedup. */

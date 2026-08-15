@@ -42,7 +42,9 @@ import {
   extractSearchFilters,
   pickShodanTarget,
   shodanIntent,
+  shodanNamedInLatest,
   walkBackHost,
+  walkBackOrg,
 } from "./shodan-text.js";
 
 /** One user turn — the shape the enrichment runner passes in. */
@@ -670,6 +672,28 @@ test("extractOrgQuery", async (t) => {
     ]) assert.equal(extractOrgQuery(input), expected, input);
   });
 
+  await t.test("a preposition cue requires a CAPITALIZED run", () => {
+    // The cue regex needs `i` (a message may open "Hos Bahnhof…"), but in
+    // unicode mode `i` also makes `\p{Lu}` match lowercase — so for a while a
+    // single `iu` regex accepted any run of words after a cue, and "attack
+    // surface of the hotel spa" billed a Shodan search for "the hotel spa".
+    // The cue is matched case-insensitively, the run case-sensitively.
+    assert.equal(extractOrgQuery("attack surface of Basalt"), "Basalt");
+    assert.equal(extractOrgQuery("Hos Bahnhof, vilka portar är öppna?"), "Bahnhof");
+    for (const s of [
+      "attack surface of the hotel spa",
+      "open ports at the office",
+      "attackyta mot den gamla servern",
+      "exposure of our internal network",
+    ]) assert.equal(extractOrgQuery(s), "", s);
+  });
+
+  await t.test("a later cue is still reached when the first one leads nowhere", () => {
+    // The two-step match iterates every cue rather than giving up on the
+    // first: here "for " is followed by a lowercase run and "at " is not.
+    assert.equal(extractOrgQuery("open ports for the site at Basalt"), "Basalt");
+  });
+
   await t.test(
     "the verbatim production phrasing resolves to the company, not the host",
     () => {
@@ -711,11 +735,153 @@ test("extractOrgQuery", async (t) => {
     assert.equal(extractOrgQuery(`"${"B".repeat(60)}"`), "B".repeat(60));
   });
 
+  await t.test("company forms typed in lowercase (feedback #68)", () => {
+    // A user typing on a phone does not capitalize. Before this route,
+    // "basalt ab" resolved nothing at all and the org search never fired.
+    for (const [input, expected] of [
+      ["shodan on basalt ab", "basalt ab"],
+      ["No the swedish company basalt ab", "basalt ab"],
+      ["open ports at acme inc", "acme inc"],
+      ["attack surface of foo ltd", "foo ltd"],
+      ["exposure of bar llc", "bar llc"],
+      ["known CVEs at siemens gmbh", "siemens gmbh"],
+      ["exposed services at tesco plc", "tesco plc"],
+      // A capitalized name with a lowercase form, and the reverse.
+      ["shodan on Basalt ab", "Basalt ab"],
+      ["shodan on basalt AB", "basalt AB"],
+    ]) assert.equal(extractOrgQuery(input), expected, input);
+  });
+
+  await t.test("company forms in lowercase, Swedish (invariant 6)", () => {
+    for (const [input, expected] of [
+      ["attackyta mot basalt ab", "basalt ab"],
+      ["portar hos foo ltd", "foo ltd"],
+      ["öppna portar hos basalt ab", "basalt ab"],
+      ["exponering för acme inc", "acme inc"],
+      ["det svenska bolaget basalt ab", "basalt ab"],
+    ]) assert.equal(extractOrgQuery(input), expected, input);
+  });
+
+  await t.test("the lowercase route takes ONE word, never the sentence", () => {
+    // The failure this guards: reaching further back turns the verbatim
+    // production message into "the swedish company basalt ab" (5 words),
+    // which blows the word cap and resolves to nothing at all — exactly the
+    // silent miss feedback #68 was filed on.
+    assert.equal(extractOrgQuery("No the swedish company basalt ab"), "basalt ab");
+    assert.equal(extractOrgQuery("look at the big norwegian firm acme inc"), "acme inc");
+  });
+
+  await t.test("a function word before the form is never the company", () => {
+    // Without the lead stoplist these resolve orgs called "company ab",
+    // "the ab" and "bolaget ab", each one a billed Shodan search for nothing.
+    for (const s of [
+      "shodan on the ab",
+      "attack surface of company ab",
+      "portar hos bolaget ab",
+      "attackyta mot företaget ab",
+      "OSINT for our group inc",
+    ]) assert.equal(extractOrgQuery(s), "", s);
+  });
+
+  await t.test("lowercase forms that collide with ordinary words stay out", () => {
+    // `as` (English), `sa` (Swedish "said"), `spa`, and the noun-built forms
+    // `company`/`group`/`holdings` are excluded from the lowercase tier on
+    // purpose — each would turn ordinary prose into a Shodan search.
+    for (const s of [
+      "ports open on basalt as configured",
+      "han sa att portar var öppna",
+      "attack surface of the hotel spa",
+      "open ports at our group",
+    ]) assert.equal(extractOrgQuery(s), "", s);
+  });
+
   await t.test("junk input returns an empty string without throwing", () => {
     for (const bad of [null, undefined, "", 0, 42, {}, [], () => {}, NaN]) {
       assert.equal(extractOrgQuery(bad), "", String(bad));
     }
     assert.equal(extractOrgQuery("x".repeat(20000)), "");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// walkBackOrg + shodanNamedInLatest (feedback #68)
+// ---------------------------------------------------------------------------
+
+test("walkBackOrg", async (t) => {
+  await t.test("finds the organization an earlier user turn established", () => {
+    assert.equal(
+      walkBackOrg([
+        { role: "user", content: "Quick basalt osint network-perspective" },
+        { role: "assistant", content: "Basalt is a Go CLI for OSINT." },
+        { role: "user", content: "No the swedish company basalt ab" },
+        { role: "assistant", content: "Basalt AB is a Swedish consultancy." },
+        { role: "user", content: "Shodan view" },
+      ]),
+      "basalt ab",
+    );
+  });
+
+  await t.test("newest-first — the most recently named subject wins", () => {
+    assert.equal(
+      walkBackOrg([
+        { role: "user", content: "attack surface of Acme Inc" },
+        { role: "user", content: "now Basalt AB instead" },
+        { role: "user", content: "Shodan" },
+      ]),
+      "Basalt AB",
+    );
+  });
+
+  await t.test("the latest turn is skipped — that is route (b)/(c)'s job", () => {
+    assert.equal(walkBackOrg([{ role: "user", content: "attack surface of Basalt AB" }]), "");
+  });
+
+  await t.test("assistant turns are never scanned (invariant 4)", () => {
+    // An answer is full of third-party names; walking those back would search
+    // Shodan for whatever the site happened to cite. Same rule as walkBackHost.
+    assert.equal(
+      walkBackOrg([
+        { role: "user", content: "who makes this?" },
+        { role: "assistant", content: "It is built by Acme Inc and hosted at Bahnhof AB." },
+        { role: "user", content: "Shodan" },
+      ]),
+      "",
+    );
+  });
+
+  await t.test("bounded — an org further back than the walk-back window is not reached", () => {
+    const turns = [{ role: "user", content: "attack surface of Basalt AB" }];
+    for (let i = 0; i < 20; i++) turns.push({ role: "user", content: `follow-up ${i}` });
+    turns.push({ role: "user", content: "Shodan" });
+    assert.equal(walkBackOrg(turns), "");
+  });
+
+  await t.test("junk input returns an empty string without throwing", () => {
+    for (const bad of [null, undefined, "", 0, 42, {}, [{}], [null], [{ role: "user" }]]) {
+      assert.equal(walkBackOrg(bad), "", String(bad));
+    }
+  });
+});
+
+test("shodanNamedInLatest", async (t) => {
+  await t.test("true only when the LATEST user turn names the service", () => {
+    assert.equal(shodanNamedInLatest(u("Shodan view")), true);
+    assert.equal(shodanNamedInLatest(u("run it through shodan")), true);
+    assert.equal(shodanNamedInLatest(u("what ports are open?")), false);
+    assert.equal(
+      shodanNamedInLatest([
+        { role: "user", content: "shodan please" },
+        { role: "assistant", content: "..." },
+        { role: "user", content: "thanks" },
+      ]),
+      false,
+    );
+  });
+
+  await t.test("junk input is false, never a throw", () => {
+    for (const bad of [null, undefined, "", 0, 42, {}, [], [{}], [null]]) {
+      assert.equal(shodanNamedInLatest(bad), false, String(bad));
+    }
   });
 });
 
@@ -733,7 +899,61 @@ test("SHODAN_MATCHER_NAMES is the precedence order", () => {
     "latest-host",
     "walk-back",
     "org-search",
+    "org-walk-back",
   ]);
+});
+
+test('pickShodanTarget — chat_logs #1741 (2026-08-14): "Shodan view" (feedback #68)', async (t) => {
+  // The verbatim production conversation. Shodan was named outright, the
+  // subject was established two turns earlier, and NOTHING resolved:
+  // shodan_intent came back "none", the service was never called, and the
+  // answer then described a shodan.io page the WEB search had returned as
+  // though it were Shodan output.
+  const conversation = [
+    { role: "user", content: "Quick basalt osint network-perspective" },
+    { role: "assistant", content: "Basalt here resolves to KyleDerZweite/basalt on GitHub…" },
+    { role: "user", content: "No the swedish company basalt ab" },
+    { role: "assistant", content: "Basalt AB (org.nr 556778-7956) is a Swedish consultancy…" },
+    { role: "user", content: "Shodan view" },
+  ];
+
+  await t.test("resolves the subject the conversation established", () => {
+    const got = pickShodanTarget(conversation);
+    assert.ok(got, "must resolve a target — this is the whole point of #68");
+    assert.equal(got.intent, "org-walk-back");
+    assert.equal(got.kind, "search");
+    assert.equal(got.query, 'org:"basalt ab"');
+    assert.equal(got.followUp, true, "the subject came from an earlier message");
+  });
+
+  await t.test("only the org query crosses the wire, never the message (invariant 4)", () => {
+    const got = pickShodanTarget(conversation);
+    assert.doesNotMatch(got.query, /Shodan view|osint|network-perspective|swedish/i);
+    assert.deepEqual(got.hostnames, []);
+    assert.deepEqual(got.ips, []);
+  });
+
+  await t.test("the walk-back still needs intent — it never fires on its own", () => {
+    const noIntent = [
+      { role: "user", content: "No the swedish company basalt ab" },
+      { role: "assistant", content: "…" },
+      { role: "user", content: "who is their CEO?" },
+    ];
+    assert.equal(pickShodanTarget(noIntent), null);
+  });
+
+  await t.test("a host named earlier still outranks an org named earlier", () => {
+    // walk-back (hosts) sits above org-walk-back: a literal host is the more
+    // specific answer to "and its open ports?".
+    const both = [
+      { role: "user", content: "attack surface of Basalt AB at basalt.se" },
+      { role: "assistant", content: "…" },
+      { role: "user", content: "Shodan" },
+    ];
+    const got = pickShodanTarget(both);
+    assert.equal(got.intent, "walk-back");
+    assert.deepEqual(got.hostnames, ["basalt.se"]);
+  });
 });
 
 test("pickShodanTarget — the three verbatim production messages", async (t) => {

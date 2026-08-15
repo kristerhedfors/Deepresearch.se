@@ -479,6 +479,17 @@ export function stopGeneration() {
 // stats when the server kept them — append it to history, purge the
 // server's recovery copy, and persist.
 async function deliverRecoveredAnswer(turn, recovered, requestId, opts) {
+  // Rebuild the research trail BEFORE the text, so the steps sit above the
+  // answer exactly where a live run leaves them. Until 2026-08-14 a recovered
+  // answer replayed text + stats only, so a run whose stream dropped came
+  // back as prose with its whole trail missing — feedback #67, "i cannot
+  // explorre the research steps taken here in the response as i used to",
+  // filed on a 244-second run from a phone. The events are the same status
+  // objects the live stream sent, so they go through the same renderers;
+  // anything unrecognized falls through untouched (the protocol's
+  // forward-compatibility rule), and a row stored before the column existed
+  // simply carries no trail.
+  replayResearchTrail(turn, recovered.trail);
   setText(turn, recovered.text);
   if (recovered.stats) {
     turn.model = recovered.stats.model || "";
@@ -497,6 +508,38 @@ async function deliverRecoveredAnswer(turn, recovered, requestId, opts) {
   history.push({ role: "assistant", content: recovered.text });
   ackAnswer(requestId);
   await persistConversation(opts);
+}
+
+/**
+ * Replay a recovered run's status events into the activity UI, then fold them
+ * into the usual single summary bar.
+ *
+ * Only the four step/search types are stored and replayed. The recovery path
+ * deliberately does NOT re-run the side-effecting renderers a live stream
+ * drives off other event types (map and Street View embeds, quizzes, workflow
+ * graphs, build slugs): those either carry state this turn no longer has or
+ * are already reconstructed from the answer text.
+ * @param {any} turn
+ * @param {any[]} trail
+ */
+function replayResearchTrail(turn, trail) {
+  if (!Array.isArray(trail) || !trail.length) return;
+  for (const s of trail) {
+    if (!s || typeof s.type !== "string") continue;
+    try {
+      if (s.type === "search_start") startSearchStep(turn, s);
+      else if (s.type === "search_done") finishSearchStep(turn, s);
+      else if (s.type === "step_start") startGenericStep(turn, s.id, s.label || "");
+      else if (s.type === "step_done") finishGenericStep(turn, s);
+      recordResearchEvent(turn, s);
+    } catch {
+      // One malformed event must not cost the whole trail — or the answer.
+    }
+  }
+  // The live path collapses in its `finally` BEFORE the answer is delivered,
+  // i.e. before these steps existed. Collapse again so the rebuilt trail ends
+  // up folded the same way a live run's does.
+  collapseActivity(turn);
 }
 
 // A send that produced NO answer at all — an empty completion, a route that

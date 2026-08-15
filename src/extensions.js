@@ -310,10 +310,16 @@ export function emptyExtensionState() {
  * @returns {Enrichment[]}
  */
 export function extensionEnrichments() {
+  // Both halves of the AND-gate, each in the form the enrichment registry
+  // reads it: the per-account knob stays a closure (it reads this extension's
+  // own slice of state.ext), the agent declaration is handed over as DATA so
+  // the runner applies it the same way it applies a core row's. The ordering
+  // guarantee — knob first, capability only if the knob is on — is the
+  // runner's, and is the same for both kinds of row.
   return EXTENSIONS.map((e) => ({
     id: e.id,
-    enabled: (state) =>
-      e.enabled(sliceOf(state, e.id)) && capHasContext(/** @type {any} */ (state)?.capability, e.contextBlock),
+    enabled: (state) => e.enabled(sliceOf(state, e.id)),
+    contextBlock: e.contextBlock,
     run: (c) => e.run(c, sliceOf(c.state, e.id)),
   }));
 }

@@ -1,17 +1,24 @@
 // @ts-check
 // THE GOOGLE SCHOLAR ENRICHMENT — the half of the Deep Science agent that talks
-// to Google Scholar itself, and the switch that makes the agent's "peer-reviewed
-// sources only" promise operational.
+// to Google Scholar itself, and the switch that makes the agent's "the
+// peer-reviewed record leads" promise operational.
 //
 // It does three things:
 //
 //  1. **Restricts the turn to the scholar source.** Every turn, whatever the
 //     message says: `state.forceAux` turns the peer-reviewed search leg on and
-//     `state.auxOnly` turns every other auxiliary source off. Together with the
-//     agent spec's `search.web: false` — which cannot be re-enabled by a
-//     request, because capSearch composes by narrowing in both directions —
-//     that is the whole "nothing but peer-reviewed literature" guarantee, and
-//     it is three declarations rather than a promise in a prompt.
+//     `state.auxOnly` turns every other auxiliary source off. That is the whole
+//     "no other corpus" guarantee, and it is declarations rather than a promise
+//     in a prompt.
+//
+//     Until 2026-08-14 a third declaration sat beside them — the agent spec's
+//     `search.web: false`, which a request could not re-enable because capSearch
+//     composes by narrowing in both directions — and it made the guarantee
+//     "nothing but peer-reviewed literature". Feedback #69 retired that one:
+//     the web leg now runs, SECOND and labelled (see webAfterAux /
+//     WEB_SOURCE_NOTE below), so the guarantee is narrower and more honest —
+//     the peer-reviewed record leads and is numbered first, and no web source
+//     may stand in for it on a scientific claim.
 //
 //     ONE widening, added 2026-08-13 with the owner directive that made the
 //     agent roster specific: this agent is now the sole owner of the arXiv and
@@ -73,9 +80,9 @@ const EUROPEPMC_SOURCE_ID = "europepmc";
  * The literature sources this ASK opens up beyond the peer-reviewed leg, in
  * registry order — empty for almost every turn.
  *
- * The promise in this agent's tagline is peer-reviewed sources only, and the
- * default turn keeps it exactly as it always did: `auxOnly` is the scholar leg
- * alone. What changed on 2026-08-13 is ownership, not the default — Deep
+ * The promise in this agent's tagline is that the peer-reviewed record is what
+ * scientific claims rest on, and the default turn keeps its literature side
+ * exactly as it always was: `auxOnly` is the scholar leg alone. What changed on 2026-08-13 is ownership, not the default — Deep
  * Science became the only agent that can reach arXiv or PubMed at all, and an
  * owner of a corpus that can never consult it owns nothing. So the reader may
  * ask for the preprint record BY NAME and get it:
@@ -110,10 +117,28 @@ export function preprintSources(asked) {
   return extra;
 }
 
+/**
+ * The standing caveat stamped onto every web result this agent collects
+ * (pipeline.js labelWebItems puts it at the head of the source's highlights).
+ *
+ * It names the three jobs the web leg is actually here to do, because the
+ * question that prompted it — what did the retracted amyloid papers claim, and
+ * how much of the later literature rests on them — is answerable from the open
+ * record and NOT from the reviewed record: a retraction notice, an
+ * investigation and a citation analysis are reporting, not findings. Saying
+ * "not peer-reviewed" alone would read as "discount this", which is the wrong
+ * instruction for the source that holds the answer.
+ */
+export const WEB_SOURCE_NOTE =
+  "Web result — NOT peer-reviewed. Use it to corroborate, date or contextualise the peer-reviewed sources above (retractions and corrections, who reported what and when, funding and institutional context), and say plainly that it is press or web reporting when the answer leans on it. A scientific claim itself still needs the reviewed literature; where the two disagree, report the disagreement rather than resolving it in the web source's favour.";
+
 /** Per-request ceiling on peer-reviewed searches. Higher than the registry
- * default for the same reason the Models agent raises the Hub's: with the web
- * leg structurally down, the gap rounds' follow-up angles have nowhere else to
- * go, and cross-wave dedup means a higher ceiling buys DISTINCT searches. */
+ * default for the same reason the Models agent raises the Hub's: this is the
+ * agent's own corpus and the gap rounds' follow-up angles are aimed at it,
+ * while cross-wave dedup means a higher ceiling buys DISTINCT searches. It was
+ * raised when the web leg was structurally down (before 2026-08-14) and stays
+ * raised now that the leg is back: a corroborating web leg is not a reason to
+ * search the literature less. */
 export const SCHOLAR_SEARCHES_PER_REQUEST = 6;
 
 const PROFILE_TIMEOUT_MS = 9000;
@@ -411,16 +436,32 @@ export async function runScholarMetricsEnrichment(c) {
   // agent is built on. The widened ids below are permitted, not forced — each
   // still has to satisfy its own intent gate in planAuxSource, which the ask
   // that named it does by construction.
-  /** @type {any} */ (state).forceAux = [SCHOLAR_SOURCE_ID];
+  state.forceAux = [SCHOLAR_SOURCE_ID];
   // …and `auxOnly` is the peer-reviewed leg plus whatever preprint record the
   // reader named outright (preprintSources — the default is the bare
   // [SCHOLAR_SOURCE_ID] this agent has always used).
-  /** @type {any} */ (state).auxOnly = [SCHOLAR_SOURCE_ID, ...preprintSources(asked)];
+  state.auxOnly = [SCHOLAR_SOURCE_ID, ...preprintSources(asked)];
   // The raised ceiling stays keyed to the peer-reviewed leg only. A widened
   // source keeps its own registry cap (and the leading ceiling if the ask named
   // it as THE place to look) — this agent leaning harder on its own source is
   // not a reason to lean harder on a corpus it just borrowed for one turn.
-  /** @type {any} */ (state).auxMaxPerRequest = { [SCHOLAR_SOURCE_ID]: SCHOLAR_SEARCHES_PER_REQUEST };
+  state.auxMaxPerRequest = { [SCHOLAR_SOURCE_ID]: SCHOLAR_SEARCHES_PER_REQUEST };
+  // The web leg runs SECOND, and arrives labelled (feedback #69, 2026-08-14:
+  // "deep science needs web search as well but should start with research
+  // sources and then validate with help from web search"). Both halves of that
+  // are declarations core reads generically, like the three above.
+  //
+  // `webAfterAux` orders ABSORPTION, not dispatch — the two legs still overlap,
+  // so the ordering costs no wall clock — and absorption is what fixes a
+  // source's number, so the peer-reviewed record occupies [1..n] and the web
+  // follows it. The reader's `web_search` knob still decides whether the leg
+  // runs at all; this only says where its results land when it does.
+  state.webAfterAux = true;
+  // …and this is the caveat every web source carries into the digest. The
+  // agent's promise changed from "peer-reviewed sources only" to "peer-reviewed
+  // evidence, corroborated against the open record", and the distinction only
+  // survives into the answer if it travels on the sources themselves.
+  state.webSourceNote = WEB_SOURCE_NOTE;
 
   /** @type {string[]} */
   const blocks = [];

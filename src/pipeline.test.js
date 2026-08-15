@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { isTransientConnectStatus, contextOverflowMessage } from "./answer-stream.js";
 import { collectConflicts } from "./pipeline-inputs.js";
-import { searchPolicyFor, subquestionsAreIndependent } from "./pipeline.js";
+import { labelWebItems, searchPolicyFor, subquestionsAreIndependent } from "./pipeline.js";
 import { looksLikeClarifyTurn, normalizeTriage } from "./triage.js";
 import { lastAssistantText } from "./conversation.js";
 
@@ -521,8 +521,13 @@ describe("the web-search knob gates Exa only — depth still runs over other sou
     // decides whether it runs at all.
     const runSearches = src.slice(src.indexOf("async function runSearches"), src.indexOf("async function runWebLeg"));
     assert.match(runSearches, /const web = policy\.web && !lead\.length;/);
-    assert.match(runSearches, /if \(web\) await runWebLeg\(ctx, batch, round\);/);
-    const webLeg = src.slice(src.indexOf("async function runWebLeg"), src.indexOf("const MAX_AUX_SEARCHES_DEFAULT"));
+    // The leg is DISPATCHED behind the gate (`web ? startWebLeg(…) : null`)
+    // and awaited on whichever side of the aux wave this request ordered it —
+    // so the gate is the ternary, and both awaits are null-guarded by it.
+    assert.match(runSearches, /const webWave = web \? startWebLeg\(ctx, batch, round\) : null;/);
+    assert.match(runSearches, /if \(webWave && !webLast\) await webWave\(\);/);
+    assert.match(runSearches, /if \(webWave && webLast\) await webWave\(\);/);
+    const webLeg = src.slice(src.indexOf("function startWebLeg"), src.indexOf("const MAX_AUX_SEARCHES_DEFAULT"));
     assert.match(webLeg, /webSearch\(env, log, query, state\.plan\.searchDepth, \{ source: state\.searchSource \|\| "" \}\)/);
     assert.match(webLeg, /state\.searchCount \+= batch\.length/);
   });
@@ -537,12 +542,56 @@ describe("the web-search knob gates Exa only — depth still runs over other sou
     // took close to a minute").
     const runSearches = src.slice(src.indexOf("async function runSearches"), src.indexOf("async function runWebLeg"));
     const startIdx = runSearches.indexOf("const auxWave = startAuxSearches(ctx, batch, round, lead);");
-    const webIdx = runSearches.indexOf("if (web) await runWebLeg(ctx, batch, round);");
+    const webStartIdx = runSearches.indexOf("const webWave = web ? startWebLeg(ctx, batch, round) : null;");
+    const firstAwait = runSearches.indexOf("if (webWave && !webLast) await webWave();");
     const finishIdx = runSearches.indexOf("const auxItems = await auxWave();");
-    assert.ok(startIdx >= 0 && webIdx > startIdx, "aux wave is dispatched before the Exa leg is awaited");
-    assert.ok(finishIdx > webIdx, "aux results are absorbed after the Exa leg, so numbering stays deterministic");
-    // The dispatch itself is outside any `web` gate.
-    assert.ok(startIdx < runSearches.indexOf("if (web)"), "aux dispatch is not inside the Exa gate");
+    assert.ok(startIdx >= 0 && webStartIdx > startIdx, "aux wave is dispatched before the Exa leg is dispatched");
+    assert.ok(firstAwait > webStartIdx, "…and BOTH are dispatched before either is awaited");
+    assert.ok(finishIdx > firstAwait, "by default aux results are absorbed after the Exa leg, so numbering stays deterministic");
+    // The dispatch itself is outside any `web` gate — `webWave` is null when
+    // the knob is off, and only the AWAITS are guarded on it.
+    assert.ok(startIdx < webStartIdx, "aux dispatch is not inside the Exa gate");
+  });
+
+  test("a request may stamp its web results with a standing caveat", () => {
+    // The second half of feedback #69. The digest is what the answer model
+    // reads, so a caveat only reliably attaches to a source by travelling ON
+    // it — the same reasoning that puts "Preprint, not peer-reviewed" at the
+    // head of every arXiv item instead of in a prompt sentence about arXiv.
+    const note = "Web result — NOT peer-reviewed.";
+    const items = [{ url: "https://e.com/a", title: "A", highlights: ["first", "second"] }];
+    const out = labelWebItems(/** @type {any} */ ({ webSourceNote: note }), items);
+    assert.deepEqual(out[0].highlights, [note, "first", "second"], "the caveat leads");
+    assert.deepEqual(items[0].highlights, ["first", "second"], "the source item is not mutated");
+    // A source with no highlights at all still carries it.
+    assert.deepEqual(
+      labelWebItems(/** @type {any} */ ({ webSourceNote: note }), [{ url: "u", title: "t" }])[0].highlights,
+      [note],
+    );
+    // Most requests declare nothing, and those items pass through untouched.
+    for (const state of [{}, { webSourceNote: "" }, { webSourceNote: "   " }, { webSourceNote: 7 }]) {
+      assert.deepEqual(labelWebItems(/** @type {any} */ (state), items), items);
+    }
+    // Fail-soft on the shape core was handed (invariant 2).
+    assert.deepEqual(labelWebItems(/** @type {any} */ ({ webSourceNote: note }), /** @type {any} */ (null)), []);
+  });
+
+  test("a request may order the web leg LAST, without either leg waiting on the other", () => {
+    // feedback #69: "deep science needs web search as well but should start
+    // with research sources and then validate with help from web search".
+    // Ordering is a property of ABSORPTION (which fixes a source's number),
+    // never of dispatch — buying the ordering with the serial latency of
+    // feedback #44 would be trading one report for the other.
+    const runSearches = src.slice(src.indexOf("async function runSearches"), src.indexOf("async function runWebLeg"));
+    assert.match(runSearches, /const webLast = state\.webAfterAux === true;/);
+    const webStartIdx = runSearches.indexOf("const webWave = web ? startWebLeg(ctx, batch, round) : null;");
+    const auxAwaitIdx = runSearches.indexOf("const auxItems = await auxWave();");
+    const lateAwaitIdx = runSearches.indexOf("if (webWave && webLast) await webWave();");
+    assert.ok(lateAwaitIdx > auxAwaitIdx, "the late absorption happens after the aux wave lands");
+    assert.ok(webStartIdx < auxAwaitIdx, "…but the web leg was still dispatched before the aux wave was awaited");
+    // Generic: core reads a boolean off the state and never learns which agent
+    // set it, the same seam as forceAux / auxOnly.
+    assert.ok(!/scholar|science/i.test(runSearches), "runSearches names no agent or source");
   });
 
   test("a source the user names by NAME leads the wave, and the lead fails soft", () => {
@@ -573,7 +622,7 @@ describe("the web-search knob gates Exa only — depth still runs over other sou
     // Science agent restricting itself to the peer-reviewed leg) cannot lead
     // it either: a lead planAuxSource will then refuse to plan would stand the
     // web leg down and spend the wave on nothing.
-    assert.match(leading, /state\)\.auxOnly;\n\s*return Array\.isArray\(only\) && only\.length \? allowed\.filter\(/);
+    assert.match(leading, /\bstate\.auxOnly;\n\s*return Array\.isArray\(only\) && only\.length \? allowed\.filter\(/);
     assert.doesNotMatch(leading, /arxiv|\bhf\b|hugging|scholar/i);
   });
 
@@ -615,7 +664,7 @@ describe("the web-search knob gates Exa only — depth still runs over other sou
     // research answer paths must now carry the forced sources' findings.
     const fn = src.slice(src.indexOf("async function runForcedAuxSearches"), src.indexOf("async function runSourceResearch(ctx)"));
     // Generic: ids come off the state, no source is named here.
-    assert.match(fn, /state\)\.forceAux/);
+    assert.match(fn, /\bstate\.forceAux\b/);
     assert.match(fn, /for \(const source of SEARCH_SOURCES\)[\s\S]*forced\.includes\(source\.id\)[\s\S]*runAuxSearch\(ctx, source, batch, 1\)/);
     assert.doesNotMatch(fn, /\bhf\b|hugging/i);
     // The agent's own auxSources declaration still outranks the force.
@@ -644,7 +693,7 @@ describe("the web-search knob gates Exa only — depth still runs over other sou
     // hf". The override is read off the state by id — core names no source —
     // and only ever RAISES the registry's own default.
     const plan = src.slice(src.indexOf("function planAuxSource(ctx, source"), src.indexOf("async function runOneAuxSearch"));
-    assert.match(plan, /state\)\.auxMaxPerRequest\?\.\[source\.id\]/);
+    assert.match(plan, /\bstate\.auxMaxPerRequest\?\.\[source\.id\]/);
     assert.match(plan, /typeof override === "number" && override > 0 \? override : \(declared \?\? MAX_AUX_SEARCHES_DEFAULT\)/);
     // …and the registry's own ceilings — the ordinary one, and the higher one
     // a source declares for when it LEADS (feedback #44) — are what `declared`
@@ -766,12 +815,21 @@ describe("auxiliary source gates read the clean (pre-enrichment) user message", 
 // past the cut.
 describe("the aux registry reserve widens the digest with it", () => {
   const src = readFileSync(new URL("./pipeline.js", import.meta.url), "utf8");
-  const reserve = src.slice(src.indexOf("if (result.items.length && !st.reserved)"));
+  const widen = src.slice(src.indexOf("function widenPlanCapacity"));
 
   test("both caps move together, by the same widening", () => {
-    assert.match(reserve.slice(0, 1200), /state\.plan\.maxSources \+= widened;/);
-    assert.match(reserve.slice(0, 1600), /state\.plan\.digestCap = Math\.min\(/);
-    assert.match(reserve.slice(0, 1600), /DIGEST_CAP_CEILING,/);
+    // The pairing lives in ONE function now, so this pins it there…
+    assert.match(widen.slice(0, 400), /plan\.maxSources \+= n;/);
+    assert.match(widen.slice(0, 400), /plan\.digestCap = Math\.min\(plan\.digestCap \+ n \* DIGEST_CHARS_PER_SOURCE, DIGEST_CAP_CEILING\)/);
+    // …and this is the half the two hand-written copies could never assert:
+    // no OTHER site may widen the registry, because a site that widened it
+    // alone would be a reserve that admits sources the digest cannot carry.
+    const widenings = [...src.matchAll(/\.maxSources \+=/g)];
+    assert.equal(widenings.length, 1, "maxSources must only be widened by widenPlanCapacity");
+    // Both callers reach it: the aux-source reserve and the named-URL reads.
+    const reserve = src.slice(src.indexOf("if (result.items.length && !st.reserved)"));
+    assert.match(reserve.slice(0, 1600), /widenPlanCapacity\(state\.plan, Math\.min\(result\.items\.length, 8\)\)/);
+    assert.match(src, /widenPlanCapacity\(state\.plan, items\.length\)/);
   });
 
   test("the per-source reserve is sized off the measured verbose block", () => {
@@ -824,9 +882,11 @@ describe("what the source-routing gates read, and what the ledger may claim", ()
     assert.match(src, /searchLedgerSection\(\/\*\* @type \{any\} \*\/ \(state\)\.issuedQueries\)/);
     assert.doesNotMatch(src, /searchLedgerSection\(state\.ranQueries\)/);
     // Both dispatch points record: the web leg, and the aux leg (which on a
-    // lead wave is the only thing that ran).
-    const web = src.slice(src.indexOf("async function runWebLeg"));
-    assert.match(web.slice(0, 1200), /issuedQueries \|\|= new Set\(\)\)\.add\(query\)/);
+    // lead wave is the only thing that ran). The web leg's recording sits in
+    // startWebLeg, its DISPATCH half — a query is issued when it is sent, not
+    // when the request gets round to absorbing the answer.
+    const web = src.slice(src.indexOf("function startWebLeg"));
+    assert.match(web.slice(0, 1600), /issuedQueries \|\|= new Set\(\)\)\.add\(query\)/);
     const absorb = src.slice(src.indexOf("function absorbAuxResult"));
     assert.match(absorb.slice(0, 1200), /issuedQueries \|\|= new Set\(\)\)\.add\(plan\.key \|\| plan\.query\)/);
   });
@@ -837,9 +897,12 @@ describe("what the source-routing gates read, and what the ledger may claim", ()
   // answer at all rather than a shorter one.
   test("the digest reserve has a ceiling", () => {
     assert.match(src, /const DIGEST_CAP_CEILING = 36_000;/);
-    const reserve = src.slice(src.indexOf("if (result.items.length && !st.reserved)"));
-    assert.match(reserve.slice(0, 1600), /Math\.min\(/);
-    assert.match(reserve.slice(0, 1600), /DIGEST_CAP_CEILING,/);
+    // The clamp sits in the one function every widening goes through, so a
+    // new caller cannot reintroduce an unbounded one.
+    const widen = src.slice(src.indexOf("function widenPlanCapacity"));
+    assert.match(widen.slice(0, 400), /Math\.min\(/);
+    assert.match(widen.slice(0, 400), /DIGEST_CAP_CEILING\)/);
+    assert.equal([...src.matchAll(/\.digestCap = /g)].length, 1, "one clamp, one writer");
   });
 });
 

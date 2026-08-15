@@ -202,6 +202,20 @@ test("validateCaptureCreate: label, agent, model, prompt and a positive duration
   assert.ok(validateCaptureCreate({ ...CREATE, duration_ms: "soon" }).error);
 });
 
+test("validateCaptureCreate: a row that knows its agent always knows its mode", () => {
+  // The publish recipe left `mode` out of its payload until 2026-08-14, which
+  // is how five Cyber clips reached D1 with `mode: null` — and a null mode is
+  // what made the card's link open in whatever agent the reader was already in.
+  // The agent is required, so the mode can be derived from it and never missed.
+  assert.equal(validateCaptureCreate(CREATE).entry.mode, "cyber");
+  assert.equal(validateCaptureCreate({ ...CREATE, agent: "scholar" }).entry.mode, "science");
+  assert.equal(validateCaptureCreate({ ...CREATE, agent: "agent-builder" }).entry.mode, "sdk");
+  // An explicit mode still wins: it is what the harness actually recorded under.
+  assert.equal(validateCaptureCreate({ ...CREATE, mode: "introspection" }).entry.mode, "introspection");
+  // An agent with no mode of its own stays empty rather than guessing.
+  assert.equal(validateCaptureCreate({ ...CREATE, agent: "secure" }).entry.mode, "");
+});
+
 test("validateCaptureCreate: the happy path trims, defaults the slug, keeps the facts", () => {
   const v = validateCaptureCreate({
     ...CREATE,
@@ -310,6 +324,27 @@ test("syntheticVersionRow reads a pre-versions capture as the v1 it is", () => {
   assert.equal(v1.poster_key, "captures/7/poster.jpg");
   assert.equal(v1.duration_ms, 8_400);
   assert.equal(v1.speed, 1.5);
+});
+
+test("projectCapture derives the mode from the agent when the column is empty", () => {
+  // THE REPAIR for the rows already in D1 (2026-08-14): the documented publish
+  // recipe never sent `mode`, so five Cyber clips are stored with
+  // `agent: "cyber"` and `mode: null` — and "💬 Continue this chat" left the
+  // reader in whichever agent they were already in, a recorded Cyber run
+  // answered by Deep Science with nothing on screen saying the agent moved.
+  // Every capture has an agent (the create path refuses one without it), so
+  // the mode is derivable on read and no backfill is needed.
+  /** @param {any} over */
+  const row = (over) => /** @type {any} */ ({ id: 5, created_at: 0, updated_at: 0, slug: "s", label: "l", agent: "cyber", model: "m", prompt: "p", status: "new", ...over });
+  assert.equal(projectCapture(row({})).mode, "cyber");
+  assert.equal(projectCapture(row({ agent: "scholar" })).mode, "science");
+  assert.equal(projectCapture(row({ agent: "agent-builder" })).mode, "sdk");
+  // A stored mode always wins — it is what the harness actually recorded under.
+  assert.equal(projectCapture(row({ mode: "introspection" })).mode, "introspection");
+  // An agent with no mode of its own stays null: the app then leaves the
+  // reader's current agent alone rather than snapping it to the default.
+  assert.equal(projectCapture(row({ agent: "secure" })).mode, null);
+  assert.equal(projectCapture(row({ agent: "not-an-agent" })).mode, null);
 });
 
 test("projectCaptureVersion exposes the documented key set and marks the current cut", () => {
@@ -543,7 +578,11 @@ test("projectCapture survives null/absent optional columns", () => {
   };
   const p = projectCapture(/** @type {any} */ (bare));
   assert.deepEqual(Object.keys(p).sort(), [...PROJECTED_KEYS].sort());
-  assert.equal(p.mode, null);
+  // `mode` is the ONE optional column that does not stay absent: it is derived
+  // from the agent, because a capture whose mode is null is a capture whose
+  // card link cannot reopen the run in the agent that recorded it (see the
+  // derivation test above).
+  assert.equal(p.mode, "cyber");
   assert.equal(p.starter, null);
   assert.equal(p.lang, null);
   assert.equal(p.shape, null);
@@ -1647,11 +1686,15 @@ test("GET /captures/:id/chat is 200 with resumable:false for a clip recorded bef
 test("GET /captures/chats lists the recorded runs for the drawer's group", async () => {
   const db = fakeDb([
     { label: "one", chat_json: '[{"role":"user","content":"q"}]' },
-    { label: "two" },
+    { label: "two", mode: null },
   ]);
   const { res, json } = await call(db, "GET", "/api/admin/captures/chats");
   assert.equal(res.status, 200);
   assert.equal(json.count, 2);
+  // The mode is derived from the agent here for the same reason projectCapture
+  // derives it: the two projections describe the same row, and a field that is
+  // null in one endpoint and filled in the other is how this bug comes back.
+  assert.deepEqual(json.captures.map((c) => c.mode), ["cyber", "cyber"]);
   assert.deepEqual(json.captures.map((c) => c.id), [2, 1]);
   // The flag survives D1's 0/1 answer to a boolean expression.
   assert.deepEqual(json.captures.map((c) => c.has_chat), [false, true]);

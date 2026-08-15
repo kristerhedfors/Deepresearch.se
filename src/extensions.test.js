@@ -11,6 +11,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 import { CONTEXT_BLOCKS } from "./agent-spec.js";
+import { enrichmentApplies } from "./enrichment.js";
 import {
   EXTENSIONS,
   emptyExtensionState,
@@ -159,6 +160,12 @@ describe("per-request state seam", () => {
 });
 
 describe("enrichment seam", () => {
+  // The gate as the RUNNER applies it: the knob (this extension's slice of
+  // state.ext) AND the agent's declaration (its contextBlock). The two halves
+  // live on different fields of the entry, so asserting `enabled` alone would
+  // go green with the capability half deleted — which is the hole the
+  // "knob AND declaration" test below exists to close.
+  const applies = (entry, state) => enrichmentApplies(entry, state);
   // The capability an agent declaring every extension's block would carry.
   const allBlocks = { context: EXTENSIONS.map((e) => e.contextBlock) };
 
@@ -166,8 +173,8 @@ describe("enrichment seam", () => {
     const entries = extensionEnrichments();
     assert.deepEqual(entries.map((e) => e.id), ["shodan", "maps"]);
     const state = { ext: resolveExtensionState({}, { shodan: true }), capability: allBlocks };
-    assert.equal(entries.find((e) => e.id === "shodan").enabled(state), true);
-    assert.equal(entries.find((e) => e.id === "maps").enabled(state), false);
+    assert.equal(applies(entries.find((e) => e.id === "shodan"), state), true);
+    assert.equal(applies(entries.find((e) => e.id === "maps"), state), false);
   });
 
   test("the knob AND the agent's declaration are both required (seam 6)", () => {
@@ -180,15 +187,15 @@ describe("enrichment seam", () => {
     const knobOnly = { ext: resolveExtensionState({}, { shodan: true, maps: true }) };
     const capOnly = { ext: emptyExtensionState(), capability: allBlocks };
     for (const entry of extensionEnrichments()) {
-      assert.equal(entry.enabled(both), true, `${entry.id}: knob + declaration`);
-      assert.equal(entry.enabled(knobOnly), false, `${entry.id}: knob without declaration`);
-      assert.equal(entry.enabled(capOnly), false, `${entry.id}: declaration without knob`);
+      assert.equal(applies(entry, both), true, `${entry.id}: knob + declaration`);
+      assert.equal(applies(entry, knobOnly), false, `${entry.id}: knob without declaration`);
+      assert.equal(applies(entry, capOnly), false, `${entry.id}: declaration without knob`);
     }
     // …and a declaration selects only its own extension.
     for (const e of EXTENSIONS) {
       const state = { ext: resolveExtensionState({}, { shodan: true, maps: true }), capability: { context: [e.contextBlock] } };
       for (const entry of extensionEnrichments()) {
-        assert.equal(entry.enabled(state), entry.id === e.id, `${e.contextBlock} → ${entry.id}`);
+        assert.equal(applies(entry, state), entry.id === e.id, `${e.contextBlock} → ${entry.id}`);
       }
     }
   });
@@ -199,11 +206,11 @@ describe("enrichment seam", () => {
     // capability — the narrowing direction, so a request that never consulted
     // the agent registry reaches no third party rather than every one.
     for (const entry of extensionEnrichments()) {
-      assert.equal(entry.enabled({}), false, entry.id);
-      assert.equal(entry.enabled({ ext: {} }), false, entry.id);
+      assert.equal(applies(entry, {}), false, entry.id);
+      assert.equal(applies(entry, { ext: {} }), false, entry.id);
       const on = resolveExtensionState({}, { shodan: true, maps: true });
       for (const capability of [undefined, null, {}, { context: [] }, { context: "host-intel" }, { context: ["source-snapshot"] }]) {
-        assert.equal(entry.enabled({ ext: on, capability }), false, `${entry.id}: ${JSON.stringify(capability)}`);
+        assert.equal(applies(entry, { ext: on, capability }), false, `${entry.id}: ${JSON.stringify(capability)}`);
       }
     }
   });

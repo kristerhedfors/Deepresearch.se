@@ -1235,7 +1235,13 @@ async function runDeepResearch(env, log, identity, requestId, args, question, pr
       digest_shown: /** @type {any} */ (state).digestShown,
       complexity: state.complexity ?? null,
       subquestions: state.subquestions ?? [],
+      // Same two as the /api/chat row, for the same reason: this channel runs
+      // the same synthesis and validation phases, so measuring the revise rate
+      // on one channel only would measure the wrong population.
+      citations: /** @type {any} */ (state).citations,
+      validation: /** @type {any} */ (state).validation,
       cached_searches: state.cachedSearchCount || 0,
+      named_urls: state.namedUrlCount || 0,
     },
   });
 
@@ -1282,6 +1288,7 @@ function newRequestState(model, jsonModel, webSearch, budgetS, plan, denseTotals
     plan: /** @type {any} */ (plan),
     searchCount: 0,
     cachedSearchCount: 0,
+    namedUrlCount: 0,
     iterations: 1,
     ranQueries: new Set(),
     // Queries actually DISPATCHED, as opposed to ranQueries' planned set. The

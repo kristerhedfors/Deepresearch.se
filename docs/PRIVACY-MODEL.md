@@ -55,6 +55,20 @@ Outbound requests to third parties carry the minimum (a query, a
 coordinate, a host), never the conversation, filename, or account
 identity.
 
+**Pages the user linked** (added 2026-08-14, `src/named-urls.js`). When a
+message names http(s) URLs, the Worker reads those pages itself before
+searching, and the read is a plain GET to the address the user typed —
+no conversation, no account identity, no cookies, no referrer, and
+nothing derived from the message beyond the URL that was in it. This
+sends strictly LESS than the search leg beside it: a search hands a
+third-party index a query derived from the question, whereas this
+contacts only the origin the user chose, which is the host their own
+browser would have reached had they opened the link themselves. The
+local network and the link-local metadata range are refused outright —
+they are an SSRF target and never a citable source. No knob gates it,
+because it introduces no new counterparty: the user naming a URL is the
+request to fetch it.
+
 **Which agent may send them at all** narrowed on 2026-08-13, when the
 roster became specific. Outward-facing intelligence — host lookups and
 street-level imagery, the two egress-heavy enrichments — belongs to the

@@ -168,8 +168,13 @@ the length of the assistant's text, whether `.stats` has landed — and appends
 `{t, sig}`. Consecutive identical signatures are *provably* dead time: nothing
 on screen changed.
 
-Two properties of `stillSpans` worth keeping:
+Three properties of `waitSpans` worth keeping:
 
+- **It compares what a viewer can READ, not the whole signature.**
+  `readableSignature` keeps `msgs`, `answerLen` and `stats` and drops `steps`,
+  `finished` and the step label. A ticking activity bar is the wait, not an
+  escape from it — see the #CAP-10 trap below, which is what this rule was
+  bought with.
 - A span **ends at the last sample known to be idle**, not at the sample where
   the change was observed. A change seen at sample *m* happened somewhere in
   `(t[m-1], t[m]]`, so ending one sample early guarantees the frame where new
@@ -178,6 +183,12 @@ Two properties of `stillSpans` worth keeping:
   word of every answer.
 - The sampler is driven from **Node**, not from an in-page timer, so a frozen
   page cannot stop it. A stalled run is exactly the recording worth watching.
+
+Each span is labelled by whether the *full* signature moved inside it — `dead`
+(a frozen frame) or `thinking` (the bar moved, nothing readable did). `--wait
+cut` drops the frozen ones and **accelerates** the thinking rather than
+deleting it: a deep research clip whose search rounds have been edited out is a
+demo of a different product.
 
 ## A clip links back to the chat it recorded
 
@@ -303,7 +314,7 @@ different encoder setting.
 CAP=captures/2026-08-14/cyber__…
 
 # edit.json already holds everything the row needs — reshape it and post:
-scripts/captures --add "$(jq '{label:("Capture " + (.meta.slug // "")), agent:.meta.agent,
+scripts/captures --add "$(jq '{label:("Capture " + (.meta.slug // "")), agent:.meta.agent, mode:.meta.mode,
   model:.meta.model, prompt:.meta.prompt, starter:.meta.starter, lang:.meta.lang,
   shape:.shape, duration_ms:.output_ms, source_ms:.source_ms, cut_ms:.cut_ms,
   speed:.speed, wait_mode:.wait_mode, width:.probe.width, height:.probe.height,
@@ -447,14 +458,24 @@ or the row will lie about the next re-shoot.
   `--add` or after the payload, never between them: `--add` takes the next
   word as its body, so `--add --json '{…}'` posts the flag itself and the row
   is never created.
-- **`--min-still 1500` is wrong for a run with an activity log.** The default
-  suits a direct answer with no search phase. A research run posts a new
-  search step every couple of seconds, so nearly every gap qualifies as dead
-  air and the plan comes out strobing between the action speed and 8× —
-  measured at thirteen segments on a 54 s run. **Use `--min-still 3500`** for
-  anything with a visible activity bar; the same clip becomes five segments
-  and only the genuine waits accelerate. Always read the segment table in
-  `--dry-run` before encoding a batch; that is what it is for.
+- **A THRESHOLD CANNOT FIX A COMPARISON.** #CAP-10 (owner, 2026-08-14: *"video
+  waits and waits for answer and then just the last frame shows the bottom of
+  the reply"*) was 54 555 ms recorded, 43 644 ms delivered at 1.25× — that is
+  `54555 / 1.25` **exactly**, so nothing at all was accelerated in a run that
+  was mostly the pipeline searching. The activity bar ticked faster than any
+  usable `--min-still`, so no two samples were byte-identical and the detector
+  found zero dead air. Both obvious knob answers are wrong: `--min-still 1500`
+  strobed (thirteen segments on a 54 s run, which is what the old
+  `--min-still 3500` advice was for) and 3500 accelerated nothing at all. The
+  fix was to compare only what a viewer can read (`readableSignature`), which
+  makes 1500 correct again — **the old `--min-still 3500` advice is retired;
+  leave the default alone.** Still read the segment table in `--dry-run` before
+  encoding a batch; that is what it is for.
+- **A wait that is not accelerated eats the answer.** The visible symptom is
+  the one the owner reported: the clip spends its whole budget waiting and the
+  last frame shows only the bottom of the reply, because the streaming answer
+  never got room. When a plan's `thinking` line reads 0 s on a run that
+  obviously searched, that is this bug, not a fast pipeline.
 - **ffmpeg is not installed in the agent containers.** `--dry-run` works
   anyway, on purpose: the plan is reviewable without an encoder. To encode:
   `apt-get update && apt-get install -y --no-install-recommends ffmpeg`. The

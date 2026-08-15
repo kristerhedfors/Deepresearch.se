@@ -97,6 +97,7 @@ import { getDb } from "./db.js";
 import { jsonResponse, textResponse } from "./http.js";
 import { cleanStr, likePattern } from "./chatlog.js";
 import { captureChatSeed, captureTag, normalizeChatMessages, starterName } from "../public/js/captures-core.js";
+import { modeForAgentId } from "../public/js/starters-core.js";
 
 // Re-exported, not mirrored: `captureTag` is the SAME function the deck
 // renders with, so the number on a card and the number in `?format=text`
@@ -447,7 +448,13 @@ export function validateCaptureCreate(body) {
       // and the derivation costs nothing (see deriveCaptureName).
       name: cleanStr(body.name, CAPTURE_CAPS.name) || deriveCaptureName({ agent, starter, prompt }),
       agent,
-      mode: cleanStr(body.mode, CAPTURE_CAPS.mode),
+      // The mode is DERIVED from the agent when the publisher did not send one:
+      // it is what puts a reader who follows the clip's link into the agent the
+      // clip recorded, and the documented `--add` recipe left it out of its
+      // payload until 2026-08-14 (five Cyber clips published with `mode: null`,
+      // every one of them opening in whichever agent the reader was already in).
+      // A row that knows its agent should never fail to know its mode.
+      mode: cleanStr(body.mode, CAPTURE_CAPS.mode) || modeForAgentId(agent),
       model,
       prompt,
       starter,
@@ -871,7 +878,20 @@ export function projectCapture(row, versions) {
     label: row.label,
     name: row.name || null,
     agent: row.agent,
-    mode: row.mode || null,
+    // THE MODE A CARD'S LINK REOPENS THE RUN IN. Derived from the agent when
+    // the column is empty, which is the whole repair for the rows already in
+    // D1: the documented `--add` recipe never sent `mode`, so five published
+    // Cyber clips carry `agent: "cyber"` with `mode: null`, and "💬 Continue
+    // this chat" left the reader in whatever agent they were already in — a
+    // recorded Cyber run answered by Deep Science, with nothing on screen
+    // saying the agent moved (reported 2026-08-14).
+    //
+    // Read-time rather than a migration because the agent is required on every
+    // row and the mapping is one table (`MODE_AGENTS`, via `modeForAgentId`),
+    // so there is nothing a backfill would know that this does not. Still null
+    // for an agent with no mode of its own (`secure`, a TIER) — the app leaves
+    // the reader's current agent alone rather than guessing.
+    mode: row.mode || modeForAgentId(row.agent) || null,
     model: row.model,
     prompt: row.prompt,
     starter: row.starter || null,
@@ -1360,7 +1380,11 @@ export async function handleAdminCaptures(request, env, url, log) {
       label: r.label,
       name: r.name || null,
       agent: r.agent,
-      mode: r.mode || null,
+      // Derived from the agent when the column is empty, exactly as
+      // projectCapture does it. The two projections describe the same row, and
+      // a field that is null in one endpoint and filled in the other is how the
+      // next reader of this list inherits the bug the derivation just fixed.
+      mode: r.mode || modeForAgentId(r.agent) || null,
       model: r.model,
       prompt: r.prompt,
       starter: r.starter || null,

@@ -349,7 +349,10 @@ holds for the routing as for the run); validation enforces invariants 1, 3,
 the catch-all labeled "Deep Research" — are retired (`RETIRED_CHAT_MODES` keeps
 old clients resolving); **Deep Science (`science` / agent `scholar`) is the
 default and terminal fallback**, so an unrouted request now gets a POLICY
-(literature-first, `search.web: false`) instead of open-web research, and it
+(literature-first: the peer-reviewed record leads and is numbered first, and
+since 2026-08-14 a knob-gated web leg runs BEHIND it, labelled as web reporting
+and barred from standing in for the literature on a scientific claim — feedback
+#69, `docs/SCHOLAR.md` §4a) instead of open-web research, and it
 alone among the mode defaults declares `requires: []`; and a new **Cyber**
 (`cyber`) agent owns cybersecurity and OSINT. `capability.context` became
 EXECUTED with it — `capHasContext` gates the enrichment and search-source
@@ -449,7 +452,7 @@ Debugging & live verification:
 - **on-device-trace** — remote-debugging device-only bugs (iOS PWA) via build stamp + copyable on-device event trace.
 - **sandbox-debug** — the sandbox boot-hang playbook: debug switches, the `boot_stage` timeline, the stall watchdog.
 - **sandbox-perf-eval** — measuring how long sandbox commands take: the cold/warm battery + agent-turn trace, and the two traps (cross-origin auth kills the boot; the 30 s ceiling destroys the VM).
-- **pygram** — the minimal Python-subset runtime for the sandbox (`docs/PYGRAM.md`): why `python3` costs 8573 ms cold there and pygram opens zero files, the two gates (build shape + CPython conformance, where MISMATCH is fatal and UNSUPPORTED is just the build order), the capture harness that grows the corpus from real invocations by itself, the musl-i386 build, and the six traps already paid for — a bare `lib/` in .gitignore that swallowed the whole frozen stdlib, tracebacks on stdout poisoning pipelines, and a strace parser whose bug inverted into a perfect score.
+- **pygram** — the minimal Python-subset runtime for the sandbox (`docs/PYGRAM.md`): why `python3` costs 8573 ms cold there and pygram opens zero files, the two gates (build shape + CPython conformance, where MISMATCH is fatal and UNSUPPORTED is just the build order), the capture harness that grows the corpus from real invocations by itself, the musl-i386 build, and the six traps already paid for — a bare `lib/` in .gitignore that swallowed the whole frozen stdlib, tracebacks on stdout poisoning pipelines, and a strace parser whose bug inverted into a perfect score. ALSO why the COMPILER lane is now closed (2026-08-15): `-O2` costs 24.7% of the binary for 0.6%, PGO is 11% SLOWER on anything its profile missed, and `llvm-bolt` has no i386 target — because 96% of an invocation is the OS spawning a process, so the wins are algorithmic (16x on `re.sub` by not re-slicing a string). Plus the cost model's missing constant, the 131,072 B CheerpX device block that makes cold cost a step function, and `pygram-corpus-time.mjs`, the instrument a speed change is accepted on.
 
 Feedback, boards & testing loops:
 

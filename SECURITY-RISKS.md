@@ -478,14 +478,28 @@ conversations in R2. Recommendation: reject `{data}` records for `convos`
 server-side; allow plaintext only where the server can confirm
 project/RAG membership.
 
-### P-7 · M-6 · Anti-injection note missing on gap + validate prompts — 🔴 OPEN
-Imported; re-verified 2026-07-12: `gapPrompt` and `validatePrompt` still lack
-`ANTI_INJECTION_NOTE` while every other untrusted-content phase has it — and
+### P-7 · M-6 · Anti-injection note missing on gap + validate prompts — ✅ FIXED (2026-08-14)
+Imported; re-verified 2026-07-12: `gapPrompt` and `validatePrompt` still lacked
+`ANTI_INJECTION_NOTE` while every other untrusted-content phase had it — and
 the exact prompt text being public means injections can be crafted offline
 against these two phases specifically (R-2). Blast radius: degraded research
-integrity only (fail-soft phases, no secrets in prompts). Recommendation:
-append the note to both builders; consider delimiter-wrapping untrusted spans.
-Cheap fix — bundle with any prompts.js touch.
+integrity only (fail-soft phases, no secrets in prompts).
+
+Fixed as prescribed ("bundle with any prompts.js touch"): both builders now end
+on `ANTI_INJECTION_NOTE`. Each is handed content this pipeline did not write —
+`gapPrompt`'s user message carries the source digest, `validatePrompt`'s carries
+the digest AND the draft written from it — and both run on the fixed
+`DEFAULT_MODEL` (invariant 3), so the change is measurable on one model rather
+than across the catalog.
+
+The recurrence guard is DERIVED rather than a list: `prompts.test.js`'s
+"anti-injection coverage is a property of the whole builder set" renders every
+exported builder of `prompts.js` and requires the note on all 21, so a new
+untrusted-content phase cannot ship without it. A hand-maintained exemption
+list is what would have gone stale here — these two builders predate the note
+and nothing flagged them for seven months.
+
+Still open as a separate, larger idea: delimiter-wrapping untrusted spans.
 
 ### P-8 · M-5 · Two unbounded outbound fetches — ✅ FIXED (2026-07-12)
 Both hot-path fetches are now time-bounded: `exa.js` `webSearch` gained
@@ -618,3 +632,4 @@ owner sign-off first (docs-drift-validation Class C).
 | 2026-07-24 | **P-12 opened — feedback authenticity/integrity is a TRUST assumption, gated on audience size.** Owner directive recorded as a register item rather than an immediate fix: the feedback pipeline trusts that a submission is authentic and its self-reported context intact, and that posture must change *before the site goes wider*. Named pieces: Se/cure attribution rides a deliberately-shareable Se/rver token (`claims.sub` of the minter — still write-only, so no read-back exposure); the direct API paths take `question`/`answer_excerpt`/`model`/`page` (scope tag included) from the client with no cross-check against what the server served (the chat path derives them server-side and is unaffected); entry creation is outside the P-3 metering, so the queue can be flooded. The two properties that keep a spoofed entry from acting on its own — no LLM anywhere in the feedback path (canned acks, 2026-07-24) and the loop's mandatory human-in-the-loop treatment of entry text as a request to evaluate — are recorded as invariants to preserve through any hardening. Landed alongside the feedback SCOPE classification (standalone vs session), which is why the trust question surfaced: the new `page` scope tag is one more client-asserted field on the direct paths. |
 | 2026-07-18 | **New write surface + P-11 opened: manual SDK-build publish (`handleBuildManualPublish`, `PUT /api/build/:slug`, F-17).** A second admin-gated write path alongside the pre-existing `DELETE` on SDK mode's `/app/<slug>/` build-publishing surface (`src/build-pub.js`), letting an already-built bundle (execution-sandbox output, a hand-assembled directory) publish without a live model turn — via `scripts/publish-app`. Reuses the UNCHANGED `publishBuild` (same caps, same traversal/extension validation, same opaque-origin `Content-Security-Policy: sandbox allow-scripts …` serving) and the same admin gate as the existing DELETE, so the isolation boundary is untouched. Marked 🟡 PARTIAL: ownership on a manual publish collapses to the shared break-glass admin identity (any admin can republish any manually-published slug), and it's owed the same live-verify pass SDK mode's own build-publish flow still owes. Full model: §3 P-11. |
 | 2026-08-05 | **P-3 `/mcp` gap (a) CLOSED.** `POST /mcp` now takes the same per-user concurrency reservation the four browser-driven endpoints have taken since 2026-07-12, on the four tools that reach a provider (`deep_research`, `literature_search`, `literature_similar`, `search`); the seven that contact no provider stay exempt. Keyed on the request id, released in a `finally` covering success, tool-level failure and a thrown error. The refusal is a JSON-RPC `isError` result, not an HTTP 429 — a bare 429 reads to an MCP client as a transport failure rather than as a condition its model can act on. Admins are not exempt (a spend cap and an abuse cap are different things, and the admin credential is the one whose leak matters most). Fail-open on any D1 trouble, including a failed dynamic import of `quota.js` — the import stays dynamic so `src/mcp.test.js` keeps loading the module without the pipeline. 16 unit tests in `src/mcp-inflight.test.js` drive the real `handleMcp` against an in-memory D1 and a fake Vectorize index. Gap (b) — `src/literature-run.js` recording no usage — remains open and is still the precondition for opening the surface. |
+| 2026-08-14 | **P-7 / M-6 CLOSED** during the agent-pipeline refactor pass: `gapPrompt` and `validatePrompt` now end on `ANTI_INJECTION_NOTE`, closing the last two untrusted-content phases that lacked it. The recurrence guard is derived rather than listed — `prompts.test.js` renders all 21 exported builders and requires the note on every one — because the hand-maintained alternative is exactly what let these two sit open for seven months. Delimiter-wrapping untrusted spans remains open as a separate idea. |

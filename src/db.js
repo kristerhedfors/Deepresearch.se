@@ -68,7 +68,8 @@ CREATE TABLE IF NOT EXISTS answers (
   ts INTEGER NOT NULL,
   status TEXT NOT NULL,
   text TEXT,
-  stats_json TEXT
+  stats_json TEXT,
+  trail_json TEXT
 );
 CREATE TABLE IF NOT EXISTS alerts (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -645,6 +646,15 @@ const ALTERS = [
   // capture still links to the app, it just opens the composer with the same
   // question instead of the recorded conversation.
   "ALTER TABLE captures ADD COLUMN chat_json TEXT",
+  // THE RESEARCH TRAIL BEHIND A RECOVERED ANSWER (2026-08-14, feedback #67:
+  // "i cannot explorre the research steps taken here in the response as i
+  // used to"). The recovery store kept the answer TEXT and its stats and
+  // nothing else, so a run whose stream dropped — a long one on a phone that
+  // locked, above all — came back as prose with its whole research trail
+  // gone. Additive: the table is live, and a row written before this column
+  // reads back NULL, which the client treats exactly as it does today (an
+  // answer with no steps to rebuild).
+  "ALTER TABLE answers ADD COLUMN trail_json TEXT",
 ];
 
 let migrated = false; // per isolate

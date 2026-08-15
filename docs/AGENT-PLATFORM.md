@@ -82,8 +82,9 @@ labeled "Deep Research": the catch-all every unrouted request fell back to, and
 the one agent defined by what it did *not* specialise in. It is retired. Every
 agent below names a domain, and a request naming none lands on Deep Science
 rather than on a catch-all — so the terminal fallback now carries a policy
-(literature-first, `search.web: false`) where it used to carry open-web
-research. Old clients, stored settings, share links and the eval harnesses still
+(literature-first: the peer-reviewed record leads and is numbered first, and
+the web leg runs behind it labelled as web reporting) where it used to carry
+open-web research. Old clients, stored settings, share links and the eval harnesses still
 sending `normal` resolve through `RETIRED_CHAT_MODES`
 ([`public/js/chat-mode-core.js`](../public/js/chat-mode-core.js)).
 
@@ -91,7 +92,7 @@ The first seven rows are the dropdown, in dropdown order.
 
 | Agent | Mode | Tier | What it is |
 |---|---|---|---|
-| **Deep Science** | `science` | Se/rver | The peer-reviewed record, and nothing else — `search.web: false` is structural, so no request can switch the open web back on. Merges OpenAlex, Europe PMC's reviewed slice, Semantic Scholar, the hosted PubMed index and (where licensed) Google Scholar's own ranking, then keeps only records carrying positive evidence of peer review. **The default agent and the terminal fallback**, which is why its spec is the one mode default declaring `requires: []`. Spec id `scholar` ([`SCHOLAR.md`](SCHOLAR.md)). |
+| **Deep Science** | `science` | Se/rver | The peer-reviewed record first, the open record to check it against. Merges OpenAlex, Europe PMC's reviewed slice, Semantic Scholar, the hosted PubMed index and (where licensed) Google Scholar's own ranking, then keeps only records carrying positive evidence of peer review. That leg **leads** and is absorbed first, so it takes the first numbered sources; the web leg runs behind it (knob-gated) stamped "NOT peer-reviewed" and may not stand in for the literature on a scientific claim — added 2026-08-14 on feedback #69, before which `search.web: false` made it structurally webless. **The default agent and the terminal fallback**, which is why its spec is the one mode default declaring `requires: []`. Spec id `scholar` ([`SCHOLAR.md`](SCHOLAR.md)). |
 | **Cyber** | `cyber` | Se/rver | Cybersecurity and OSINT. The one agent that may reach the platform's outward-facing intelligence: host intelligence for a named host, IP or organization; street-level imagery and place resolution read as reconnaissance; the OWASP Top 10 for web and for LLM applications as real reference text; and the two OSINT methods — subject disambiguation, and the depth-scaled dossier scaffold whose deepest tier is shaped like a TIBER-EU targeted threat-intelligence report. |
 | **Introspection** | `introspection` | Se/rver | The site read from the inside — answers from its own deployed source and docs, natively with tools or through the deterministic read loop. Keeps the OWASP block too: a security assessment *of this platform* is its turn. |
 | **Agent Studio** | `sdk` | Se/rver | The mode that *builds* agents (spec id `agent-builder`): describe a flavour, it distils this site into it and publishes it live. |
@@ -457,10 +458,11 @@ consequences are load-bearing:
   mode defaults declares `requires: []`. A requirement on the terminal row would
   fall through to *nothing*, and nothing resolves to a null capability, which is
   the unrestricted platform default — the opposite of what a fallback should be.
-- **An unrouted request now gets a policy.** Deep Science answers from the
-  peer-reviewed record with `search.web: false`, so a caller that wants the open
-  web has to name an agent that has it. A broken `sdk` row falls to Deep Science,
-  not to open-web research.
+- **An unrouted request now gets a policy.** Deep Science leads with the
+  peer-reviewed record and treats the web as corroboration behind it, so a
+  caller wanting the open web as its PRIMARY evidence has to name an agent
+  built that way. A broken `sdk` row falls to Deep Science, not to open-web
+  research.
 
 `src/chat.js` resolves the request; `src/pipeline.js` dispatches on the
 resulting `capability.answerPhase` through a table of executors. Three practical

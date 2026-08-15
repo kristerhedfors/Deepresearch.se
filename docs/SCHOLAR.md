@@ -1,10 +1,15 @@
 # Deep Science — Google Scholar and the peer-reviewed record
 
 The **Deep Science** agent (`scholar` in `sdk/AGENTS.json`) answers from the
-peer-reviewed literature. No web search runs — `search.web: false` is
-structural, not a default. On an ordinary turn no preprint reaches an answer;
-the one exception, added 2026-08-13, is a reader who names the preprint record
-outright, and everything it returns is labelled a preprint (§4).
+peer-reviewed literature, checked against the open record. The peer-reviewed
+leg **leads** every turn and is absorbed first, so the reviewed record takes the
+first numbered sources; the web leg runs behind it, and only when the reader's
+web-search knob is on (§4a — added 2026-08-14, before which no web search ran at
+all). On an ordinary turn no preprint reaches an answer; the one exception,
+added 2026-08-13, is a reader who names the preprint record outright, and
+everything it returns is labelled a preprint (§4). Retracted papers are the
+mirror case, added the same day as the web leg: dropped on sight by default,
+admitted and labelled `RETRACTED` when the question is about retraction (§4b).
 
 **It is the default agent** (owner directive, 2026-08-13). The general
 `research` agent and its `normal` mode were retired, and `science` took the
@@ -252,7 +257,9 @@ Three declarations, not a sentence in a prompt:
 
 | Mechanism | Where | Effect |
 |---|---|---|
-| `capability.search.web: false` | `sdk/AGENTS.json` | `capSearch` composes by **narrowing in both directions**, so a request cannot re-enable the Exa leg |
+| `capability.search.web: true` (was `false` until 2026-08-14) | `sdk/AGENTS.json` | the reader's knob decides whether the Exa leg runs; `capSearch` still composes by **narrowing in both directions**, so knob-off is final |
+| `state.webAfterAux = true` | `src/scholar-metrics.js` | the web leg is **absorbed after** the literature, so the reviewed record is numbered first |
+| `state.webSourceNote = WEB_SOURCE_NOTE` | same | every web source enters the digest stamped "NOT peer-reviewed" and told what it is for |
 | `state.forceAux = ["scholar"]` | `src/scholar-metrics.js` | the peer-reviewed source runs every turn, whatever the message says |
 | `state.auxOnly = ["scholar", …preprintSources(asked)]` | same | **no other auxiliary source may run** — without it, arXiv would still fire on a physics question and hand the agent preprints |
 
@@ -261,8 +268,9 @@ state and names no source, so any future agent needing the same restriction gets
 it for free. It is purely *narrowing* — it can only remove sources — which keeps
 the safety argument for user-authorable specs intact.
 
-The agent's control set has **no web-search toggle**. With `web: false` the
-toggle could only ever be a no-op that implied otherwise.
+Until 2026-08-14 the agent's control set had **no web-search toggle**, because
+with `web: false` a toggle could only ever be a no-op that implied otherwise.
+That reasoning ran the other way once the declaration became `true`: see §4a.
 
 ### The corpora belong to this agent (2026-08-13)
 
@@ -314,6 +322,108 @@ peer-reviewed" (`src/arxiv.js` and `src/arxiv-rag.js`), and Europe PMC has
 always annotated its PPR records the same way. So an answer cannot present a
 preprint as reviewed work even when the reader asked for both. The default turn
 is byte-identical to what it was before the widening existed.
+
+## 4a. The web leg: second, and labelled (2026-08-14)
+
+Reported as **feedback #69** (`chat_logs` #1747):
+
+> deep science needs web search as well but should start with research sources
+> and then validate with help from web search
+
+The question behind it was *"What did the retracted papers on beta-amyloid and
+Alzheimer's actually claim, and how much of the later literature was built on
+them?"* It came back with eight on-topic but unrelated amyloid papers and an
+admission, in the answer's own first line, that none of them mentioned a
+retraction. Two separate mechanisms had to fail for that, and both are fixed
+here: the web leg was off (this section) and the retracted record was
+unreachable (§4b).
+
+The point the report makes is that a retraction notice, a misconduct
+investigation and a citation analysis are **reporting, not findings**. They live
+in the open record by nature. An agent that can only read the reviewed record
+cannot answer a question about that record's own failures — which is the one
+question where refusing to look outside is least defensible.
+
+**What changed.** `capability.search.web` is now `true`, so the reader's
+web-search knob decides, as it does for every other agent. Two per-request
+declarations then shape what the leg is *for*:
+
+| Declaration | Read by | Effect |
+|---|---|---|
+| `state.webAfterAux = true` | `runSearches` (`src/pipeline.js`) | the web results are **absorbed after** the literature's |
+| `state.webSourceNote` | `labelWebItems` (same) | each web source enters the digest with the caveat as its first highlight |
+
+**Ordering is a property of absorption, not of dispatch.** Both legs are still
+dispatched together — `startWebLeg` was split out of `runWebLeg` for exactly
+this, mirroring `startAuxSearches` — because absorption is what fixes a source's
+number, and buying the ordering with serial latency would re-open feedback #44
+("the arXiv searches took close to a minute") to close #69. The reviewed record
+therefore occupies `[1..n]` and the web follows it, at no cost in wall clock.
+
+Both fields are read **generically**: `pipeline.js` sees a boolean and a string
+on the state and never learns which agent set them, the same seam as `forceAux`
+and `auxOnly`. Any future agent wanting a corroborating rather than a primary
+web leg declares the same two fields.
+
+The caveat itself (`WEB_SOURCE_NOTE`, `src/scholar-metrics.js`) names the jobs
+the leg is here to do rather than only what it is not — retractions and
+corrections, who reported what and when, funding and institutional context —
+because "not peer-reviewed" alone reads as *discount this*, which is the wrong
+instruction for the source that holds the answer. It also says what the leg may
+**not** do: settle a scientific claim the reviewed literature has not settled,
+and where the two disagree, report the disagreement rather than resolving it in
+the web source's favour.
+
+The tagline changed with the capability, since it advertised the old refusal
+("No web search, no exceptions").
+
+## 4b. Retractions: dropped by default, admitted when asked about
+
+`peerReviewed` has always opened with `if (r.retracted) return { ok: false }`,
+and for every ordinary research question that is right — a retracted paper cited
+as current evidence is the worst single failure this agent can produce. The cost
+was invisible until #69: it also makes the retracted record **structurally
+unreachable**, so the one question that is *only* answerable from retracted work
+is the one question the agent cannot touch.
+
+The exception is the same narrow shape as the preprint widening above:
+
+- `retractionIntent(text)` (`src/scholar.js`) — bilingual EN + SV, matching
+  retraction, research misconduct, data fabrication, image duplication,
+  expressions of concern, paper mills and PubPeer.
+- It is read from the **reader's own message** (`asked`, threaded through the
+  registry's `search` opts as `runOneAuxSearch` passes `ctx.gateLastUser`), not
+  from the planner's query. Triage is free to paraphrase "which papers were
+  retracted" into "amyloid oligomer hypothesis criticism", and the record the
+  whole question is about would then vanish on a word choice the reader never
+  made. Pre-enrichment for the reason `leadingSources` documents: prose this
+  pipeline appended to the message must never trip a gate the user did not.
+- A bare "withdrawn" / "tillbakadragen" is deliberately **not** a trigger. It is
+  ordinary medical English and Swedish about drugs, trials and consent, and
+  matching it would widen a large share of what this agent is asked. The
+  retraction sense needs a word that carries it alone, or a noun beside it.
+- The Swedish branch avoids `\b`, which does not close after `å/ä/ö` in JS
+  regex — the boundary trap the **palaeogenomics** skill records.
+
+Admission is not promotion. The record still has to carry positive evidence of
+peer review, which is precisely what makes it the subject of the question, and
+`toItem` leads its provenance line with:
+
+```
+RETRACTED — this paper has been withdrawn from the record; report what it
+claimed and what became of it, never as standing evidence. Nature · 2006 ·
+cited 2300× · peer-reviewed: journal with ISSN …
+```
+
+The citation count sits right there on purpose: it is half of what was asked,
+and most of those citations predate the withdrawal.
+
+**The API filter had to move with the local one.** OpenAlex applies
+`is_retracted:false` server-side, so relaxing only `peerReviewed` would have
+left the record out of the response entirely, with nothing for the local
+admission to admit. `openalexSearch` now takes the same flag and drops the
+filter term when it is set — asserted in `src/scholar.test.js` against the
+composed URL, because the two filters agreeing is the whole property.
 
 ## 5. Reaching the agent
 

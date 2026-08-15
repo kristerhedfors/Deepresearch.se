@@ -305,6 +305,34 @@ export function walkBackHost(conversation) {
 const ORG_SUFFIX =
   /(?:AB|ABp?|Inc\.?|Ltd\.?|LLC|L\.L\.C\.|GmbH|A\/S|ApS|AS|Oyj?|B\.?V\.?|N\.?V\.?|S\.?A\.?|S\.?p\.?A\.?|PLC|Corp\.?|Corporation|Company|Holdings?|Group|Gruppen|Koncernen)/;
 
+// The subset of those forms that stays unambiguous when TYPED IN LOWERCASE,
+// for the case-tolerant route below. The exclusions are the point: `AS`,
+// `SA` and `SpA` lowercase into "as" (English), "sa" (Swedish for "said")
+// and "spa"; `Company`, `Group`, `Holdings`, `Corporation`, `Gruppen` and
+// `Koncernen` lowercase into the ordinary nouns they are built from; `Oy`
+// collides with "oy". Every one of those would turn a sentence about
+// nothing into a billed Shodan search, so they stay capitalized-only.
+const ORG_SUFFIX_LOWER =
+  /(?:ab|inc\.?|ltd\.?|llc|l\.l\.c\.|gmbh|a\/s|aps|oyj|plc|corp\.?)/;
+
+// Words that can precede a company form without being part of the name.
+// Without this, "the swedish company basalt ab" resolves an org called
+// "company ab". Function words and the generic business nouns only — a real
+// name is what is left.
+const ORG_LEAD_STOPWORDS = new Set([
+  // English function words and generic business nouns
+  "the", "a", "an", "this", "that", "these", "those", "my", "our", "your",
+  "their", "its", "and", "or", "but", "of", "for", "with", "at", "in", "on",
+  "to", "from", "by", "company", "companies", "firm", "corporation", "group",
+  "org", "organization", "organisation", "called", "named", "swedish",
+  // Swedish equivalents (invariant 6)
+  "den", "det", "de", "denna", "detta", "dessa", "min", "vår", "var", "er",
+  "deras", "dess", "och", "eller", "men", "av", "för", "for", "med", "hos",
+  "i", "på", "pa", "till", "från", "fran", "företag", "foretag", "företaget",
+  "foretaget", "bolag", "bolaget", "firma", "firman", "koncern", "koncernen",
+  "gruppen", "organisationen", "kallas", "heter", "svenska", "svensk",
+]);
+
 // The preposition cues that introduce a target organization, EN + SV.
 const ORG_CUE =
   /(?:\b(?:at|for|against|about|belonging to|owned by|of)\s+|(?<![\p{L}\p{N}_])(?:hos|mot|för|till|tillhör|tillhörande|ägs av|om)(?![\p{L}\p{N}_])\s+)/iu;
@@ -324,11 +352,21 @@ const ORG_STOPWORDS = new Set([
   "sweden", "sverige", "europe", "europa", "usa", "eu",
 ]);
 
+// Built once: a lowercase-tolerant company form and the single word in front
+// of it. `\s+` before the form is what stops "lab" being read as an "ab".
+const LOWER_ORG_RE = new RegExp(
+  String.raw`(?<![\p{L}\p{N}_])([\p{L}\p{N}&.-]{2,})\s+(` +
+    ORG_SUFFIX_LOWER.source +
+    String.raw`)(?![\p{L}\p{N}_])`,
+  "giu",
+);
+
 /**
  * A company name to search Shodan's `org:` facet for, when the message asks
- * for host intelligence but names no host at all. Three ways in, most
- * confident first: a quoted name, a name carrying a company-form suffix, or
- * a capitalized run introduced by a preposition cue.
+ * for host intelligence but names no host at all. Four ways in, most
+ * confident first: a quoted name, a name carrying a company-form suffix, the
+ * same form typed in lowercase, or a capitalized run introduced by a
+ * preposition cue.
  *
  * Conservative by construction — a miss costs a less specific answer, a
  * false fire spends a Shodan query credit on a company nobody asked about.
@@ -369,15 +407,77 @@ export function extractOrgQuery(text) {
     if (name) return name;
   }
 
-  // (c) a preposition cue followed by a capitalized run
-  const cued = s.match(
-    new RegExp(ORG_CUE.source + String.raw`(\p{Lu}[\p{L}\p{N}&.-]*(?:\s+\p{Lu}[\p{L}\p{N}&.-]*){0,2})`, "iu"),
-  );
-  if (cued) {
-    const name = clean(cued[1]);
+  // (b2) the same company forms typed WITHOUT capitals — "No the swedish
+  // company basalt ab" (chat_logs #1741, feedback #68). Exactly ONE word is
+  // taken before the form, because a capitalized run has a visible left
+  // boundary and a lowercase one does not: reaching further back turns that
+  // message into an org called "the swedish company basalt ab", which blows
+  // the word cap and resolves nothing at all. Under-capturing a multi-word
+  // lowercase name costs a less specific query; over-capturing sends a
+  // sentence fragment to Shodan.
+  for (const m of s.matchAll(LOWER_ORG_RE)) {
+    if (ORG_LEAD_STOPWORDS.has(m[1].toLowerCase())) continue;
+    const name = clean(`${m[1]} ${m[2]}`);
+    if (name) return name;
+  }
+
+  // (c) a preposition cue followed by a capitalized run.
+  //
+  // Matched in TWO steps rather than one regex, because one regex cannot have
+  // it both ways: the cue needs `i` (a message opening "Hos Bahnhof…" is the
+  // same cue), but in unicode mode `i` also makes `\p{Lu}` match lowercase,
+  // so a single `iu` regex silently accepted ANY run of words. That is how
+  // "attack surface of the hotel spa" resolved an org called "the hotel spa"
+  // and billed a Shodan search for it — the capitalization this route
+  // documents was never actually required. The cue is found
+  // case-insensitively; the run is then matched case-SENSITIVELY at the cue's
+  // end. Genuinely lowercase company names come in through (b2) above, which
+  // demands a company form and screens the word in front of it.
+  for (const cue of s.matchAll(new RegExp(ORG_CUE.source, "giu"))) {
+    const rest = s.slice(cue.index + cue[0].length);
+    const run = rest.match(/^\p{Lu}[\p{L}\p{N}&.-]*(?:\s+\p{Lu}[\p{L}\p{N}&.-]*){0,2}/u);
+    if (!run) continue;
+    const name = clean(run[0]);
     if (name) return name;
   }
   return "";
+}
+
+/**
+ * The organization an EARLIER user turn named, for a follow-up that asks for
+ * host intelligence over a subject already established — "Shodan view" after
+ * two turns about a company (chat_logs #1741, feedback #68). The org sibling
+ * of walkBackHost, and bounded and scoped exactly like it: user turns only,
+ * newest-first, the latest one skipped (route (b)/(c) already looked there),
+ * stopping at the first turn that names an organization.
+ *
+ * Assistant turns are NOT scanned, for the reason walkBackHost gives: an
+ * answer is full of third-party names and source URLs, and walking those
+ * back would search Shodan for whatever the site happened to cite.
+ * @param {Conversation} conversation
+ * @returns {string}
+ */
+export function walkBackOrg(conversation) {
+  const msgs = Array.isArray(conversation) ? conversation : [];
+  const userTurns = msgs.filter((m) => m && m.role === "user");
+  const earlier = userTurns.slice(0, -1).slice(-WALK_BACK_TURNS);
+  for (let i = earlier.length - 1; i >= 0; i--) {
+    const org = extractOrgQuery(textOf(earlier[i].content));
+    if (org) return org;
+  }
+  return "";
+}
+
+/**
+ * Did the latest user message name Shodan outright? The enrichment runner
+ * uses this to tell "the turn was not about host intelligence" apart from
+ * "the user asked for Shodan by name and nothing could be resolved" — the
+ * second deserves a visible step, the first must stay silent.
+ * @param {Conversation} conversation
+ * @returns {boolean}
+ */
+export function shodanNamedInLatest(conversation) {
+  return SHODAN_NAMED.test(textOf(lastUserMessage(conversation)?.content) || "");
 }
 
 // ---- the matcher registry --------------------------------------------------
@@ -433,6 +533,25 @@ const MATCHERS = [
       const org = extractOrgQuery(c.last);
       if (!org) return null;
       return target("search", { query: `org:"${org}"`, intent: "org-search" });
+    },
+  },
+  {
+    name: "org-walk-back",
+    // Last, because it reaches furthest: the subject comes from an earlier
+    // turn AND it is a name rather than a host. "Shodan view" two turns into
+    // a conversation about a company used to resolve nothing at all, so the
+    // service was never called and the answer narrated a shodan.io WEB result
+    // as if it were Shodan output (chat_logs #1741, feedback #68).
+    /** @param {{ hasIntent: boolean, conversation: Conversation }} c */
+    match: (c) => {
+      if (!c.hasIntent) return null;
+      const org = walkBackOrg(c.conversation);
+      if (!org) return null;
+      return target("search", {
+        query: `org:"${org}"`,
+        followUp: true,
+        intent: "org-walk-back",
+      });
     },
   },
 ];
