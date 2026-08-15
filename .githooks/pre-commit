@@ -13,6 +13,20 @@ set -euo pipefail
 
 repo_root="$(git rev-parse --show-toplevel)"
 
+# pygram-capture: stage the session's own sightings file, if the Stop hook
+# published one (tests/pygram/sightings/<session>.jsonl — see
+# .claude/hooks/pygram-harvest.sh). These containers are ephemeral, so evidence
+# that is not committed is evidence that is lost, and 17 of the 19 sessions
+# before this existed lost all of theirs.
+#
+# Deliberately narrow: ONE directory, and only files it ADDS, so it cannot
+# alter a diff the session meant to make or conflict with another branch. It
+# runs BEFORE scan-secrets on purpose, so what it stages is scanned like
+# anything else. PYGRAM_CAPTURE=0 opts out, as it does for the rest of capture.
+if [ "${PYGRAM_CAPTURE:-1}" != "0" ] && [ -d "$repo_root/tests/pygram/sightings" ]; then
+  git -C "$repo_root" add -- tests/pygram/sightings >/dev/null 2>&1 || true
+fi
+
 if ! "$repo_root/scripts/scan-secrets" --staged; then
   echo "pre-commit: BLOCKED — a credential-shaped token is in the staged diff." >&2
   echo "pre-commit: unstage/replace it, or (verified false positive) commit with --no-verify." >&2

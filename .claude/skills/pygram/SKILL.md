@@ -199,8 +199,27 @@ this repo feeds it.
 
 ```bash
 sh scripts/pygram-capture/install          # idempotent; --status, --uninstall, --force
-npm run pygram:harvest
+npm run pygram:harvest                     # fold everything into the corpus
+node scripts/pygram-capture/harvest.mjs --export   # what the Stop hook runs
 ```
+
+**What is COLLECTED is `tests/pygram/sightings/<session>.jsonl`, not the corpus**
+(2026-08-14 — `docs/PYGRAM.md` §7b). The Stop hook used to fold each session's
+log into `corpus.jsonl` directly and the collection rate was still zero: one
+shared file that every session rewrites conflicts across branches, and merging
+it was never worth it to a PR about something else. Of the 19 branches cut since
+the corpus landed, **2 carried growth, 0 reached main, 17 sessions were lost.**
+A shared mutable file is not a collection point when the writers are ephemeral
+containers on independent branches.
+
+Now the Stop hook publishes one file per session (one writer per path, so no
+branch conflicts, and an unrelated PR carries an *added* file), `.githooks/pre-commit`
+stages that directory, and `corpus.jsonl` is DERIVED — regenerate it with
+`npm run pygram:harvest` whenever you are working on pygram; no session has to.
+Sighting keys are namespaced by session because a log line number means
+something different in every container — that namespacing is also what stops the
+fold counting one invocation twice when it reads both a session's live log and
+its own published file.
 
 Two rules that keep the evidence honest:
 
@@ -225,10 +244,15 @@ every `first_seen` falls in one 36-minute window.
 
 Now: the runner resolves a real CPython ELF **and** spawns with
 `PYGRAM_CAPTURE=0` (either alone closes the loop); harvest drops seed-identical
-sightings as `seedCollision` and says so on every run; a `Stop` hook harvests
-before teardown without committing. **The committed counts are still inflated** —
-the fixes stop them growing, nothing can retroactively correct them — so treat
-`count` as an upper bound and any build order from it as provisional.
+sightings as `seedCollision` — on publication as well as on the fold — and says
+so on every run; a `Stop` hook publishes before teardown without committing.
+**The committed counts are still inflated** — the fixes stop them growing,
+nothing can retroactively correct them — so treat `count` as an upper bound and
+any build order from it as provisional.
+
+The guard applies to new SIGHTINGS only. Do not run it over already-committed
+records: §7a's rule is that it guards against new contamination rather than
+rewriting evidence, and applying it to `main`'s own corpus deletes 138 records.
 
 Two traps if you touch this: a stand-in shim in a test must reproduce the real
 one's `$HOME/.pygram/` fallback, because `runOne` strips `PYGRAM_LOG` but keeps
