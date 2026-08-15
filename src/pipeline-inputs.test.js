@@ -161,14 +161,19 @@ describe("mergeFanoutQueries", () => {
 });
 
 describe("sdkReplyTail (the feedback-#13 closing shape both build paths share)", () => {
-  const files = [
-    { path: "index.html", content: "<h1>hi</h1>" },
-    { path: "app.js", content: "console.log(1)" },
-  ];
-  const published = { slug: "demo", url: "https://deepresearch.se/app/demo/", files: 2, bytes: 2048 };
+  // The shape src/build-pub.js publishBuild actually returns — `paths` is what
+  // SHIPPED (the publish layer injects the app kit, feedback #66), which is why
+  // the summary is built from it and not from what the model staged.
+  const published = {
+    slug: "demo",
+    url: "https://deepresearch.se/app/demo/",
+    files: 2,
+    bytes: 2048,
+    paths: ["index.html", "app.js"],
+  };
 
   test("published build: summary + live link + iteration question", () => {
-    const tail = sdkReplyTail("Built it.", files, published);
+    const tail = sdkReplyTail("Built it.", published);
     assert.ok(tail.startsWith("\n\n"), "separates from existing prose");
     assert.ok(tail.includes("**Build summary:** 2 files, 2.0 KB — index.html · app.js"));
     assert.ok(tail.includes(`**Try it live:** [${published.url}](${published.url})`));
@@ -176,24 +181,23 @@ describe("sdkReplyTail (the feedback-#13 closing shape both build paths share)",
   });
 
   test("singular file count and no leading separator on empty prose", () => {
-    const one = [{ path: "index.html", content: "x" }];
-    const tail = sdkReplyTail("", one, { ...published, files: 1, bytes: 1024 });
+    const tail = sdkReplyTail("", { ...published, files: 1, bytes: 1024, paths: ["index.html"] });
     assert.ok(!tail.startsWith("\n\n"));
     assert.ok(tail.includes("**Build summary:** 1 file, 1.0 KB — index.html"));
   });
 
   test("prose already carrying a real markdown link suppresses the Try-it line", () => {
-    const tail = sdkReplyTail(`Done — [open it](${published.url})?`, files, published);
+    const tail = sdkReplyTail(`Done — [open it](${published.url})?`, published);
     assert.ok(!tail.includes("**Try it live:**"));
   });
 
   test("prose already ending on a question suppresses the canned question", () => {
-    const tail = sdkReplyTail("Want any changes?", files, published);
+    const tail = sdkReplyTail("Want any changes?", published);
     assert.ok(!tail.includes(SDK_ITERATION_QUESTION));
   });
 
   test("null published → the honest no-publish note, no link, no question", () => {
-    const tail = sdkReplyTail("Tried to build.", files, null);
+    const tail = sdkReplyTail("Tried to build.", null);
     assert.ok(tail.includes("_(Publishing was unavailable this turn — no live URL yet.)_"));
     assert.ok(!tail.includes("**Build summary:**"));
     assert.ok(!tail.includes(SDK_ITERATION_QUESTION));

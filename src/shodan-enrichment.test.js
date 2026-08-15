@@ -54,6 +54,7 @@ import assert from "node:assert/strict";
 import test, { describe } from "node:test";
 
 import { extensionEnrichments } from "./extensions.js";
+import { enrichmentApplies } from "./enrichment.js";
 import { runShodanEnrichment } from "./shodan-enrichment.js";
 import { runShodanLookup } from "./shodan.js";
 import { fakeLog } from "./test-helpers/env.js";
@@ -957,24 +958,24 @@ describe("wiring — the extension registry actually reaches this runner", () =>
     // knob the test was originally written for.
     const e = shodanEntry();
     const cyber = { context: ["host-intel"] };
-    assert.equal(e.enabled({ ext: { shodan: { on: true, count: 0 } }, capability: cyber }), true);
-    assert.equal(e.enabled({ ext: { shodan: { on: false, count: 0 } }, capability: cyber }), false);
+    assert.equal(enrichmentApplies(e, { ext: { shodan: { on: true, count: 0 } }, capability: cyber }), true);
+    assert.equal(enrichmentApplies(e, { ext: { shodan: { on: false, count: 0 } }, capability: cyber }), false);
     // Knob on, no declaration — every agent that is not Cyber.
-    assert.equal(e.enabled({ ext: { shodan: { on: true, count: 0 } } }), false);
-    assert.equal(e.enabled({ ext: { shodan: { on: true, count: 0 } }, capability: { context: [] } }), false);
-    assert.equal(e.enabled({ ext: {}, capability: cyber }), false);
-    assert.equal(e.enabled({}), false);
+    assert.equal(enrichmentApplies(e, { ext: { shodan: { on: true, count: 0 } } }), false);
+    assert.equal(enrichmentApplies(e, { ext: { shodan: { on: true, count: 0 } }, capability: { context: [] } }), false);
+    assert.equal(enrichmentApplies(e, { ext: {}, capability: cyber }), false);
+    assert.equal(enrichmentApplies(e, {}), false);
   });
 
   test("with the knob OFF the runner is never reached — no step, no request", async () => {
     const e = shodanEntry();
     const state = { ext: { shodan: { on: false, count: 0 } } };
-    assert.equal(e.enabled(state), false);
+    assert.equal(enrichmentApplies(e, state), false);
     // And if something did call run() anyway, prove nothing was consumed by
     // asserting through the same path the pipeline uses.
     const steps = [];
     await withFakeFetch(routes({}), async (stub) => {
-      if (e.enabled(state)) {
+      if (enrichmentApplies(e, state)) {
         await e.run({
           env: { SHODAN_API_KEY: KEY },
           log: fakeLog(),

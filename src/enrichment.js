@@ -61,9 +61,29 @@ import { runScholarMetricsEnrichment } from "./scholar-metrics.js";
  * is the right default: a block that resolves something the message NAMES is
  * exactly what a planner should be writing queries from. Only prose that names
  * no subject and asserts no fact sets it.
+ *
+ * `contextBlock` is the AGENT-DECLARATION gate, and it is DATA rather than a
+ * closure because that is the only form the two can be checked against each
+ * other in: the block ids live in the shared vocabulary (agent-spec-core.js
+ * CONTEXT_BLOCKS) and the fact that satisfies one lives on the agent's spec, so
+ * neither side is written here. Four rows expressed exactly this as a
+ * hand-written `capHasContext` closure, which meant four copies of the same
+ * null-capability policy and four chances to write a block id nothing declares.
+ *
+ * Deliberately NOT called `requiresContext`, the name the SEARCH-SOURCE
+ * registry uses for its version: that one keeps every source when no agent
+ * resolved (`if (!cap) return true;` — a null capability means "no agent was
+ * resolved", never "an agent declared nothing"), while this one drops the row.
+ * The directions are opposite on purpose — an unresolved agent must not silently
+ * gain a context block it never declared — and one name would invite a later
+ * reader to unify them.
+ *
+ * Both gates apply when both are present: the knob first (so the capability is
+ * never read for a caller who turned the feature off), then the declaration.
  * @typedef {{
  *   id: string,
- *   enabled: (state: RequestState) => boolean,
+ *   enabled?: (state: RequestState) => boolean,
+ *   contextBlock?: string,
  *   run: (ctx: EnrichmentCtx) => Promise<Conversation>,
  *   method?: boolean,
  * }} Enrichment
@@ -121,7 +141,7 @@ const CORE_ENRICHMENTS = [
     // used to, and the query embed introspect stashes is reused rather than
     // paid for twice.
     id: "owasp",
-    enabled: (state) => capHasContext(/** @type {any} */ (state).capability, "owasp"),
+    contextBlock: "owasp",
     run: (c) => runOwaspContextEnrichment(c),
   },
   {
@@ -153,7 +173,7 @@ const CORE_ENRICHMENTS = [
     // request that never consulted the registry has a null capability and is
     // therefore never enabled, which is every ordinary Deep Research turn.
     id: "aadr",
-    enabled: (state) => capHasContext(/** @type {any} */ (state).capability, "ancient-samples"),
+    contextBlock: "ancient-samples",
     run: (c) => runAncientSampleEnrichment(c),
   },
   {
@@ -175,7 +195,7 @@ const CORE_ENRICHMENTS = [
     // chat mode and no request flag: removing the agent from sdk/AGENTS.json
     // turns the capability off entirely.
     id: "scholar",
-    enabled: (state) => capHasContext(/** @type {any} */ (state).capability, "scholar-metrics"),
+    contextBlock: "scholar-metrics",
     run: (c) => runScholarMetricsEnrichment(c),
   },
   {
@@ -215,7 +235,7 @@ const CORE_ENRICHMENTS = [
     // capability is absent, and the full protocol when it is declared. The
     // reasoning in full: public/js/person-research-core.js's header.
     id: "person_research",
-    enabled: () => true, // intent decides; the runner is silent on a non-person turn
+    // Neither gate: intent decides, and the runner is silent on a non-person turn.
     run: (c) => runPersonResearchEnrichment(c),
     method: true, // protocol, not facts — the planner must not search for it
   },
@@ -251,7 +271,7 @@ const CORE_ENRICHMENTS = [
     // question the way it answered every other question, which is a less
     // careful report and nothing worse.
     id: "entity_research",
-    enabled: (state) => capHasContext(/** @type {any} */ (state).capability, "entity-method"),
+    contextBlock: "entity-method",
     run: (c) => runEntityResearchEnrichment(c),
     // The scaffold is the SHAPE of the answer, never the topic. Feedback #65
     // is what it cost when the planner could not tell the two apart: a bare
@@ -296,6 +316,30 @@ function noteMethodBlock(state, before, after) {
   } catch { /* a planning view that keeps the block is the pre-#65 behaviour */ }
 }
 
+/**
+ * Does this entry run for this request? BOTH gates, composed in the one place
+ * that may compose them.
+ *
+ * Exported because the AND is the invariant, not either half: an extension
+ * needs the account's knob (consent to reach a third party) AND the answering
+ * agent's declaration (which agent may use it) — the whole content of the
+ * 2026-08-13 change. With the two halves living on different fields, a test
+ * that checked only `enabled` would go green with the capability half deleted,
+ * which is precisely the hole extensions.test.js was written to close.
+ *
+ * The ORDER is load-bearing: the knob first, so a caller who turned the feature
+ * off never has their capability read at all (pinned as a state-read sequence
+ * in enrichment.test.js).
+ * @param {Enrichment} e
+ * @param {RequestState} state
+ * @returns {boolean}
+ */
+export function enrichmentApplies(e, state) {
+  if (e.enabled && !e.enabled(state)) return false;
+  if (e.contextBlock && !capHasContext(/** @type {any} */ (state)?.capability, e.contextBlock)) return false;
+  return true;
+}
+
 // Runs every enabled enrichment in registry order. A throwing runner is
 // contained here (the conversation passes through unchanged) so a buggy
 // enrichment — and an extension above all — can never take down the chat;
@@ -313,7 +357,7 @@ function noteMethodBlock(state, before, after) {
 export async function runEnrichments(env, log, emit, step, stepDone, conversation, state) {
   let convo = conversation;
   for (const e of ENRICHMENTS) {
-    if (!e.enabled(state)) continue;
+    if (!enrichmentApplies(e, state)) continue;
     try {
       // A method row's block is recorded by DIFFING the last user message
       // around its run, rather than by asking the runner to hand it back. That

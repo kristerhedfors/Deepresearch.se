@@ -1,6 +1,7 @@
 import test, { after, before, describe } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
+import { readFileSync } from "node:fs";
 import {
   DRC_DEPTH_TIERS,
   GAP_DEADLINE_FRACTION,
@@ -683,6 +684,10 @@ describe("runDrcResearch end to end (mock provider)", () => {
 // to the offline harvest.
 describe("runDrcResearch web-search grant path (mock provider)", () => {
   const requests = [];
+  // Lets one test drive the coverage audit's verdicts; null = the default
+  // "complete" every other test in this block relies on.
+  /** @type {null | (() => object)} */
+  let gapResponder = null;
   const server = http.createServer((req, res) => {
     let raw = "";
     req.on("data", (d) => (raw += d));
@@ -696,7 +701,7 @@ describe("runDrcResearch web-search grant path (mock provider)", () => {
       };
       if (phase === "triage") json({ action: "research", complexity: "simple", subquestions: ["What is A?", "What is B?"] });
       else if (phase === "harvest") json({ facts: ["A shipped in 2024 [1]"], uncertain: [] });
-      else if (phase === "gap") json({ complete: true });
+      else if (phase === "gap") json(gapResponder ? gapResponder() : { complete: true });
       else if (phase === "validate") json({ verdict: "pass" });
       else {
         res.writeHead(200, { "content-type": "text/event-stream" });
@@ -826,6 +831,108 @@ describe("runDrcResearch web-search grant path (mock provider)", () => {
     const direct = requests.at(-1);
     assert.match(direct.body.messages[0].content, /grounded in the numbered web search results/);
     assert.match(direct.body.messages.at(-1).content, /Web search results/);
+  });
+
+  // The server registry has deduped by URL since its first line
+  // (src/sources.js addSources); /cure's did not, so a page two sub-questions
+  // both found took two citation numbers — and a single source could then be
+  // cited as if it were two corroborating ones.
+  test("one URL found by two angles takes ONE citation number", async () => {
+    requests.length = 0;
+    const seen = [];
+    const webSearch = async (q) => {
+      seen.push(q);
+      // Both angles return the same page, plus one angle-specific page.
+      return {
+        items: [
+          { title: "Shared page", url: "https://ex/shared", highlights: ["hi"] },
+          { title: "Only " + seen.length, url: "https://ex/only" + seen.length, highlights: [] },
+        ],
+        resultCount: 2,
+      };
+    };
+    await runDrcResearch({
+      providerId: "berget",
+      apiKey: "user-berget-key",
+      model: "moonshotai/Kimi-K2.6",
+      messages: [{ role: "user", content: "Compare A and B" }],
+      webSearch,
+      onStatus: () => {},
+      onDelta: () => {},
+      baseUrl,
+    });
+    const synth = requests.find((r) => r.phase === "synth");
+    const sources = synth.body.messages.at(-1).content;
+    // Three distinct URLs across two searches of two results each.
+    const shared = [...sources.matchAll(/https:\/\/ex\/shared/g)];
+    assert.equal(shared.length, 1, "the shared page is listed once, not twice");
+    assert.match(sources, /\[1\] Shared page/);
+    assert.match(sources, /\[2\] Only 1/);
+    assert.match(sources, /\[3\] Only 2/);
+    // …and the numbering has no gap where the duplicate was dropped.
+    assert.doesNotMatch(sources, /\[4\]/);
+  });
+
+  // The gap round proposes follow-up angles; nothing checked them against the
+  // angles already harvested, so a second round could re-run one of its own
+  // round-1 follow-ups. The server dedups every query it issues
+  // (pipeline-inputs.js takeSearchBatch over state.ranQueries).
+  test("a follow-up angle already harvested is not run again", async () => {
+    requests.length = 0;
+    const queries = [];
+    const webSearch = async (q) => {
+      queries.push(q);
+      return { items: [{ title: "R", url: "https://ex/" + queries.length, highlights: [] }], resultCount: 1 };
+    };
+    // Full tier → two gap rounds. Round 1 proposes a genuinely new angle;
+    // round 2 proposes the SAME one plus one that was in the original triage.
+    let gapRound = 0;
+    gapResponder = () => {
+      gapRound++;
+      return gapRound === 1
+        ? { complete: false, missing: ["What is C?"] }
+        : { complete: false, missing: ["What is C?", "What is A?"] };
+    };
+    try {
+      await runDrcResearch({
+        providerId: "berget",
+        apiKey: "user-berget-key",
+        model: "moonshotai/Kimi-K2.6",
+        messages: [{ role: "user", content: "Compare A and B" }],
+        budgetS: 600,
+        webSearch,
+        onStatus: () => {},
+        onDelta: () => {},
+        baseUrl,
+      });
+    } finally {
+      gapResponder = null;
+    }
+    // Round 2's proposals were both already harvested, so nothing re-ran.
+    assert.deepEqual(queries, ["What is A?", "What is B?", "What is C?"]);
+  });
+});
+
+// The wall-clock roof the module documents but never applied. `withinBudget`
+// and the two fractions were defined, exported and unit-tested from the day
+// the slider shipped, and a repo-wide grep found NO call site in any commit —
+// so /cure's time budget bounded the phase SHAPE but nothing about the clock,
+// while the paragraph above drcPlanForBudget said an optional phase "only
+// starts while its share of the budget remains".
+describe("the Se/cure deadline guards are actually applied", () => {
+  const src = readFileSync(new URL("./drc-research.js", import.meta.url), "utf8");
+
+  test("both optional phases consult withinBudget before starting", () => {
+    assert.match(src, /if \(!withinBudget\(GAP_DEADLINE_FRACTION\)\)/);
+    assert.match(src, /withinBudget\(VALIDATE_DEADLINE_FRACTION\)/);
+    // Never on a MANDATORY phase: triage, the first harvest wave and synthesis
+    // are what the user asked for, and skipping one produces no answer at all.
+    assert.equal([...src.matchAll(/withinBudget\(/g)].length, 2, "exactly the two optional phases call it");
+  });
+
+  test("a skipped phase says so, rather than shortening the run silently", () => {
+    assert.match(src, /Coverage audit skipped — out of research time/);
+    assert.match(src, /Review skipped — out of research time/);
   });
 });
 

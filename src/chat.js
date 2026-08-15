@@ -199,7 +199,6 @@ import { runMemoryExtraction } from "./memory.js";
  *   modelsMode?: boolean,
  *   account?: { enabled: import("./user-models.js").AcceptedModel[], checks: Record<string, Record<string, any>> } | null,
  *   modelCards?: { shown: number, total: number, query: string, enabled: number, verified: number },
- *   forceAux?: string[],
  *   buildSlug?: string | null,
  *   userId?: string,
  *   buildResult?: { slug: string, url: string, files: number, bytes: number },
@@ -317,7 +316,18 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
   // many words, from whichever mode they are in. Nothing new is exposed — the
   // docs corpus and the source snapshot are committed public artifacts, served
   // unauthenticated already (src/assets.js).
-  const helpCommand = slashCmd === "help" && chatModesAvailable(env, identity);
+  const helpCommand = slashCmd === "help" && enrich.modesAvailable;
+  // "Is the sandbox available to this caller?" — asked once, not five times.
+  // (Named `…Available`, not `…On`: slash.test.js discovers the executor-MODE
+  // booleans by the `<name>On` shape and requires each to clear on a slash
+  // command. This is a capability predicate, not a mode.) Both
+  // this and `chatModesAvailable` above are pure functions of (env, identity),
+  // neither of which changes during the handler, and each call re-runs
+  // featureAvailability + a fresh JSON.parse of the stored settings blob. The
+  // real cost is not the parse: the predicate was STATED at five separate
+  // points, which is one edit away from a request where four of them agree
+  // and one does not.
+  const sandboxAvailable = bashLiteEnabled(env, identity);
   // ---- mode routing -------------------------------------------------------
   //
   // Which agent answers this request is DATA: the ordered `defaults` table in
@@ -350,7 +360,7 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
   // knob did.
   const granted = {
     developer_mode: enrich.modesAvailable,
-    sandbox: bashLiteEnabled(env, identity),
+    sandbox: sandboxAvailable,
   };
   // An agent supplied INLINE with the request — a spec the caller wrote rather
   // than one this repo committed, which is what Agent Studio hands back when it
@@ -463,7 +473,7 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
   // ran + the real output. Honored only when this account's knob is on
   // (defense: a client can't smuggle a transcript in with the feature off);
   // folded into the answer as ground truth by the pipeline (ctx.shellBlock).
-  const shellTranscript = bashLiteEnabled(env, identity) ? resolveShellTranscript(body.shell_transcript) : [];
+  const shellTranscript = sandboxAvailable ? resolveShellTranscript(body.shell_transcript) : [];
   // The Orchestrator's client-hosted SWARM (public/js/swarm-runtime.js): this
   // browser can run tiny on-device models, so it asked /api/orchestrator/plan
   // for the team first, ran the `swarm` nodes locally, and attached the plan
@@ -484,7 +494,7 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
   // fetches the fixed code. Scoped to "cache" only — never "cookies"/"storage"
   // — so the encrypted local history is untouched; self-limiting, since once
   // the fresh bundle loads it sends client_diag and this stops firing.
-  const staleSandboxClient = bashLiteEnabled(env, identity) && body.client_diag === undefined;
+  const staleSandboxClient = sandboxAvailable && body.client_diag === undefined;
   /** @type {Record<string, string>} */
   const responseHeaders = staleSandboxClient ? { "clear-site-data": '"cache"' } : {};
   // Full request-level visibility: the exact client_diag the browser sent (or
@@ -494,7 +504,7 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
     user_id: identity.id,
     request_id: requestId,
     diag: body.client_diag ?? null,
-    knob_on: bashLiteEnabled(env, identity),
+    knob_on: sandboxAvailable,
     shell_transcript_len: shellTranscript.length,
   });
 
@@ -548,7 +558,7 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
       visionModels: enrich.visionModels,
       imageLocations: enrich.imageLocations,
       shellTranscript,
-      sandboxEnabled: bashLiteEnabled(env, identity),
+      sandboxEnabled: sandboxAvailable,
       sdkMode: sdkOn,
       orchestratorMode: orchOn,
       swarm,
@@ -783,6 +793,16 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
             complexity: state.complexity,
             subquestions: state.subquestions,
             conflicts: state.conflicts,
+            // The deterministic citation reconciliation and the phase-5
+            // verdict (pipeline.js). Both are undefined on a turn that never
+            // synthesized/validated, and JSON.stringify drops undefined keys —
+            // so an ordinary row is byte-identical to before these existed,
+            // the same convention `digest_shown` above relies on. Without
+            // them, the dangling-citation rate and the revise rate are not
+            // recoverable from anywhere: the revised answer replaces the draft
+            // before the row is written.
+            citations: /** @type {any} */ (state).citations,
+            validation: /** @type {any} */ (state).validation,
             // The registered extensions' own meta (counters, routing traces).
             // Keys with an undefined value are dropped by JSON.stringify —
             // that is how an extension that never ran stays absent from the
