@@ -782,6 +782,16 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
             complexity: state.complexity,
             subquestions: state.subquestions,
             conflicts: state.conflicts,
+            // The deterministic citation reconciliation and the phase-5
+            // verdict (pipeline.js). Both are undefined on a turn that never
+            // synthesized/validated, and JSON.stringify drops undefined keys —
+            // so an ordinary row is byte-identical to before these existed,
+            // the same convention `digest_shown` above relies on. Without
+            // them, the dangling-citation rate and the revise rate are not
+            // recoverable from anywhere: the revised answer replaces the draft
+            // before the row is written.
+            citations: /** @type {any} */ (state).citations,
+            validation: /** @type {any} */ (state).validation,
             // The registered extensions' own meta (counters, routing traces).
             // Keys with an undefined value are dropped by JSON.stringify —
             // that is how an extension that never ran stays absent from the

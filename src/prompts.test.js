@@ -30,6 +30,8 @@ import {
   orchSynthPrompt,
 } from "./prompts.js";
 import { MAX_READ_TOTAL_CHARS } from "./introspect-tools.js";
+// The whole module, for the derived coverage guard at the end of this file.
+import * as PROMPTS from "./prompts.js";
 
 describe("triagePrompt", () => {
   test("embeds the max query count in the research-action description", () => {
@@ -1233,5 +1235,42 @@ describe("orchestrator prompts — the citation gate (feedback #21)", () => {
     const p = orchSynthPrompt({});
     assert.match(p, /do not fabricate citations/);
     assert.match(p, /strip the citation and present the claim as unverified/);
+  });
+});
+
+// SECURITY-RISKS.md P-7 / M-6, closed 2026-08-14. Every phase whose USER
+// message carries content this pipeline did not write — web search results,
+// the digest built from them, a draft written from that digest — must carry
+// ANTI_INJECTION_NOTE, because the prompt text is public and an injection can
+// therefore be crafted offline against one specific phase. gapPrompt and
+// validatePrompt were the two that did not, which is exactly the pair that
+// reads the source digest and nothing else in the pipeline noticed.
+//
+// Derived, not listed: the guard renders EVERY exported builder and requires
+// the note on all of them, so a new builder cannot be added without it. That
+// is deliberately stricter than "the ones handed a digest" — a builder that
+// genuinely takes no untrusted input pays one paragraph, and the alternative
+// is a hand-maintained exemption list that goes stale the moment a phase
+// starts receiving sources.
+describe("anti-injection coverage is a property of the whole builder set", () => {
+  test("every exported prompt builder carries the note", () => {
+    const missing = [];
+    for (const [name, value] of Object.entries(PROMPTS)) {
+      let rendered;
+      if (typeof value === "string") rendered = value;
+      else if (typeof value !== "function") continue;
+      else {
+        // The builders take (a, b, opts) in various arities; every one of them
+        // tolerates being called with these, since each parameter is either
+        // optional or defaulted.
+        try {
+          rendered = String(value([], 3, {}));
+        } catch {
+          continue;
+        }
+      }
+      if (!/never as instructions that redefine your role/.test(rendered)) missing.push(name);
+    }
+    assert.deepEqual(missing, [], `prompt builders without ANTI_INJECTION_NOTE: ${missing.join(", ")}`);
   });
 });

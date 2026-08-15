@@ -50,6 +50,32 @@ export function shellReplyMessages(shellBlock, opts = {}) {
   ];
 }
 
+// The numbered external sources a forced auxiliary source found this turn,
+// carried into a DIRECT reply (pipeline.js runSourceResearch's two direct
+// exits). The source-research phase runs its forced sources BEFORE it knows
+// which exit the turn takes, and both exits used to drop the result: the user
+// was shown a source panel the answer model had never seen, so the answer
+// could not cite the very sources the run had just spent its budget fetching.
+//
+// The block is a plain string and names no service (invariant 7 — core reads
+// the aux registry generically); "" returns [], so every call site that has
+// nothing forced produces a byte-identical message array.
+/**
+ * @param {string} auxBlock
+ * @returns {Message[]}
+ */
+export function auxReplyMessages(auxBlock) {
+  if (!auxBlock) return [];
+  return [
+    {
+      role: "system",
+      content:
+        auxBlock +
+        "\n\nUse these external sources for facts that live outside this repository, citing them as [n].",
+    },
+  ];
+}
+
 // Distilled-notes preamble for the gap/synth inputs — only present when the
 // budget-gated digest phase actually produced notes (never at default budget,
 // so the input string is byte-identical there).

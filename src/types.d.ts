@@ -347,6 +347,15 @@ export interface RequestState {
   forceAux?: string[];
   auxOnly?: string[];
   auxMaxPerRequest?: Record<string, number>;
+  /**
+   * …and the two ORDERING/LABELLING declarations beside them (feedback #69):
+   * `webAfterAux` absorbs the web leg's results AFTER the auxiliary ones, so
+   * the declared sources occupy the low citation numbers; `webSourceNote` is
+   * the caveat every web source carries into the digest, so a distinction the
+   * agent promises survives onto the sources themselves.
+   */
+  webAfterAux?: boolean;
+  webSourceNote?: string;
   /** Numbered source registry, deduped by URL. */
   sources: SourceEntry[];
   /** URL -> registry entry, for dedup. */

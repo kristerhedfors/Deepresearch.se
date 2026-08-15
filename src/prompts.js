@@ -214,6 +214,11 @@ export const gapPrompt = (pastQueries, maxFollowups, { subquestions = [], reinfo
     : "") +
   `Do not repeat or trivially rephrase these already-run queries: ${JSON.stringify(pastQueries)}` +
   sourcePromptNotes(capability) +
+  // SECURITY-RISKS.md P-7/M-6: this phase is handed raw web content (the
+  // source digest rides in its USER message), and the prompt text is public,
+  // so injections can be crafted offline against this exact phase. It was the
+  // one untrusted-content builder without the note, alongside validatePrompt.
+  ANTI_INJECTION_NOTE +
   (reinforceJsonOnly ? JSON_ONLY_REINFORCEMENT : "");
 
 // Phase 2.5 — notes digest (budget-gated, mid/high tiers). Compresses a NEW
@@ -825,6 +830,9 @@ export const validatePrompt = ({ reinforceJsonOnly = false } = {}) =>
   "Respond ONLY with JSON:\n" +
   '- {"verdict":"pass"} if the draft is faithful to the sources.\n' +
   '- {"verdict":"revise","issues":["..."],"revised_answer":"..."} if you found problems. revised_answer must be the complete corrected answer in the same format, changing only what is needed to fix the issues.' +
+  // SECURITY-RISKS.md P-7/M-6, same as gapPrompt: the numbered sources AND the
+  // draft written from them both ride in this phase's user message.
+  ANTI_INJECTION_NOTE +
   (reinforceJsonOnly ? JSON_ONLY_REINFORCEMENT : "");
 
 // Phase 5 (claim-level, budget-gated) — extract the check-worthy claims from
@@ -1058,14 +1066,25 @@ const SEARCH_ON_BUT_UNUSED_NOTE =
  * capabilities note to the ones THIS agent can actually reach; omitted, the
  * note lists every registered extension exactly as it did before the filter
  * existed, so a caller that resolved no agent is byte-identical.
- * @param {{ hasShell?: boolean, hasSource?: boolean, spaceScene?: string, demoSurface?: string, webSearchOn?: boolean, capability?: any }} [opts]
+ *
+ * `externalSources` when the turn DOES carry a numbered digest — a forced
+ * auxiliary source ran even though this is the direct-reply path
+ * (pipeline.js runSourceResearch). It admits those sources for citation and
+ * suppresses the "no sources were gathered" note, which would otherwise tell
+ * the model to disregard material the pipeline just put in front of it — the
+ * same correction sourceAnswerPrompt's own `externalSources` makes.
+ * @param {{ hasShell?: boolean, hasSource?: boolean, spaceScene?: string, demoSurface?: string, webSearchOn?: boolean, externalSources?: boolean, capability?: any }} [opts]
  * @returns {string}
  */
-export const directPrompt = ({ hasShell = false, hasSource = false, spaceScene = "", demoSurface = "", webSearchOn = false, capability } = {}) =>
+export const directPrompt = ({ hasShell = false, hasSource = false, spaceScene = "", demoSurface = "", webSearchOn = false, externalSources = false, capability } = {}) =>
   "You are the assistant for Deepresearch.se, a deep-research service. Reply directly, helpfully, and concisely." +
   capabilitiesNote(capability) +
   capabilitiesTail(hasShell, hasSource, spaceScene, demoSurface) +
-  (webSearchOn ? SEARCH_ON_BUT_UNUSED_NOTE : "") +
+  (externalSources
+    ? " This turn carries numbered EXTERNAL SOURCES retrieved for the question — cite them as [n] and end with a \"Sources:\" list of the ones you cited."
+    : webSearchOn
+      ? SEARCH_ON_BUT_UNUSED_NOTE
+      : "") +
   ANTI_INJECTION_NOTE;
 
 // The SOURCELESS depth ladder for the search-off answer: the slider still buys

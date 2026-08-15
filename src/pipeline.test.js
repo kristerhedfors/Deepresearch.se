@@ -583,7 +583,7 @@ describe("the web-search knob gates Exa only — depth still runs over other sou
     // never of dispatch — buying the ordering with the serial latency of
     // feedback #44 would be trading one report for the other.
     const runSearches = src.slice(src.indexOf("async function runSearches"), src.indexOf("async function runWebLeg"));
-    assert.match(runSearches, /const webLast = \/\*\* @type \{any\} \*\/ \(state\)\.webAfterAux === true;/);
+    assert.match(runSearches, /const webLast = state\.webAfterAux === true;/);
     const webStartIdx = runSearches.indexOf("const webWave = web ? startWebLeg(ctx, batch, round) : null;");
     const auxAwaitIdx = runSearches.indexOf("const auxItems = await auxWave();");
     const lateAwaitIdx = runSearches.indexOf("if (webWave && webLast) await webWave();");

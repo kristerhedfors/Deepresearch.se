@@ -83,6 +83,7 @@ import {
 } from "./sources.js";
 import { extractNotes, mergeNotes, notesEntities } from "./notes.js";
 import {
+  auxReplyMessages,
   buildContinuationTurns,
   collectConflicts,
   conflictsSection,
@@ -209,6 +210,8 @@ import {
  *   fetchedUrls?: Set<string>,
  *   aux?: Record<string, AuxSourceState>,
  *   auxLeadReleased?: boolean,
+ *   citations?: { cited: number, dangling: number, unused: number },
+ *   validation?: { verdict: string, issues: number, draft_chars: number, revised_chars: number },
  *   failoverModel?: string,
  *   feedbackCapture?: boolean,
  *   capability?: import('./agent-spec.js').AgentCapability | null,
@@ -954,13 +957,21 @@ async function runQuizGeneration(ctx, quizReq) {
   return true;
 }
 
-/** @param {PipelineCtx} ctx */
-async function runDirectReply(ctx) {
+/**
+ * @param {PipelineCtx} ctx
+ * @param {string} [auxBlock] The numbered digest a forced auxiliary source
+ *   produced for this turn, when the caller has one (runSourceResearch). ""
+ *   for every other caller, which keeps their message array byte-identical.
+ */
+async function runDirectReply(ctx, auxBlock = "") {
   await streamCompletion(ctx, [
     // webSearchOn: this branch produced no sources, and without the knob's
     // actual value the model has been observed explaining that away by
     // inventing an off toggle (prompts.js SEARCH_ON_BUT_UNUSED_NOTE).
-    { role: "system", content: phasePrompt(ctx.state, "research", "answer-direct")({ hasShell: !!ctx.shellBlock, hasSource: !!ctx.hasSource, spaceScene: ctx.spaceScene, demoSurface: ctx.demoSurface, webSearchOn: ctx.state.webSearch !== false, capability: ctx.state.capability }) },
+    // …unless a forced auxiliary source DID produce sources, in which case
+    // there is nothing to explain away and citing them is the whole point.
+    { role: "system", content: phasePrompt(ctx.state, "research", "answer-direct")({ hasShell: !!ctx.shellBlock, hasSource: !!ctx.hasSource, spaceScene: ctx.spaceScene, demoSurface: ctx.demoSurface, webSearchOn: ctx.state.webSearch !== false, externalSources: !!auxBlock, capability: ctx.state.capability }) },
+    ...auxReplyMessages(auxBlock),
     ...shellReplyMessages(ctx.shellBlock),
     ...withImageNudge(ctx.conversation),
   ]);
@@ -1579,8 +1590,10 @@ async function runSourceResearch(ctx) {
 
   if (!snapshot || !Array.isArray(snapshot.files) || !snapshot.files.length) {
     // No readable snapshot — answer from the excerpts the enrichment already
-    // injected (still hasSource), exactly the pre-read-loop behavior.
-    return runDirectReply(ctx);
+    // injected (still hasSource), exactly the pre-read-loop behavior. With the
+    // forced sources, per the comment above: the promise that "every exit
+    // below answers with it" was prose only until the block was threaded here.
+    return runDirectReply(ctx, auxBlock);
   }
 
   // Native tool-use path (owner-authorized invariant-1 exception, 2026-07-12):
@@ -1660,9 +1673,11 @@ async function runSourceResearch(ctx) {
   if (!reads.length) {
     // The model didn't need to read any files (e.g. a non-implementation
     // question asked while dev mode happens to be on). Answer from the excerpts
-    // the enrichment already injected — the pre-read-loop behavior.
+    // the enrichment already injected — the pre-read-loop behavior — plus any
+    // forced auxiliary sources, which the user is ALREADY being shown in the
+    // source panel and which this exit used to drop on the floor.
     ctx.stepDone("source", "Answered from the retrieved excerpts");
-    return runDirectReply(ctx);
+    return runDirectReply(ctx, auxBlock);
   }
   ctx.stepDone(
     "source",
@@ -2144,7 +2159,7 @@ async function runSynthesis(ctx) {
     unused: audit.unused.length,
     sources: state.sources.length,
   });
-  /** @type {any} */ (state).citations = {
+  state.citations = {
     cited: audit.cited.length,
     dangling: audit.dangling.length,
     unused: audit.unused.length,
@@ -2270,6 +2285,12 @@ async function runSinglePassValidation(ctx, draft, digest) {
 // happened, and no retrospective scan can recover it. Ranking the
 // section-scoped-revision backlog item needs this number, and `draft_chars`
 // vs `revised_chars` is a free proxy for how much a rewrite churns.
+//
+// Both halves matter and only one used to exist: the log line makes it visible
+// LIVE, the state field makes it QUERYABLE afterwards — which is what the
+// paragraph above is actually asking for. The field sat written-and-never-read
+// until both chat-log rows picked it up (chat.js / mcp.js meta), so the revise
+// rate was as unknowable as before.
 /**
  * @param {PipelineCtx} ctx
  * @param {string} verdict
@@ -2280,7 +2301,7 @@ async function runSinglePassValidation(ctx, draft, digest) {
 function recordValidation(ctx, verdict, issues, draftChars, revisedChars) {
   const row = { verdict, issues, draft_chars: draftChars, revised_chars: revisedChars };
   ctx.log.info("chat.validate_verdict", row);
-  /** @type {any} */ (ctx.state).validation = row;
+  ctx.state.validation = row;
 }
 
 // Claim-level validation (high tiers): extract the draft's check-worthy claims
@@ -2569,7 +2590,7 @@ async function runSearches(ctx, queries, round) {
   // fetches were started in. Declared per request and read generically here —
   // core never learns which agent asked for it, the same seam as forceAux /
   // auxOnly.
-  const webLast = /** @type {any} */ (state).webAfterAux === true;
+  const webLast = state.webAfterAux === true;
   const auxWave = startAuxSearches(ctx, batch, round, lead);
   const webWave = web ? startWebLeg(ctx, batch, round) : null;
   if (webWave && !webLast) await webWave();
@@ -2682,7 +2703,7 @@ function startWebLeg(ctx, batch, round) {
  * @returns {import('./search-sources.js').SearchSourceItem[]}
  */
 export function labelWebItems(state, items) {
-  const note = /** @type {any} */ (state).webSourceNote;
+  const note = state.webSourceNote;
   if (typeof note !== "string" || !note.trim() || !Array.isArray(items)) return items || [];
   return items.map((item) => ({
     ...item,
