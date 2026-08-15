@@ -126,6 +126,128 @@ this ledger.
 
 <!-- pygram-bench: newest entry is inserted directly below this line -->
 
+## 2026-08-15 — pygram vs stock MicroPython — after the regex-shim and map-growth pass
+
+MicroPython pin **v1.28.0** (`e0e9fbb17ed6`), repo `353b9646ea52` (working tree dirty) on branch `claude/pygram-compiler-optimization-h5lejf`. Control built by `bash scripts/pygram-build.sh --stock`.
+
+**What moved, and what only appears to have moved.** Two rows are real results of
+this pass and are safe to read straight off the table:
+
+| case | 2026-08-14 | here |
+|---|---|---|
+| `re.sub(r"\W+")` x2000, ASCII | 10.36x | **0.87x** |
+| `re.sub(r"\W+")` x2000, non-ASCII | 8.55x | **0.77x** |
+| `re.findall(r"\w+")` x2000, ASCII | 235.2 ms | **115.1 ms** |
+| `re.findall(r"\w+")` x2000, non-ASCII | 262.2 ms | **182.7 ms** |
+
+**The dict rows are NOT comparable with the previous entry, in either direction.**
+They read 5.58x -> 6.79x (20k insert) and 7.16x -> 8.49x (lookup), which looks
+like a regression and is not one: both arms got faster between the two entries —
+pygram's 20k insert went 1.86 s -> 1.15 s and stock's went 334.3 ms -> 169.8 ms —
+so the ratio moved because the two speedups were not proportional. This is the
+"every row's ratio moved, controls included" signature from *What a regression
+looks like* above, and the cause is the machine: the two entries were recorded in
+different containers under different load. The ledger's own rule is to compare
+row by row **on the same machine**, and across a container boundary that rule
+cannot be satisfied.
+
+The map-growth change in this pass was therefore accepted on a PAIRED A/B run
+minutes apart on one machine, not on this table: geometric growth against
+upstream's `alloc += 4`, insert of 20,000 distinct keys **0.96x**, 10,000 0.98x,
+5,000 0.98x. Small, and the useful half of that result is what it says about
+where the dict cost is not — see `py/map.c` in the port patch.
+
+### Binaries
+| binary | bytes | linkage | opens on -c 'pass' | failed probes | stat/access | sha256 |
+|---|---|---|---|---|---|---|
+| pygram | 269,316 | static Intel 80386 | 0 | 0 | 0 | a8db59a0226f |
+| stock | 447,488 | static Intel 80386 | 0 | 0 | 6 | e2e84abdf194 |
+| CPython3* | 6,639,992 | dynamic | 22 | 7 | 65 | f56a588548dd |
+
+### Floor-subtracted workload, min of n=11 (ms unless marked s)
+| case | pygram | stock | CPython3* | py/stock min | py/stock med |
+|---|---|---|---|---|---|
+| **startup** |  |  |  |  |  |
+| -c 'pass' | 1.13 raw | 1.16 raw | 12.8 raw | 0.98x | 1.09x |
+| -c 'print(1)' | 1.09 raw | 0.984 raw | 11.1 raw | 1.11x | 0.92x |
+| **dict** |  |  |  |  |  |
+| insert 1,000 distinct keys | 3.15 | 1.98 | 0.000 | 1.59x | 1.55x |
+| insert 5,000 distinct keys | 73.7 | 26.0 | 0.000 | 2.83x | 2.87x |
+| insert 10,000 distinct keys | 291.6 | 53.3 | 0.643 | 5.47x | 5.51x |
+| insert 20,000 distinct keys | 1.15 s | 169.8 | 4.32 | 6.79x | 6.85x |
+| insert 10,000 then look up all 10,000 | 581.8 | 68.5 | 4.67 | 8.49x | 8.71x |
+| **regex** |  |  |  |  |  |
+| re.search(r"\w+\d") x2000, ASCII | 8.27 | 8.13 | 11.3 | 1.02x | 1.00x |
+| re.search(r"\w+\d") x2000, non-ASCII | 9.32 | 4.91 | 8.74 | 1.90x | 1.87x |
+| re.sub(r"\W+") x2000, ASCII | 21.4 | 24.6 | 21.6 | 0.87x | 0.84x |
+| re.sub(r"\W+") x2000, non-ASCII | 24.9 | 32.5 | 21.8 | 0.77x | 0.78x |
+| ure.sub(r"\W+") x2000, ASCII (native sub, no shim) | 17.1 | 24.2 | unsupported | 0.71x | 0.68x |
+| re.findall(r"\w+") x2000, ASCII | 115.1 | unsupported | 17.7 | – | – |
+| re.findall(r"\w+") x2000, non-ASCII | 182.7 | unsupported | 19.6 | – | – |
+| **float** |  |  |  |  |  |
+| str(float) x20,000 | 41.9 | 20.4 | 6.26 | 2.05x | 2.06x |
+| "%.3f" % x  x20,000 | 12.5 | 14.4 | 5.63 | 0.87x | 0.84x |
+| **str** |  |  |  |  |  |
+| split/join/upper/replace x5,000, ASCII | 44.1 | 45.6 | 1.91 | 0.97x | 0.97x |
+| split/join/upper/replace x5,000, non-ASCII | 55.8 | 57.6 | 7.50 | 0.97x | 0.97x |
+| repr(list of non-ASCII strings) x5,000 | 93.1 | 119.5 | 8.88 | 0.78x | 0.77x |
+| **json** |  |  |  |  |  |
+| json.dumps(200 records) x200 | 1.04 s | 240.9 | 52.1 | 4.30x | 4.36x |
+| json.loads(200 records) x200 | 95.2 | 97.5 | 37.1 | 0.98x | 0.96x |
+| **sort** |  |  |  |  |  |
+| sorted(8,000 ints) | 5.77 | 8.06 | 1.17 | 0.72x | 0.71x |
+| sorted(5,000 strings) | 7.69 | 9.19 | 1.38 | 0.84x | 0.82x |
+| **collections** |  |  |  |  |  |
+| Counter(words).most_common(5) x500 | 83.5 | unsupported | 15.8 | – | – |
+| **pipeline** |  |  |  |  |  |
+| stdin 2,000 lines -> word count -> stdout | 11.8 | 17.9 | 0.000 | 0.66x | 0.64x |
+| stdin 2,000 lines -> frequency dict -> top 5 | 43.8 | 39.9 | 3.88 | 1.10x | 1.09x |
+| stdin 2,000 lines -> filter + upper -> stdout | 6.02 | 11.8 | 0.099 | 0.51x | 0.48x |
+
+### Raw wall clock, median / min (ms unless marked s)
+| case | pygram med | pygram min | stock med | stock min | CPython3* med | CPython3* min |
+|---|---|---|---|---|---|---|
+| -c 'pass' | 1.35 | 1.13 | 1.24 | 1.16 | 13.1 | 12.8 |
+| -c 'print(1)' | 1.16 | 1.09 | 1.26 | 0.984 | 12.3 | 11.1 |
+| insert 1,000 distinct keys | 4.37 | 4.28 | 3.19 | 3.14 | 12.6 | 12.0 |
+| insert 5,000 distinct keys | 76.9 | 74.9 | 27.6 | 27.2 | 13.7 | 12.6 |
+| insert 10,000 distinct keys | 296.8 | 292.7 | 54.9 | 54.4 | 13.8 | 13.4 |
+| insert 20,000 distinct keys | 1.17 s | 1.15 s | 172.2 | 170.9 | 17.6 | 17.1 |
+| insert 10,000 then look up all 10,000 | 607.7 | 583.0 | 70.9 | 69.7 | 18.1 | 17.4 |
+| re.search(r"\w+\d") x2000, ASCII | 9.72 | 9.39 | 9.65 | 9.29 | 25.3 | 24.0 |
+| re.search(r"\w+\d") x2000, non-ASCII | 10.6 | 10.5 | 6.21 | 6.07 | 22.8 | 21.5 |
+| re.sub(r"\W+") x2000, ASCII | 22.7 | 22.5 | 26.6 | 25.7 | 34.9 | 34.4 |
+| re.sub(r"\W+") x2000, non-ASCII | 26.9 | 26.0 | 34.0 | 33.7 | 35.1 | 34.5 |
+| ure.sub(r"\W+") x2000, ASCII (native sub, no shim) | 18.6 | 18.2 | 26.4 | 25.3 | unsupported |  |
+| re.findall(r"\w+") x2000, ASCII | 118.9 | 116.2 | unsupported |  | 31.4 | 30.4 |
+| re.findall(r"\w+") x2000, non-ASCII | 185.4 | 183.8 | unsupported |  | 33.1 | 32.3 |
+| str(float) x20,000 | 44.0 | 43.1 | 21.9 | 21.6 | 19.9 | 19.0 |
+| "%.3f" % x  x20,000 | 14.0 | 13.7 | 16.3 | 15.6 | 19.2 | 18.4 |
+| split/join/upper/replace x5,000, ASCII | 46.0 | 45.2 | 47.2 | 46.7 | 15.2 | 14.7 |
+| split/join/upper/replace x5,000, non-ASCII | 58.0 | 56.9 | 59.6 | 58.7 | 20.9 | 20.3 |
+| repr(list of non-ASCII strings) x5,000 | 95.3 | 94.2 | 123.3 | 120.7 | 22.1 | 21.6 |
+| json.dumps(200 records) x200 | 1.06 s | 1.04 s | 245.3 | 242.0 | 66.4 | 64.8 |
+| json.loads(200 records) x200 | 97.5 | 96.3 | 101.3 | 98.7 | 51.0 | 49.9 |
+| sorted(8,000 ints) | 7.14 | 6.90 | 9.41 | 9.21 | 14.5 | 13.9 |
+| sorted(5,000 strings) | 9.00 | 8.82 | 10.6 | 10.3 | 14.8 | 14.1 |
+| Counter(words).most_common(5) x500 | 85.1 | 84.7 | unsupported |  | 29.5 | 28.5 |
+| stdin 2,000 lines -> word count -> stdout | 13.2 | 12.9 | 19.7 | 19.1 | 13.2 | 12.7 |
+| stdin 2,000 lines -> frequency dict -> top 5 | 45.6 | 44.9 | 41.7 | 41.1 | 17.5 | 16.6 |
+| stdin 2,000 lines -> filter + upper -> stdout | 7.32 | 7.15 | 13.7 | 13.0 | 14.1 | 12.9 |
+
+### Cases a binary could not run (data, not failures)
+| case | binary | verdict | reason |
+|---|---|---|---|
+| ure.sub(r"\W+") x2000, ASCII (native sub, no shim) | CPython3* | unsupported | ModuleNotFoundError: No module named 'ure' |
+| re.findall(r"\w+") x2000, ASCII | stock | unsupported | AttributeError: module 're' has no attribute 'findall' |
+| re.findall(r"\w+") x2000, non-ASCII | stock | unsupported | AttributeError: module 're' has no attribute 'findall' |
+| Counter(words).most_common(5) x500 | stock | unsupported | ImportError: can't import name Counter |
+
+Machine: Intel(R) Xeon(R) Processor @ 2.80GHz x4, 17 GB, Linux 6.18.5-fc-v20 x86_64, node v22.22.2. Load average at start/end: 0.77 0.43 0.18 / 0.95 0.58 0.25.
+Config: repeats=11 warmup=3 max-case-ms=30000. Verdict ratio uses the floor-subtracted MIN.
+
+---
+
 ## 2026-08-14 — pygram vs stock MicroPython — after PR #434 (mpconfigvariant trim, 22% off the binary)
 
 MicroPython pin **v1.28.0** (`e0e9fbb17ed6`), repo `bb939924dc43` on branch `claude/pygram-bench-vs-stock`. Control built by `bash scripts/pygram-build.sh --stock`.
