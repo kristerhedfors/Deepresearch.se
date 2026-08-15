@@ -221,6 +221,21 @@ something different in every container — that namespacing is also what stops t
 fold counting one invocation twice when it reads both a session's live log and
 its own published file.
 
+**A session cannot publish a converged copy of its own sightings, and chasing
+one is a loop** (found 2026-08-15 while merging #456/#459). A sighting key is
+per INVOCATION — `hook:<session>#<n>` and `transcript:<file>#<tool-use-id>` —
+while the corpus fold dedupes by program hash. So re-running the same program
+adds rows to the sightings file and nothing downstream. The trap is that
+*checking* a published file is itself an invocation: validate it with python
+(unique keys, sortedness, a set difference against the committed copy) and
+`--export` immediately has two more rows to publish, which is a dirty tree
+again, which invites another check. Three commits went that way before the
+shape was clear. **Publish once, then inspect with `git`/`grep` only** — or
+accept that the file trails the container by however much work the publishing
+took, which is what `--export` is designed for anyway. Nothing is lost either
+way: the next session's export picks up the remainder, and the fold collapses
+the duplicates.
+
 Two rules that keep the evidence honest:
 
 - **The two corpus files stay separate.** `seed-corpus.jsonl` is written from
