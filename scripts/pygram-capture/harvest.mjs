@@ -61,11 +61,82 @@ export const SECRET_PATTERNS = [
   /gsk_[A-Za-z0-9]{16,}/g,
   /AKIA[0-9A-Z]{16}/g,
   /ghp_[A-Za-z0-9]{20,}/g,
+  /gh[sour]_[A-Za-z0-9]{20,}/g,
   /github_pat_[A-Za-z0-9_]{20,}/g,
   /AIza[0-9A-Za-z_-]{35}/g,
+  /GOCSPX-[A-Za-z0-9_-]{10,}/g,
+  /hf_[A-Za-z0-9]{20,}/g,
   /xox[bpoas]-[A-Za-z0-9-]{10,}/g,
+  /eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{5,}/g,
   /-----BEGIN [A-Z ]*PRIVATE KEY-----/g,
 ];
+
+/** Env var NAMES that hold a credential. Matched case-insensitively against the
+ *  whole name, which is how every secret in these containers is named. */
+export const SECRET_ENV_NAME = /key|token|secret|password|passwd|credential|auth|_pat$|dsn|webhook/i;
+
+/** Shortest env value treated as a credential. Below this, a false positive
+ *  (mangling a legitimate program) is likelier than a real secret. */
+export const MIN_ENV_SECRET_LENGTH = 12;
+
+/** Sentinels that sit in credential-named variables without being credentials.
+ *  `proxy-injected` is this environment's: the real tokens are supplied by the
+ *  agent proxy per request, and five variables share that one string. Treating a
+ *  sentinel as a secret would flag every doc that mentions it and corrupt any
+ *  captured program containing it. */
+export const ENV_PLACEHOLDER_VALUES = new Set([
+  "proxy-injected",
+  "placeholder",
+  "changeme",
+  "redacted",
+  "not-set",
+  "unset",
+  "none",
+]);
+
+/**
+ * The credential VALUES this process can actually see.
+ *
+ * WHY THIS EXISTS. A pattern can only catch a secret with a recognisable shape.
+ * The most dangerous credentials in these containers have none: a Cloudflare API
+ * token is 53 characters of unprefixed base62, `CLAUDE_CODE_MESSAGING_TOKEN` is
+ * 32, and `BASIC_AUTH_PASS` is whatever it is. No regex distinguishes those from
+ * a hash, an id, or a chunk of base64 test data, and one tuned to try would
+ * shred ordinary programs.
+ *
+ * But the harvester runs inside the container that HOLDS those secrets, so it
+ * does not need to guess: it can match the literal value. Exact-value redaction
+ * is the only defence that covers a shapeless credential, and it is exact, so it
+ * cannot false-positive on anything except the secret itself.
+ *
+ * Values are read once and never logged, printed, or written — only compared,
+ * and replaced with a marker naming the VARIABLE rather than the value.
+ */
+export function envSecretValues(env = process.env) {
+  const out = [];
+  for (const [name, raw] of Object.entries(env)) {
+    if (!SECRET_ENV_NAME.test(name)) continue;
+    const value = String(raw ?? "");
+    if (value.length < MIN_ENV_SECRET_LENGTH) continue;
+    if (value.startsWith("/")) continue; // a path (…_FILE, …_FILE_DESCRIPTOR)
+    if (/^[0-9]+$/.test(value)) continue; // a file descriptor or a count
+    // A credential is one opaque token. These three shapes never are, and all
+    // three are live in this container under credential-matching NAMES:
+    if (/\s/.test(value)) continue; // a sentence or a flag list
+    if (value.includes("://")) continue; // a URL — `GIT_CONFIG_KEY_1` is
+    //                                      `url.https://github.com/.insteadOf`
+    if (/^[a-z][a-z0-9]*(\.[a-z0-9]+)+$/.test(value)) continue; // a dotted config
+    //                                      key — `GIT_CONFIG_KEY_0` is
+    //                                      `credential.interactive`
+    if (ENV_PLACEHOLDER_VALUES.has(value.toLowerCase())) continue;
+    out.push({ name, value });
+  }
+  // Longest first, so a secret that contains another as a substring is redacted
+  // whole rather than leaving a fragment of itself behind.
+  return out.sort((a, b) => b.value.length - a.value.length);
+}
+
+const ENV_SECRETS = envSecretValues();
 
 /** Largest program kept. A multi-megabyte heredoc is a data blob, not a
  *  one-liner pygram has to run. */
@@ -75,10 +146,20 @@ export const MAX_PROGRAM_BYTES = 64 * 1024;
 
 /** Replace credential-shaped tokens with a marker that carries only the
  *  provider prefix and the length. Idempotent: the marker cannot re-match. */
-export function redactSecrets(text) {
+export function redactSecrets(text, envSecrets = ENV_SECRETS) {
   if (typeof text !== "string" || !text) return { text: text ?? "", hits: 0 };
   let hits = 0;
   let out = text;
+
+  // Exact values FIRST. A live credential must not survive on the grounds that
+  // no pattern happened to describe it, and doing this first means a shaped
+  // secret that is also in the environment is named rather than just prefixed.
+  for (const { name, value } of envSecrets) {
+    if (!out.includes(value)) continue;
+    out = out.split(value).join(`[REDACTED env ${name} ${value.length} chars]`);
+    hits++;
+  }
+
   for (const re of SECRET_PATTERNS) {
     out = out.replace(new RegExp(re.source, "g"), (m) => {
       hits++;

@@ -94,9 +94,45 @@ history, one command (from repo root):
 
 ```bash
 git log --all -p --unified=0 | grep -aoE \
-  "(sk-[A-Za-z0-9_-]{24,}|sk_ber_[A-Za-z0-9_-]{8,}|gsk_[A-Za-z0-9]{16,}|AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AIza[0-9A-Za-z_-]{35}|xox[bpoas]-[A-Za-z0-9-]{10,}|-----BEGIN [A-Z ]*PRIVATE KEY-----)" \
+  "(sk-[A-Za-z0-9_-]{24,}|sk_ber_[A-Za-z0-9_-]{8,}|gsk_[A-Za-z0-9]{16,}|AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{20,}|gh[sour]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AIza[0-9A-Za-z_-]{35}|GOCSPX-[A-Za-z0-9_-]{10,}|hf_[A-Za-z0-9]{20,}|xox[bpoas]-[A-Za-z0-9-]{10,}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{5,}|-----BEGIN [A-Z ]*PRIVATE KEY-----)" \
   | sort -u
 ```
+
+### 1a. A pattern cannot see a SHAPELESS credential (2026-08-15)
+
+The pattern set above catches a secret that announces itself with a prefix. The
+most dangerous credentials in these containers do not:
+
+| variable | length | shape |
+| --- | ---: | --- |
+| `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_USER_API_TOKEN` | 53 | unprefixed base62 |
+| `CLAUDE_CODE_MESSAGING_TOKEN` | 32 | unprefixed |
+| `BASIC_AUTH_PASS` | 19 | arbitrary |
+
+No regex separates those from a hash, an id, or a base64 fixture, and one tuned
+to try would fail every build on ordinary data. **So do not try.** Both the
+scanner and the pygram harvester now also match the LITERAL VALUES of
+credential-named environment variables, because they run inside the container
+that holds them and do not have to guess. Exact match, so it cannot false-positive
+on anything but the secret itself, and it is the only defence that covers a
+credential with no shape at all.
+
+- `scripts/scan-secrets` — reports `LIVE VALUE OF $NAME`, never the value. Built
+  as a `grep -F` pattern FILE so no secret reaches a command line or a process
+  listing. One bulk pass; the per-secret loop runs only on a hit.
+- `scripts/pygram-capture/harvest.mjs` — `envSecretValues()` +
+  `redactSecrets()`, replacing with `[REDACTED env <NAME> <n> chars]` BEFORE the
+  program is hashed, so the id stays a function of what is written.
+
+Selection rule, kept identical in both: name matches
+`key|token|secret|password|passwd|credential|auth|_pat$|dsn|webhook`, value
+≥ 12 chars, not a path (`/…`) and not a bare number (those are `…_FILE` paths and
+file descriptors, not credentials). Longest value first, so a secret containing
+another is redacted whole instead of leaving a fragment.
+
+**This is a backstop, not a licence.** It only knows secrets present in the
+container doing the scan; a credential pasted from elsewhere still needs a shape
+pattern or a human.
 
 Empty output = clean. Also grep the WORKING TREE with the same pattern set
 (catches not-yet-committed files), and check `ls .dev.vars* .env*` finds
