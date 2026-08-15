@@ -250,7 +250,24 @@ change to the chat path doesn't silently change MCP:
 The tool's input schema (`DEEP_RESEARCH_TOOL.inputSchema`): required
 `question`; optional `time_budget_s` (default 120, clamped 15–600), `model`
 (Berget id; JSON phases stay on the reliable model regardless), `web_search`
-(default true; false = answer directly, no search provider contacted).
+(default true; false = answer directly, no search provider contacted),
+`agent`, and `style`.
+
+`agent` picks WHICH SPECIALIST answers: `scholar` (Deep Science, the default),
+`cyber`, `palaeogenomics`, `introspection`, `outrospection`, `models`. It is
+resolved by `resolveMcpAgent` through the same registry and grant chain
+`chat.js` uses, so the account's own extension knobs still gate what the agent
+may reach. An unknown id, a missing grant or an unreadable registry all fall
+back to the default agent-less run rather than failing a call the caller is
+paying for (invariant 2); Agent Studio and Orchestrator are the one case that
+is refused out loud (`MCP_AGENT_PHASES`), because they build and orchestrate
+instead of answering, and both are long side-effecting flows that need the app.
+
+`style` is `text` (default) or `voice`. `voice` returns speakable prose: no
+markdown, no `[n]` markers, no URLs, sources named in a closing sentence. It
+also lowers the DEFAULT budget to `MCP_VOICE_BUDGET_DEFAULT` = 60 s
+(`src/mcp-config.js`), because two minutes of silence ends a voice session. A
+budget the caller names wins in either style.
 
 ## The literature family — the corpora as knowledge bases (2026-08-01)
 
@@ -855,10 +872,15 @@ additive, a legacy client ignores them, and one result shape is one thing to tes
   answered. The spec makes `_meta` required on it, a conforming modern client
   always sends it, and the refusal is still a recognized modern error — so the
   client learns the right thing about us either way.
-- **`GET`/`DELETE` on the endpoint are not 405.** The spec's SHOULD covers a
-  modern-ONLY server shedding legacy session traffic; on the `mcp.` host a `GET`
-  serves the human setup page `public/connect/`, which is worth more than the
-  SHOULD. Revisit if a client is ever observed probing with GET.
+- **A `GET` of the bare origin is not 405; `GET`/`HEAD` on `/mcp` is.** The
+  spec's SHOULD covers a modern-ONLY server shedding legacy session traffic, and
+  on the `mcp.` host a `GET` of the BARE ORIGIN still serves the human setup
+  page `public/connect/`, which is worth more than the SHOULD. The `/mcp` PATH
+  stopped doing that on 2026-08-05 (`docs/MCP-CONNECTOR.md` §4c item 5): a
+  client that reads HTML there concludes the URL is not an MCP endpoint, so it
+  now answers 405 with `Allow: POST` and a -32600 body (`src/index.js`, pinned
+  by `src/index.test.js`). `DELETE` is still not 405; revisit if a client is
+  ever observed sending one.
 - **The `Origin` rule is narrowed.** The transport says validate `Origin` on all
   connections; here the real threat is not DNS rebinding but that `/mcp` is
   reachable with the site's own session cookie as well as a bearer key. So
@@ -882,8 +904,9 @@ production** as of 2026-08-15.
 
 ## What a call costs (before widening the audience)
 
-`docs/MCP-COST.md` prices all 11 tools against production (2026-08-05).
-The three figures worth carrying: `deep_research` is €0.051 at the median
+`docs/MCP-COST.md` prices the ten-tool surface against production
+(2026-08-05), the three extension tools excepted (below). The three
+figures worth carrying: `deep_research` is €0.051 at the median
 of a month of real runs and **€0.62 at its analytic ceiling** (34 searches
 × the 12/7 deep-tier multiplier, plus one synthesis on the priciest model);
 a maximum-budget call actually measured **€0.2355**, because the gap check
@@ -913,11 +936,13 @@ filters to `model_type: "text"`, which is why `GET /api/models` lists neither.
 It counts as `berget_cost` and never as `searches`: that count is Exa's,
 calibrated to €0.005 a search.
 
-**Concurrency** — `/mcp` now takes `reserveInflight` on the four tools that
-reach a provider (`deep_research`, `literature_search`, `literature_similar`,
-`search` — the exported `SPENDING_TOOL_NAMES`), released in a `finally` on
-every exit path, so an external key gets the same CAP=5 bound `/api/chat`
-has. Three things about that shape are worth keeping: the seven free tools
+**Concurrency** — `/mcp` now takes `reserveInflight` on every tool that
+reaches a provider (`deep_research`, `literature_search`, `literature_similar`,
+`search`, and since 2026-08-15 the three extension tools `street_view_look`,
+`place_nearby` and `host_intel` — seven in all, the exported
+`SPENDING_TOOL_NAMES`), released in a `finally` on every exit path, so an
+external key gets the same CAP=5 bound `/api/chat` has. Three things about
+that shape are worth keeping: the three free tools
 hold NO slot (one held there could only deny the caller its own next call);
 the refusal is a JSON-RPC `isError` result, never an HTTP 429, because an MCP
 client reads the envelope and a bare 429 reads to it as a broken server; and

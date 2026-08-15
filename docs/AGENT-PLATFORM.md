@@ -101,7 +101,7 @@ The first seven rows are the dropdown, in dropdown order.
 | **Models** | `models` | Se/rver | The agent whose subject is the models themselves, and the lifecycle it owns: discovered → evaluated → enabled. It holds the live catalog of every model this deployment can reach across every provider, with each one's price and its verification checklist — and enabling one puts it in every mode's dropdown. |
 | **Secure** | — | Se/cure | The never-cloud tier — runs wholly in your browser, server in no data path, sealed local state. |
 | **Under Construction** | — | Se/cure | A placeholder — the minimal viable agent (composer + send + an honest notice). The template you copy to start a new one. |
-| **Palaeogenomics** | — | Se/rver | Ancient DNA: the published literature (Europe PMC) and a structured query over 20,927 published ancient individuals, kept as two separate legs. Bound to **no chat mode** — addressed by id, `defaults` untouched — and the worked example of a DOMAIN agent that costs the platform one registry entry and one vocabulary member. Its sample block is enabled by the spec's declared `context`, not by a knob; the same declaration is what keeps it the one agent besides Deep Science holding `literature-pubmed` ([`PALAEOGENOMICS.md`](PALAEOGENOMICS.md)). |
+| **Palaeogenomics** | — | Se/rver | Ancient DNA: the published literature (Europe PMC) and a structured query over 20,927 published individuals (13,160 ancient, 7,767 present-day reference), kept as two separate legs. Bound to **no chat mode** — addressed by id, `defaults` untouched — and the worked example of a DOMAIN agent that costs the platform one registry entry and one vocabulary member. Its sample block is enabled by the spec's declared `context`, not by a knob; the same declaration is what keeps it the one agent besides Deep Science holding `literature-pubmed` ([`PALAEOGENOMICS.md`](PALAEOGENOMICS.md)). |
 
 `derivesFrom` used to point at `research` on every server-tier spec. With the
 general agent gone they point at `baseplate` — the Platform SDK module — which
@@ -404,10 +404,11 @@ keyword gate said so. Now `capHasContext` is the gate at two seams:
 
 Fail-soft cuts the other way here than elsewhere, deliberately: a **null**
 capability means *no agent was resolved*, not *an agent declared nothing*, so
-every source still runs. That is the `POST /mcp` channel (which has no concept
-of an agent) and any deployment whose registry will not load — invariant 2.
-Declaring nothing, by contrast, is a real declaration and blocks the gated
-blocks.
+every source still runs. That is a `POST /mcp` call naming no agent — the
+channel resolves one only when `deep_research`'s `agent` argument asks for it
+(`resolveMcpAgent`, [`src/mcp.js`](../src/mcp.js)) — and any deployment whose
+registry will not load: invariant 2. Declaring nothing, by contrast, is a real
+declaration and blocks the gated blocks.
 
 Still declared-and-pinned rather than read: `gates`, `emits` and `team`.
 

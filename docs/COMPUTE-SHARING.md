@@ -21,12 +21,11 @@ directly.
 > data-flow notice every participant sees, and the **workspace knowledge**
 > flow (§9b: 👍-curated conclusions, ±blocks with undo/redo, sealed transport
 > + the owner's Se/rver-panel import). The privacy framing in §7 touches
-> CLAUDE.md invariant 4 ("EXACTLY TWO deliberate Se/cure server-touching
-> exceptions") and the SERVER-TOKEN GUARANTEE — it is written as the
-> RECOMMENDED framing and is flagged for owner sign-off; the CLAUDE.md
-> invariant text is NOT changed by this document. §9b's knowledge submit is
-> framed the same way (an explicit, disclosed, user-initiated share — like
-> filing feedback — not a pipeline data path) and awaits the same sign-off.
+> CLAUDE.md invariant 4 and the SERVER-TOKEN GUARANTEE.
+> **Settled by owner ruling, 2026-08-15:** invariant 4 enumerates FOUR
+> bounded, disclosed, metered exceptions that route Se/cure traffic through
+> the server, and the two flows this document builds are the third and the
+> fourth — shared compute (§7) and the workspace-knowledge submit (§9b).
 > **Update (2026-07-26, feedback #31):** sharing is no longer worded or wired
 > as a Se/cure-only act. The Se/rver panel's LLM sharing screen carries the
 > sharer's OWN local-server URL + "Share my compute" toggle over the same
@@ -386,7 +385,7 @@ a held request of tens of seconds a non-issue; the job TTL is set well under it.
 
 ---
 
-## 7. Privacy framing (touches invariant 4 — owner sign-off)
+## 7. Privacy framing (invariant 4's third exception — settled 2026-08-15)
 
 Consuming a pool routes the consumer's prompt **through the server** (the
 `pool_jobs.request_json` row) **to a peer's machine**. Two exposures, both must be

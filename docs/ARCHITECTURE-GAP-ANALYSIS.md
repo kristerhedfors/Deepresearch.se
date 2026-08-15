@@ -68,7 +68,7 @@ frequently the wrong target). **Δ** = the gap worth acting on; a **negative**
 | P17 | Zero-or-one-server property + the distillable platform abstraction | 85% | 85% | 0 | Property holds; the Platform SDK only partly wired (SDK mode live, 34-module manifest mostly design) |
 | P18 | Spec-leads-code interchange standards (DRSW / DRPL / stackless) | 40% | *choose* | — | **Deliberately** ahead of code; the open question is whether to fund a second node or park the bet |
 | P19 | Hand-rolled durability over platform primitives (Workflows **not** adopted) | 100% | *conditional* | — | Correct today; the value of *reversing* it rises exactly with P4/P7 fan-out |
-| P20 | MCP as a product surface, not internal plumbing | 95% | 95% | 0 | Shipped (`/mcp` + `sdk_*`); extension is more tools, not more architecture |
+| P20 | MCP as a product surface, not internal plumbing | 95% | 95% | 0 | Shipped (`/mcp`: `deep_research`, the `literature_*` tools, ChatGPT's `search`/`fetch` adapters and the extension tools); extension is more tools, not more architecture |
 
 ---
 
@@ -479,9 +479,11 @@ rather than extending the hand-built recovery again.
 
 Both halves of the roadmap's verdict shipped: integrations were *not* rebuilt
 on MCP (they share the internal enrichment contract instead), and DeepResearch
-is exposed *as* an MCP server (`/mcp` `deep_research` plus the four `sdk_*`
-tools), wired after the identity gate so it inherits access control and usage
-recording. Mature; extension means more exposed tools, not new architecture.
+is exposed *as* an MCP server (`/mcp` `deep_research` plus the four
+`literature_*` corpus tools, ChatGPT's `search`/`fetch` adapters and the
+three extension tools), wired after the identity gate so it inherits access
+control and usage recording. Mature; extension means more exposed tools, not
+new architecture.
 
 ---
 

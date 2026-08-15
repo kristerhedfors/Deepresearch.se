@@ -105,17 +105,20 @@ vendor mesh to audit. §4.7 states that bargain in full.
 Written for the person deciding, not for the person implementing. §2.8 is the
 same comparison in system terms.
 
-This section is the SOURCE for the in-app comparison, which lives in TWO
-places and only two (owner directive, 2026-07-26 — a third copy is what
-drifts):
+This section is the SOURCE for the in-app comparison, whose FULL form lives
+in TWO places and only two (owner directive, 2026-07-26 — a third full copy
+is what drifts):
 
 - **`/architecture/`** carries the paired tables (privacy, capabilities,
   workspaces) — the page to send someone who is deciding.
 - **`/cure/help/`** carries the compressed point-by-point chooser
   ("Se/cure or Se/rver: which workspace?", pattern UX-12).
+- **`/help/`** (`#workspaces`) carries the SHORT chooser only — the
+  one-question rule from §2.1 and one trade line per tier — and then links
+  onward to both of the above. Keep it short: it must not grow into a third
+  comparison.
 
-`/help/` deliberately does NOT: it is the signed-in app's overview and links
-to both. Change this section and those two pages in the same commit.
+Change this section and those three pages in the same commit.
 
 ### 2.1 The short answer
 
@@ -136,7 +139,7 @@ capability for it.
 | **Who can read it** | you, and anyone you give both the link and its password. The server cannot: the part of the link that holds the workspace is never sent to it | you, and the operator of this site. Records and conversations rest encrypted, but the server can re-derive the key. Indexed files and this workspace's own chats rest readable, because search needs readable text |
 | **Who pays for the model** | you do — it is your key, your local machine, or your device. Or the person who lent you the workspace, for as long as they leave the allowance open | the account owner, against the site's quotas |
 | **Web search** | off by default. Either run your own search service, or use a search allowance someone lent you — in which case only the search query leaves your browser, never the conversation | on. Live web search with numbered, domain-diverse sources |
-| **Maps, Street View, host intelligence (Shodan), geocoding** | not available. These need keys the server holds, and a server-held key means a server in the data path | available as opt-in knobs |
+| **Maps, Street View, host intelligence (Shodan), geocoding** | not available. These need keys the server holds, and a server-held key means a server in the data path | reverse geocoding of photo GPS is automatic. Maps, Street View and host intelligence need TWO things since 2026-08-13: their opt-in knob **and** the **Cyber** agent, which owns them alone — with the knob on they fire in a Cyber chat, not in Deep Science |
 | **Files and documents** | never leave the tab. An attached file mounts into the Linux sandbox, and the model gets an image or the text extracted from a document. There is no file index: what a document contributed is searchable only as part of the chat it was attached to. The link carries no file bytes (§3.4) | uploaded to your account, text-extracted and indexed, so the assistant can retrieve across them. Originals rest readable in the cloud |
 | **Retrieval over your material** | a local index in this browser | a real vector index, scoped to that one workspace |
 | **In-browser Linux, on-device models** | yes — identical on both tiers. Neither ever leaves the browser | yes — identical |
@@ -170,8 +173,8 @@ capability for it.
 
 - The work is ordinary — useful, not sensitive — and convenience is worth more
   than structural privacy.
-- You want live web search, maps and Street View, host intelligence, or photo
-  geocoding without configuring anything.
+- You want live web search or photo geocoding without configuring anything,
+  with maps, Street View and host intelligence a knob away in the Cyber agent.
 - You are working with a real document collection and want retrieval across
   all of it, indexed and scoped to the workspace.
 - You want it on your phone and your laptop without carrying links around.
@@ -241,7 +244,7 @@ your data.
 | Conversations | client-side pipeline on the user's own/local provider, or borrowed grants | `/api/chat` — full server pipeline, logged in `chat_logs` unless `incognito` |
 | Material / files | in tab memory for one send; mounted into the sandbox, sent to the user's own provider. Originals are never stored, and never ride the link (§3.4) | R2 `files/{uid}/…`, RAG-indexed into Vectorize |
 | Retrieval | browser index over the workspace's chats (local cosine top-k) | Vectorize, scoped to the workspace's doc ids |
-| Server-side enrichments (Shodan, Maps, Nominatim, HF) | **not available** — each is a server-side key in a server data path | available, per-knob |
+| Server-side enrichments (Shodan, Maps, Nominatim, HF) | **not available** — each is a server-side key in a server data path | available; Nominatim runs automatically, HF on intent, and Shodan and Maps take their knob **and** the Cyber agent that owns them (2026-08-13) |
 | In-browser Linux (CheerpX) | yes | yes |
 | On-device model (WebGPU) | yes | yes |
 | Borrowed capabilities | web-search grant, `api` proxy grant, Se/rver token, pool token | not needed — the account has them |
@@ -290,19 +293,29 @@ sections it does not know (DRSW/1 §4).
 | `conversations` | plain chat turns | share composer | history pane (appended with fresh ids, never clobbering) | the shared conversations, nothing else |
 | `grants.ws` | a `wsk1.…` web-search grant | Se/rver mint or admin | grant intake | a bounded, metered number of server-paid searches |
 | `grants.proxy` | `prg1.…` grant tokens (`web`, `api`) | Se/rver mint or admin | grant exchange | a bounded, metered allowance on the minter's account |
-| `grants.token` | a consolidated Se/rver token (HS256 JWT, `perms`) | Se/rver mint | grant intake | same two upstream services, one ticket (`docs/SERVER-TOKENS.md`) |
 | `grants.pool` | a `pt1.…` pool token | Se/rver sharer | model dropdown ("Shared compute") | completions run on **the pool owner's machine**, who can read them |
 | `campaign` | DRCR/1 invite: organizer public key, alias, seeded task | campaign composer | campaign pane | the task and the organizer's *public* key — no read capability |
 | `origin`, `route`, `provenance`, `pipelines`, `materials` | DRSW/1 interchange extensions | interchange nodes | conforming readers | see DRSW/1 §5 |
 
 Two token rules that hold for every section (`docs/WORKSPACE-SECURITY.md` §3):
 
-1. **Only URL-safe tiers travel.** Grant-granting tokens (`wsk1`, `prg1`, the
-   Se/rver JWT, `pt1`) ride the fragment; working proxy tokens (`prx1`) never
-   appear in a URL and are obtained by exchange.
+1. **Only URL-safe tiers travel.** Grant-granting tokens (`wsk1`, `prg1`,
+   `pt1`, the Se/rver JWT) travel in a link; working proxy tokens (`prx1`)
+   never appear in a URL and are obtained by exchange.
 2. **The workspace opens offline; grants hydrate opportunistically.** Keys,
    settings and chats apply with no network at all. A revoked or expired grant
    simply fails to connect — never an error that blocks the open.
+
+**Not yet carried: the consolidated Se/rver token is not a workspace
+section.** `validateWorkspacePayload`, `buildWorkspacePayload` and
+`applyWorkspacePayload` (`public/js/workspace-core.js`) know `ws`, `proxy`
+and `pool` and nothing else, and the Se/rver mint
+(`public/js/account-settings.js`) writes `ws` + `proxy` only. Extending the
+payload to carry the token is future work (`docs/SERVER-TOKENS.md`,
+"Migration"), and DRSW/1 §5.4's issuer-scoped `grants.tokens` leads the code.
+Today a Se/rver token reaches a Se/cure session by its own route instead: an
+admin-minted `…/cure?st=<jwt>` link, or the ghost-button handoff
+(`public/cure/drc.js`).
 
 ### 3.3 Capabilities
 
@@ -316,11 +329,11 @@ What a Se/cure workspace can do, and what powers it:
 | Answers on a downloaded model | WebGPU + OPFS weights (`docs/BONSAI-27B-PHONE-INFERENCE.md`) | no |
 | Live web search | the metered web-search grant (query only) | **yes — query only**, exception 1 |
 | Borrowed completions and embeddings | the `api` proxy grant / Se/rver token | **yes — content**, exception 2, disclosed in the UI |
-| Peer compute | a pool token; the answer runs on the pool owner's machine | **yes — relayed**, `docs/COMPUTE-SHARING.md` §7 |
+| Peer compute | a pool token; the answer runs on the pool owner's machine | **yes — relayed** to a named peer, exception 3 (owner ruling, 2026-08-15), `docs/COMPUTE-SHARING.md` §7 |
 | Retrieval over own material | browser RAG index over the workspace's chats, sealed with the state, cosine top-k | no (embeddings need a grant) |
 | In-browser Linux | CheerpX VM, files mounted from the browser | no |
 | Publishing a frozen replay | `src/pub.js`, an explicit act | yes — the published replay is public |
-| Contributing conclusions back | sealed `drskn` bundle (§5.2) | depends on the return channel |
+| Contributing conclusions back | sealed `drskn` bundle (§5.2) | depends on the return channel: **yes — sealed ciphertext the server can decrypt**, exception 4, on the inbox channel; **no** on the DRCR/1 campaign channel |
 | Server-side enrichments (Shodan, Google Maps, Nominatim, HF) | — | **not offered**: each needs a server-side key in a server data path |
 
 ### 3.4 Where the bytes rest
@@ -448,8 +461,8 @@ Everything a Se/cure workspace can do, plus:
 | The full server pipeline | `src/chat.js` + `src/pipeline.js` — split model routing (planning phases pinned to `DEFAULT_MODEL`, synthesis on the chosen model, invariant 3) |
 | Live web search | Exa on the server's key — no grant needed |
 | Vector retrieval at scale | Vectorize, scoped to the workspace's doc ids |
-| Shodan host intelligence | `shodan_mcp` knob, `src/shodan.js` |
-| Google Maps / Street View | `google_maps` knob, `src/googlemaps.js` |
+| Shodan host intelligence | `shodan_mcp` knob **and** the Cyber agent's `host-intel` capability block, `src/shodan.js` |
+| Google Maps / Street View | `google_maps` knob **and** the Cyber agent's `street-imagery` capability block, `src/googlemaps.js` |
 | Reverse geocoding of photo GPS | OSM Nominatim, `src/geocode.js`, automatic |
 | Hugging Face Hub as a source | `hfIntent`, `src/hf.js` |
 | Sub-agent orchestration | Orchestrator mode — one JSON plan phase, then parallel waves of the same pipeline |
@@ -921,7 +934,7 @@ envelope carries `workspace` and `from` fields already.
 | 1 — deterministic orchestration, no function calling | nothing here introduces tool calling; curation is a pure reducer, the closure is deterministic |
 | 2 — helper phases fail soft | a grant that will not connect, an unreachable inbox, a missing import key: all degrade to a lesser result, never a failed open or a broken chat |
 | 3 — split model routing | unchanged; a workspace changes *which* material and keys a request uses, never which model plans it |
-| 4 — the privacy split | Se/cure workspaces add **no** server data path (§3.1); their only server-touching contents are the existing, bounded, metered grant families. The `drskn` inbox is a Se/**rver** surface: the participant chooses it explicitly and is told the server can decrypt it (§5.2, §6.4) |
+| 4 — the privacy split | Se/cure workspaces add **no** server data path of their own (§3.1); what touches the server is the bounded, metered set invariant 4 already counts — FOUR exceptions since the owner ruling of 2026-08-15 (`docs/PRIVACY-MODEL.md`): the `web` (query-only) and `api` (content) grant classes, pooled compute relayed to a named peer, and the `drskn` inbox, which the participant chooses explicitly and is told the server can decrypt (§5.2, §6.4) |
 | 5 — minimal dependencies | one crypto suite reused across three seal families (workspace, campaign, knowledge), WebCrypto only, no added dependency |
 | 6 — Swedish parity | every string in §6 and §7 ships EN+SV in the same change, with a parity test that iterates the table rather than listing cases |
 

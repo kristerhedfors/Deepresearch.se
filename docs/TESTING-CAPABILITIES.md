@@ -70,7 +70,7 @@ Same script, same methodology, before and after this pass:
 
 Both columns are measured on the same tree, so the delta is this change and
 nothing else. The committed floor in `docs/coverage-baseline.json` is a little
-different — 262 modules, 33 never loaded, line 71.93% — because it was
+different — 272 modules, 33 never loaded, line 72.84% — because it was
 re-recorded after merging the latest `main`, which brought its own modules.
 That is the number CI compares against; the table above is the attribution.
 
@@ -109,8 +109,10 @@ runs free forever belongs in T1.
 The boundary that matters most is **T1/T2**, because it is where this
 codebase's own architecture already puts a seam: the pure-core convention.
 Shared logic lives in `public/js/*-core.js` and is re-exported by a `src/`
-façade, so the *logic* is T1 even when the *surface* is T2. Fifteen such pairs
-exist and `src/facade-contract.test.js` pins them.
+façade, so the *logic* is T1 even when the *surface* is T2. Forty-one such
+pairs across 36 `src/` modules exist, and `src/facade-contract.test.js`
+DISCOVERS them by scanning `src/` for core imports rather than listing them,
+so a new façade is pinned the day it lands.
 
 ---
 
@@ -292,13 +294,17 @@ Ordered by (risk closed) ÷ (effort), with what was done this pass marked.
    cases rather than of building somewhere to run them. The four blockers, two
    of which were real defects rather than configuration, are in T3 above.
 
-6. **The invariants have almost no mechanical enforcement.** *Open.* The repo
-   has exactly one repo-wide invariant test (`sql-injection-guard.test.js`) and
-   it works well. Invariant 1 (no function calling in planning phases) has no
-   guard — nothing fails when someone adds `tools:` to a planning call, and the
-   two authorized exceptions are enumerable, so an allowlist scan is
-   straightforward. Invariant 6 is tested per gate but nothing *discovers* a
-   new gate, and the invariant explicitly says "present or FUTURE".
+6. **The invariants have almost no mechanical enforcement.** ✅ *partially
+   closed.* The repo has three repo-wide invariant tests —
+   `sql-injection-guard.test.js`, `facade-contract.test.js` and
+   `swedish-boundary.test.js` (added 2026-07-30, after this pass) — and they
+   work well. Two of them DISCOVER what they check by walking the tree rather
+   than listing it, so invariant 6's "present or FUTURE" clause is now covered
+   for the `\b` trap: a gate written tomorrow is scanned the day it lands.
+   Invariant 1 (no function calling in planning phases) is the one still
+   without a guard — nothing fails when someone adds `tools:` to a planning
+   call, and the two authorized exceptions are enumerable, so an allowlist scan
+   is straightforward.
 
 7. **The bench gate is a printed reminder, not a gate** (T4 above). *Open.*
 

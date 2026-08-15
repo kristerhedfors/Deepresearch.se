@@ -163,10 +163,11 @@ import {
  *   one-line diff — and fails src/literature-exclusivity.test.js.
  *
  *   FAIL-SOFT (invariant 2): a NULL capability means "no agent was resolved",
- *   not "an agent declared nothing", so the source RUNS. That is the MCP
- *   channel (src/mcp.js builds its state with no registry) and any deployment
- *   whose registry will not load. Same rule `toolsForRun` applies to a null
- *   capability in src/tool-sets.js, and for the same reason.
+ *   not "an agent declared nothing", so the source RUNS. That is an MCP call
+ *   naming no agent (src/mcp.js resolves the optional `agent` argument through
+ *   the registry; without one the state's capability is null) and any
+ *   deployment whose registry will not load. Same rule `toolsForRun` applies to
+ *   a null capability in src/tool-sets.js, and for the same reason.
  */
 
 /** @type {SearchSource[]} */
@@ -292,16 +293,19 @@ export const SEARCH_SOURCES = [
 // nothing runs for everyone, exactly as every source did before 2026-08-13.
 //
 // The NULL capability is the fail-soft case and it means "no agent was
-// resolved", which is not the same claim as "an agent declared nothing": the
-// MCP channel builds its state without a registry (src/mcp.js), and a
-// deployment whose registry will not load resolves nothing either. Both must
-// keep every source, because the alternative is an outage that looks like an
-// empty answer — invariant 2, and the same treatment `toolsForRun` gives a null
-// capability in src/tool-sets.js. Concretely: the literature door at POST /mcp
-// is DELIBERATELY not governed by the agent roster, because MCP has no concept
-// of an agent to govern it with — the ground-truth batteries
-// (tests/dr-eval.mjs over tests/evalsets/*, tests/needles/*) reach both corpora
-// through it and must keep doing so.
+// resolved", which is not the same claim as "an agent declared nothing": an MCP
+// call that names no agent resolves none (src/mcp.js's `deep_research` takes an
+// optional `agent` argument and resolves it through `resolveMcpAgent` →
+// `resolveRequestAgent`, the same registry chain chat.js uses; omitted, the
+// request state carries a null capability), and a deployment whose registry
+// will not load resolves nothing either. Both must keep every source, because
+// the alternative is an outage that looks like an empty answer — invariant 2,
+// and the same treatment `toolsForRun` gives a null capability in
+// src/tool-sets.js. Concretely: the literature door stays open for an
+// UNADDRESSED POST /mcp call — the ground-truth batteries (tests/dr-eval.mjs
+// over tests/evalsets/*, tests/needles/*) name no agent and reach both corpora
+// that way, and must keep doing so. A call that DOES name one is governed
+// exactly like a chat turn.
 /**
  * @param {import('./agent-spec.js').AgentCapability | null | undefined} cap
  * @param {SearchSource} source
@@ -325,8 +329,8 @@ export function capabilityAllowsSource(cap, source) {
 // spends triage's attention shaping queries for a leg that will never run, and
 // it invites the planner to promise a corpus the answer cannot cite. The
 // capability is threaded in from pipeline.js's two prompt call sites; omitted
-// (or null — the MCP channel), every note is composed, which is what this
-// function did before the argument existed.
+// (or null — an MCP call that named no agent), every note is composed, which is
+// what this function did before the argument existed.
 /**
  * @param {import('./agent-spec.js').AgentCapability | null} [cap]
  * @returns {string}

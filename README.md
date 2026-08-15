@@ -38,7 +38,13 @@ Exa is the web search — or the Worker itself, which can originate searches wit
 no search company in the path — and the Hugging Face Hub, arXiv, Europe PMC
 and the peer-reviewed literature are auxiliary search sources; opt-in
 enrichments (Shodan host intelligence, Google Maps and Street View) feed the
-pipeline context. Google sign-in gates the whole site. D1 stores accounts,
+pipeline context. Google sign-in gates the signed-in app and its account
+APIs; the landing, `/help`, `/build`, `/story`, `/architecture`, `/connect`,
+`/docs/`, `/pulse`, `/corpora`, `/space` and the whole Se/cure tier at `/cure`
+stay reachable signed out (the static allowlist is `isPublicAsset` in
+`src/assets.js`), as do the grant- and token-authorized `/api/pool/*`,
+`/api/knowledge/*` and `/api/server-token/*` routes, which `src/index.js`
+places above the identity gate. D1 stores accounts,
 real-cost research quotas, the chat interaction log, feedback threads, and the
 durable note graph an account builds across conversations. R2 and Vectorize
 hold encrypted cloud history and document RAG
@@ -56,7 +62,9 @@ instructions](https://mcp.deepresearch.se/)).
 
 The chat itself has seven **modes**, each a pre-bundled agent over the same
 platform, and every one of them names a domain — there is no general mode:
-Deep Science (the default; answers only from the peer-reviewed literature, with
+Deep Science (the default; leads with the peer-reviewed literature and numbers
+it first, with a knob-gated web leg behind it labelled as web reporting and
+barred from standing in for the literature on a scientific claim, and with
 citations annotated by the venue's own h5-index where Google Scholar ranks it),
 Cyber (cybersecurity and OSINT — what a host exposes, what a place looks like
 from the street, and the OWASP reference for an assessment), Introspection (the
@@ -364,7 +372,7 @@ with the server in the data path, so it is refused for Se/cure in code, and it
 needs the image pushed before the binding can be declared:
 
 ```bash
-./scripts/build-exec-image.sh all     # build → verify (40 checks) → push
+./scripts/build-exec-image.sh all     # build → verify (46 checks) → push
 ```
 
 The push needs a Cloudflare **user** API token (`CLOUDFLARE_USER_API_TOKEN`)
@@ -403,8 +411,8 @@ work). Port those and the rest runs unchanged.
   other host, populate `env` from process environment variables or a `.env`
   file. No code changes.
 - **Resource bindings** are live objects with Cloudflare method shapes.
-  There are only **four**, and each needs a substitute exposing the same
-  methods the code calls:
+  **Four** are load-bearing here, and each needs a substitute exposing the
+  same methods the code calls:
 
 | Binding | Cloudflare service | Methods the code uses | Substitute with |
 |---|---|---|---|
@@ -412,6 +420,11 @@ work). Port those and the rest runs unchanged.
 | `env.DB` | D1 (SQLite) | `.prepare(sql).bind(…).first()/.run()/.all()`, `.batch([…])` | Any SQLite-compatible driver wrapped to the D1 statement shape — better-sqlite3, libSQL/Turso, Postgres with a shim. Schema self-applies (`CREATE TABLE IF NOT EXISTS` in `src/db.js`); no migration step. **Load-bearing** for accounts/quotas — without it the app runs degraded (break-glass Basic Auth only, no Google sign-in). |
 | `env.STORAGE` | R2 (object store) | `.get/.put/.delete/.list/.head` | Any S3-compatible store (MinIO, AWS S3, Backblaze) or a filesystem shim, wrapped in the R2 method shape. **Optional** — absent, cloud storage/RAG index copies just switch off (`/api/settings` reports unavailable). |
 | `env.RAG_INDEX` | Vectorize (vector DB) | `.query/.upsert/.insert/.deleteByIds` | Any vector store (pgvector, Qdrant, Milvus, …), 1024-dim / cosine to match the embedding model, wrapped in the Vectorize shape. **Optional** — absent, large-document RAG falls back to browser-local OPFS/IndexedDB. |
+
+`wrangler.toml` declares three more that need no porting work of their own:
+`ARXIV_INDEX` and `PUBMED_INDEX` are additional Vectorize indexes of the same
+shape as `RAG_INDEX`, and the `EXEC_SANDBOX` Durable Object simply switches the
+cloud execution environment off when absent.
 
 Beyond `env`, two more platform seams need attention:
 
@@ -496,7 +509,8 @@ URI from step 4. Note that client-disconnect detection doesn't fire in
 ```bash
 npm install           # once: the unit suite needs the root devDependencies
 npm test              # unit suite: node --test src/*.test.js public/js/*.test.js
-                      #   public/games/*/js/*.test.js sdk/*.test.mjs scripts/*.test.mjs tests/*.test.js
+                      #   public/app-kit/*.test.js public/games/*/js/*.test.js sdk/*.test.mjs
+                      #   scripts/*.test.mjs scripts/*/*.test.mjs tests/*.test.js tests/pygram/*.test.mjs
 npm run typecheck     # tsc --noEmit on src/ + public/ (checked JSDoc, dev-only)
 
 cd tests && npm install && npm run fixtures   # Playwright E2E, once
@@ -509,10 +523,12 @@ The E2E suite has two targets. `test:local` brings up its own Worker and a
 loopback stand-in for the LLM provider, so it needs no credentials and nothing
 deployed — that is the one CI runs. `test:mocked` and `test:live` go against
 the deployed site with the break-glass credentials
-(`BASIC_AUTH_USER`/`BASIC_AUTH_PASS` env vars). Five eval harnesses have
+(`BASIC_AUTH_USER`/`BASIC_AUTH_PASS` env vars). Six eval harnesses have
 append-only findings ledgers: `eval:models`, `eval:bench`, `eval:hf` and
-`eval:starters` in `tests/`, plus `scripts/arxiv-hosted-eval.mjs` for
-retrieval — see `docs/TESTING.md`, `docs/ARCHITECTURE.md` §12 and CLAUDE.md.
+`eval:starters` in `tests/`, the ground-truth battery `node tests/dr-eval.mjs`,
+plus `scripts/rag-eval.mjs` for retrieval, whose ledger is
+`docs/RAG-EVAL-LEDGER.md` — see `docs/TESTING.md`, `docs/ARCHITECTURE.md` §12
+and CLAUDE.md.
 
 ## Logging
 

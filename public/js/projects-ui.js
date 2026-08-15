@@ -1,9 +1,10 @@
 // Projects UI: the projects section at the top of the history sidebar, the
-// project panel overlay (knob at the top, add-files/add-text, dropzone,
-// file inventory, the project's conversations), and the header chip that
-// shows which project the current chat belongs to.
+// project panel overlay (the vault store-with-secret section,
+// add-files/add-text, dropzone, file inventory, the project's
+// conversations), and the header chip that shows which project the current
+// chat belongs to.
 //
-// Data and rules live in public/js/projects.js; bulk cloud moves in
+// Data and rules live in public/js/projects.js; cloud reconciliation in
 // public/js/sync.js. This module only renders and wires.
 
 import { escapeHtml } from "./notifications.js";

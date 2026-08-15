@@ -533,9 +533,12 @@ metadata advertises `"client_id_metadata_document_supported": true` together
 with `"none"` in `token_endpoint_auth_methods_supported`, which is what makes
 both clients pick Client ID Metadata Document over DCR; miss either and they
 fall back. So the `client_id` is an HTTPS URL rather than a row — no client
-table, no `/register`, nothing accumulating per connection. No
-`registration_endpoint` is advertised; add one only if something we care about
-turns out to need it.
+table, nothing accumulating per connection. A `registration_endpoint` IS
+advertised alongside it (§4c item 3, 2026-08-05), because a client that does
+not speak CIMD had nowhere to register at all: `src/oauth-register.js` answers
+RFC 7591 DCR with a signed stateless `client_id` (`orc1.`) that carries its own
+registration, so there is still no client table, and a CIMD-capable client
+never calls it.
 
 **Two adapter tools for ChatGPT** (§2a): `search` and `fetch`, named exactly
 that, returning OpenAI's fixed shapes both as `structuredContent` and as

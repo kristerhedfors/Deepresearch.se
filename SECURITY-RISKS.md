@@ -351,14 +351,18 @@ rate-limiting rules remain available if the cap proves insufficient.
 public exposure (`docs/MCP-COST.md`), both in this class, and BOTH are now
 CLOSED (2026-08-05).**
 
-**(a) the missing reservation.** `src/mcp.js` takes the reservation on the
-four tools that reach a provider — `deep_research`, `literature_search`,
-`literature_similar` and the `search` adapter — keyed on the request id and
-released in a `finally` covering every exit path, so an external key is
+**(a) the missing reservation.** `src/mcp.js` takes the reservation on every
+tool that reaches a provider — `deep_research`, `literature_search`,
+`literature_similar`, the `search` adapter, and since 2026-08-15 the three
+extension tools `street_view_look`, `place_nearby` and `host_intel`
+(`EXTENSION_SPENDING_TOOLS`, folded into the exported `SPENDING_TOOL_NAMES`
+from the registry, so `mcp.js` still names no service) — keyed on the request
+id and released in a `finally` covering every exit path, so an external key is
 capped at 5 concurrent spending calls exactly as a browser session is. The
-seven tools that contact no provider (the four `sdk_*`, `literature_fetch`,
+three tools that contact no provider (`literature_fetch`,
 `literature_corpora`, `fetch`) stay outside it: a slot held there could only
-deny the caller its own next call. The refusal is a JSON-RPC result with
+deny the caller its own next call. (The four `sdk_*` tools were also exempt
+until their removal on 2026-08-15.) The refusal is a JSON-RPC result with
 `isError` rather than an HTTP 429 — an MCP client reads the envelope, and a
 transport-level 429 reads to it as a broken server. Admins are NOT exempt,
 unlike on the quota gate: that is a spend cap an operator is trusted to

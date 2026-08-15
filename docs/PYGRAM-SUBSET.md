@@ -1,7 +1,11 @@
 # pygram — the Python subset
 
-*Spec date: 2026-08-13. Status: IMPLEMENTED — `pygram/build/pygram` passes 189 of
-202 corpus entries with 0 mismatches; 13 remain unsupported.*
+*Spec date: 2026-08-13. Status: IMPLEMENTED — on 2026-08-13 `pygram/build/pygram`
+passed 189 of the 202 corpus entries then in the battery, with 0 mismatches and
+13 unsupported. The battery has grown since: `tests/pygram/conformance.mjs` loads
+`seed-corpus.jsonl` plus the harvested `corpus.jsonl` and dedups them to 375
+entries as of 2026-08-15, so run `npm run pygram:conformance` for the current
+pass/unsupported split.*
 
 **pygram** (py + gram) is a minimal Python interpreter for the in-browser Linux
 sandbox (CheerpX, x86-32, `public/js/sandbox.js`). It exists because the real
@@ -17,15 +21,15 @@ subset.
 
 ## 1. The evidence base
 
-Everything below traces to `tests/pygram/seed-corpus.jsonl` — 139 programs,
-each with the stdout that the system CPython 3.11.15 actually produced (134
-entries; 5 are deliberately blank because their output is a wall clock, a PRNG
+Everything below traces to `tests/pygram/seed-corpus.jsonl` — 161 programs,
+each with the stdout that the system CPython 3.11.15 actually produced (154
+entries; 7 are deliberately blank because their output is a wall clock, a PRNG
 stream, or a module we will never have).
 
 | provenance | entries | meaning |
 |---|---|---|
 | `repo` | 18 | the invocation, or the exact idiom, appears in this repository |
-| `experience` | 121 | recurring agentic-CLI idioms, written to the shapes the repo's sandbox prompts describe |
+| `experience` | 143 | recurring agentic-CLI idioms, written to the shapes the repo's sandbox prompts describe |
 
 **How to run the corpus.** 17 entries write files. Their recorded
 `expect_stdout` was produced with each program in its **own empty working

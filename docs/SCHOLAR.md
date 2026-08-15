@@ -293,9 +293,11 @@ leg, and the ancient-DNA field publishes in journals and on bioRxiv, not on
 arXiv. Handing a corpus to a different agent is now a one-line spec diff.
 
 A **null** capability keeps every source, because it means *no agent was
-resolved* rather than *an agent declared nothing*: that is `POST /mcp`, which
-has no concept of an agent, and it is deliberate — the ground-truth batteries
-(`tests/dr-eval.mjs`, `tests/needles/*`) reach both corpora through that door.
+resolved* rather than *an agent declared nothing*: that is a `POST /mcp` call
+naming no agent (the channel resolves one only when `deep_research`'s `agent`
+argument asks for it, `resolveMcpAgent`), and it is deliberate — the
+ground-truth batteries (`tests/dr-eval.mjs`, `tests/needles/*`) reach both
+corpora through that door.
 
 ### The one widening: name the preprint record and get it
 

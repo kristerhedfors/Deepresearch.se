@@ -10,13 +10,15 @@ environment (the execution sandbox).
 **Status: designed 2026-07-16; WIRED into the running application since
 2026-07-18** — the manifest logic and SDK-mode tool surface live in the shared
 core `public/js/sdk-core.js` (server façade `src/sdk-tools.js`; `sdk/pair-cli.mjs`
-re-exports it), consumed by Agent Studio, the `/mcp` `sdk_*` tools, and the
-sandbox's `/src` mount. This directory is a
-complete, self-contained software development kit for building **platforms**
-like DeepResearch.**Se/cure** + DeepResearch.**Se/rver**: one AI assistant
-product shipped as two tiers of the same capability set, where the platform as a
-whole has **zero or one server component** between the chat client running in
-the browser and the optional upstream APIs it fetches data from.
+re-exports it), consumed by Agent Studio and the sandbox's `/src` mount (the
+four `/mcp` `sdk_*` tools were removed 2026-08-15 when that surface was
+reshaped for callers without a screen; see the `docs/DISTILLSDK.md` status
+banner). This directory is a complete, self-contained software development kit
+for building **platforms** like DeepResearch.**Se/cure** +
+DeepResearch.**Se/rver**: one AI assistant product shipped as two tiers of the
+same capability set, where the platform as a whole has **zero or one server
+component** between the chat client running in the browser and the optional
+upstream APIs it fetches data from.
 
 The SDK has three parts:
 
@@ -313,8 +315,14 @@ this once" put the server in the client tier's data path.
 
 ## 5. Relationship to the existing application
 
-Nothing in `sdk/` is imported by `src/` or `public/` today. The later wiring
-task proceeds per module, in the manifest's dependency order:
+No `src/` or `public/` module imports SDK *code* from `sdk/` — the dependency
+runs the other way, with `sdk/pair-cli.mjs` re-exporting the shared core
+`public/js/sdk-core.js`. What the running Worker consumes is the SDK's DATA:
+`sdk/MANIFEST.json`, read out of the committed source snapshot
+(`src/pipeline.js` `runSdkBuild` → `manifestFromSnapshot`) on every Agent
+Studio build, and `sdk/AGENTS.json` (`src/agent-registry.js`) on the routing
+path of every chat request. Binding the remaining modules' code proceeds per
+module, in the manifest's dependency order:
 
 1. Pick a module; read its skill's "reference implementation" map.
 2. Extract/align the reference files to the module's stated contract
