@@ -145,7 +145,7 @@ export async function runModelsAgentEnrichment(c) {
   // identity, and hfIntent exists to keep the hub OUT of unrelated turns in the
   // other modes. Core reads this generically (pipeline.js runAuxSearch), so
   // nothing about the pipeline learns which source it is.
-  /** @type {any} */ (state).forceAux = ["hf"];
+  state.forceAux = ["hf"];
   // …and it leans on the hub HARDER than any other mode: the ceiling on hub
   // searches per request goes up so the gap rounds' follow-up angles reach the
   // Hub too, instead of the first wave spending the whole allowance (feedback
@@ -153,7 +153,7 @@ export async function runModelsAgentEnrichment(c) {
   // answers and in particular anything regarding models"). Core reads this
   // generically (pipeline.js runAuxSearch); the cross-wave dedup means a higher
   // ceiling buys DISTINCT searches, never a repeat of one already run.
-  /** @type {any} */ (state).auxMaxPerRequest = { hf: HUB_SEARCHES_PER_REQUEST };
+  state.auxMaxPerRequest = { hf: HUB_SEARCHES_PER_REQUEST };
 
   const lastUser = lastUserText(conversation);
   if (!modelIntent(lastUser)) return conversation;

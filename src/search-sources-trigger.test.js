@@ -633,7 +633,7 @@ describe("§4 forced / restricted routing", () => {
       "if (Array.isArray(only) && only.length && !only.includes(source.id)) return [];",
       "if (!sourceAllowed(state, source)) return [];",
       "if (!batch.length || (!forced && !leading && !source.intent(ctx.gateLastUser))) return [];",
-      "const override = /** @type {any} */ (state).auxMaxPerRequest?.[source.id];",
+      "const override = state.auxMaxPerRequest?.[source.id];",
       "const declared = (leading ? source.leadMaxPerRequest ?? source.maxPerRequest : source.maxPerRequest);",
       "const cap = typeof override === \"number\" && override > 0 ? override : (declared ?? MAX_AUX_SEARCHES_DEFAULT);",
     ]) {

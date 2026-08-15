@@ -436,16 +436,16 @@ export async function runScholarMetricsEnrichment(c) {
   // agent is built on. The widened ids below are permitted, not forced — each
   // still has to satisfy its own intent gate in planAuxSource, which the ask
   // that named it does by construction.
-  /** @type {any} */ (state).forceAux = [SCHOLAR_SOURCE_ID];
+  state.forceAux = [SCHOLAR_SOURCE_ID];
   // …and `auxOnly` is the peer-reviewed leg plus whatever preprint record the
   // reader named outright (preprintSources — the default is the bare
   // [SCHOLAR_SOURCE_ID] this agent has always used).
-  /** @type {any} */ (state).auxOnly = [SCHOLAR_SOURCE_ID, ...preprintSources(asked)];
+  state.auxOnly = [SCHOLAR_SOURCE_ID, ...preprintSources(asked)];
   // The raised ceiling stays keyed to the peer-reviewed leg only. A widened
   // source keeps its own registry cap (and the leading ceiling if the ask named
   // it as THE place to look) — this agent leaning harder on its own source is
   // not a reason to lean harder on a corpus it just borrowed for one turn.
-  /** @type {any} */ (state).auxMaxPerRequest = { [SCHOLAR_SOURCE_ID]: SCHOLAR_SEARCHES_PER_REQUEST };
+  state.auxMaxPerRequest = { [SCHOLAR_SOURCE_ID]: SCHOLAR_SEARCHES_PER_REQUEST };
   // The web leg runs SECOND, and arrives labelled (feedback #69, 2026-08-14:
   // "deep science needs web search as well but should start with research
   // sources and then validate with help from web search"). Both halves of that
@@ -456,12 +456,12 @@ export async function runScholarMetricsEnrichment(c) {
   // source's number, so the peer-reviewed record occupies [1..n] and the web
   // follows it. The reader's `web_search` knob still decides whether the leg
   // runs at all; this only says where its results land when it does.
-  /** @type {any} */ (state).webAfterAux = true;
+  state.webAfterAux = true;
   // …and this is the caveat every web source carries into the digest. The
   // agent's promise changed from "peer-reviewed sources only" to "peer-reviewed
   // evidence, corroborated against the open record", and the distinction only
   // survives into the answer if it travels on the sources themselves.
-  /** @type {any} */ (state).webSourceNote = WEB_SOURCE_NOTE;
+  state.webSourceNote = WEB_SOURCE_NOTE;
 
   /** @type {string[]} */
   const blocks = [];

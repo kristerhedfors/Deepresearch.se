@@ -50,6 +50,32 @@ export function shellReplyMessages(shellBlock, opts = {}) {
   ];
 }
 
+// The numbered external sources a forced auxiliary source found this turn,
+// carried into a DIRECT reply (pipeline.js runSourceResearch's two direct
+// exits). The source-research phase runs its forced sources BEFORE it knows
+// which exit the turn takes, and both exits used to drop the result: the user
+// was shown a source panel the answer model had never seen, so the answer
+// could not cite the very sources the run had just spent its budget fetching.
+//
+// The block is a plain string and names no service (invariant 7 — core reads
+// the aux registry generically); "" returns [], so every call site that has
+// nothing forced produces a byte-identical message array.
+/**
+ * @param {string} auxBlock
+ * @returns {Message[]}
+ */
+export function auxReplyMessages(auxBlock) {
+  if (!auxBlock) return [];
+  return [
+    {
+      role: "system",
+      content:
+        auxBlock +
+        "\n\nUse these external sources for facts that live outside this repository, citing them as [n].",
+    },
+  ];
+}
+
 // Distilled-notes preamble for the gap/synth inputs — only present when the
 // budget-gated digest phase actually produced notes (never at default budget,
 // so the input string is byte-identical there).
@@ -266,20 +292,21 @@ export const endsWithQuestion = (text) => /[?？][*_`")\]]*$/.test(String(text |
  * and the iteration question (unless the prose already asked one). Shared by
  * both build paths. With `published` null: the honest no-publish note.
  * @param {string} prose The model-written reply text already emitted ("" when none).
- * @param {Array<{ path: string, content: string }>} files
- * @param {{ slug: string, url: string, files: number, bytes: number, paths?: string[] } | null} published
+ * @param {{ slug: string, url: string, files: number, bytes: number, paths: string[] } | null} published
  * @returns {string}
  */
-export function sdkReplyTail(prose, files, published) {
+export function sdkReplyTail(prose, published) {
   /** @type {string[]} */
   const parts = [];
   if (published) {
     const kb = (published.bytes / 1024).toFixed(1);
     // What SHIPPED, not what the model staged: the publish layer injects the
     // app kit (feedback #66), so the staged list would undercount the summary
-    // it is printed beside. Falls back to the staged paths for any caller that
-    // predates `paths`.
-    const paths = published.paths?.length ? published.paths : files.map((f) => f.path);
+    // it is printed beside. src/build-pub.js publishBuild always returns
+    // `paths`, and it is the only producer of this value — so there is no
+    // staged-list fallback to keep, and the staged list is not what this
+    // summary is documented to describe.
+    const paths = published.paths || [];
     parts.push(`**Build summary:** ${published.files} file${published.files === 1 ? "" : "s"}, ${kb} KB — ${paths.join(" · ")}`);
     if (!replyLinksTo(prose, published.url)) {
       parts.push(`**Try it live:** [${published.url}](${published.url})`);
