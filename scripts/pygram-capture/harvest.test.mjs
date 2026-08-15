@@ -12,13 +12,14 @@
 // Plus the privacy contract: nothing credential-shaped reaches the corpus.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync, readFileSync, mkdirSync, existsSync } from "node:fs";
+import { mkdtempSync, writeFileSync, readFileSync, mkdirSync, existsSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   normalizeProgram,
   programId,
   redactSecrets,
+  envSecretValues,
   shellTokens,
   splitHeredocs,
   extractPythonPrograms,
@@ -614,4 +615,159 @@ test("parseArgs: the export path has its own flags", () => {
   assert.equal(parseArgs([]).exportOnly, false);
   assert.equal(parseArgs(["--no-sightings"]).sightingsEnabled, false);
   assert.ok(parseArgs([]).sightings.endsWith(join("tests", "pygram", "sightings")));
+});
+
+// --- the shapeless-credential defence -----------------------------------------
+// A pattern only catches a secret with a recognisable SHAPE. The most dangerous
+// credentials in these containers have none — a Cloudflare API token is 53
+// characters of unprefixed base62 — and no regex separates that from a hash or a
+// base64 fixture. The harvester runs inside the container that holds them, so it
+// matches the literal value instead of guessing. This is the check that stands
+// between a captured one-liner and a PUBLIC, auto-deploying repo.
+
+const ENV_FIXTURE = [
+  { name: "CLOUDFLARE_API_TOKEN", value: "Zx7QpLmN4vRt2wYk8sHbJc3FdGe6Ua9TnPq5MrVy" },
+  { name: "BASIC_AUTH_PASS", value: "correct-horse-battery" },
+];
+
+test("envSecretValues: takes credential-named vars, rejects what cannot be one", () => {
+  const got = envSecretValues({
+    CLOUDFLARE_API_TOKEN: "Zx7QpLmN4vRt2wYk8sHbJc3FdGe6Ua9TnPq5MrVy",
+    HUGGINGFACE_API_TOKEN: "h" + "f_" + "a".repeat(34),
+    NODE_ENV: "production",                       // not credential-named
+    BASIC_AUTH_USER: "admin",                     // credential-named but too short
+    CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR: "3", // a file descriptor
+    CLAUDE_SESSION_INGRESS_TOKEN_FILE: "/run/secrets/ingress-token", // a path
+    HOME: "/root",
+  });
+  assert.deepEqual(got.map((s) => s.name).sort(), ["CLOUDFLARE_API_TOKEN", "HUGGINGFACE_API_TOKEN"]);
+});
+
+test("envSecretValues: longest first, so a nested secret is never left in fragments", () => {
+  const got = envSecretValues({ A_TOKEN: "abcdefghijkl", B_TOKEN: "abcdefghijklmnopqrst" });
+  assert.deepEqual(got.map((s) => s.name), ["B_TOKEN", "A_TOKEN"]);
+});
+
+test("redactSecrets: a LIVE env credential is redacted though no pattern describes it", () => {
+  const raw = `import os\ntok="${ENV_FIXTURE[0].value}"\nprint(tok)`;
+  // Precondition: the shape defence genuinely cannot see this one.
+  assert.equal(redactSecrets(raw, []).hits, 0, "no SECRET_PATTERN matches it — that is the point");
+  const { text, hits } = redactSecrets(raw, ENV_FIXTURE);
+  assert.equal(hits, 1);
+  assert.equal(text.includes(ENV_FIXTURE[0].value), false, "the live token must not survive");
+  assert.match(text, /\[REDACTED env CLOUDFLARE_API_TOKEN 40 chars\]/);
+});
+
+test("redactSecrets: the marker names the VARIABLE and never the value", () => {
+  const { text } = redactSecrets(`p="${ENV_FIXTURE[1].value}"`, ENV_FIXTURE);
+  assert.equal(text.includes("correct-horse"), false);
+  assert.ok(text.includes("BASIC_AUTH_PASS"));
+});
+
+test("redactSecrets: every occurrence goes, not just the first", () => {
+  const v = ENV_FIXTURE[0].value;
+  const { text } = redactSecrets(`a="${v}"\nb="${v}"\nc="${v}"`, ENV_FIXTURE);
+  assert.equal(text.includes(v), false);
+  assert.equal(text.split("REDACTED env").length - 1, 3);
+});
+
+test("redactSecrets: env redaction is idempotent, like the pattern pass", () => {
+  const once = redactSecrets(`t="${ENV_FIXTURE[0].value}"`, ENV_FIXTURE);
+  const twice = redactSecrets(once.text, ENV_FIXTURE);
+  assert.equal(twice.hits, 0);
+  assert.equal(twice.text, once.text);
+});
+
+test("redactSecrets: a program with no secret is left byte-identical", () => {
+  const src = "import json;print(json.dumps({'token':'x'}))";
+  assert.deepEqual(redactSecrets(src, ENV_FIXTURE), { text: src, hits: 0 });
+});
+
+test("SECRET_PATTERNS: the shapes that were missing are covered", () => {
+  const cases = [
+    ["GitHub server token", "gh" + "s_" + "A".repeat(36)],
+    ["GitHub oauth token", "gh" + "o_" + "B".repeat(36)],
+    ["Hugging Face token", "hf" + "_" + "c".repeat(34)],
+    ["Google OAuth client secret", "GOCSPX" + "-" + "d".repeat(28)],
+    ["JWT", "ey" + "Jhbgciojissi.eyJzdWIiOiIxMjM0.SflKxwRJSM"],
+  ];
+  for (const [label, token] of cases) {
+    const { text, hits } = redactSecrets(`k="${token}"`, []);
+    assert.ok(hits >= 1, `${label} must match a SECRET_PATTERN`);
+    assert.equal(text.includes(token), false, `${label} must not survive`);
+  }
+});
+
+test("mergeSightings: the argv tail is a leak path too, and is redacted", () => {
+  // A secret reaches the corpus through `python -c prog SECRET` as readily as
+  // through the program text, and the tail is written to the same file.
+  const fake = "sk_" + "ber_" + "z".repeat(24);
+  const { records } = mergeSightings(
+    [],
+    [{ key: "shim:s#1", source: "shim", program: `t="${fake}"`, argv_tail: [fake, "--flag"], ts: "2026-01-01T00:00:00Z" }],
+    new Set(),
+  );
+  assert.equal(records.length, 1);
+  assert.equal(records[0].program.includes(fake), false);
+  assert.equal(records[0].argv_tail.join(" ").includes(fake), false);
+  // The id must be a function of what was WRITTEN, or a re-harvest forks it.
+  assert.equal(records[0].id, programId(records[0].program));
+});
+
+test("mergeSightings: a LIVE env credential does not survive the production path", () => {
+  // mergeSightings redacts against the module's own view of the environment —
+  // there is no seam to inject a fixture, which is correct in production and is
+  // exactly why this test uses a real value rather than a made-up one. It is
+  // matched and asserted, never written or printed. Skips where nothing is set.
+  const live = envSecretValues();
+  if (!live.length) return;
+  const { value } = live[0];
+  const { records } = mergeSightings(
+    [],
+    [{ key: "shim:s#1", source: "shim", program: `t="${value}"`, argv_tail: [value], ts: "2026-01-01T00:00:00Z" }],
+    new Set(),
+  );
+  assert.equal(records.length, 1);
+  assert.equal(records[0].program.includes(value), false, "a live credential reached a corpus record");
+  assert.equal(records[0].argv_tail.join(" ").includes(value), false);
+  assert.match(records[0].program, /\[REDACTED env /);
+});
+
+test("the committed corpus and sightings carry no live env credential", () => {
+  // The standing guard: this suite runs in the container that holds the real
+  // secrets, so it can assert the real thing rather than a fixture.
+  const live = envSecretValues();
+  const root = join(import.meta.dirname, "..", "..", "tests", "pygram");
+  const files = [join(root, "corpus.jsonl"), join(root, "seed-corpus.jsonl")];
+  const sightingsDir = join(root, "sightings");
+  if (existsSync(sightingsDir)) {
+    for (const f of readdirSync(sightingsDir)) if (f.endsWith(".jsonl")) files.push(join(sightingsDir, f));
+  }
+  for (const f of files) {
+    if (!existsSync(f)) continue;
+    const text = readFileSync(f, "utf8");
+    for (const { name, value } of live) {
+      assert.equal(text.includes(value), false, `${name} appears verbatim in ${f} — rotate it, then purge history`);
+    }
+  }
+});
+
+test("envSecretValues: the three non-credential shapes live in THIS container", () => {
+  // Every one of these was found set, under a name matching the credential
+  // regex, in the container that runs the harvest. Treating any of them as a
+  // secret would corrupt captured programs and block unrelated commits — a
+  // false positive here is not cosmetic, it rewrites committed evidence.
+  const got = envSecretValues({
+    GIT_CONFIG_KEY_0: "credential.interactive",             // dotted config key
+    GIT_CONFIG_KEY_1: "url.https://github.com/.insteadOf",  // a URL
+    GH_TOKEN: "proxy-injected",                             // the proxy sentinel
+    SOME_TOKEN: "a value with spaces in it",                // prose, not a token
+    REAL_API_TOKEN: "Zx7QpLmN4vRt2wYk8sHbJc3FdGe6Ua9T",     // a credential
+    BASIC_AUTH_PASS: "correct-horse-battery",               // also a credential
+  });
+  assert.deepEqual(got.map((s) => s.name).sort(), ["BASIC_AUTH_PASS", "REAL_API_TOKEN"]);
+});
+
+test("envSecretValues: the placeholder check is case-insensitive", () => {
+  assert.deepEqual(envSecretValues({ A_TOKEN: "PROXY-INJECTED", B_TOKEN: "ChangeMe" }), []);
 });

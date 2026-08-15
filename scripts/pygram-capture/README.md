@@ -224,6 +224,14 @@ paths, occasionally a token pasted into a one-liner.
   be committed, pasted into an issue, or attached to a PR. The published
   `tests/pygram/sightings/*.jsonl` files ARE committed, and go through the same
   redaction and seed guard as the corpus before they are written.
+* **A live credential is redacted by VALUE, not only by shape.** The patterns
+  below catch a secret that announces itself with a prefix; the most dangerous
+  ones here do not (a Cloudflare API token is 53 characters of unprefixed
+  base62). The harvester runs inside the container that holds them, so it matches
+  the literal value of every credential-named env var — exact, so it cannot
+  false-positive on anything but the secret — and writes
+  `[REDACTED env <NAME> <n> chars]`. Naming the variable rather than the value is
+  deliberate: it says which credential to rotate without restating it.
 * `harvest.mjs` redacts before writing. Every program, argv tail, and stdin
   sample is matched against the repo's canonical credential patterns — the same
   set as `scripts/scan-secrets` (OpenAI `sk-`, Berget `sk_ber_`, Groq `gsk_`,
