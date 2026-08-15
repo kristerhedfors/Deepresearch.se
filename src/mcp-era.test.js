@@ -156,6 +156,37 @@ describe("the stateless era (2026-07-28)", () => {
     assert.equal(json.error.code, -32020);
   });
 
+  test("a modern tools/call runs the tool, mirrored Mcp-Name and all", async () => {
+    // The era-detection path most likely to regress, and the only method whose
+    // header table demands Mcp-Name. A tool the account exposes but has not
+    // switched the extension knob on for answers as a tool RESULT, which is what
+    // proves the modern envelope reached the dispatch rather than being refused
+    // by the protocol layer.
+    const { status, json } = await post(
+      modern("tools/call", {
+        params: { name: "street_view_look", arguments: { place: "Enköping" } },
+        name: "street_view_look",
+      }),
+    );
+    assert.equal(status, 200);
+    assert.equal(json.result.resultType, "complete");
+    assert.equal(json.result.isError, true);
+    assert.match(json.result.content[0].text, /switched off for this account/);
+    // tools/call is NOT a cacheable result — no listing hints on it.
+    assert.equal("ttlMs" in json.result, false);
+  });
+
+  test("a tools/call whose Mcp-Name disagrees with the body is refused", async () => {
+    const { status, json } = await post(
+      modern("tools/call", {
+        params: { name: "street_view_look", arguments: {} },
+        name: "host_intel",
+      }),
+    );
+    assert.equal(status, 400);
+    assert.equal(json.error.code, -32020);
+  });
+
   test("a modern unknown method is 404 — the discriminator against a bare 404", async () => {
     // "The JSON-RPC error body distinguishes this case from a 404 returned by a
     // legacy HTTP+SSE server that does not host the modern MCP endpoint."

@@ -83,11 +83,23 @@ export function spokenText(raw) {
       .filter(Boolean)
       .join(", ") + ".",
   );
-  // Emphasis and horizontal rules.
-  text = text.replace(/(\*\*|__|\*|_)(?=\S)([^*_]*?\S)\1/g, "$2");
+  // Emphasis and horizontal rules. `_` is handled separately from `*` and only
+  // when it is not inside a word: the naive pair rule turns `deep_research
+  // spends_a_lot` into `deep research spends a lot`, and an identifier read
+  // aloud as three words is worse than one read as an identifier.
+  text = text.replace(/(\*\*|\*)(?=\S)([^*]*?\S)\1/g, "$2");
+  text = text.replace(/(?<![\p{L}\p{N}_])(__|_)(?=\S)([^_]*?\S)\1(?![\p{L}\p{N}_])/gu, "$2");
   text = text.replace(/^\s*([-*_]\s*){3,}$/gm, "");
   // Block quotes.
   text = text.replace(/^\s*>\s?/gm, "");
+  // A trailing SOURCES section the model wrote itself. The voice path replaces
+  // it with one spoken sentence naming the outlets, and leaving both means an
+  // answer that ends by reading a numbered list of titles aloud — the single
+  // least speakable thing this pipeline produces, arriving twice. Anchored to
+  // the END of the text so a "Sources" heading in the middle of a discussion
+  // about sources survives.
+  text = text.replace(/\n\s*(?:sources|källor|references|referenser)\s*:?\s*\n[\s\S]*$/i, "");
+  text = text.replace(/\n\s*(?:sources|källor|references|referenser)\s*:.*$/i, "");
   // Whitespace: paragraphs become single breaks, runs of spaces collapse, and
   // the double punctuation the heading rule can leave is tidied.
   text = text.replace(/[ \t]+/g, " ");
@@ -120,6 +132,10 @@ export function spokenSources(sources) {
     const name = outletName(source);
     if (name && !names.includes(name)) names.push(name);
   }
+  // A host of three letters or fewer before its tail ("bbc.co.uk", "nih.gov")
+  // is read out letter by letter by a speech engine, which is fine — those ARE
+  // said letter by letter. Nothing to fix; the case that would be wrong is
+  // inventing a friendly name we do not have.
   if (!names.length) return `Based on ${list.length} source${list.length === 1 ? "" : "s"}.`;
   const shown = names.slice(0, SPOKEN_SOURCE_NAMES);
   const rest = list.length - shown.length;

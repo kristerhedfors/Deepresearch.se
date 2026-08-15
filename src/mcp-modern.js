@@ -274,6 +274,29 @@ export function validateModernRequest(parsed, headers) {
       status: 400,
     };
   }
+  // 2. A version we do not implement, checked BEFORE the remaining fields — and
+  //    the order is load-bearing. A client speaking an OLDER modern revision may
+  //    legitimately not carry a field this one requires; answering it "invalid
+  //    params" tells it to fix a request it cannot fix, while -32022 hands it the
+  //    list of versions it can retry with. The most fundamental thing wrong wins.
+  //    The data shape is fixed by the schema (`data: { supported, requested }`,
+  //    both required).
+  if (!SUPPORTED_PROTOCOL_VERSIONS.includes(version)) {
+    return {
+      code: RPC_UNSUPPORTED_PROTOCOL_VERSION,
+      message: "Unsupported protocol version",
+      data: { supported: SUPPORTED_PROTOCOL_VERSIONS, requested: version },
+      status: 400,
+    };
+  }
+
+  // A NOTIFICATION stops here. The spec declines to define header requirements
+  // for a notification POST, and its `_meta` table describes client REQUESTS —
+  // so refusing one for a field the notification schema never demanded would
+  // reject conforming clients over an obligation nobody wrote down. It gets its
+  // 202 like any other.
+  if (parsed?.isNotification) return null;
+
   // `clientCapabilities` is required even though `clientInfo` is not: a
   // stateless server has no earlier request to learn the client's capabilities
   // from, so an absent field is genuinely unknown rather than merely unstated.
@@ -290,20 +313,6 @@ export function validateModernRequest(parsed, headers) {
       status: 400,
     };
   }
-
-  // 2. A version we do not implement. The data shape is fixed by the schema
-  //    (`data: { supported: string[]; requested: string }`, both required) and a
-  //    client uses it to retry rather than to give up.
-  if (!SUPPORTED_PROTOCOL_VERSIONS.includes(version)) {
-    return {
-      code: RPC_UNSUPPORTED_PROTOCOL_VERSION,
-      message: "Unsupported protocol version",
-      data: { supported: SUPPORTED_PROTOCOL_VERSIONS, requested: version },
-      status: 400,
-    };
-  }
-
-  if (parsed?.isNotification) return null;
 
   // 3. The mirrored headers. Each is REQUIRED for compliance, and a mismatch is
   //    a security matter rather than a formality: an intermediary may route on
@@ -449,8 +458,16 @@ export function forbiddenOrigin(origin, host, bearer) {
   }
   const site = String(host || "").toLowerCase();
   if (!site) return true;
-  // Same host, or a sibling label of the same registrable site — `mcp.` and the
+  // Same host, or one label either side of it — `mcp.deepresearch.se` and the
   // apex are the same deployment and the Settings screen links between them.
-  const base = site.split(".").slice(-2).join(".");
-  return !(originHost === site || originHost === base || originHost.endsWith(`.${base}`));
+  //
+  // Deliberately NOT "the last two labels are the registrable domain": on a
+  // preview or a fork the request host can be `<branch>.<account>.workers.dev`,
+  // where that rule makes every page on `workers.dev` same-site — which is a
+  // widening nobody would notice until it mattered. Walking the ACTUAL host up
+  // and down cannot do that, because it is anchored to the host we are serving.
+  if (originHost === site) return false;
+  const parent = site.split(".").slice(1).join(".");
+  if (parent && parent.includes(".") && originHost === parent) return false;
+  return !originHost.endsWith(`.${site}`);
 }

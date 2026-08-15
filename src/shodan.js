@@ -465,7 +465,7 @@ function searchDetailLine(h) {
  * @param {import('./types.js').Env} env
  * @param {import('./types.js').Logger} log
  * @param {string} query the rebuilt query (never the user's sentence)
- * @returns {Promise<{ block: string, details: string[], count: number, ips: string[], durationMs: number } | null>}
+ * @returns {Promise<{ block: string, details: string[], count: number, total: number, ips: string[], durationMs: number } | null>}
  */
 export async function runShodanSearch(env, log, query) {
   const startedAt = Date.now();
@@ -491,6 +491,12 @@ export async function runShodanSearch(env, log, query) {
     block: buildShodanSearchBlock(q, hosts, total),
     details: hosts.length ? hosts.map(searchDetailLine) : [`${q} — no matching hosts`],
     count: hosts.length,
+    // Shodan's own count of MATCHING hosts, which is normally far larger than
+    // the handful summarizeSearch keeps. Returned beside `count` (2026-08-15)
+    // because a caller reporting the sample as the population turns a handful of
+    // hosts into a claim about the internet — buildShodanSearchBlock has always
+    // said both, and a caller that renders its own text needs the same figure.
+    total,
     ips: hosts.map((h) => h.ip),
     durationMs,
   };

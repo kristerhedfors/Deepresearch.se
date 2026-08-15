@@ -51,6 +51,10 @@ export const MIN_MOVE_M = 5;
 export const MAX_MOVE_M = 3000;
 export const DEFAULT_MOVE_M = 100;
 
+/** How far the underlying place search biases toward the standpoint. Beyond
+ * this a result is still returned, but calling it "nearby" needs a caveat. */
+export const NEARBY_BIAS_M = 5000;
+
 /** Places returned by one nearby search. Three is what the underlying search
  * asks Google for, and more than three is not a list anyone hears. */
 export const MAX_NEARBY = 3;
@@ -119,18 +123,22 @@ export const RELATIVE_TURNS = {
   fram: 0,
   rakt: 0,
   frammåt: 0,
+  vidare: 0,
+  framför: 0,
   // to the right
   right: 90,
   höger: 90,
   hoger: 90,
   högerut: 90,
   starboard: 90,
+  styrbord: 90,
   // to the left
   left: -90,
   vänster: -90,
   vanster: -90,
   vänsterut: -90,
   port: -90,
+  babord: -90,
   // behind
   back: 180,
   backward: 180,
@@ -143,7 +151,10 @@ export const RELATIVE_TURNS = {
 };
 
 /** Half-turns, for "slightly right" / "snett vänster". */
-export const HALF_TURN_WORDS = new Set(["slightly", "slight", "half", "snett", "lite", "något", "aningen"]);
+export const HALF_TURN_WORDS = new Set([
+  "slightly", "slight", "half",
+  "snett", "lite", "något", "aningen", "halvt", "halv",
+]);
 
 /** Vertical looks, expressed as a camera pitch in degrees. Worth having for a
  * spoken tour: "look up" is how anyone asks about the top of a building. */
@@ -153,6 +164,8 @@ export const PITCH_WORDS = {
   upp: 25,
   uppåt: 25,
   sky: 25,
+  himlen: 25,
+  taket: 25,
   down: -25,
   downward: -25,
   ner: -25,
@@ -161,6 +174,7 @@ export const PITCH_WORDS = {
   nedåt: -25,
   ground: -25,
   marken: -25,
+  gatan: -25,
 };
 
 /**
@@ -176,7 +190,10 @@ export function directionTokens(value) {
   return value
     .toLowerCase()
     .split(/[^\p{L}\p{N}-]+/u)
-    .map((t) => t.replace(/^-+|-+$/g, ""))
+    // A LEADING minus is kept — "-90" is a bearing and dropping its sign turns
+    // the camera the wrong way — while a trailing one is punctuation.
+    .map((t) => t.replace(/-+$/g, ""))
+    .map((t) => (t === "-" ? "" : t))
     .filter(Boolean);
 }
 
@@ -405,7 +422,8 @@ export const PLACE_NEARBY_TOOL = {
     "in words — \"a petrol station 400 metres north-east\". Anchor it with a `view` handle from " +
     "street_view_look, with `lat`/`lng`, or with `near` (a place name to search around). " +
     "`query` is what to look for (\"pharmacy\", \"bageri\", \"charging station\"). Contacts no " +
-    "imagery and describes nothing visual — use street_view_look for that.",
+    "imagery and describes nothing visual — to SEE one of the places it names, call " +
+    "street_view_look with that place's name as `place`.",
   input_schema: {
     type: "object",
     properties: {
@@ -459,6 +477,7 @@ export function standpointSentence(at) {
  *   date?: string,
  *   handle: string,
  *   imagery: boolean,
+ *   unparsed?: string[],
  * }} view
  * @returns {string}
  */
@@ -483,7 +502,18 @@ export function renderStreetViewAnswer(view) {
   else if (view.imagery) lines.push("There is imagery here, but it could not be described just now.");
   else lines.push("There is no street-level imagery at this spot.");
   if (view.date) lines.push(`The imagery was captured ${spokenDate(view.date)}.`);
-  lines.push(`Pass view="${view.handle}" to look again from here.`);
+  if (view.unparsed?.length) {
+    lines.push(
+      `(${view.unparsed.join(" and ")} was not understood, so nothing was done with it — use a compass ` +
+        `direction, left/right/forward/back, or a bearing in degrees.)`,
+    );
+  }
+  // The handle is machinery, not narration: it is marked as such so the model
+  // driving a spoken session carries it into the next call instead of reading a
+  // panorama id out loud. It stays in the text rather than in structuredContent
+  // because a client that ignores structured output would otherwise lose the
+  // ability to follow up at all.
+  lines.push(`[for the next call: view=${view.handle}]`);
   return lines.join(" ");
 }
 
@@ -522,7 +552,16 @@ export function renderNearbyAnswer(found) {
     return `${what}, about ${spokenDistance(p.meters)} ${compassPoint(p.bearing)}${p.address ? `, at ${p.address}` : ""}`;
   });
   const head = `Near ${standpointSentence(found.at)}: `;
-  return head + parts.join("; ") + ".";
+  // The underlying search BIASES toward the standpoint rather than restricting
+  // to it, so a thin local result set can come back with something far away.
+  // Reporting that as "nearby" is the kind of confident wrongness a listener
+  // cannot check.
+  const far = found.places.filter((p) => p.meters > NEARBY_BIAS_M).length;
+  const caveat = far
+    ? ` ${far === found.places.length ? "None of these is" : "Not all of these are"} close by — the search widens ` +
+      `when there is nothing nearer.`
+    : "";
+  return head + parts.join("; ") + "." + caveat;
 }
 
 /**
@@ -533,9 +572,12 @@ export function renderNearbyAnswer(found) {
  */
 export function spokenDistance(meters) {
   const m = Math.max(0, Math.round(Number(meters) || 0));
-  if (m < 100) return `${Math.round(m / 10) * 10} metres`;
+  // Never "0 metres": below the rounding floor the honest word is "a few".
+  if (m < 5) return "a few metres";
+  if (m < 100) return `${Math.max(10, Math.round(m / 10) * 10)} metres`;
   if (m < 1000) return `${Math.round(m / 50) * 50} metres`;
   // Rounded in metres before the divide: `(1450 / 1000).toFixed(1)` is "1.4",
   // because 1.45 is not 1.45 in binary floating point.
-  return `${Math.round(m / 100) / 10} kilometres`;
+  const km = Math.round(m / 100) / 10;
+  return `${km} ${km === 1 ? "kilometre" : "kilometres"}`;
 }

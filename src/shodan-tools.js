@@ -119,6 +119,19 @@ export function clampHostLimit(limit) {
 }
 
 /**
+ * One detail line as a spoken sentence: the em-dash the block builder uses reads
+ * as a pause, and a terminal stop is what separates one host from the next in
+ * the ear.
+ * @param {string} line
+ * @returns {string}
+ */
+function sentence(line) {
+  const text = String(line || "").trim().replace(/\s+/g, " ");
+  if (!text) return "";
+  return /[.!?]$/.test(text) ? text : `${text}.`;
+}
+
+/**
  * Turn the lookup's per-host one-liners into something speakable.
  *
  * The underlying detail lines are already terse and factual, so this mostly
@@ -133,12 +146,19 @@ export function clampHostLimit(limit) {
 export function renderHostAnswer(found) {
   const lines = [];
   if (found.details.length) {
-    lines.push(found.details.length === 1 ? "Shodan has a record for this host." : `Shodan has records for ${found.details.length} of the hosts asked about.`);
-    for (const detail of found.details) lines.push(detail);
+    lines.push(
+      found.details.length === 1
+        ? "Shodan has a record for this host."
+        : `Shodan has records for ${found.details.length} of the ${found.targets} hosts asked about.`,
+    );
+    // Each host gets its own sentence. Joined with a bare space, two hosts run
+    // together into one unparseable line the moment they are read aloud —
+    // "…443/https 5.6.7.8 — 1 open port…" is where a listener loses the thread.
+    for (const detail of found.details) lines.push(`${sentence(detail)}`);
   }
   if (found.notFound.length) {
     lines.push(
-      `No Shodan record for ${found.notFound.join(", ")} — which means it is not in their index, not that the host is closed.`,
+      `Shodan has no record for ${found.notFound.join(", ")} — which means it is not in their index, not that the host is closed.`,
     );
   }
   if (!lines.length) return "Shodan returned nothing for those hosts.";
@@ -158,5 +178,5 @@ export function renderSearchAnswer(found) {
     found.total > found.count
       ? `Shodan matches about ${found.total} hosts for ${found.query}; here are ${found.count}.`
       : `Shodan matches ${found.count} host${found.count === 1 ? "" : "s"} for ${found.query}.`;
-  return [head, ...found.details].join(" ");
+  return [head, ...found.details.map(sentence)].join(" ");
 }

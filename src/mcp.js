@@ -162,7 +162,10 @@ export const DEEP_RESEARCH_TOOL = {
     "angles, searches the web, audits coverage for gaps, and synthesizes a " +
     "cited answer built only from the sources it found. Returns the final " +
     "answer text with inline [n] citations and a Sources list. Best for " +
-    "questions that benefit from current, multi-source web research.",
+    "questions that benefit from current, multi-source web research. Set " +
+    "`style: \"voice\"` when the answer will be SPOKEN: it comes back as plain " +
+    "prose with no markdown, no citation numbers and the sources named in a " +
+    "closing sentence. `agent` picks the specialist that answers.",
   inputSchema: {
     type: "object",
     properties: {
@@ -630,9 +633,10 @@ export async function handleMcp(request, env, log, identity, ctx, requestId) {
   switch (parsed.method) {
     // The mandatory modern RPC: supported versions, capabilities and identity in
     // one request, so a client need not probe three listing methods to learn
-    // what this server is. Answered on either era — a legacy client that calls
-    // it gets a truthful answer rather than a method-not-found, and nothing
-    // about answering it commits either side to anything.
+    // what this server is. It is a MODERN method, so a call that omits the
+    // required `_meta` was already refused above with -32602 — a recognized
+    // modern error, which is what a probing client needs in order to conclude
+    // "modern server, fix the request" rather than "legacy server".
     case DISCOVER_METHOD:
       return jsonResponse(
         jsonRpcResult(
@@ -1315,6 +1319,12 @@ async function runDeepResearch(env, log, identity, requestId, args, question, pr
     planResearch(model, budgetS, jsonModel),
     newRetrievalSpend(),
     agentPick,
+    // The describe-helper candidates, resolved from the same catalog through the
+    // same leaf chat.js uses. Only an addressed agent needs them — an agentless
+    // run reaches no imagery to describe — but without them an agent that CAN
+    // reach imagery would fetch it and then say nothing about it, which is the
+    // worst of both: billed, and silent.
+    agentPick ? resolveVisionModels(catalog, model) : [],
   );
 
   // Collect the pipeline's streamed text deltas (and honor discard_text, the
@@ -1472,9 +1482,11 @@ async function runDeepResearch(env, log, identity, requestId, args, question, pr
  *   of it (the file-layout rule at the top); runDeepResearch already has it
  *   from its dynamic-import block.
  * @param {McpAgentPick | null} [agent] the addressed agent, when one was named
+ * @param {string[]} [visionModels] ranked describe-helper candidates, empty
+ *   when nothing on this run can reach imagery
  * @returns {McpRequestState}
  */
-function newRequestState(model, jsonModel, webSearch, budgetS, plan, denseTotals, agent) {
+function newRequestState(model, jsonModel, webSearch, budgetS, plan, denseTotals, agent, visionModels = []) {
   return {
     startedAt: Date.now(),
     model,
@@ -1492,9 +1504,12 @@ function newRequestState(model, jsonModel, webSearch, budgetS, plan, denseTotals
     // in; every other agent leaves this off exactly as this channel always did.
     introspection: !!agent?.introspection,
     introspectionCount: 0,
+    // `vision` is whether the ANSWER model takes images; it stays false because
+    // this channel never attaches any. The HELPER list is separate and is what
+    // an imagery enrichment actually needs.
     vision: false,
-    visionModel: null,
-    visionModels: [],
+    visionModel: visionModels[0] || null,
+    visionModels,
     visionTotals: { prompt_tokens: 0, completion_tokens: 0 },
     imageLocations: [],
     // types.d.ts's RequestState documents `plan` against its own BudgetPlan
