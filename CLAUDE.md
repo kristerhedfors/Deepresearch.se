@@ -307,6 +307,7 @@ npm install         # once: the suite needs the root devDependencies (see below)
 npm test            # unit: node --test src/*.test.js public/js/*.test.js public/app-kit/*.test.js
                     #                  public/games/*/js/*.test.js sdk/*.test.mjs scripts/*.test.mjs
                     #                  scripts/*/*.test.mjs tests/*.test.js tests/pygram/*.test.mjs
+                    #                  tests/mopy/*.test.mjs
 npm run typecheck   # zero-build-step tsc, strict, opt-in per file via // @ts-check
 cd tests && npm install && npm run fixtures   # e2e setup (once)
 npm run test:local                            # Playwright vs a Worker on this machine — free, no creds; what CI runs
@@ -478,6 +479,18 @@ Debugging & live verification:
 - **sandbox-debug** — the sandbox boot-hang playbook: debug switches, the `boot_stage` timeline, the stall watchdog.
 - **sandbox-perf-eval** — measuring how long sandbox commands take: the cold/warm battery + agent-turn trace, and the two traps (cross-origin auth kills the boot; the 30 s ceiling destroys the VM).
 - **pygram** — the minimal Python-subset runtime for the sandbox (`docs/PYGRAM.md`): why `python3` costs 8573 ms cold there and pygram opens zero files, the two gates (build shape + CPython conformance, where MISMATCH is fatal and UNSUPPORTED is just the build order), the capture harness that grows the corpus from real invocations by itself, the musl-i386 build, and the six traps already paid for — a bare `lib/` in .gitignore that swallowed the whole frozen stdlib, tracebacks on stdout poisoning pipelines, and a strace parser whose bug inverted into a perfect score. ALSO why the COMPILER lane is now closed (2026-08-15): `-O2` costs 24.7% of the binary for 0.6%, PGO is 11% SLOWER on anything its profile missed, and `llvm-bolt` has no i386 target — because 96% of an invocation is the OS spawning a process, so the wins are algorithmic (16x on `re.sub` by not re-slicing a string). Plus the cost model's missing constant, the 131,072 B CheerpX device block that makes cold cost a step function, and `pygram-corpus-time.mjs`, the instrument a speed change is accepted on.
+- **mopy** — the MIXTURE OF PYTHONS (`docs/MOPY.md`): a second, from-scratch
+  Python subset written in Rust and sized to the BOTTOM of the corpus, plus the
+  classifier that picks between mopy, pygram and CPython per one-liner and the
+  dispatcher that recovers when the pick was wrong. Measured over 420 harvested
+  programs: mopy answers 67.1% and is the fastest engine on what it accepts
+  (0.113x CPython), and the mixture answers 100% at 0.266x. Covers the three
+  refusals that keep a subset honest (i64 ints, set iteration order, repr of
+  non-ASCII), the COMMIT BARRIER that makes falling back safe, the asymmetric
+  routing score (UNSAFE vs WASTED vs LATE), and the traps paid for — static musl
+  is a precondition not a preference (5 file opens vs 0), `Command::output()`
+  nulls stdin and silently breaks every stdin one-liner, and an engine's
+  `MemoryError` is never the program's answer.
 
 Feedback, boards & testing loops:
 
