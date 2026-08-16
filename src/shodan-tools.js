@@ -658,20 +658,36 @@ export function renderDomainAnswer(found) {
  * CVSS is how bad it would be, EPSS is how likely it is to happen — and the
  * commonest way a vulnerability answer misleads is by reporting one as the
  * other, so each is named where it is said.
- * @param {{ cvss: number | null, epss: number | null, kev: boolean, ransomware: string }} vuln
- * @returns {string}
+ * @param {{ cvss: number | null, epss: number | null }} vuln
+ * @returns {string[]}
  */
-function severityClause(vuln) {
+function severityBits(vuln) {
+  /** @type {string[]} */
   const bits = [];
   if (vuln.cvss !== null && vuln.cvss !== undefined) bits.push(`a CVSS severity of ${vuln.cvss} out of 10`);
-  if (vuln.epss !== null && vuln.epss !== undefined) {
-    // A probability read as "0.0432" is a number nobody can weigh; a percentage
-    // is the form the figure is discussed in.
-    const pct = vuln.epss >= 0.01 ? Math.round(vuln.epss * 100) : Math.round(vuln.epss * 1000) / 10;
-    bits.push(`an EPSS score of ${pct}%, the estimated chance it is exploited in the wild in the next 30 days`);
-  }
-  if (!bits.length) return "";
-  return sentence(`It carries ${listPhrase(bits)}`);
+  const epss = epssPercent(vuln.epss);
+  if (epss) bits.push(`an EPSS score of ${epss}, the estimated chance it is exploited in the wild in the next 30 days`);
+  return bits;
+}
+
+/**
+ * EPSS as a percentage a person can weigh — "0.0432" is a number nobody can.
+ *
+ * The rounding is capped deliberately. EPSS is a probability and never reaches
+ * 1, but a live read of CVE-2021-44228 returns 0.99999, which rounds to a flat
+ * "100%" — a certainty the model does not claim and this tool must not invent.
+ * The other end matters as much: a small probability rounded to "0%" reads as
+ * "will not happen", so anything non-zero keeps a decimal.
+ * @param {number | null | undefined} epss
+ * @returns {string} the formatted percentage, or "" when there is no score
+ */
+export function epssPercent(epss) {
+  if (epss === null || epss === undefined || !Number.isFinite(Number(epss))) return "";
+  const value = Number(epss);
+  if (value >= 0.995) return "over 99%";
+  if (value >= 0.01) return `${Math.round(value * 100)}%`;
+  const tenths = Math.round(value * 1000) / 10;
+  return tenths > 0 ? `${tenths}%` : "under 0.1%";
 }
 
 /** The exploitation status, which outranks any score a caller might act on.
@@ -692,19 +708,90 @@ function capitalize(text) {
 
 /**
  * One vulnerability, in full.
- * @param {{ id: string, summary: string, cvss: number | null, epss: number | null, kev: boolean, ransomware: string, published: string, products: string[], action: string }} vuln
+ *
+ * THE ORDER IS THE DESIGN, and it changed on 2026-08-16 after a live read.
+ * CVEDB summaries open with an affected-version table — CVE-2021-44228's runs
+ * to 90 words before it says what the flaw does — and putting that first meant
+ * a listener heard a version list for fifteen seconds before reaching "severity
+ * 10, confirmed exploited in the wild". The two figures a caller acts on lead
+ * now, and the prose follows them.
+ * @param {{ id: string, summary: string, cvss: number | null, epss: number | null, kev: boolean, ransomware: string, published: string, products: string[], productTotal?: number, action: string }} vuln
  * @returns {string}
  */
 export function renderCveAnswer(vuln) {
   const lines = [];
-  lines.push(sentence(`${vuln.id}${vuln.published ? `, published ${vuln.published}` : ""}${vuln.summary ? `: ${vuln.summary}` : ""}`));
-  const severity = severityClause(vuln);
-  if (severity) lines.push(severity);
-  const exploited = exploitationClause(vuln);
-  if (exploited) lines.push(exploited);
-  if (vuln.products?.length) lines.push(sentence(`It affects ${listPhrase(vuln.products)}`));
-  if (vuln.action) lines.push(sentence(vuln.action));
+  const head = `${vuln.id}${vuln.published ? `, published ${vuln.published}` : ""}`;
+  const bits = severityBits(vuln);
+  if (bits.length) {
+    lines.push(sentence(`${head}, carries ${listPhrase(bits)}`));
+    const exploited = exploitationClause(vuln);
+    if (exploited) lines.push(exploited);
+    if (vuln.summary) lines.push(sentence(`The flaw itself: ${vuln.summary}`));
+  } else {
+    // Nothing scored it, so there is no headline to lead with and the summary
+    // IS the answer — folded into the opening rather than announced, which is
+    // how it read before the reordering and still reads best here.
+    lines.push(sentence(vuln.summary ? `${head}: ${vuln.summary}` : head));
+    const exploited = exploitationClause(vuln);
+    if (exploited) lines.push(exploited);
+  }
+  if (vuln.products?.length) {
+    // The CPE list is ALPHABETICAL, so these are the alphabetically-first
+    // products and not the most affected ones. Naming six of several hundred
+    // without the total states a sample as the population.
+    const total = Number(vuln.productTotal) || vuln.products.length;
+    const extra = total - vuln.products.length;
+    lines.push(
+      sentence(
+        extra > 0
+          ? `It affects ${total} products in all, among them ${listPhrase(vuln.products)}`
+          : `It affects ${listPhrase(vuln.products)}`,
+      ),
+    );
+  }
+  // The proposed action often restates the summary in different words; it is
+  // kept only when it adds something, since hearing the same finding twice is
+  // how a spoken answer loses a listener.
+  if (vuln.action && !restates(vuln.action, vuln.summary)) lines.push(sentence(vuln.action));
   return lines.join(" ");
+}
+
+/**
+ * Does this text say what the other one already said? A cheap content-word
+ * overlap, deliberately: the two fields are written by the same hand from the
+ * same finding, so near-duplication is common and exact duplication is rare.
+ *
+ * WHERE THE THRESHOLD COMES FROM, and how thin the evidence is. Two points,
+ * both measured on 2026-08-16: CVE-2021-44228's `propose_action` restates its
+ * summary at **0.67** (the five unshared words are "contains", "where",
+ * "allowing", plus "remote code execution" where the summary says "execute
+ * arbitrary code"), while an action that genuinely adds a remediation lands
+ * near **0.4**. 0.6 sits in that gap. It is ONE observed restatement, so treat
+ * a future miss as a reason to re-measure rather than to nudge the number —
+ * and note the `size < 4` guard means a short action ("Upgrade to 2.17.1.")
+ * is never dropped, which is the case where being wrong would cost most.
+ * @param {string} text
+ * @param {string} against
+ * @returns {boolean}
+ */
+function restates(text, against) {
+  // Split on everything that is not a letter or digit. Keeping `.` as a word
+  // character (for version numbers) silently broke this: almost every
+  // sentence-final word carried its full stop, so "execution." never matched
+  // "execution" and the overlap never reached the threshold.
+  const words = (/** @type {string} */ s) =>
+    new Set(
+      String(s || "")
+        .toLowerCase()
+        .split(/[^a-z0-9]+/)
+        .filter((w) => w.length > 4),
+    );
+  const a = words(text);
+  const b = words(against);
+  if (a.size < 4 || b.size < 4) return false;
+  let shared = 0;
+  for (const w of a) if (b.has(w)) shared += 1;
+  return shared / a.size >= 0.6;
 }
 
 /**
@@ -726,10 +813,8 @@ export function renderProductCveAnswer(found) {
   for (const vuln of found.vulns) {
     const bits = [];
     if (vuln.cvss !== null && vuln.cvss !== undefined) bits.push(`severity ${vuln.cvss}`);
-    if (vuln.epss !== null && vuln.epss !== undefined) {
-      const pct = vuln.epss >= 0.01 ? Math.round(vuln.epss * 100) : Math.round(vuln.epss * 1000) / 10;
-      bits.push(`${pct}% exploitation probability`);
-    }
+    const epss = epssPercent(vuln.epss);
+    if (epss) bits.push(`${epss} exploitation probability`);
     if (vuln.kev) bits.push("known exploited");
     const head = `${vuln.id}${bits.length ? ` — ${bits.join(", ")}` : ""}`;
     // The summary is a paragraph in the record; one clause of it is what a
