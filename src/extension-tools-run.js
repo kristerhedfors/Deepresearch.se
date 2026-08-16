@@ -34,7 +34,7 @@ import {
 } from "./googlemaps.js";
 import { bearingDeg, distanceMeters, movePoint } from "./googlemaps-text.js";
 import { spokenText } from "./voice-answer.js";
-import { runShodanLookup, runShodanSearch } from "./shodan.js";
+import { countHosts, cveInfo, domainInfo, productCves, runShodanLookup, runShodanSearch, searchHosts } from "./shodan.js";
 import {
   MAX_NEARBY,
   clampMoveMeters,
@@ -47,7 +47,24 @@ import {
   resolvePitch,
   usableCoords,
 } from "./maps-tools.js";
-import { clampHostLimit, parseHosts, renderHostAnswer, renderSearchAnswer } from "./shodan-tools.js";
+import {
+  MAX_CVES,
+  MAX_SURVEY_HOSTS,
+  clampCount,
+  clampHostLimit,
+  parseCveId,
+  parseDomain,
+  parseFacets,
+  parseHosts,
+  parentDomain,
+  renderCveAnswer,
+  renderDomainAnswer,
+  renderHostAnswer,
+  renderHostLine,
+  renderProductCveAnswer,
+  renderSearchAnswer,
+  renderSurveyAnswer,
+} from "./shodan-tools.js";
 
 /** @typedef {import('./types.js').Env} Env */
 /** @typedef {import('./types.js').Logger} Logger */
@@ -99,6 +116,12 @@ export async function runExtensionTool(env, log, name, args, billing) {
         return await runPlaceNearby(env, log, args || {}, spend);
       case "host_intel":
         return await runHostIntel(env, log, args || {}, spend);
+      case "host_search":
+        return await runHostSearch(env, log, args || {}, spend);
+      case "domain_intel":
+        return await runDomainIntel(env, log, args || {}, spend);
+      case "cve_intel":
+        return await runCveIntel(env, log, args || {}, spend);
       default:
         return { text: `Unknown tool: ${name}`, isError: true, found: false };
     }
@@ -523,6 +546,225 @@ async function runHostIntel(env, log, args, spend) {
     isError: true,
     found: false,
   };
+}
+
+// ---------------------------------------------------------------------------
+// host_search — the population, its breakdown, and a sample of it
+// ---------------------------------------------------------------------------
+
+/**
+ * WHAT IS METERED HERE, AND WHY THE FREE LEG IS TOO. The count endpoint costs
+ * no Shodan query credits — that is exactly why the tool leans on it — but it
+ * is still counted as one outbound unit, like every other leg in this module.
+ * The alternative is a tool that reaches a third party without moving any
+ * meter, which is the defect docs/MCP-COST.md §4b describes: the gate in front
+ * of it cannot bite if nothing behind it counts. Over-counting a free request
+ * by €0.005 is the smaller wrong, and the unit was never Shodan's currency
+ * anyway (see recordOutboundCalls).
+ *
+ * @param {Env} env
+ * @param {Logger} log
+ * @param {any} args
+ * @param {OutboundSpend} spend
+ * @returns {Promise<ToolAnswer>}
+ */
+async function runHostSearch(env, log, args, spend) {
+  const query = typeof args.query === "string" ? args.query.trim() : "";
+  if (!query) {
+    return {
+      text: "The `query` argument is required — say what to search for, in Shodan's syntax, e.g. `product:nginx country:SE`.",
+      isError: true,
+      found: false,
+    };
+  }
+  const { fields, dropped } = parseFacets(args.facets);
+  const countOnly = args.count_only === true || args.count_only === "true";
+  const limit = clampCount(args.limit, MAX_SURVEY_HOSTS);
+  const page = Number(args.page) || 1;
+
+  // WHICH LEGS RUN. The search reports its own match total, so a count with no
+  // facets asked for would be a second request for a number we already have —
+  // the count leg earns its place only when it is asked to BREAK DOWN that
+  // number, or when it is the only leg (count_only). Where both run they are
+  // independent, so they overlap rather than queue.
+  const wantCount = countOnly || fields.length > 0;
+  /** @type {Promise<any>} */
+  let countPromise = Promise.resolve(null);
+  if (wantCount) {
+    spend.calls += 1;
+    countPromise = countHosts(env, log, query, fields);
+  }
+  /** @type {Promise<any>} */
+  let searchPromise = Promise.resolve(null);
+  if (!countOnly) {
+    spend.calls += 1;
+    searchPromise = searchHosts(env, log, query, { page, maxHosts: limit });
+  }
+  const [counted, searched] = await Promise.all([countPromise, searchPromise]);
+
+  if (!counted?.ok && !searched?.ok) {
+    // Every leg that ran failed. The reason IS the answer: "no host matches
+    // that" and "the plan is out of query credits" send a caller in opposite
+    // directions, and only one of them is worth retrying.
+    return {
+      text: `That search could not be run: ${searched?.reason || counted?.reason}.`,
+      isError: true,
+      found: false,
+    };
+  }
+
+  const hosts = searched?.ok ? searched.hosts : [];
+  // The count's total is authoritative where it ran — it is over the whole
+  // match set rather than over the page sampled — and the search's own total
+  // is both the fallback and the ordinary case.
+  const total = counted?.ok ? counted.total : searched?.ok ? searched.total : 0;
+  log.info("host_tool.search_survey", {
+    hosts: hosts.length,
+    total,
+    facets: fields.length,
+    count_only: countOnly,
+    counted: !!counted?.ok,
+    page: searched?.ok ? searched.page : 1,
+  });
+  return {
+    text: renderSurveyAnswer({
+      query,
+      total,
+      counted: !!counted?.ok,
+      page: searched?.ok ? searched.page : 1,
+      facets: counted?.ok ? counted.facets : [],
+      hosts: hosts.map(renderHostLine),
+      countOnly,
+      dropped,
+    }),
+    isError: false,
+    found: total > 0 || hosts.length > 0,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// domain_intel
+// ---------------------------------------------------------------------------
+
+/**
+ * @param {Env} env
+ * @param {Logger} log
+ * @param {any} args
+ * @param {OutboundSpend} spend
+ * @returns {Promise<ToolAnswer>}
+ */
+async function runDomainIntel(env, log, args, spend) {
+  const domain = parseDomain(args.domain);
+  if (!domain) {
+    return {
+      text: "The `domain` argument is required and must be a domain name, e.g. `example.com` — an address belongs in `host_intel` instead.",
+      isError: true,
+      found: false,
+    };
+  }
+  const opts = { type: typeof args.type === "string" ? args.type : "", page: Number(args.page) || 1 };
+  spend.calls += 1;
+  let found = await domainInfo(env, log, domain, opts);
+
+  // A caller reading a hostname out of a host record passes the hostname; this
+  // endpoint answers about the registrable domain. Retry ONE level up rather
+  // than refuse, and say which name actually answered — silently answering
+  // about a different name than the one asked about would be worse than a miss.
+  let asked = "";
+  const parent = found.ok ? "" : parentDomain(domain);
+  if (parent) {
+    spend.calls += 1;
+    const retried = await domainInfo(env, log, parent, opts);
+    if (retried.ok) {
+      asked = domain;
+      found = retried;
+    }
+  }
+
+  if (!found.ok) {
+    return {
+      text: `Nothing came back for ${domain}: ${found.reason}.`,
+      isError: false,
+      found: false,
+    };
+  }
+  log.info("host_tool.domain", { subdomains: found.subdomainTotal, records: found.records.length });
+  return {
+    text: renderDomainAnswer({
+      domain: found.domain,
+      asked,
+      tags: found.tags,
+      subdomains: found.subdomains,
+      subdomainTotal: found.subdomainTotal,
+      records: found.records,
+      more: found.more,
+      type: String(opts.type || "").toUpperCase(),
+    }),
+    isError: false,
+    found: found.subdomainTotal > 0 || found.records.length > 0,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// cve_intel
+// ---------------------------------------------------------------------------
+
+/**
+ * @param {Env} env
+ * @param {Logger} log
+ * @param {any} args
+ * @param {OutboundSpend} spend
+ * @returns {Promise<ToolAnswer>}
+ */
+async function runCveIntel(env, log, args, spend) {
+  const rawCve = typeof args.cve === "string" ? args.cve.trim() : "";
+  const product = typeof args.product === "string" ? args.product.trim() : "";
+
+  if (rawCve) {
+    const id = parseCveId(rawCve);
+    if (!id) {
+      return {
+        text: `\`${rawCve}\` is not a CVE identifier. They look like CVE-2021-44228 — a year and a serial number.`,
+        isError: true,
+        found: false,
+      };
+    }
+    spend.calls += 1;
+    const found = await cveInfo(env, log, id);
+    if (!found.ok) return { text: capitalizeFirst(found.reason) + ".", isError: false, found: false };
+    log.info("host_tool.cve", { cve: id, kev: found.vuln.kev });
+    return { text: renderCveAnswer(found.vuln), isError: false, found: true };
+  }
+
+  if (product) {
+    spend.calls += 1;
+    const found = await productCves(env, log, {
+      product,
+      kevOnly: args.kev_only === true || args.kev_only === "true",
+      limit: clampCount(args.limit, MAX_CVES),
+    });
+    if (!found.ok) {
+      return { text: `Nothing came back for ${product}: ${found.reason}.`, isError: false, found: false };
+    }
+    log.info("host_tool.product_cves", { results: found.vulns.length });
+    return {
+      text: renderProductCveAnswer({ subject: found.subject, vulns: found.vulns, kevOnly: found.kevOnly }),
+      isError: false,
+      found: found.vulns.length > 0,
+    };
+  }
+
+  return {
+    text: "Pass `cve` (a single identifier such as CVE-2021-44228) or `product` (a piece of software to list vulnerabilities for).",
+    isError: true,
+    found: false,
+  };
+}
+
+/** @param {string} text */
+function capitalizeFirst(text) {
+  const clean = String(text || "").trim();
+  return clean ? clean[0].toUpperCase() + clean.slice(1) : clean;
 }
 
 // ---------------------------------------------------------------------------

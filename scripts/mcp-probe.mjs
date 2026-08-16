@@ -75,6 +75,9 @@ export const EXPECTED_TOOLS = [
   "street_view_look",
   "place_nearby",
   "host_intel",
+  "host_search",
+  "domain_intel",
+  "cve_intel",
 ];
 
 // Six angles on one topic — the shape literature_search exists for. Chosen to

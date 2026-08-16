@@ -44,11 +44,12 @@ agent SDK). Alongside it the server re-exposes three more families: the four
 `src/literature-tools.js` + `src/literature-run.js`) that hand an agent the
 two hosted scientific corpora directly — see the section below, it is the
 family with the most surface; the two OpenAI **adapter tools** `search` and
-`fetch`, which ChatGPT demands by name; and the three **extension tools**
-`street_view_look`, `place_nearby` and `host_intel` (via `EXTENSION_MCP_TOOLS`
-over `src/extension-tools.js`), the only ones here that reach a third party on
-the caller's behalf. Ten tools total; the pipeline one is the reason the server
-exists.
+`fetch`, which ChatGPT demands by name; and the six **extension tools** —
+`street_view_look`, `place_nearby` and the host-intelligence family
+`host_intel` / `host_search` / `domain_intel` / `cve_intel` (via
+`EXTENSION_MCP_TOOLS` over `src/extension-tools.js`) — the only ones here that
+reach a third party on the caller's behalf. Thirteen tools total; the pipeline
+one is the reason the server exists.
 
 **THE SURFACE IS SHAPED FOR CALLERS WITHOUT A SCREEN (owner directive,
 2026-08-15).** That is the rule to apply to any proposed tool now: a voice client
@@ -904,8 +905,8 @@ production** as of 2026-08-15.
 
 ## What a call costs (before widening the audience)
 
-`docs/MCP-COST.md` prices the ten-tool surface against production
-(2026-08-05), the three extension tools excepted (below). The three
+`docs/MCP-COST.md` prices the surface against production
+(2026-08-05), the extension tools excepted (below). The three
 figures worth carrying: `deep_research` is €0.051 at the median
 of a month of real runs and **€0.62 at its analytic ceiling** (34 searches
 × the 12/7 deep-tier multiplier, plus one synthesis on the priciest model);
@@ -916,12 +917,20 @@ it the reranker**, 50 candidates × 900 chars per angle-corpus leg, measured
 at 10,198 tokens per leg at €0.10/M. Only `literature_fetch`,
 `literature_corpora` and `fetch` cost nothing now.
 
-**The three extension tools are a NEW cost shape and are not priced yet.** They
+**The extension tools are a NEW cost shape and are not priced yet.** They
 spend nothing at Berget except `street_view_look`'s one vision description, but
 they bill Google (imagery, places) and Shodan (credits) — money the four-window
 quota does not model, because it counts Berget EUR and Exa searches. They hold a
 concurrency slot and pass the quota gate anyway, which bounds the RATE; what is
 missing is a price per call. Measure it before the surface is widened.
+
+`cve_intel` is the odd one and worth knowing about before someone "fixes" it: its
+upstream (`cvedb.shodan.io`) is keyless and charges nothing, and it is in
+`SPENDING_TOOL_NAMES` regardless. The flag decides whether a tool passes the
+quota gate and takes a concurrency slot, not whether an invoice arrives — and an
+outbound tool with neither bound is the exact defect §4b describes. The same
+reasoning covers `host_search`'s count leg, which is free at Shodan and metered
+here: it is counted as one outbound unit like everything else in that module.
 
 Two metering gaps decided whether the surface can be published, both in the
 register as P-3, and **both are now closed (2026-08-05)**.
@@ -938,8 +947,9 @@ calibrated to €0.005 a search.
 
 **Concurrency** — `/mcp` now takes `reserveInflight` on every tool that
 reaches a provider (`deep_research`, `literature_search`, `literature_similar`,
-`search`, and since 2026-08-15 the three extension tools `street_view_look`,
-`place_nearby` and `host_intel` — seven in all, the exported
+`search`, and since 2026-08-15 the extension tools `street_view_look`,
+`place_nearby` and the host-intelligence family `host_intel` / `host_search` /
+`domain_intel` / `cve_intel` — ten in all, the exported
 `SPENDING_TOOL_NAMES`), released in a `finally` on every exit path, so an
 external key gets the same CAP=5 bound `/api/chat` has. Three things about
 that shape are worth keeping: the three free tools

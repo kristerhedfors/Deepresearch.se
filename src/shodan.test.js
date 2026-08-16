@@ -8,7 +8,20 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 
-import { extractTargets, shodanAvailable, buildShodanBlock, runShodanLookup, SHODAN_RELEVANCE_NOTE } from "./shodan.js";
+import {
+  SHODAN_RELEVANCE_NOTE,
+  buildShodanBlock,
+  countHosts,
+  cveInfo,
+  domainInfo,
+  extractTargets,
+  productCves,
+  runShodanLookup,
+  runShodanSearch,
+  searchHosts,
+  shodanAvailable,
+  summarizeVuln,
+} from "./shodan.js";
 import { fakeLog } from "./test-helpers/env.js";
 import { withFakeFetch } from "./test-helpers/fetch.js";
 
@@ -268,5 +281,240 @@ describe("runShodanLookup — the REST layer", () => {
     ]);
     const warn = log.at("warn").find((l) => l.args[0] === "shodan.error");
     assert.equal(warn.args[1].detail.length, 200);
+  });
+});
+
+// ============================================================================
+// THE BROADER LEGS (2026-08-16) — count, domain and CVE
+// ============================================================================
+//
+// Each of these is what one MCP tool calls, and each returns a discriminated
+// result rather than the enrichment's bare `null`, so the assertions here are
+// mostly about the REASON a failure gives: the whole point of the shape is that
+// "no host matches that" and "the plan is out of query credits" stop looking
+// alike to a caller.
+
+const COUNT = /\/shodan\/host\/count/;
+const SEARCH = /\/shodan\/host\/search/;
+const DOMAIN = /\/dns\/domain\//;
+const CVE_ONE = /cvedb\.shodan\.io\/cve\//;
+const CVE_MANY = /cvedb\.shodan\.io\/cves/;
+
+/** @param {Array<[any, unknown]>} routes */
+function withRoutes(routes, fn, env = { SHODAN_API_KEY: KEY }) {
+  const log = fakeLog();
+  return withFakeFetch(routes, async (stub) => fn({ env, log, stub }));
+}
+
+describe("countHosts — the credit-free population leg", () => {
+  test("asks for the requested facets in Shodan's field:n syntax and folds the answer", async () => {
+    await withRoutes([[COUNT, { total: 91234, facets: { country: [{ value: "SE", count: 500 }, { value: "DE", count: 300 }] } }]], async ({ env, log, stub }) => {
+      const found = await countHosts(env, log, "product:nginx", ["country", "port"]);
+      assert.equal(found.ok, true);
+      assert.equal(found.total, 91234);
+      assert.deepEqual(found.facets, [
+        { field: "country", values: [{ value: "SE", count: 500 }, { value: "DE", count: 300 }] },
+      ]);
+      const url = new URL(stub.requests[0].url);
+      assert.equal(url.pathname, "/shodan/host/count");
+      assert.equal(url.searchParams.get("query"), "product:nginx");
+      // `field:n` is how Shodan is asked for the top n values of a field.
+      assert.equal(url.searchParams.get("facets"), "country:5,port:5");
+      // The count endpoint returns hosts to nobody: `minify` has no meaning
+      // here and sending it would be one more thing to be wrong about.
+      assert.equal(url.searchParams.get("minify"), null);
+    });
+  });
+
+  test("no facets means no facets parameter at all", async () => {
+    await withRoutes([[COUNT, { total: 12 }]], async ({ env, log, stub }) => {
+      const found = await countHosts(env, log, "port:22");
+      assert.equal(found.ok, true);
+      assert.deepEqual(found.facets, []);
+      assert.equal(new URL(stub.requests[0].url).searchParams.get("facets"), null);
+    });
+  });
+
+  test("an error body becomes a reason a caller can act on, not a bare failure", async () => {
+    const body = JSON.stringify({ error: "Insufficient query credits" });
+    await withRoutes([[COUNT, new Response(body, { status: 401 })]], async ({ env, log }) => {
+      const found = await countHosts(env, log, "port:22");
+      assert.equal(found.ok, false);
+      // The distinction the whole result shape exists for: this is an operator
+      // problem, not an empty result set, and a caller told only "nothing came
+      // back" would retry it forever.
+      assert.match(found.reason, /Insufficient query credits/);
+    });
+  });
+
+  test("a missing key and an empty query refuse before any request", async () => {
+    await withRoutes([], async ({ log, stub }) => {
+      const noKey = await countHosts({}, log, "port:22");
+      assert.equal(noKey.ok, false);
+      assert.equal(noKey.skipped, "no_api_key");
+      const noQuery = await countHosts({ SHODAN_API_KEY: KEY }, log, "   ");
+      assert.equal(noQuery.skipped, "empty_query");
+      assert.deepEqual(stub.requests, []);
+    });
+  });
+});
+
+describe("searchHosts — paging and the host cap", () => {
+  test("page 1 sends no page parameter; a later page does", async () => {
+    await withRoutes([[SEARCH, { total: 900, matches: [] }]], async ({ env, log, stub }) => {
+      await searchHosts(env, log, "port:443", {});
+      assert.equal(new URL(stub.requests[0].url).searchParams.get("page"), null);
+      await searchHosts(env, log, "port:443", { page: 3 });
+      assert.equal(new URL(stub.requests[1].url).searchParams.get("page"), "3");
+    });
+  });
+
+  test("maxHosts widens the sample past the enrichment's own cap", async () => {
+    const matches = Array.from({ length: 12 }, (_v, i) => ({ ip_str: `203.0.113.${i}`, port: 443 }));
+    await withRoutes([[SEARCH, { total: 4000, matches }]], async ({ env, log }) => {
+      const narrow = await searchHosts(env, log, "port:443", {});
+      assert.equal(narrow.ok && narrow.hosts.length, 8, "the default is the enrichment's cap");
+      const wide = await searchHosts(env, log, "port:443", { maxHosts: 10 });
+      assert.equal(wide.ok && wide.hosts.length, 10);
+      assert.equal(wide.ok && wide.total, 4000, "the total is the population, never the sample");
+    });
+  });
+
+  test("the enrichment's own runShodanSearch still degrades to null on a failure", async () => {
+    // The whole reason searchHosts was split out: a chat turn's only sensible
+    // degradation is "no context block", and that contract is unchanged.
+    await withRoutes([[SEARCH, new Response("nope", { status: 500 })]], async ({ env, log }) => {
+      assert.equal(await runShodanSearch(env, log, "port:443"), null);
+    });
+  });
+});
+
+describe("domainInfo — subdomains and stored DNS records", () => {
+  const PAYLOAD = {
+    domain: "example.com",
+    tags: ["ipv6", "mail"],
+    subdomains: ["www", "mail"],
+    data: [
+      { subdomain: "", type: "A", value: "203.0.113.9", last_seen: "2026-07-01T10:00:00.000000" },
+      { subdomain: "www", type: "A", value: "203.0.113.9", last_seen: "2026-07-02T10:00:00.000000" },
+      { subdomain: "mail", type: "MX", value: "mx.example.com" },
+    ],
+    more: true,
+  };
+
+  test("record names are made fully qualified, including the apex", async () => {
+    await withRoutes([[DOMAIN, PAYLOAD]], async ({ env, log, stub }) => {
+      const found = await domainInfo(env, log, "Example.com");
+      assert.equal(found.ok, true);
+      assert.equal(found.domain, "example.com");
+      assert.equal(new URL(stub.requests[0].url).pathname, "/dns/domain/example.com");
+      // An empty subdomain is the apex, and a record rendered for "" has lost
+      // the thing it was about.
+      assert.deepEqual(found.records.map((r) => r.name), ["example.com", "www.example.com", "mail.example.com"]);
+      assert.deepEqual(found.records[0].lastSeen, "2026-07-01");
+      assert.equal(found.records[2].lastSeen, "", "a record with no timestamp says so rather than inventing one");
+      assert.deepEqual(found.tags, ["ipv6", "mail"]);
+      assert.equal(found.more, true);
+    });
+  });
+
+  test("the subdomain TOTAL survives the display cap", async () => {
+    const many = { ...PAYLOAD, subdomains: Array.from({ length: 120 }, (_v, i) => `s${i}`) };
+    await withRoutes([[DOMAIN, many]], async ({ env, log }) => {
+      const found = await domainInfo(env, log, "example.com");
+      assert.equal(found.subdomainTotal, 120, "the count is the finding");
+      assert.equal(found.subdomains.length, 40, "the list is only the illustration");
+    });
+  });
+
+  test("a record-type filter and a page travel as parameters", async () => {
+    await withRoutes([[DOMAIN, PAYLOAD]], async ({ env, log, stub }) => {
+      await domainInfo(env, log, "example.com", { type: "mx", page: 2 });
+      const url = new URL(stub.requests[0].url);
+      assert.equal(url.searchParams.get("type"), "MX");
+      assert.equal(url.searchParams.get("page"), "2");
+    });
+  });
+
+  test("a domain Shodan has never seen comes back as a reason, not a throw", async () => {
+    await withRoutes([[DOMAIN, new Response("No information available", { status: 404 })]], async ({ env, log }) => {
+      const found = await domainInfo(env, log, "nothing.example");
+      assert.equal(found.ok, false);
+      assert.match(found.reason, /not in the database/);
+    });
+  });
+});
+
+describe("cveInfo and productCves — the keyless vulnerability database", () => {
+  const LOG4SHELL = {
+    cve_id: "CVE-2021-44228",
+    summary: "Apache Log4j2 JNDI features do not protect against attacker controlled LDAP. Versions listed below.",
+    cvss: 10,
+    epss: 0.97,
+    kev: true,
+    ransomware_campaign: "Known",
+    published_time: "2021-12-10T10:15:00",
+    propose_action: "Upgrade to 2.17.1.",
+    cpes: ["cpe:2.3:a:apache:log4j:2.14.1:*:*:*:*:*:*:*", "cpe:2.3:a:apache:log4j:2.15.0:*:*:*:*:*:*:*"],
+  };
+
+  test("a CVE lookup carries NO api key — this database is free and keyless", async () => {
+    await withRoutes([[CVE_ONE, LOG4SHELL]], async ({ env, log, stub }) => {
+      const found = await cveInfo(env, log, "cve-2021-44228");
+      assert.equal(found.ok, true);
+      assert.equal(found.vuln.id, "CVE-2021-44228");
+      assert.equal(found.vuln.kev, true);
+      assert.equal(found.vuln.cvss, 10);
+      assert.equal(found.vuln.published, "2021-12-10");
+      // The CPE strings are machine identifiers; the vendor and product
+      // segments are the only parts a person hears as words. Duplicates across
+      // versions collapse.
+      assert.deepEqual(found.vuln.products, ["apache log4j"]);
+      assert.equal(stub.requests.length, 1);
+      assert.equal(new URL(stub.requests[0].url).origin, "https://cvedb.shodan.io");
+      assert.equal(new URL(stub.requests[0].url).searchParams.get("key"), null);
+      stub.assertNoneCarry([KEY], assert.fail);
+    });
+  });
+
+  test("the CVE database works on a server with no Shodan credential at all", async () => {
+    await withRoutes([[CVE_ONE, LOG4SHELL]], async ({ log }) => {
+      const found = await cveInfo({}, log, "CVE-2021-44228");
+      assert.equal(found.ok, true);
+    }, {});
+  });
+
+  test("an unknown id says so about the id, rather than about the request", async () => {
+    await withRoutes([[CVE_ONE, new Response("{}", { status: 404 })]], async ({ env, log }) => {
+      const found = await cveInfo(env, log, "CVE-1999-0001");
+      assert.equal(found.ok, false);
+      assert.match(found.reason, /no record of CVE-1999-0001/);
+    });
+  });
+
+  test("a product search ranks by EPSS and can be narrowed to known-exploited", async () => {
+    await withRoutes([[CVE_MANY, { cves: [LOG4SHELL, { ...LOG4SHELL, cve_id: "CVE-2021-45046", epss: 0.5 }] }]], async ({ env, log, stub }) => {
+      const found = await productCves(env, log, { product: "log4j", kevOnly: true, limit: 5 });
+      assert.equal(found.ok, true);
+      assert.equal(found.vulns.length, 2);
+      assert.equal(found.subject, "log4j");
+      const url = new URL(stub.requests[0].url);
+      // Sorting by EPSS is what makes the answer about what is being exploited
+      // rather than about what merely scores highly.
+      assert.equal(url.searchParams.get("sort_by_epss"), "true");
+      assert.equal(url.searchParams.get("is_kev"), "true");
+      assert.equal(url.searchParams.get("product"), "log4j");
+      assert.equal(url.searchParams.get("limit"), "5");
+    });
+  });
+
+  test("an unscored vulnerability keeps its severities null rather than zero", async () => {
+    // 0 is a real CVSS score and "unscored" is not it; a summary that reports
+    // a missing figure as 0.0 has invented a finding.
+    const vuln = summarizeVuln({ cve_id: "CVE-2030-1", summary: "x", cvss: null, epss: undefined });
+    assert.equal(vuln.cvss, null);
+    assert.equal(vuln.epss, null);
+    assert.equal(vuln.kev, false);
+    assert.deepEqual(vuln.products, []);
   });
 });

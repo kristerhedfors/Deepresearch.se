@@ -11,7 +11,7 @@ it was found. The hosted retrieval tier §1 prices also runs inside the
 same reason — §4d records that fix and what a chat request's share of it
 comes to.
 
-**Short answer.** Per call the surface is cheap: 3 of the 10 tools spend
+**Short answer.** Per call the surface is cheap: 4 of the 13 tools spend
 nothing at a provider, the literature family costs €0.002–€0.012, and
 `deep_research` — the only expensive tool — costs €0.05 at the median and
 **€0.62 at its analytic ceiling**. The per-call numbers are not what
@@ -61,6 +61,9 @@ parse a committed-data call does is ~€0.00001.
 | `street_view_look` | 1–2 Google imagery fetches + 1 vision description | **Google imagery + ~€0.001 vision** — §2a | not yet measured |
 | `place_nearby` | 1 Places search (+1 free reverse geocode) | **Google Places, €0 at Berget** — §2a | not yet measured |
 | `host_intel` | 1 Shodan lookup or search (+1 DNS resolve per hostname) | **Shodan credits, €0 at Berget** — §2a | not yet measured |
+| `host_search` | 1 free count + 1 billed search, or 1 free count alone with `count_only` | **1 Shodan query credit at most, €0 at Berget** — §2a | not yet measured |
+| `domain_intel` | 1 DNS-database read, twice when a hostname is retried one level up | **Shodan credits, €0 at Berget** — §2a | not yet measured |
+| `cve_intel` | 1 read of `cvedb.shodan.io` | **€0 everywhere** — keyless, no query credits — §2a | not yet measured |
 
 **The reranker is the whole cost of the literature family**, and it was
 measured rather than estimated. `src/dense-rag.js` reranks `CANDIDATES = 50`
@@ -257,9 +260,11 @@ in (1) directly.
 
 `src/mcp.js` now reserves a slot for every tool that reaches a provider —
 `deep_research`, `literature_search`, `literature_similar`, the `search`
-adapter, and (since 2026-08-15) the three extension tools `street_view_look`,
-`place_nearby` and `host_intel` (`SPENDING_TOOL_NAMES`, whose extension half
-comes from `src/extension-tools.js`) — and releases it in a `finally` covering
+adapter, and (since 2026-08-15) the extension tools `street_view_look`,
+`place_nearby` and the host-intelligence family — `host_intel`, and since
+2026-08-16 `host_search`, `domain_intel` and `cve_intel`
+(`SPENDING_TOOL_NAMES`, whose extension half comes from
+`src/extension-tools.js`) — and releases it in a `finally` covering
 success, a tool-level failure and a thrown error. The three tools that cost
 nothing stay outside it, because a slot held there could only deny the caller
 its own next call. A refusal is a JSON-RPC result with `isError`, not an HTTP

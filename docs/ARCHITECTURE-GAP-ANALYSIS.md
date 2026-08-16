@@ -490,7 +490,7 @@ Both halves of the roadmap's verdict shipped: integrations were *not* rebuilt
 on MCP (they share the internal enrichment contract instead), and DeepResearch
 is exposed *as* an MCP server (`/mcp` `deep_research` plus the four
 `literature_*` corpus tools, ChatGPT's `search`/`fetch` adapters and the
-three extension tools), wired after the identity gate so it inherits access
+six extension tools), wired after the identity gate so it inherits access
 control and usage recording. Mature; extension means more exposed tools, not
 new architecture.
 

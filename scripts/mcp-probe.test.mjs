@@ -99,7 +99,7 @@ test("rpc and toolCall build well-formed JSON-RPC 2.0 messages", () => {
 test("the probe's expectations mirror the server's tool list", () => {
   // A tool added to src/mcp.js without being added here would pass tools-list
   // as "unknown tool" — which is the failure this constant exists to produce.
-  assert.equal(EXPECTED_TOOLS.length, 10);
+  assert.equal(EXPECTED_TOOLS.length, 13);
   assert.equal(EXPECTED_TOOLS[0], "deep_research");
   assert.deepEqual(EXPECTED_TOOLS.slice(1, 5), [
     "literature_search",
@@ -113,7 +113,16 @@ test("the probe's expectations mirror the server's tool list", () => {
   assert.equal(new Set(BATCH_QUERIES).size, 6, "the angles must be distinct or de-duplication shrinks the batch");
   // The extension families are last, mirroring the registry order ALL_MCP_TOOLS
   // appends them in.
-  assert.deepEqual(EXPECTED_TOOLS.slice(-3), ["street_view_look", "place_nearby", "host_intel"]);
+  assert.deepEqual(EXPECTED_TOOLS.slice(-6), [
+    "street_view_look",
+    "place_nearby",
+    // The host-intelligence family, widened on 2026-08-16 from the host lookup
+    // alone to the population, the domain and the vulnerability.
+    "host_intel",
+    "host_search",
+    "domain_intel",
+    "cve_intel",
+  ]);
 });
 
 // ---------------------------------------------------------------------------
