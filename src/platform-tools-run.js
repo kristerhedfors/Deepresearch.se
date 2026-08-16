@@ -48,7 +48,7 @@ export const MAX_AREA_CHARS = 120;
 export const SPOKEN_SUMMARY_CHARS = 120;
 
 /**
- * The top-level areas of the codebase, as path prefix → what it is.
+ * The top-level areas of the codebase, as path prefixes → what they are.
  *
  * Derived rather than curated: the counts come from the snapshot, so this can
  * describe the tree wrongly only if the tree moved, and a prefix that matches
@@ -57,14 +57,21 @@ export const SPOKEN_SUMMARY_CHARS = 120;
  * silently, which on a surface nobody can see is the worse failure.
  */
 const CODE_AREAS = [
-  { prefix: "src/", name: "the Cloudflare Worker itself" },
-  { prefix: "public/js/", name: "the browser client" },
-  { prefix: "public/cure/", name: "the client-side privacy tier" },
-  { prefix: "docs/", name: "design and architecture documentation" },
-  { prefix: ".claude/skills/", name: "engineering playbooks" },
-  { prefix: "sdk/", name: "the two software development kits" },
-  { prefix: "scripts/", name: "build, ingest and evaluation tooling" },
-  { prefix: "tests/", name: "the test and evaluation harnesses" },
+  { prefixes: ["src/"], name: "the Cloudflare Worker itself" },
+  { prefixes: ["public/js/"], name: "the browser client" },
+  { prefixes: ["public/cure/"], name: "the client-side privacy tier" },
+  { prefixes: ["docs/"], name: "design and architecture documentation" },
+  // TWO roots for one area, counted together. The playbook tree was PARKED at
+  // skills-disabled/ on 2026-08-16 to find out which of them are needed, and
+  // introspect-core.js's SKILL_PATH_RE accepts either root — so this must too. A
+  // prefix that silently stops matching does not fail: it makes a whole area of
+  // the codebase vanish from the map, which is the one thing a map must not do.
+  // They share an entry rather than taking one each because two entries with the
+  // same name would speak the area twice if the tree were ever half-moved.
+  { prefixes: [".claude/skills/", "skills-disabled/"], name: "engineering playbooks" },
+  { prefixes: ["sdk/"], name: "the two software development kits" },
+  { prefixes: ["scripts/"], name: "build, ingest and evaluation tooling" },
+  { prefixes: ["tests/"], name: "the test and evaluation harnesses" },
 ];
 
 /**
@@ -229,8 +236,17 @@ function speakMiss(area, total) {
 function speakGlossed(areas) {
   return areas
     .map((a) => {
-      const summary = spokenSummary(a.description, a.name);
-      return summary ? `${spokenName(a.name)} covers ${lowerFirst(summary)}.` : `${spokenName(a.name)}.`;
+      const label = spokenName(a.name);
+      const { text, kind } = spokenSummary(a.description, a.name);
+      if (!text) return `${label}.`;
+      // TWO frames, chosen by which half of the description survived. A trigger
+      // clause is a subordinate "when" clause and needs a frame that can take
+      // one; a detail is a noun phrase and reads as a complement. Forcing both
+      // into "covers …" is what produced "cache helper covers the live site
+      // serves stale content".
+      return kind === "trigger"
+        ? `${label} is the playbook for when ${lowerFirst(text)}.`
+        : `${label} covers ${lowerFirst(text)}.`;
     })
     .join(" ");
 }
@@ -294,7 +310,10 @@ function describeCodeAreas(snapshot) {
   if (!files.length) return "";
   const counted = CODE_AREAS.map((areaDef) => ({
     name: areaDef.name,
-    n: files.filter((f) => typeof f?.p === "string" && f.p.startsWith(areaDef.prefix)).length,
+    n: files.filter((f) => {
+      const path = typeof f?.p === "string" ? f.p : "";
+      return path && areaDef.prefixes.some((prefix) => path.startsWith(prefix));
+    }).length,
   })).filter((a) => a.n > 0);
   if (!counted.length) return "";
   // "with N files" rather than ", N files": the list separator is already a
@@ -317,8 +336,15 @@ function describeCodeAreas(snapshot) {
  * @returns {{ shown: Array<{ name: string, description: string }>, total: number }}
  */
 function matchAreas(catalog, area) {
-  const needle = area.toLowerCase();
+  const needle = normalizeForMatch(area);
   if (!needle) return { shown: [], total: 0 };
+  const terms = needle.split(" ").filter((t) => t && !MATCH_STOPWORDS.has(t));
+  // A needle made only of stopwords matches almost everything by substring —
+  // "the" hit 98 of 99 and produced the sentence "On the, 98 parts of the
+  // platform…". Nothing useful can be said about it, so it falls through to the
+  // graceful miss rather than to a list of the entire catalog.
+  if (!terms.length) return { shown: [], total: 0 };
+
   /** @type {Array<{ name: string, description: string }>} */
   const byName = [];
   /** @type {Array<{ name: string, description: string }>} */
@@ -326,8 +352,18 @@ function matchAreas(catalog, area) {
   for (const entry of catalog) {
     const name = String(entry?.name || "");
     const description = String(entry?.description || "");
-    if (name.toLowerCase().includes(needle)) byName.push({ name, description });
-    else if (description.toLowerCase().includes(needle)) bySummary.push({ name, description });
+    // Normalised on BOTH sides, so a hyphenated needle finds a spaced name and
+    // the reverse. Without it "deep research" missed `pipeline-architecture`,
+    // `ground-truth-eval` and `add-research-source` — every one of which writes
+    // it "deep-research" — and the single most likely thing to ask this platform
+    // about returned one unrelated playbook. That is the "you asked, so it must
+    // not exist" failure platform_map was written to prevent, produced by
+    // platform_map.
+    const nameText = normalizeForMatch(name);
+    const summaryText = normalizeForMatch(description);
+    // Every term must appear, so a two-word needle narrows rather than widens.
+    if (terms.every((t) => nameText.includes(t))) byName.push({ name, description });
+    else if (terms.every((t) => summaryText.includes(t))) bySummary.push({ name, description });
   }
   const all = [...byName, ...bySummary];
   // The TOTAL travels beside the truncated list, and keeping the two apart is
@@ -335,10 +371,29 @@ function matchAreas(catalog, area) {
   // then reported ITS length as the number of matches — so a caller asking about
   // the sandbox was told "8 parts" when twelve matched, and the four it never
   // heard were, from where it was standing, parts this platform does not have.
-  // That is precisely the failure platform_map exists to prevent, produced by
-  // platform_map. A listener has no scrollback to check a spoken number against.
+  // A listener has no scrollback to check a spoken number against.
   return { shown: all.slice(0, MAX_SPOKEN_AREAS), total: all.length };
 }
+
+/**
+ * Lower-cased, with every separator flattened to a space, so "deep-research",
+ * "deep_research", "Deep Research" and "deep/research" all compare equal.
+ * @param {string} text
+ * @returns {string}
+ */
+function normalizeForMatch(text) {
+  return String(text || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+/** Needle words too common to narrow anything. A needle made ONLY of these is
+ * refused rather than answered with most of the catalog. */
+const MATCH_STOPWORDS = new Set([
+  "the", "a", "an", "and", "or", "of", "for", "on", "in", "to", "with", "is", "it", "this",
+  "that", "how", "what", "does", "do", "any", "all", "about", "from", "by", "as", "at",
+]);
 
 /**
  * A playbook's name, said the way a person would. The catalog names are
@@ -367,68 +422,100 @@ function spokenName(name) {
  * is cut and the substance kept.
  */
 const TRIGGER_OPENER =
-  /^(?:load|use|read|reach for)\s+(?:it\s+|this\s+skill\s+)?(?:when|whenever|if|before)\s+(?:you\s+(?:are\s+)?)?(?:\w+ing\s+(?:on|with|in|to|about|into)\s+|\w+ing\s+(?=(?:a|an|the|any|every)\b))?/i;
+  /^(?:load|use|read|reach for)\s+(?:it\s+|this\s+skill\s+)?(?:when|whenever|if|before)\s+(?:you\s+(?:are\s+)?)?/i;
+
+/** Capitalised runs that are real acronyms and must survive as they are. Anything
+ * else in capitals is a written EMPHASIS, which a speech engine either spells out
+ * letter by letter or over-stresses — 45 of the 99 playbook descriptions carried
+ * at least one ("the sandbox HANGS", "the CANONICAL documentation"). */
+const ACRONYMS = new Set([
+  "SDK", "SDKS", "RAG", "OSINT", "LLM", "LLMS", "API", "APIS", "MCP", "D1", "R2", "UI", "UX",
+  "VM", "VMS", "AI", "ETL", "EN", "SV", "PDF", "HTML", "CSS", "JS", "JSON", "SQL", "URL", "URLS",
+  "HTTP", "HTTPS", "SSE", "CI", "CPU", "DOM", "PWA", "COEP", "CORS", "CVE", "CVES", "DNS", "TTS",
+  "OWASP", "CVSS", "ORCID", "PMID", "DRC", "DRS", "DRPL", "DRSW", "PGO", "LTO", "UPX", "GCC",
+  "WASM", "IDB", "OAI", "PMH", "GCS", "TF", "IDF", "P", "F", "K", "N", "I", "A", "X", "S", "M", "L",
+]);
 
 /**
- * One playbook's summary, made speakable: trigger cut, markdown removed, clipped
- * to a length an ear holds.
+ * One playbook's summary, made speakable — plus WHICH HALF of the description it
+ * came from, because the two halves are different kinds of sentence and need
+ * different frames around them.
  *
- * The markdown pass is not cosmetic. These descriptions are written for a screen
- * and carry backticks, code identifiers, paths and parenthetical asides — a
- * speech engine pronounces a backtick, reads a `key: "value"` pair as
- * punctuation, and turns a path into a string of slashes. None of it survives.
+ * A SKILL.md `description` is a load TRIGGER written for an agent, and it has a
+ * standard shape: `Load when <trigger clause> — <detail>`. The trigger clause is
+ * a subordinate "when" clause and can be a gerund phrase ("adding a new LLM
+ * provider"), a noun phrase ("working on the sandbox") or a full finite clause
+ * ("the live site serves STALE content"). The detail after the dash is a noun
+ * phrase describing the subsystem.
  *
- * **The em-dash decision is the subtle part**, and getting it wrong was the
- * second bug this function had. Most descriptions are `<what it is about> — <the
- * detail>`, so the half before the dash is the summary. But where the skill is
- * named after its subject the first half is only the name ("working on pygram —
- * the minimal Python-subset runtime…"), and keeping it produces "pygram covers
- * pygram". So the head is used unless, with the skill's own name words removed,
- * almost nothing is left — in which case the detail after the dash is the real
- * description. Cutting at the dash unconditionally (the first attempt) threw
- * away the good half for every skill of the first kind.
+ * The first version tried to force both into one frame, `"<name> covers <x>"`,
+ * by stripping the participle off the front of the trigger. That produced a
+ * quarter of the catalog as ungrammatical speech — "add llm provider covers a
+ * NEW LLM provider", "cache helper covers the live site serves STALE content".
+ * Keeping the trigger intact and choosing the frame from the half it came from
+ * fixes every one of them, and is less code than the stripping was.
  *
  * @param {string} raw the SKILL.md frontmatter description
  * @param {string} name the playbook's name, so it is not described as itself
- * @returns {string}
+ * @returns {{ text: string, kind: "trigger" | "detail" }} empty text = no gloss
  */
 function spokenSummary(raw, name) {
   const whole = String(raw || "").replace(/\s+/g, " ").trim();
-  if (!whole) return "";
-  const stripped = whole.replace(TRIGGER_OPENER, "");
+  if (!whole) return { text: "", kind: "detail" };
+  // Parentheticals go BEFORE the dash split, not after. A dash inside a
+  // parenthetical otherwise splits the text mid-aside, and the paren-stripping
+  // pass then finds an opener with no closer and leaves it in the spoken output.
+  const stripped = cleanForSpeech(whole.replace(TRIGGER_OPENER, ""));
 
   const dash = stripped.search(/\s[—–]\s/);
   const head = dash > 0 ? stripped.slice(0, dash) : stripped;
-  const tail = dash > 0 ? stripped.slice(dash).replace(/^\s*[—–]\s*/, "") : "";
+  const detail = dash > 0 ? stripped.slice(dash).replace(/^\s*[—–]\s*/, "") : "";
 
-  // Head first, tail as the fallback — and the fallback earns its place twice.
-  // A skill named after its subject says only its own name before the dash; and
-  // a skill whose trigger is a list of file paths ("Load when working on
-  // src/pipeline.js, src/triage.js, …") has a head that is ENTIRELY paths, which
-  // survives every check above and then vanishes in the cleanup below, leaving a
-  // stray conjunction. Both are answered by preferring whichever half actually
-  // says something, and by saying nothing at all when neither does.
-  const first = isJustTheName(head, name) && tail ? tail : head;
-  const cleaned = cleanForSpeech(first);
-  if (isSubstantive(cleaned)) return clipSentence(cleaned, SPOKEN_SUMMARY_CHARS);
-  const second = cleanForSpeech(first === head ? tail : head);
-  if (isSubstantive(second)) return clipSentence(second, SPOKEN_SUMMARY_CHARS);
-  // Nothing speakable survived. Naming the area with no gloss is the honest
-  // answer; a fragment would be worse, because a listener cannot see that it is
-  // one.
-  return "";
+  // The head is preferred unless it says only what the NAME already said, which
+  // is the shape of every playbook named after its subject ("working on pygram —
+  // the minimal Python-subset runtime…"): there the detail is the description.
+  const preferDetail = isJustTheName(head, name) && detail;
+  const first = preferDetail ? detail : head;
+  const firstKind = /** @type {"trigger" | "detail"} */ (preferDetail ? "detail" : "trigger");
+  if (isSubstantive(first)) return { text: clipSpoken(first), kind: firstKind };
+
+  const second = preferDetail ? head : detail;
+  const secondKind = /** @type {"trigger" | "detail"} */ (preferDetail ? "trigger" : "detail");
+  if (isSubstantive(second)) return { text: clipSpoken(second), kind: secondKind };
+
+  // Nothing speakable survived — a description that was entirely file paths.
+  // Naming the area with no gloss is the honest answer; a fragment would be
+  // worse, because a listener cannot see that it is one.
+  return { text: "", kind: "detail" };
 }
 
 /**
- * Strip everything a speech engine would pronounce as itself.
+ * Clip to a spoken length, then trim again.
+ *
+ * The order matters and cost a round to get right: cleanForSpeech trims dangling
+ * function words, but the CLIP that follows can create a fresh one by cutting a
+ * clause just after its preposition ("…a frozen public replay at"). Trimming
+ * before clipping fixes only the words the path stripper stranded; trimming
+ * after fixes those the clip strands too.
+ * @param {string} text
+ * @returns {string}
+ */
+function clipSpoken(text) {
+  return trimDanglingFunctionWords(clipSentence(text, SPOKEN_SUMMARY_CHARS));
+}
+
+/**
+ * Strip everything a speech engine would pronounce as itself, or shout.
  * @param {string} raw
  * @returns {string}
  */
 function cleanForSpeech(raw) {
   let text = String(raw || "");
   // Parenthetical asides are almost always identifiers and file paths here, and
-  // a listener can use neither. Dropped whole rather than de-punctuated.
+  // a listener can use neither. Dropped whole rather than de-punctuated, and any
+  // unbalanced opener left by a clip goes with them.
   text = text.replace(/\([^)]*\)/g, " ");
+  text = text.replace(/\([^)]*$/g, " ");
   // Inline code: the content is an identifier or a path, which reads as noise.
   text = text.replace(/`[^`]*`/g, " ");
   // Paths, bare filenames, and snake_case identifiers — all of which a speech
@@ -438,29 +525,70 @@ function cleanForSpeech(raw) {
   text = text.replace(/\b\w+_\w+\b/g, " ");
   // Emphasis and stray quoting, then the punctuation the removals left behind.
   text = text.replace(/[*_"“”]+/g, " ");
+  // SHOUTED emphasis. Written capitals are a screen convention; spoken, they are
+  // either spelled out or over-stressed. Real acronyms are kept.
+  text = text.replace(/\b[A-Z][A-Z0-9-]{1,}\b/g, (word) => (ACRONYMS.has(word) ? word : word.toLowerCase()));
   text = text.replace(/\s+([,;:.])/g, "$1");
   text = text.replace(/([,;:]\s*){2,}/g, "$1 ");
   text = text.replace(/\s+/g, " ").trim();
   text = text.replace(/^[\s,;:—–-]+/, "");
   // A trigger verb whose whole object was a list of file paths is left standing
   // alone once the paths go ("touching, or anything about …"). Drop the orphan
-  // and the conjunction after it so the clause starts on its subject.
-  //
-  // To FIXPOINT rather than once: a trigger commonly lists several verbs
-  // ("declaring, running, or working on the try-it queue"), and each pass
-  // uncovers the next — strip one and "or working on …" is left, strip the
-  // conjunction and a bare "working on …" is left. One pass of each rule is
-  // exactly what the first version did, and it is why the map said "covers
-  // running, or working on".
+  // and the conjunction after it so the clause starts on its subject. To
+  // FIXPOINT, because a trigger commonly lists several verbs and each pass
+  // uncovers the next.
   let prev;
   do {
     prev = text;
     text = text.replace(/^(?:or|and)\s+/i, "");
     text = text.replace(/^\w+ing[,;]\s*/i, "");
-    text = text.replace(/^\w+ing\s+(?:on|with|in|to|about|into)\s+(?=(?:a|an|the|any|every)\b)/i, "");
     text = text.trim();
   } while (text !== prev);
-  return text.trim();
+  return trimDanglingFunctionWords(text);
+}
+
+/**
+ * A count and its noun, agreeing. Trivial, and it is here because the first
+ * version of this module said "1 files" — which on a screen is a typo and in the
+ * ear is the sentence a listener stops trusting.
+ * @param {number} n
+ * @param {string} noun singular form
+ * @returns {string}
+ */
+function plural(n, noun) {
+  return `${n} ${noun}${n === 1 ? "" : "s"}`;
+}
+
+/**
+ * A list spoken the way a person reads one out — commas, then "and".
+ * @param {string[]} items
+ * @returns {string}
+ */
+function speakList(items) {
+  const list = items.filter(Boolean);
+  if (!list.length) return "";
+  if (list.length === 1) return list[0];
+  return `${list.slice(0, -1).join(", ")} and ${list[list.length - 1]}`;
+}
+
+/** The function words that governed something now removed. A clause ending
+ * "…a frozen public replay at" lost its object to the path stripper, and the
+ * stranded preposition is audible in a way it never is on a page. */
+const DANGLING = "at|in|on|to|with|from|into|for|of|the|a|an|and|or|by|as|per|via|about";
+
+/**
+ * Drop a trailing run of function words left governing nothing.
+ * @param {string} text
+ * @returns {string}
+ */
+function trimDanglingFunctionWords(text) {
+  let out = String(text || "").trim();
+  let prev;
+  do {
+    prev = out;
+    out = out.replace(new RegExp(`[\\s,;:]*\\b(?:${DANGLING})\\s*[.,;:]?$`, "i"), "").trim();
+  } while (out !== prev);
+  return out.replace(/[\s,;:—–-]+$/, "").trim();
 }
 
 /**
@@ -491,7 +619,7 @@ function isJustTheName(head, name) {
   const extra = head
     .toLowerCase()
     .split(/[^a-z0-9]+/)
-    .filter((w) => w && !nameWords.has(w) && !FILLER.has(w));
+    .filter((w) => w && !nameWords.has(w) && !FILLER.has(w) && !TRIGGER_VERBS.has(w));
   return extra.length < 2;
 }
 
@@ -499,29 +627,10 @@ function isJustTheName(head, name) {
  * clause substantive. */
 const FILLER = new Set(["the", "a", "an", "and", "or", "of", "for", "on", "in", "to", "with", "this", "its"]);
 
-/**
- * A count and its noun, agreeing. Trivial, and it is here because the first
- * version of this module said "1 files" — which on a screen is a typo and in the
- * ear is the sentence a listener stops trusting.
- * @param {number} n
- * @param {string} noun singular form
- * @returns {string}
- */
-function plural(n, noun) {
-  return `${n} ${noun}${n === 1 ? "" : "s"}`;
-}
-
-/**
- * A list spoken the way a person reads one out — commas, then "and".
- * @param {string[]} items
- * @returns {string}
- */
-function speakList(items) {
-  const list = items.filter(Boolean);
-  if (!list.length) return "";
-  if (list.length === 1) return list[0];
-  return `${list.slice(0, -1).join(", ")} and ${list[list.length - 1]}`;
-}
+/** The META verbs a trigger opens with — they say "when you work on it", not what
+ * it IS, so a head made only of one plus the skill's own name is still just the
+ * name ("working on pygram"). */
+const TRIGGER_VERBS = new Set(["working", "touching", "editing", "modifying", "changing", "using", "reading"]);
 
 /**
  * The first sentence of a summary, clipped to a length an ear holds.

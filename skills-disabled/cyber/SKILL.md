@@ -109,10 +109,24 @@ never learn which agent or which service it belongs to:
 ## 1a. Reachable as MCP TOOLS, and gated the same way
 
 Two of Cyber's capabilities are also callable directly over `POST /mcp`, without
-a research turn: `street_view_look` / `place_nearby` (street imagery) and
-`host_intel` (host intelligence). They exist because the `/mcp` surface is aimed
+a research turn: `street_view_look` / `place_nearby` (street imagery) and the
+host-intelligence family. They exist because the `/mcp` surface is aimed
 at voice callers, and "describe what you see a hundred metres south of here" is
 worth more spoken than anything else this platform does.
+
+**The host-intelligence family is four tools since 2026-08-16**, split by the
+question each answers rather than by the endpoint each calls: `host_intel` (what
+is on THESE machines), `host_search` (which machines look like this, how many
+there are in total, and their breakdown by country, port, product or
+organization — the count leg costs no query credits, so asking for scale is
+free), `domain_intel` (a domain's subdomains and stored DNS records, which reach
+names that were never scanned and so find hosts a `hostname:` search misses),
+and `cve_intel` (what a CVE actually is — CVSS, EPSS, known-exploited status —
+or a product's vulnerabilities ranked by EPSS). The last closes a loop the others
+opened: a host record names bare CVE ids, and an id is a number, not a finding.
+What was deliberately NOT exposed is the rest of the API: the on-demand SCAN
+endpoints, network alerts and account management. This surface reads an index,
+and a tool that touched someone's machines would be a different promise.
 
 **They are not a hole in the exclusivity guard**, and the reason is worth being
 precise about. The guard says which AGENT may consult a source during a research

@@ -83,7 +83,7 @@ test("initializeResult has protocolVersion, serverInfo, and tools capability", (
 
 test("tools/list returns deep_research first plus the literature, adapter, platform and extension families", () => {
   const r = toolsListResult();
-  assert.equal(r.tools.length, 13);
+  assert.equal(r.tools.length, 16);
   const tool = r.tools[0];
   assert.equal(tool.name, TOOL_NAME);
   assert.equal(tool.name, "deep_research");
@@ -109,7 +109,11 @@ test("tools/list returns deep_research first plus the literature, adapter, platf
       "literature_search", "literature_fetch", "literature_similar", "literature_corpora",
       "search", "fetch",
       "explain_internals", "improvement_areas", "platform_map",
-      "street_view_look", "place_nearby", "host_intel",
+      "street_view_look", "place_nearby",
+      // The host-intelligence family widened from one tool on 2026-08-16: the
+      // lookup answers about machines you can already name, and the three that
+      // follow answer about a population, a domain and a vulnerability.
+      "host_intel", "host_search", "domain_intel", "cve_intel",
     ],
   );
   for (const t of r.tools.slice(1)) {

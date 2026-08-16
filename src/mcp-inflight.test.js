@@ -221,6 +221,13 @@ describe("SPENDING_TOOL_NAMES", () => {
         "street_view_look",
         "place_nearby",
         "host_intel",
+        // The host-intelligence family widened on 2026-08-16. `cve_intel` is
+        // the one whose upstream is FREE and which holds a slot anyway: the
+        // flag decides whether a tool passes the quota gate and takes a slot,
+        // and an outbound tool with neither is unbounded (docs/MCP-COST.md §4b).
+        "host_search",
+        "domain_intel",
+        "cve_intel",
       ].sort(),
     );
   });

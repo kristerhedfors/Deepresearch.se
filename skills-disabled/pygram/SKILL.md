@@ -491,7 +491,7 @@ Each of these cost real time and each would recur.
   locally because the artifacts and the untracked files were consistent right up
   until the commit made them tracked, and CI failed on both drift tests. Editing
   an existing file does not have this failure mode, which is why it takes a
-  while to bite. Also note the snapshot indexes `docs/` and `.claude/skills/`,
+  while to bite. Also note the snapshot indexes `docs/` and `skills-disabled/`,
   not just `src/` and `public/js/` — a docs-only or skill-only edit stales it
   too, and the fix is always all four bundlers, never editing an artifact.
 

@@ -223,7 +223,7 @@ None of these ship. The deploy uploads `src/` and `public/` as plain files.
 | `wrangler` | invoked via `npx`; pinned in `instances/lite` | ^3.60.0 there | Deploy and local dev |
 | Node.js | — | 22 in CI | Test runner only (`node:test`, no framework). The Worker runs on workerd. |
 | Python 3 | — | any | `tests/make_fixtures.py`, run once to build e2e fixtures |
-| Vale | `.claude/skills/anti-ai-smell/vale/` | optional | Prose linting for the docs de-smell pass |
+| Vale | `skills-disabled/anti-ai-smell/vale/` | optional | Prose linting for the docs de-smell pass |
 
 The root lockfile resolves to **25 packages**: three direct devDependencies
 plus the 22 `cheerio` brings with it (`parse5`, `htmlparser2`, `domutils`,

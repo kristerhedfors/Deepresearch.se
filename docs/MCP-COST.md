@@ -11,7 +11,7 @@ it was found. The hosted retrieval tier §1 prices also runs inside the
 same reason — §4d records that fix and what a chat request's share of it
 comes to.
 
-**Short answer.** Per call the surface is cheap: 3 of the 10 tools spend
+**Short answer.** Per call the surface is cheap: 4 of the 16 tools spend
 nothing at a provider, the literature family costs €0.002–€0.012, and
 `deep_research` — the only expensive tool — costs €0.05 at the median and
 **€0.62 at its analytic ceiling**. The per-call numbers are not what
@@ -41,7 +41,7 @@ Four cost sources, and only two of them matter.
 | Berget `bge-reranker-v2-m3` | **€0.10/M tokens** | Berget `/v1/models`, retrieved 2026-08-05 |
 | Berget `multilingual-e5-large` (embeddings) | €0.03/M in, €0 out | same |
 | Exa search | €0.005/search × the depth tier's `costMultiplier` (12/7 at ≥420 s) | `config.exa_cost_per_search_eur`, `src/budget.js` `searchDepthFor` |
-| Cloudflare Vectorize | $0.01 per 1M queried dimensions → **$0.00001 per 1024-d query** | `docs/PUBMED-RAG.md`, `.claude/skills/bulk-corpus-etl` §"Billing" |
+| Cloudflare Vectorize | $0.01 per 1M queried dimensions → **$0.00001 per 1024-d query** | `docs/PUBMED-RAG.md`, `skills-disabled/bulk-corpus-etl` §"Billing" |
 
 Workers request and CPU cost is real but rounds to nothing at this
 granularity ($0.02/M requests, $0.02/M CPU-ms): even the 15 MB snapshot
@@ -64,6 +64,9 @@ parse a committed-data call does is ~€0.00001.
 | `street_view_look` | 1–2 Google imagery fetches + 1 vision description | **Google imagery + ~€0.001 vision** — §2a | not yet measured |
 | `place_nearby` | 1 Places search (+1 free reverse geocode) | **Google Places, €0 at Berget** — §2a | not yet measured |
 | `host_intel` | 1 Shodan lookup or search (+1 DNS resolve per hostname) | **Shodan credits, €0 at Berget** — §2a | not yet measured |
+| `host_search` | 1 free count + 1 billed search, or 1 free count alone with `count_only` | **1 Shodan query credit at most, €0 at Berget** — §2a | not yet measured |
+| `domain_intel` | 1 DNS-database read, twice when a hostname is retried one level up | **Shodan credits, €0 at Berget** — §2a | not yet measured |
+| `cve_intel` | 1 read of `cvedb.shodan.io` | **€0 everywhere** — keyless, no query credits — §2a | not yet measured |
 
 **The reranker is the whole cost of the literature family**, and it was
 measured rather than estimated. `src/dense-rag.js` reranks `CANDIDATES = 50`
@@ -103,8 +106,8 @@ surface is widened; the reason it is not blocking is that both tools pass the
 same `researchQuotaBlock` and hold the same concurrency slot as
 `deep_research`, so nothing here is unmetered — only unpriced.
 
-`platform_map` is the third free tool beside `literature_fetch` and
-`literature_corpora`: it reads two committed artifacts through the `ASSETS`
+`platform_map` is the fourth free tool beside `literature_fetch`,
+`literature_corpora` and `fetch`: it reads two committed artifacts through the `ASSETS`
 binding and contacts no provider. It is outside the quota gate and holds no
 concurrency slot, for the reason those two are — an agent whose budget is gone
 should still be able to learn what exists, and a slot held on a free call could
@@ -294,10 +297,13 @@ in (1) directly.
 
 `src/mcp.js` now reserves a slot for every tool that reaches a provider —
 `deep_research`, `literature_search`, `literature_similar`, the `search`
-adapter, and (since 2026-08-15) the three extension tools `street_view_look`,
-`place_nearby` and `host_intel` (`SPENDING_TOOL_NAMES`, whose extension half
-comes from `src/extension-tools.js`) — and releases it in a `finally` covering
-success, a tool-level failure and a thrown error. The three tools that cost
+adapter, the two platform answering tools `explain_internals` and
+`improvement_areas` (since 2026-08-16), and (since 2026-08-15) the extension
+tools `street_view_look`, `place_nearby` and the host-intelligence family —
+`host_intel`, and since 2026-08-16 `host_search`, `domain_intel` and
+`cve_intel` (`SPENDING_TOOL_NAMES`, whose extension half comes from
+`src/extension-tools.js`) — and releases it in a `finally` covering
+success, a tool-level failure and a thrown error. The four tools that cost
 nothing stay outside it, because a slot held there could only deny the caller
 its own next call. A refusal is a JSON-RPC result with `isError`, not an HTTP
 429: an MCP client reads the envelope, and a bare 429 reads to it as a
@@ -349,12 +355,13 @@ in the first and there is no limit to hide in the second.
   tested), and `tools/call` enforces the switch, not just `tools/list`.
 - An MCP key is never a login (test-pinned), so the blast radius of a
   leaked key is spend, not data.
-- `literature_fetch` and `literature_corpora` sit outside the quota
-  deliberately and cost nothing, so that exemption carries no spend risk.
+- `literature_fetch`, `literature_corpora` and `platform_map` sit outside the
+  quota deliberately and cost nothing, so that exemption carries no spend risk.
 - The provider-touching tools also hold a concurrency slot (§4b(2)) — the
-  four named there since 2026-08-05, seven since the three extension tools
-  joined on 2026-08-15 — so the ceilings in 4a are per account rather than
-  per simultaneous connection.
+  four named there since 2026-08-05, seven when the first three extension
+  tools joined on 2026-08-15, and twelve since the host-intelligence family
+  widened and the two platform answering tools joined on 2026-08-16 — so the
+  ceilings in 4a are per account rather than per simultaneous connection.
 
 ### 4d. The same hole on the higher-traffic path — FIXED 2026-08-05
 
@@ -406,9 +413,9 @@ unbounded in the sense that mattered, because nothing counted it at all.
 
 ## 5. Verdict
 
-Publishing the **free three** — `literature_fetch`,
-`literature_corpora`, and `fetch` — carries no provider cost at all. Their
-only exposure is Workers CPU.
+Publishing the **free four** — `literature_fetch`,
+`literature_corpora`, `fetch` and `platform_map` — carries no provider cost at
+all. Their only exposure is Workers CPU.
 
 Publishing `deep_research` is affordable as it stands: the quota bounds an
 account at ~€111/month, and the per-call ceiling is €0.63. Tightening

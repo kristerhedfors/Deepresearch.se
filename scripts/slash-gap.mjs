@@ -248,7 +248,7 @@ function main() {
   }
   console.log("\nPick the LEAST tightening (closest to 0 / most positive) across the fonts" +
     "\nreal users will resolve, so the worst-case font still clears the floor." +
-    "\nSee .claude/skills/slash-spacing/SKILL.md for the decision procedure.");
+    "\nSee skills-disabled/slash-spacing/SKILL.md for the decision procedure.");
 }
 
 main();

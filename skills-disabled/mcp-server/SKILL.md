@@ -44,12 +44,13 @@ agent SDK). Alongside it the server re-exposes four more families: the four
 `src/literature-tools.js` + `src/literature-run.js`) that hand an agent the
 two hosted scientific corpora directly — see the section below, it is the
 family with the most surface; the two OpenAI **adapter tools** `search` and
-`fetch`, which ChatGPT demands by name; and the three **extension tools**
-`street_view_look`, `place_nearby` and `host_intel` (via `EXTENSION_MCP_TOOLS`
-over `src/extension-tools.js`), the only ones here that reach a third party on
-the caller's behalf; and the three **platform tools** (below) that point the
-pipeline at this codebase. Thirteen tools total; the pipeline one is the reason
-the server exists.
+`fetch`, which ChatGPT demands by name; and the six **extension tools** —
+`street_view_look`, `place_nearby` and the host-intelligence family
+`host_intel` / `host_search` / `domain_intel` / `cve_intel` (via
+`EXTENSION_MCP_TOOLS` over `src/extension-tools.js`) — the only ones here that
+reach a third party on the caller's behalf; and the three **platform tools**
+(below) that point the pipeline at this codebase. Sixteen tools total; the
+pipeline one is the reason the server exists.
 
 **THE SURFACE IS SHAPED FOR CALLERS WITHOUT A SCREEN (owner directive,
 2026-08-15).** That is the rule to apply to any proposed tool now: a voice client
@@ -97,7 +98,8 @@ implements exactly the methods a minimal server needs:
   `SERVER_INFO`, `capabilities: { tools: {} }`) — the HANDSHAKE era
 - `server/discover` → `discoverResult()` — the STATELESS era's replacement for it
 - `tools/list` → `toolsListResult(config)` (`ALL_MCP_TOOLS` = `DEEP_RESEARCH_TOOL`
-  + `LITERATURE_MCP_TOOLS` + `OPENAI_MCP_TOOLS` + `EXTENSION_MCP_TOOLS`, filtered
+  + `LITERATURE_MCP_TOOLS` + `OPENAI_MCP_TOOLS` + `PLATFORM_MCP_TOOLS`
+  + `EXTENSION_MCP_TOOLS`, filtered
   by the account's exposure config)
 - `tools/call` → `handleToolCall()` → `runDeepResearch()` / a family runner
 - `notifications/initialized` → no-op ack (a notification has no `id`, so it
@@ -593,9 +595,14 @@ not another keepalive.
   decide whether it belongs in `SPENDING_TOOL_NAMES` (does it reach a provider?
   then yes — it holds a concurrency slot and goes behind `researchQuotaBlock`),
   and branch on `parsed.params.name` in `dispatchToolCall` — which dispatches the
-  literature family and then the extension families by `EXTENSION_TOOL_NAMES`
-  membership before falling through to `deep_research`; anything matching neither
-  is method-not-found. Any heavy work its handler needs stays behind a dynamic
+  extension families by `EXTENSION_TOOL_NAMES` membership, the literature family
+  and its adapters, and the free platform tool `platform_map`, before falling
+  through to `deep_research`; anything matching none of them is
+  method-not-found. A family does not have to bring a runner: the two ANSWERING
+  platform tools fall through to `deep_research` itself with their arguments
+  forced by `resolveIntrospectArgs` and the shared tail `runResearchToolCall`,
+  which is the cheapest way to add a tool that IS the pipeline pointed somewhere
+  new — one gate, one meter, one log row, no second copy to drift. Any heavy work its handler needs stays behind a dynamic
   import. Two questions to answer before writing any of it: does it belong here
   at all (the roadmap's thesis is a few high-leverage tools, not a tool zoo), and
   **can a caller with no screen use its answer** (the 2026-08-15 directive — that
@@ -990,8 +997,8 @@ production** as of 2026-08-15.
 
 ## What a call costs (before widening the audience)
 
-`docs/MCP-COST.md` prices the thirteen-tool surface against production
-(2026-08-05), the three extension tools excepted (below). The three
+`docs/MCP-COST.md` prices the surface against production
+(2026-08-05), the extension tools excepted (below). The three
 figures worth carrying: `deep_research` is €0.051 at the median
 of a month of real runs and **€0.62 at its analytic ceiling** (34 searches
 × the 12/7 deep-tier multiplier, plus one synthesis on the priciest model);
@@ -1000,14 +1007,22 @@ saturated at round 2 and spent 9 of its 34 permitted searches. The
 literature family costs €0.0021 (1 angle) to €0.0124 (6 angles) — **all of
 it the reranker**, 50 candidates × 900 chars per angle-corpus leg, measured
 at 10,198 tokens per leg at €0.10/M. Only `literature_fetch`,
-`literature_corpora` and `fetch` cost nothing now.
+`literature_corpora`, `fetch` and `platform_map` cost nothing now.
 
-**The three extension tools are a NEW cost shape and are not priced yet.** They
+**The extension tools are a NEW cost shape and are not priced yet.** They
 spend nothing at Berget except `street_view_look`'s one vision description, but
 they bill Google (imagery, places) and Shodan (credits) — money the four-window
 quota does not model, because it counts Berget EUR and Exa searches. They hold a
 concurrency slot and pass the quota gate anyway, which bounds the RATE; what is
 missing is a price per call. Measure it before the surface is widened.
+
+`cve_intel` is the odd one and worth knowing about before someone "fixes" it: its
+upstream (`cvedb.shodan.io`) is keyless and charges nothing, and it is in
+`SPENDING_TOOL_NAMES` regardless. The flag decides whether a tool passes the
+quota gate and takes a concurrency slot, not whether an invoice arrives — and an
+outbound tool with neither bound is the exact defect §4b describes. The same
+reasoning covers `host_search`'s count leg, which is free at Shodan and metered
+here: it is counted as one outbound unit like everything else in that module.
 
 Two metering gaps decided whether the surface can be published, both in the
 register as P-3, and **both are now closed (2026-08-05)**.
@@ -1024,11 +1039,13 @@ calibrated to €0.005 a search.
 
 **Concurrency** — `/mcp` now takes `reserveInflight` on every tool that
 reaches a provider (`deep_research`, `literature_search`, `literature_similar`,
-`search`, and since 2026-08-15 the three extension tools `street_view_look`,
-`place_nearby` and `host_intel` — seven in all, the exported
-`SPENDING_TOOL_NAMES`), released in a `finally` on every exit path, so an
+`search`, the two platform answering tools `explain_internals` and
+`improvement_areas`, and since 2026-08-15 the extension tools
+`street_view_look`, `place_nearby` and the host-intelligence family
+`host_intel` / `host_search` / `domain_intel` / `cve_intel` — twelve in all,
+the exported `SPENDING_TOOL_NAMES`), released in a `finally` on every exit path, so an
 external key gets the same CAP=5 bound `/api/chat` has. Three things about
-that shape are worth keeping: the three free tools
+that shape are worth keeping: the four free tools
 hold NO slot (one held there could only deny the caller its own next call);
 the refusal is a JSON-RPC `isError` result, never an HTTP 429, because an MCP
 client reads the envelope and a bare 429 reads to it as a broken server; and

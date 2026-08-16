@@ -532,7 +532,7 @@ behavior-preserving.
 
 ## 11. Relationship to the rest of the documentation
 
-- **`.claude/skills/` (operational)** — run and maintain THIS deployment. The
+- **`skills-disabled/` (operational)** — run and maintain THIS deployment. The
   SDK skills are *constructive* — build the capability in a fresh repo (or
   bind it here). They deliberately share vocabulary and cite the same incident
   history; where an operational skill already documents a procedure, the SDK

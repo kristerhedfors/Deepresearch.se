@@ -162,7 +162,9 @@ export const SERVER_INFO = {
 export const SERVER_INSTRUCTIONS =
   "DeepResearch.se runs deep research as a tool: a planned, searched, gap-checked and " +
   "validated answer built only from sources it found (deep_research), direct semantic " +
-  "search over hosted arXiv and PubMed indexes (literature_*), and — when the account " +
+  "search over hosted arXiv and PubMed indexes (literature_*), questions about this " +
+  "platform's own implementation answered from its deployed source (explain_internals, " +
+  "improvement_areas, platform_map), and — when the account " +
   "enables them — street-level imagery described in words and internet host intelligence. " +
   "Every answering tool takes a plain question; nothing here needs a browser.";
 
@@ -954,8 +956,11 @@ async function reserveToolSlot(env, log, identity, requestId) {
   return { ok: true, release: () => quota.releaseInflight(env, requestId) };
 }
 
-// The dispatcher proper: the SDK manifest family, the literature family and its
-// two `search`/`fetch` adapters, then `deep_research`;
+// The dispatcher proper, in branch order: the extension families, the literature
+// family and its two `search`/`fetch` adapters, the free platform tool
+// `platform_map`, then `deep_research` — which the two ANSWERING platform tools
+// reach as well, falling through with their arguments forced rather than taking a
+// runner of their own;
 // anything else — including a tool this account does not
 // expose — is an invalid-params error. The tool itself fails soft: any pipeline
 // error comes back as an MCP result with isError:true (a protocol-level success
@@ -1463,6 +1468,17 @@ async function runDeepResearch(env, log, identity, requestId, args, question, pr
     // worst of both: billed, and silent.
     agentPick ? resolveVisionModels(catalog, model) : [],
   );
+
+  // SOURCE-FIRST, for the platform tools only. runResearch normally hands a
+  // dev-mode turn back to the web wave when the message asks for outside
+  // material (externalSourceIntent) — right for a chat turn, and broken here,
+  // because these tools force `web_search: false` and so there is no wave to be
+  // handed back to: the turn falls to triage and answers from the injected
+  // excerpts alone. And it is the CALLER'S phrasing that trips it, not the lens:
+  // "how does your sandbox compare to Docker" is an ordinary thing to ask a
+  // platform about itself and matches the comparison arm. Same flag shape as the
+  // /help escape hatch beside it.
+  if (args.require_agent) /** @type {any} */ (state).sourceFirst = true;
 
   // Collect the pipeline's streamed text deltas (and honor discard_text, the
   // post-validation reset) into one string — the MCP result is non-streaming.

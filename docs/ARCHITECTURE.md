@@ -1296,7 +1296,7 @@ twin of a correct implementation.
 `Content-Type: text/event-stream`; OpenAI-style deltas plus custom `status`
 events. **Clients must ignore unknown status types and fields** (forward
 compatibility). The canonical, fully-worked event reference is the
-**sse-protocol** skill (`.claude/skills/sse-protocol/SKILL.md`); summary:
+**sse-protocol** skill (`skills-disabled/sse-protocol/SKILL.md`); summary:
 
 | Event | Meaning / UI behavior |
 |---|---|
@@ -1555,15 +1555,19 @@ can compose with them:
   once; an `initialize` selects legacy semantics, which is what keeps every
   client that can reach us today working.
 - **The tools** (`toolsListResult()` = `DEEP_RESEARCH_TOOL` +
-  `LITERATURE_MCP_TOOLS` + `OPENAI_MCP_TOOLS` + `EXTENSION_MCP_TOOLS`):
+  `LITERATURE_MCP_TOOLS` + `OPENAI_MCP_TOOLS` + `PLATFORM_MCP_TOOLS` +
+  `EXTENSION_MCP_TOOLS` — the platform three being `explain_internals`,
+  `improvement_areas` and `platform_map`, which point the pipeline at this
+  codebase):
   `deep_research` — question in; cited, validated, source-diverse answer out;
   the handler mirrors `chat.js`'s per-request setup and runs the same
   `runPipeline` (quizzes stay off on this channel). Since 2026-08-15 it also
   takes an `agent` (answer as a named specialist, resolved through the same
   registry and grant a chat turn uses, with the build and workflow phases
   refused) and a `style: "voice"` that returns speakable prose instead of
-  markdown with a numbered source list — plus the three EXTENSION tools
-  `street_view_look`, `place_nearby` and `host_intel`, which arrive from
+  markdown with a numbered source list — plus the six EXTENSION tools
+  `street_view_look`, `place_nearby` and the host-intelligence family
+  (`host_intel`, `host_search`, `domain_intel`, `cve_intel`), which arrive from
   `src/extension-tools.js` (the MCP seam of the extension registry) so this
   module names no third-party service, and which sit behind BOTH the exposure
   switch and the account's own extension knob.

@@ -51,7 +51,7 @@ const IMG_URL_BASE = "/introspect/docs-img";
 
 // The documentation set: root Markdown + docs/*.md (top level). MERGED-BRANCHES
 // is a branch-reconciliation ledger, not documentation; the skills
-// (.claude/skills) already ride in the source snapshot's first-class catalog.
+// (skills-disabled) already ride in the source snapshot's first-class catalog.
 const DOC_INCLUDE = [/^[^/]+\.md$/, /^docs\/[^/]+\.md$/];
 const DOC_EXCLUDE = [/^docs\/MERGED-BRANCHES\.md$/];
 

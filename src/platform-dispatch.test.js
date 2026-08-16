@@ -346,3 +346,58 @@ describe("adding spending tools to an existing account", () => {
     assert.equal(map.body.result.isError, false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Source-first routing
+// ---------------------------------------------------------------------------
+
+describe("the caller's own phrasing cannot route the answer away from the source", () => {
+  test("the utterances that trip externalSourceIntent are ordinary things to ask a platform", async () => {
+    // src/pipeline.js runResearch hands a source-carrying turn BACK to the web
+    // wave when the message asks for outside material. Right for a chat turn.
+    // Broken for these tools, which force web_search:false — there is no wave to
+    // be handed back to, so the turn falls to triage and answers from the
+    // pre-loaded excerpt block alone: the doc-recap failure runSourceResearch
+    // exists to prevent, wearing a tool description that promises the opposite.
+    const { externalSourceIntent } = await import("../public/js/introspect-core.js");
+    const trips = [
+      "how does your sandbox compare to Docker",
+      "whats new in the research pipeline",
+      "is the model catalog up to date",
+      "introspection vs outrospection, how do they differ",
+      "what are the latest developments in your sandbox",
+    ];
+    for (const q of trips) {
+      assert.equal(externalSourceIntent(q), true, `"${q}" trips the gate`);
+    }
+    // And it is the CALLER's phrasing, not the lens or the voice note — those
+    // must stay neutral or they would route every call.
+    const { EXPLAIN_NOTE, IMPROVE_NOTE } = await import("./platform-tools.js");
+    const { VOICE_NOTE } = await import("./voice-answer.js");
+    for (const note of [EXPLAIN_NOTE, IMPROVE_NOTE, VOICE_NOTE]) {
+      assert.equal(externalSourceIntent(note), false, "an appended note must not route the turn");
+    }
+  });
+
+  test("require_agent sets the source-first flag the pipeline gate reads", async () => {
+    // Pinned at the seam rather than through a full pipeline run: the flag is
+    // what pipeline.js:runResearch consults, and the alternative — asserting on
+    // an answer — needs a live provider.
+    const { readFileSync } = await import("node:fs");
+    const mcp = readFileSync(new URL("./mcp.js", import.meta.url), "utf8");
+    assert.match(mcp, /if \(args\.require_agent\)[^\n]*sourceFirst = true/);
+    const pipeline = readFileSync(new URL("./pipeline.js", import.meta.url), "utf8");
+    assert.match(pipeline, /sourceFirst === true/, "the gate reads the flag");
+  });
+});
+
+test("the server's own instructions name the family", async () => {
+  // SERVER_INSTRUCTIONS is the paragraph `server/discover` hands a modern client
+  // — the one place the surface describes itself in prose. It enumerates the
+  // families, and nothing else pinned it, so a family added without touching it
+  // is invisible to exactly the callers the stateless revision was built for.
+  const { SERVER_INSTRUCTIONS } = await import("./mcp.js");
+  for (const name of ["explain_internals", "improvement_areas", "platform_map"]) {
+    assert.match(SERVER_INSTRUCTIONS, new RegExp(name), `${name} is described to a client`);
+  }
+});

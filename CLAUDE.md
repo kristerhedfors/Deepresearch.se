@@ -3,7 +3,7 @@
 Guidance for Claude Code when working in this repository. This file stays
 SHORT on purpose — it is loaded into every session and its opening doubles as
 the introspection orientation excerpt. The detail lives in `docs/` and the
-on-demand skills under `.claude/skills/`; load what the task needs.
+on-demand skills under `skills-disabled/`; load what the task needs.
 
 ## Project
 
@@ -410,9 +410,23 @@ sharing, workspace knowledge and quiz are still bespoke and owe one
 
 ## Skills
 
-Detailed guidance is split into on-demand skills under `.claude/skills/` —
+Detailed guidance is split into on-demand skills under `skills-disabled/` —
 load the relevant one before working in its area. Each skill's `description`
 frontmatter is its load trigger; the list below is the index.
+
+> **PARKED (owner experiment, 2026-08-16).** The whole tree was moved from
+> `.claude/skills/` to `skills-disabled/`, so the Claude Code CLI no longer
+> auto-loads any of them and `/<name>` no longer resolves. The point is to
+> find out **which skills are actually needed** — with nothing loaded by
+> default, a skill only enters a session when the work genuinely calls for it
+> and you go read it. **They are not deleted and not stale: the content is
+> unchanged and still authoritative.** When the index below tells you a skill
+> covers what you are about to do, `Read skills-disabled/<name>/SKILL.md`
+> yourself before starting — that is now a manual step, not an automatic one.
+> Re-enabling is one command with no code change:
+> `git mv skills-disabled .claude/skills`. The site is unaffected —
+> introspection's catalog matches both roots (`SKILL_PATH_RE`), so every
+> playbook is still surfaced to users and to any answer model.
 
 **Persist solved tasks as skills.** When a task gets solved in a session and
 is likely to recur — a deployment path, a debugging workflow, an eval
@@ -443,7 +457,7 @@ Pipeline & models:
 - **add-research-source** — integrating a new deep-research source end to end (intent, registry, SSE visibility, validation).
 - **local-web-search** — running your own web-search service as an Exa alternative, configurable in both tiers.
 - **sse-protocol** — the `/api/chat` SSE event vocabulary, forward-compatibility rule, and the inline-quiz event.
-- **mcp-server** — the site exposed AS a tool other agents call (`POST /mcp`, hand-rolled JSON-RPC 2.0, TWO protocol revisions side by side since 2026-08-15: the handshake `2025-06-18` and the stateless `2026-07-28`). The surface is shaped for callers WITHOUT A SCREEN: `deep_research` (with an `agent` and a voice `style`), the four `literature_*` corpus tools, ChatGPT's two adapters, and the three extension tools `street_view_look` / `place_nearby` / `host_intel` that answer in spoken prose; connecting Claude Code via an MCP key at the advertised bare origin `https://mcp.deepresearch.se` (no `/mcp` tail), the per-account exposure config under Settings → MCP server, and the OAUTH CONNECTOR that makes the surface addable in Claude and ChatGPT — and so reachable from a phone — (`src/oauth-{metadata,store,authorize,token}.js`, the `search`/`fetch` adapters ChatGPT requires by name, `docs/MCP-CONNECTOR.md`; built 2026-08-03, not yet accepted against a live client).
+- **mcp-server** — the site exposed AS a tool other agents call (`POST /mcp`, hand-rolled JSON-RPC 2.0, TWO protocol revisions side by side since 2026-08-15: the handshake `2025-06-18` and the stateless `2026-07-28`). The surface is shaped for callers WITHOUT A SCREEN: `deep_research` (with an `agent` and a voice `style`), the four `literature_*` corpus tools, ChatGPT's two adapters, and the six extension tools that answer in spoken prose — `street_view_look` / `place_nearby`, and the host-intelligence family `host_intel` / `host_search` / `domain_intel` / `cve_intel` (widened 2026-08-16 from the host lookup alone to the population, the domain and the vulnerability); connecting Claude Code via an MCP key at the advertised bare origin `https://mcp.deepresearch.se` (no `/mcp` tail), the per-account exposure config under Settings → MCP server, and the OAUTH CONNECTOR that makes the surface addable in Claude and ChatGPT — and so reachable from a phone — (`src/oauth-{metadata,store,authorize,token}.js`, the `search`/`fetch` adapters ChatGPT requires by name, `docs/MCP-CONNECTOR.md`; built 2026-08-03, not yet accepted against a live client).
 - **integrations** — external providers and the enrichment pattern (Berget, Anthropic, OpenAI, Exa, Nominatim, Shodan, Maps, HF, **Google Scholar + the peer-reviewed literature**: what Scholar's robots.txt permits — profiles and venue metrics yes, `/scholar` never — the OpenAlex/Crossref/SerpApi traps, and why sorting a literature by citations answers with methods papers nobody asked about; the agent itself is `docs/SCHOLAR.md`).
 
 Privacy, storage & grants:

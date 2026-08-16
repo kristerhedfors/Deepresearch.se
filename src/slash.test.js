@@ -208,7 +208,15 @@ describe("the pipeline order that makes the commands baseline", () => {
   });
 
   test("/help wins over externalSourceIntent, so a help ask is answered from the docs", () => {
-    assert.match(pipelineSrc, /state\)\.helpCommand === true \|\| !externalSourceIntent/);
+    // Matched across newlines: the gate grew a second escape hatch on 2026-08-16
+    // (`sourceFirst`, for /mcp's platform tools, which force web search off and
+    // so have no wave to be handed back to) and had to be reformatted onto
+    // several lines. What must hold is the ORDER — helpCommand short-circuits
+    // before externalSourceIntent is consulted at all.
+    assert.match(
+      pipelineSrc,
+      /state\)\.helpCommand === true \|\|[\s\S]{0,120}!externalSourceIntent/,
+    );
   });
 });
 

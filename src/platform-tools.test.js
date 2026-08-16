@@ -414,8 +414,11 @@ test("a playbook's LOAD TRIGGER is not spoken as its description", async () => {
     ]),
   });
   const result = await runPlatformTool(env, quiet, "platform_map", { area: "widget" });
-  assert.doesNotMatch(result.text, /covers load when/i);
-  assert.match(result.text, /widget covers the widget subsystem and its rendering path/);
+  assert.doesNotMatch(result.text, /load when/i, "the trigger preamble is gone");
+  // A trigger clause keeps its "when" frame, because it IS a subordinate clause;
+  // forcing it into "covers …" is what produced "cache helper covers the live
+  // site serves stale content".
+  assert.match(result.text, /widget is the playbook for when working on the widget subsystem/);
 });
 
 test("a skill named after its subject takes the clause AFTER the dash", async () => {
@@ -434,14 +437,16 @@ test("a skill named after its subject takes the clause AFTER the dash", async ()
       ),
     ]),
   });
-  // Tail wins: the head is only the skill's own name.
+  // Tail wins: the head is only the skill's own name. A DETAIL is a noun phrase,
+  // so it takes the "covers" frame.
   const named = await runPlatformTool(env, quiet, "platform_map", { area: "pygram" });
   assert.match(named.text, /pygram covers the minimal Python-subset runtime/);
 
   // Head wins: it is a real description, so the detail after the dash is the
   // part that gets dropped. Cutting at the dash unconditionally would lose this.
+  // A TRIGGER takes the "when" frame.
   const headed = await runPlatformTool(env, quiet, "platform_map", { area: "deploy" });
-  assert.match(headed.text, /deploy covers the release pipeline and its rollback path/);
+  assert.match(headed.text, /deploy is the playbook for when working on the release pipeline/);
   assert.doesNotMatch(headed.text, /git-connected/);
 });
 
@@ -490,7 +495,12 @@ test("a chain of trigger verbs is stripped, not just the first", async () => {
     ]),
   });
   const result = await runPlatformTool(env, quiet, "platform_map", { area: "widget" });
-  assert.match(result.text, /widget covers the widget verdict queue/);
+  // The surviving verb is kept — "for when working on the widget verdict queue"
+  // is grammatical, and stripping the participle too is what produced the
+  // headless "covers a NEW LLM provider" class of gloss. What must not survive
+  // is the chain of DISCARDED verbs before it.
+  assert.match(result.text, /widget is the playbook for when working on the widget verdict queue/);
+  assert.doesNotMatch(result.text, /declaring/);
   assert.doesNotMatch(result.text, /running,/);
 });
 
@@ -520,7 +530,7 @@ test("only the first few matches are glossed; the rest are named", async () => {
   const env = fakeEnv({ "/introspect/source-snapshot.json": fakeSnapshot(skills) });
   const result = await runPlatformTool(env, quiet, "platform_map", { area: "widget" });
   assert.equal(result.areas, 6);
-  const glosses = result.text.match(/ covers /g) || [];
+  const glosses = result.text.match(/ (?:covers|is the playbook for when) /g) || [];
   assert.equal(glosses.length, MAX_GLOSSED_AREAS, "an eight-clause list is not a map, it is an obstacle");
   assert.match(result.text, /There are also/);
 });
@@ -538,4 +548,98 @@ test("counts agree with their nouns and their verbs, everywhere", async () => {
 
   const one = await runPlatformTool(env, quiet, "platform_map", { area: "widget" });
   assert.match(one.text, /1 part of the platform has its own/, "singular pronoun too");
+});
+
+test("shouted emphasis is spoken as words, not spelled out", async () => {
+  // 45 of the 99 real playbook descriptions carried written CAPS emphasis. A
+  // speech engine either spells those letter by letter or over-stresses them,
+  // and neither is what the author meant. Real acronyms have to survive, which
+  // is why this is an allowlist rather than a blanket lowercase.
+  const env = fakeEnv({
+    "/introspect/source-snapshot.json": fakeSnapshot([
+      srcFile("src/mcp.js", "x"),
+      skillFile("widget", "Load when the widget HANGS or serves STALE content over the RAG and SDK paths."),
+    ]),
+  });
+  const result = await runPlatformTool(env, quiet, "platform_map", { area: "widget" });
+  assert.match(result.text, /hangs or serves stale content/);
+  assert.match(result.text, /RAG and SDK/, "acronyms survive");
+  assert.doesNotMatch(result.text, /HANGS|STALE/);
+});
+
+test("a preposition left governing nothing is not spoken", async () => {
+  // The path stripper removes what a preposition governed, and the clip can
+  // strand another one just after it — so the trim runs on both sides of the
+  // clip. "…a frozen public replay at." is audible in a way it never is on a
+  // page.
+  const env = fakeEnv({
+    "/introspect/source-snapshot.json": fakeSnapshot([
+      srcFile("src/mcp.js", "x"),
+      skillFile("widget", "Load when publishing a widget session as a frozen public replay at deepresearch.se/cure/slug"),
+    ]),
+  });
+  const result = await runPlatformTool(env, quiet, "platform_map", { area: "widget" });
+  assert.match(result.text, /frozen public replay\./, "the stranded preposition is gone");
+  assert.doesNotMatch(result.text, /replay at\./);
+});
+
+test("a dash inside a parenthetical does not leak an unbalanced bracket", async () => {
+  // The em-dash split used to run BEFORE parentheticals were stripped, so a dash
+  // inside an aside split the text mid-aside and left an opener with no closer.
+  const env = fakeEnv({
+    "/introspect/source-snapshot.json": fakeSnapshot([
+      srcFile("src/mcp.js", "x"),
+      skillFile(
+        "widget",
+        "Load when adding a widget source to the pipeline (a provider, an API — or a feed), or when debugging one.",
+      ),
+    ]),
+  });
+  const result = await runPlatformTool(env, quiet, "platform_map", { area: "widget" });
+  assert.doesNotMatch(result.text, /[()]/, "no bracket reaches the spoken output");
+});
+
+test("matching normalizes separators, so a hyphenated name finds a spaced needle", async () => {
+  // The real miss: "deep research" is the single likeliest thing to ask this
+  // platform about, and every playbook that mentions it writes "deep-research",
+  // so a raw substring test returned one unrelated playbook — the "you asked, so
+  // it must not exist" failure this tool exists to prevent.
+  const env = fakeEnv({
+    "/introspect/source-snapshot.json": fakeSnapshot([
+      srcFile("src/mcp.js", "x"),
+      skillFile("add-research-source", "Load when adding a source to the deep-research pipeline."),
+      skillFile("deploy", "Load when shipping code to production."),
+    ]),
+  });
+  for (const needle of ["deep research", "deep-research", "Deep Research"]) {
+    const result = await runPlatformTool(env, quiet, "platform_map", { area: needle });
+    assert.equal(result.areas, 1, `"${needle}" finds the hyphenated playbook`);
+    assert.match(result.text, /add research source/);
+  }
+});
+
+test("every needle term must match, so two words narrow rather than widen", async () => {
+  const env = fakeEnv({
+    "/introspect/source-snapshot.json": fakeSnapshot([
+      srcFile("src/mcp.js", "x"),
+      skillFile("alpha", "Load when working on the widget renderer."),
+      skillFile("beta", "Load when working on the gadget renderer."),
+    ]),
+  });
+  assert.equal((await runPlatformTool(env, quiet, "platform_map", { area: "renderer" })).areas, 2);
+  assert.equal((await runPlatformTool(env, quiet, "platform_map", { area: "widget renderer" })).areas, 1);
+});
+
+test("a needle of nothing but stopwords is a miss, not the whole catalog", async () => {
+  // "the" matched 98 of 99 by substring and produced the sentence "On the, 98
+  // parts of the platform have their own documented playbook" — which is both
+  // useless and unspeakable.
+  const skills = [];
+  for (let i = 0; i < 5; i++) skills.push(skillFile(`area-${i}`, "Load when working on the thing."));
+  const env = fakeEnv({ "/introspect/source-snapshot.json": fakeSnapshot(skills) });
+  for (const needle of ["the", "a", "and", "of the"]) {
+    const result = await runPlatformTool(env, quiet, "platform_map", { area: needle });
+    assert.equal(result.areas, 0, `"${needle}" is refused`);
+    assert.match(result.text, /does not mean the platform lacks it/);
+  }
 });

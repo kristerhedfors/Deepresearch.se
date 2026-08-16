@@ -78,8 +78,23 @@ export const EXTENSION_TOOL_FAMILIES = [
         "Looks up what an internet-facing host is running, or searches Shodan's index. " +
         "Reads records Shodan already holds — nothing is scanned — and needs the Shodan " +
         "host intelligence knob on.",
+      host_search:
+        "Searches Shodan's index for machines matching a query, and counts how many match " +
+        "in total — broken down by country, port, product or organization. The population " +
+        "question rather than the single-host one; same knob, nothing scanned.",
+      domain_intel:
+        "Lists a domain's known subdomains and DNS records from Shodan's DNS database, " +
+        "including names that were never scanned. Stored observations, not a live lookup.",
+      cve_intel:
+        "Explains a CVE — severity, exploitation probability, known-exploited status, " +
+        "affected products — or lists the vulnerabilities affecting a product. Reads " +
+        "Shodan's public vulnerability database, which costs no query credits.",
     },
-    spends: ["host_intel"],
+    // Every one of these reaches Shodan, so every one is metered and gated. That
+    // includes cve_intel, whose upstream is free: the flag decides whether the
+    // call passes the research quota gate and takes a concurrency slot, and an
+    // outbound tool with neither is an unbounded one (docs/MCP-COST.md §4b).
+    spends: ["host_intel", "host_search", "domain_intel", "cve_intel"],
   },
 ];
 
