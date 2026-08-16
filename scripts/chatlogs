@@ -3,7 +3,7 @@
 # into what users (and agents) just asked and what the pipeline answered.
 # Wraps GET /api/admin/chatlogs (src/chatlog.js) using the break-glass Basic
 # Auth credentials, the same BASIC_AUTH_USER / BASIC_AUTH_PASS env vars the
-# e2e suite uses. See .claude/skills/chat-logs/SKILL.md.
+# e2e suite uses. See skills-disabled/chat-logs/SKILL.md.
 #
 # Usage:
 #   scripts/chatlogs                   last 10 interactions, readable text
