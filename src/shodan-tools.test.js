@@ -30,6 +30,7 @@ import {
   renderProductCveAnswer,
   renderSearchAnswer,
   renderSurveyAnswer,
+  epssPercent,
 } from "./shodan-tools.js";
 
 test("addresses and hostnames are sorted into the two lists the lookup takes", () => {
@@ -330,4 +331,96 @@ test("counts clamp rather than refuse, in both directions", () => {
   assert.equal(clampCount(999, MAX_CVES), MAX_CVES);
   assert.equal(clampCount(0, MAX_SURVEY_HOSTS), MAX_SURVEY_HOSTS);
   assert.equal(clampCount("many", MAX_SURVEY_HOSTS), MAX_SURVEY_HOSTS);
+});
+
+// ============================================================================
+// WHAT A LIVE READ CHANGED (2026-08-16)
+// ============================================================================
+//
+// The three fixes below all come from one live read of CVE-2021-44228 through
+// the real renderers, minutes after the family shipped. Each was invisible
+// against the stub payloads the first round was written on, and each is the
+// same class of error: stating something more confidently than the record
+// supports. The numbers in these tests are the ones the live record actually
+// returned.
+
+test("EPSS never rounds to a certainty, and never to nothing", () => {
+  // The live record returns 0.99999, which the first cut rendered as a flat
+  // "100%" — a certainty the model does not claim and this must not invent.
+  assert.equal(epssPercent(0.99999), "over 99%");
+  assert.equal(epssPercent(1), "over 99%");
+  assert.equal(epssPercent(0.87), "87%");
+  // At the other end, "0%" reads as "will not happen", so a small probability
+  // keeps a decimal and a vanishing one is bounded rather than flattened.
+  assert.equal(epssPercent(0.0043), "0.4%");
+  assert.equal(epssPercent(0.00002), "under 0.1%");
+  // No score is not a score of zero.
+  assert.equal(epssPercent(null), "");
+  assert.equal(epssPercent(undefined), "");
+  assert.equal(epssPercent("high"), "");
+});
+
+test("the affected-product list is reported against its own total", () => {
+  // CVEDB returns the CPE list ALPHABETICALLY, so the six kept are the
+  // alphabetically-first products out of 147 — naming them without the total
+  // states a sample as the population.
+  const text = renderCveAnswer({
+    id: "CVE-2021-44228", summary: "", cvss: 10, epss: 0.99999, kev: true, ransomware: "",
+    published: "2021-12-10", products: ["apache log4j", "apple xcode"], productTotal: 147, action: "",
+  });
+  assert.match(text, /It affects 147 products in all, among them apache log4j and apple xcode/);
+  // When nothing was truncated there is no "in all" to claim.
+  const few = renderCveAnswer({
+    id: "CVE-1", summary: "", cvss: null, epss: null, kev: false, ransomware: "",
+    published: "", products: ["nginx"], productTotal: 1, action: "",
+  });
+  assert.match(few, /It affects nginx\./);
+});
+
+test("severity and exploitation status reach the ear before the paragraph", () => {
+  const text = renderCveAnswer({
+    id: "CVE-2021-44228",
+    summary: "Apache Log4j2 2.0-beta9 through 2.15.0 (excluding security releases) JNDI features do not protect against attacker controlled LDAP.",
+    cvss: 10, epss: 0.99999, kev: true, ransomware: "Known", published: "2021-12-10",
+    products: [], productTotal: 0, action: "",
+  });
+  // The live summary opens with 90 words of affected-version table, so a
+  // listener heard versions for fifteen seconds before reaching "severity 10".
+  assert.ok(text.indexOf("CVSS severity of 10") < text.indexOf("Apache Log4j2 2.0-beta9"));
+  assert.ok(text.indexOf("known-exploited list") < text.indexOf("Apache Log4j2 2.0-beta9"));
+  assert.match(text, /The flaw itself:/);
+});
+
+test("a proposed action that restates the summary is dropped; a real one is kept", () => {
+  const summary =
+    "Apache Log4j2 2.0-beta9 through 2.15.0 JNDI features used in configuration, log messages, and parameters " +
+    "do not protect against attacker controlled LDAP and other JNDI related endpoints. An attacker who can " +
+    "control log messages can execute arbitrary code loaded from LDAP servers.";
+  const base = {
+    id: "CVE-2021-44228", summary, cvss: 10, epss: 0.99, kev: true, ransomware: "",
+    published: "2021-12-10", products: [], productTotal: 0,
+  };
+  // The live record's propose_action is the summary in different words —
+  // hearing the same finding twice is how a spoken answer loses a listener.
+  const restated = renderCveAnswer({
+    ...base,
+    action: "Apache Log4j2 contains a vulnerability where JNDI features do not protect against attacker-controlled JNDI-related endpoints, allowing for remote code execution.",
+  });
+  assert.doesNotMatch(restated, /allowing for remote code execution/);
+  // A remediation is what the caller acts on, and both shapes of it survive:
+  // a short one is exempt by the size guard, a longer additive one by overlap.
+  assert.match(renderCveAnswer({ ...base, action: "Upgrade to 2.17.1." }), /Upgrade to 2\.17\.1/);
+  assert.match(
+    renderCveAnswer({ ...base, action: "Apply the vendor patch or set log4j2.formatMsgNoLookups to true." }),
+    /formatMsgNoLookups/,
+  );
+});
+
+test("the product listing uses the same honest percentage", () => {
+  const text = renderProductCveAnswer({
+    subject: "nginx", kevOnly: false,
+    vulns: [{ id: "CVE-2023-44487", summary: "HTTP/2 rapid reset.", cvss: 7.5, epss: 0.99999, kev: true, ransomware: "", published: "" }],
+  });
+  assert.match(text, /over 99% exploitation probability/);
+  assert.doesNotMatch(text, /100%/);
 });
