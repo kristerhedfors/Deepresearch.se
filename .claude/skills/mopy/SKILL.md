@@ -14,15 +14,19 @@ Three interpreters, cheapest first — **mopy** (Rust subset), **pygram**
 (MicroPython variant), **CPython** — plus a classifier that picks one per
 program, and a dispatcher that recovers when the pick was wrong.
 
-The claim, measured over 420 harvested one-liners (2026-08-16):
+The claim, measured over 472 harvested one-liners (2026-08-16):
 
 ```
               ran  refused   whole-corpus total   vs cpython
-cpython       420        0          6318.6 ms       1.000x
-pygram        394       26          1049.7 ms       0.166x
-mopy          282      138           676.2 ms       0.107x
-mixture       420        0          1680.6 ms       0.266x
+cpython       472        0          6987.9 ms       1.000x
+pygram        444       28          1153.1 ms       0.165x
+mopy          324      148           673.3 ms       0.096x
+mixture       472        0          1860.8 ms       0.266x
 ```
+
+**Never quote a remembered corpus size.** The capture harness grows it every
+session: this project measured 420 programs on the day it was written and the
+merge that afternoon brought 472. Both tools print the count they loaded.
 
 **mopy is the fastest engine on the work it accepts; the mixture is the only arm
 that answers everything.** The other two are cheap because they refuse.
@@ -55,7 +59,7 @@ like a failure of the mixture.
 | **UNSAFE** | routed to an engine that MISMATCHES | **the thing that must not happen** |
 | NO-ENGINE | nothing matched | not the router's fault |
 
-Current: 92.9% ideal, 96.2% correct-on-first-try, 1 UNSAFE (which the dispatcher
+Current: 93.0% ideal, 96.6% correct-on-first-try, 1 UNSAFE (which the dispatcher
 recovers from). A wrong route costs a spawn; a wrong answer costs the user.
 
 **The routing score grades the FIRST guess. The mixture arm grades what the
@@ -78,7 +82,7 @@ only ever blocked by the first thing it hits — so re-run it.
 - After ANY of these, re-run conformance. Coverage going up is the point;
   MISMATCH going above zero cancels the change.
 
-**Do not implement `re`.** It is the largest single gap (60 programs, 14.3%) and
+**Do not implement `re`.** It is the largest single gap (66 programs, 14.0%) and
 it is deliberate: pygram has a regex engine, so `import re` is a routing
 decision. If it is ever revisited, the shape is a small backtracking engine that
 exits 90 on any syntax outside a measured subset — the mixture pattern one level
@@ -162,7 +166,7 @@ Two rules that are easy to break:
 
 ## 8. Honest scope
 
-mopy answers 67.1% of the corpus and the mixture saves 73.4% of CPython's wall
+mopy answers 68.6% of the corpus and the mixture saves 73.4% of CPython's wall
 clock over it. Both numbers are on a normal Linux filesystem, not in the CheerpX
 VM where the 8,573 ms figure that motivates all of this was measured — the
 sandbox arm has not been run (`scripts/pygram-vm-measure.mjs` is the instrument;

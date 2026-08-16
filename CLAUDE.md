@@ -482,9 +482,9 @@ Debugging & live verification:
 - **mopy** — the MIXTURE OF PYTHONS (`docs/MOPY.md`): a second, from-scratch
   Python subset written in Rust and sized to the BOTTOM of the corpus, plus the
   classifier that picks between mopy, pygram and CPython per one-liner and the
-  dispatcher that recovers when the pick was wrong. Measured over 420 harvested
-  programs: mopy answers 67.1% and is the fastest engine on what it accepts
-  (0.113x CPython), and the mixture answers 100% at 0.266x. Covers the three
+  dispatcher that recovers when the pick was wrong. Measured over 472 harvested
+  programs: mopy answers 68.6% and is the fastest engine on what it accepts
+  (0.102x CPython), and the mixture answers 100% at 0.266x. Covers the three
   refusals that keep a subset honest (i64 ints, set iteration order, repr of
   non-ASCII), the COMMIT BARRIER that makes falling back safe, the asymmetric
   routing score (UNSAFE vs WASTED vs LATE), and the traps paid for — static musl
