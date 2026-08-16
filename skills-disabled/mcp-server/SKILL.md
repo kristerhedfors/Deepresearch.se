@@ -38,7 +38,7 @@ description: >-
 `src/mcp.js` exposes the whole deep-research pipeline **as an MCP server**.
 Its headline tool is `deep_research` — question in, cited/validated/
 source-diverse answer out — callable by any MCP client (Claude, Cursor, an
-agent SDK). Alongside it the server re-exposes three more families: the four
+agent SDK). Alongside it the server re-exposes four more families: the four
 **literature tools** (`literature_search`, `literature_fetch`,
 `literature_similar`, `literature_corpora`, via `LITERATURE_MCP_TOOLS` over
 `src/literature-tools.js` + `src/literature-run.js`) that hand an agent the
@@ -48,8 +48,9 @@ family with the most surface; the two OpenAI **adapter tools** `search` and
 `street_view_look`, `place_nearby` and the host-intelligence family
 `host_intel` / `host_search` / `domain_intel` / `cve_intel` (via
 `EXTENSION_MCP_TOOLS` over `src/extension-tools.js`) — the only ones here that
-reach a third party on the caller's behalf. Thirteen tools total; the pipeline
-one is the reason the server exists.
+reach a third party on the caller's behalf; and the three **platform tools**
+(below) that point the pipeline at this codebase. Sixteen tools total; the
+pipeline one is the reason the server exists.
 
 **THE SURFACE IS SHAPED FOR CALLERS WITHOUT A SCREEN (owner directive,
 2026-08-15).** That is the rule to apply to any proposed tool now: a voice client
@@ -97,7 +98,8 @@ implements exactly the methods a minimal server needs:
   `SERVER_INFO`, `capabilities: { tools: {} }`) — the HANDSHAKE era
 - `server/discover` → `discoverResult()` — the STATELESS era's replacement for it
 - `tools/list` → `toolsListResult(config)` (`ALL_MCP_TOOLS` = `DEEP_RESEARCH_TOOL`
-  + `LITERATURE_MCP_TOOLS` + `OPENAI_MCP_TOOLS` + `EXTENSION_MCP_TOOLS`, filtered
+  + `LITERATURE_MCP_TOOLS` + `OPENAI_MCP_TOOLS` + `PLATFORM_MCP_TOOLS`
+  + `EXTENSION_MCP_TOOLS`, filtered
   by the account's exposure config)
 - `tools/call` → `handleToolCall()` → `runDeepResearch()` / a family runner
 - `notifications/initialized` → no-op ack (a notification has no `id`, so it
@@ -269,6 +271,91 @@ markdown, no `[n]` markers, no URLs, sources named in a closing sentence. It
 also lowers the DEFAULT budget to `MCP_VOICE_BUDGET_DEFAULT` = 60 s
 (`src/mcp-config.js`), because two minutes of silence ends a voice session. A
 budget the caller names wins in either style.
+
+## The platform family — this server asked about itself (2026-08-16)
+
+Three tools that point the pipeline at THIS codebase instead of at the world:
+**`explain_internals`** (how a part of the platform works), **`improvement_areas`**
+(where it has room to improve) and **`platform_map`** (what is there to ask about
+at all — free, contacts nothing). Schemas and lens notes in the pure
+`src/platform-tools.js`; the map's runner in `src/platform-tools-run.js` behind
+the usual dynamic import.
+
+**The capability already existed and the ROUTING did not, and that distinction
+is the whole justification.** `deep_research` has taken an `agent` since
+2026-08-15, and `introspection` is one of the ids it resolves — so a caller who
+knew to pass it already got exactly this. Nobody does. A voice caller asks "how
+does the research pipeline actually work" into a phone, the client's model picks
+`deep_research` with no `agent`, and that resolves to Deep Science, the terminal
+fallback (2026-08-13) — which answers about deep research as a FIELD, from the
+peer-reviewed literature, fluently, with citations, about somebody else's work.
+Nothing errors and nothing looks wrong. **A model routes on tool NAMES far more
+reliably than on an optional enum it has to know exists**, which is why this is
+three names rather than a better-worded `agent` description.
+
+Four things about the shape, each of which will look like something to tidy:
+
+1. **The two answering tools have no runner, on purpose.** They fall through to
+   the same `runDeepResearch` `deep_research` uses, with their arguments forced
+   by `resolveIntrospectArgs` (`src/mcp-config.js`) — introspection agent,
+   `web_search: false`, `style` defaulting to voice. They ARE the research
+   pipeline with a lens, so a runner of their own would mean a second copy of
+   the quota gate, the billing, the progress plumbing and the `chat_logs` write:
+   four things that must not be able to disagree with the ones deep_research
+   uses. The shared tail is `runResearchToolCall`.
+2. **The lens note does two jobs, and the second is easy to break.** It is
+   appended to the question (never substituted — the caller's words reach the
+   model as written), so it instructs the model AND steers retrieval, because
+   the introspection enrichment embeds the last user turn and the note is part
+   of it. That is why the notes are short and why their vocabulary is chosen:
+   lengthen one and the query vector dilutes and the retrieved code gets worse.
+   Pinned by a length assertion in `src/platform-tools.test.js`.
+3. **`improvement_areas` carries the settled-negative rule, and it is the
+   load-bearing sentence in the family.** Several subsystems here keep a
+   register of experiments already run, measured and rejected — the pygram
+   skill's §2d ("compiler optimisation is FINISHED here — do not re-survey it")
+   is the clearest — written down precisely so nobody spends another session on
+   them. An improvement answer that reads one of those back as an opportunity is
+   a confident instruction to redo finished work, and **a listener has no way to
+   see that the source said the opposite**. So the lens asks for the
+   distinction explicitly, and the words it uses are also what pull those
+   sections into retrieval.
+4. **`web_search` is forced off and cannot be switched back on.** The
+   introspection agent declares no web leg anyway, and the pipeline's
+   introspection-first routing (`pipeline.js runResearch`, `ctx.hasSource`)
+   already suppresses the wave — but forcing it here makes the tool cheap and
+   keeps out the failure that routing exists to prevent: a search wave for "deep
+   research" pulls in unrelated third-party repos that share the name and
+   presents them as sources. A caller wanting outside material has
+   `deep_research`.
+
+**Why `platform_map` earns a slot on a surface that deletes tools.** It is the
+`literature_corpora` argument, and it is the same failure: an agent that cannot
+check what exists concludes that whatever it asked about does not. Ask about a
+subsystem under a name this repo does not use, get nothing, and the client's
+model reports that the platform lacks it. So the map is free (committed
+artifacts, no provider, no quota — it holds no concurrency slot either, since one
+held there could only deny the caller its own next call), it is derived rather
+than curated (top-level areas come from paths that EXIST; a hand-written list
+would go stale silently), and **a miss says so out loud**: "that does not mean
+the platform lacks it — ask the question directly and the source gets read."
+
+Everything is spoken rather than rendered — no markdown, counts agreeing with
+their nouns, slugs said as words, and list items joined with "with" rather than a
+second comma, because the list separator is already a comma and a listener cannot
+hear where one item ends. Those are not cosmetic: `1 files` was a real bug the
+suite caught, and on this surface nobody can see the original to correct it.
+
+Validation: `node --test src/platform-tools.test.js src/platform-dispatch.test.js
+src/mcp.test.js src/mcp-config.test.js src/mcp-inflight.test.js`. The dispatch
+suite drives the real `handleMcp` and pins the thing unit tests structurally
+cannot — that every LISTED tool has a branch behind it. A name in
+`ALL_MCP_TOOLS` with no dispatch answers "Unknown tool" to a client that just
+read it off the listing, which is the most confusing failure this surface can
+produce. The two answering tools are observed at their hand-off to the pipeline
+by giving the env no `BERGET_API_TOKEN`: the refusal lands after argument
+resolution and before any spend, so the test proves the routing and costs
+nothing.
 
 ## The literature family — the corpora as knowledge bases (2026-08-01)
 
@@ -508,9 +595,14 @@ not another keepalive.
   decide whether it belongs in `SPENDING_TOOL_NAMES` (does it reach a provider?
   then yes — it holds a concurrency slot and goes behind `researchQuotaBlock`),
   and branch on `parsed.params.name` in `dispatchToolCall` — which dispatches the
-  literature family and then the extension families by `EXTENSION_TOOL_NAMES`
-  membership before falling through to `deep_research`; anything matching neither
-  is method-not-found. Any heavy work its handler needs stays behind a dynamic
+  extension families by `EXTENSION_TOOL_NAMES` membership, the literature family
+  and its adapters, and the free platform tool `platform_map`, before falling
+  through to `deep_research`; anything matching none of them is
+  method-not-found. A family does not have to bring a runner: the two ANSWERING
+  platform tools fall through to `deep_research` itself with their arguments
+  forced by `resolveIntrospectArgs` and the shared tail `runResearchToolCall`,
+  which is the cheapest way to add a tool that IS the pipeline pointed somewhere
+  new — one gate, one meter, one log row, no second copy to drift. Any heavy work its handler needs stays behind a dynamic
   import. Two questions to answer before writing any of it: does it belong here
   at all (the roadmap's thesis is a few high-leverage tools, not a tool zoo), and
   **can a caller with no screen use its answer** (the 2026-08-15 directive — that
@@ -915,7 +1007,7 @@ saturated at round 2 and spent 9 of its 34 permitted searches. The
 literature family costs €0.0021 (1 angle) to €0.0124 (6 angles) — **all of
 it the reranker**, 50 candidates × 900 chars per angle-corpus leg, measured
 at 10,198 tokens per leg at €0.10/M. Only `literature_fetch`,
-`literature_corpora` and `fetch` cost nothing now.
+`literature_corpora`, `fetch` and `platform_map` cost nothing now.
 
 **The extension tools are a NEW cost shape and are not priced yet.** They
 spend nothing at Berget except `street_view_look`'s one vision description, but
@@ -947,12 +1039,13 @@ calibrated to €0.005 a search.
 
 **Concurrency** — `/mcp` now takes `reserveInflight` on every tool that
 reaches a provider (`deep_research`, `literature_search`, `literature_similar`,
-`search`, and since 2026-08-15 the extension tools `street_view_look`,
-`place_nearby` and the host-intelligence family `host_intel` / `host_search` /
-`domain_intel` / `cve_intel` — ten in all, the exported
-`SPENDING_TOOL_NAMES`), released in a `finally` on every exit path, so an
+`search`, the two platform answering tools `explain_internals` and
+`improvement_areas`, and since 2026-08-15 the extension tools
+`street_view_look`, `place_nearby` and the host-intelligence family
+`host_intel` / `host_search` / `domain_intel` / `cve_intel` — twelve in all,
+the exported `SPENDING_TOOL_NAMES`), released in a `finally` on every exit path, so an
 external key gets the same CAP=5 bound `/api/chat` has. Three things about
-that shape are worth keeping: the three free tools
+that shape are worth keeping: the four free tools
 hold NO slot (one held there could only deny the caller its own next call);
 the refusal is a JSON-RPC `isError` result, never an HTTP 429, because an MCP
 client reads the envelope and a bare 429 reads to it as a broken server; and

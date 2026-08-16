@@ -11,7 +11,7 @@ it was found. The hosted retrieval tier §1 prices also runs inside the
 same reason — §4d records that fix and what a chat request's share of it
 comes to.
 
-**Short answer.** Per call the surface is cheap: 4 of the 13 tools spend
+**Short answer.** Per call the surface is cheap: 4 of the 16 tools spend
 nothing at a provider, the literature family costs €0.002–€0.012, and
 `deep_research` — the only expensive tool — costs €0.05 at the median and
 **€0.62 at its analytic ceiling**. The per-call numbers are not what
@@ -58,6 +58,9 @@ parse a committed-data call does is ~€0.00001.
 | `search` (the ChatGPT adapter) | same as 1-angle `literature_search` | €0.0021 | ~1 s |
 | `literature_fetch` (≤20 ids) | `getByIds` key read, no embed, no rerank | ~€0 | ~0.5 s |
 | `literature_corpora` | committed facts + `describe()` | €0 | 621 ms |
+| `explain_internals` | the pipeline pointed at the committed source: 1 embed + source retrieval + an agentic read/tool loop + 1 synthesis. **No Exa** — `web_search` is forced off | **below `deep_research`** — §2b | not yet measured |
+| `improvement_areas` | same as `explain_internals` | same — §2b | not yet measured |
+| `platform_map` | committed snapshot + docs corpus through `ASSETS` | €0 | not yet measured |
 | `street_view_look` | 1–2 Google imagery fetches + 1 vision description | **Google imagery + ~€0.001 vision** — §2a | not yet measured |
 | `place_nearby` | 1 Places search (+1 free reverse geocode) | **Google Places, €0 at Berget** — §2a | not yet measured |
 | `host_intel` | 1 Shodan lookup or search (+1 DNS resolve per hostname) | **Shodan credits, €0 at Berget** — §2a | not yet measured |
@@ -75,6 +78,40 @@ One such call against the live endpoint reports `usage.total_tokens =
 retrieval, so a 6-angle call costs €0.0124 whether it returns 8 records or
 60. `npm run mcp:probe` confirms the leg count directly — its 6-angle batch
 reports "600 candidates examined", which is 12 legs × 50.
+
+### 2b. The platform family, and why its ceiling is BELOW `deep_research`'s
+
+`explain_internals` and `improvement_areas` (2026-08-16) run
+`runDeepResearch` itself, so every figure in §3 applies to them — with one
+structural subtraction and one addition, and the subtraction is the larger.
+
+**Subtracted: Exa, entirely.** `resolveIntrospectArgs` forces
+`web_search: false`, and a caller cannot switch it back on. §3's ceiling is
+€0.62, of which the 34-search allowance at the deep tier is the dominant term;
+none of it is reachable here. The gap-check rounds that spend those searches do
+not run either — the turn routes to `runSourceResearch` instead.
+
+**Added: retrieval over the committed source, plus a read loop.** One query
+embed, a cosine rank against the committed index (no Vectorize — the index is a
+static asset of this deploy, so it costs a fetch and no provider call), then
+either an agentic tool loop capped at `MAX_SOURCE_TOOL_ROUNDS = 6` or the
+deterministic read loop, billed to the answer model. That is bounded by the
+round cap and the time budget, whose voice default is 60 s.
+
+So the shape is: **a floor near a plain synthesis, and a ceiling set by the
+answer model over at most six investigation rounds** — comfortably inside
+`deep_research`'s €0.62, and typically well under its €0.051 median because the
+searches are gone. It is **not measured yet**, and it should be before the
+surface is widened; the reason it is not blocking is that both tools pass the
+same `researchQuotaBlock` and hold the same concurrency slot as
+`deep_research`, so nothing here is unmetered — only unpriced.
+
+`platform_map` is the fourth free tool beside `literature_fetch`,
+`literature_corpora` and `fetch`: it reads two committed artifacts through the `ASSETS`
+binding and contacts no provider. It is outside the quota gate and holds no
+concurrency slot, for the reason those two are — an agent whose budget is gone
+should still be able to learn what exists, and a slot held on a free call could
+only deny the caller its own next call.
 
 The same €0.00102 leg is what a `/api/chat` search wave buys when it reaches
 the hosted arXiv or PubMed index — the tier is one module and `/mcp` is not
@@ -260,12 +297,13 @@ in (1) directly.
 
 `src/mcp.js` now reserves a slot for every tool that reaches a provider —
 `deep_research`, `literature_search`, `literature_similar`, the `search`
-adapter, and (since 2026-08-15) the extension tools `street_view_look`,
-`place_nearby` and the host-intelligence family — `host_intel`, and since
-2026-08-16 `host_search`, `domain_intel` and `cve_intel`
-(`SPENDING_TOOL_NAMES`, whose extension half comes from
+adapter, the two platform answering tools `explain_internals` and
+`improvement_areas` (since 2026-08-16), and (since 2026-08-15) the extension
+tools `street_view_look`, `place_nearby` and the host-intelligence family —
+`host_intel`, and since 2026-08-16 `host_search`, `domain_intel` and
+`cve_intel` (`SPENDING_TOOL_NAMES`, whose extension half comes from
 `src/extension-tools.js`) — and releases it in a `finally` covering
-success, a tool-level failure and a thrown error. The three tools that cost
+success, a tool-level failure and a thrown error. The four tools that cost
 nothing stay outside it, because a slot held there could only deny the caller
 its own next call. A refusal is a JSON-RPC result with `isError`, not an HTTP
 429: an MCP client reads the envelope, and a bare 429 reads to it as a
@@ -317,12 +355,13 @@ in the first and there is no limit to hide in the second.
   tested), and `tools/call` enforces the switch, not just `tools/list`.
 - An MCP key is never a login (test-pinned), so the blast radius of a
   leaked key is spend, not data.
-- `literature_fetch` and `literature_corpora` sit outside the quota
-  deliberately and cost nothing, so that exemption carries no spend risk.
+- `literature_fetch`, `literature_corpora` and `platform_map` sit outside the
+  quota deliberately and cost nothing, so that exemption carries no spend risk.
 - The provider-touching tools also hold a concurrency slot (§4b(2)) — the
-  four named there since 2026-08-05, seven since the three extension tools
-  joined on 2026-08-15 — so the ceilings in 4a are per account rather than
-  per simultaneous connection.
+  four named there since 2026-08-05, seven when the first three extension
+  tools joined on 2026-08-15, and twelve since the host-intelligence family
+  widened and the two platform answering tools joined on 2026-08-16 — so the
+  ceilings in 4a are per account rather than per simultaneous connection.
 
 ### 4d. The same hole on the higher-traffic path — FIXED 2026-08-05
 
@@ -374,9 +413,9 @@ unbounded in the sense that mattered, because nothing counted it at all.
 
 ## 5. Verdict
 
-Publishing the **free three** — `literature_fetch`,
-`literature_corpora`, and `fetch` — carries no provider cost at all. Their
-only exposure is Workers CPU.
+Publishing the **free four** — `literature_fetch`,
+`literature_corpora`, `fetch` and `platform_map` — carries no provider cost at
+all. Their only exposure is Workers CPU.
 
 Publishing `deep_research` is affordable as it stands: the quota bounds an
 account at ~€111/month, and the per-call ceiling is €0.63. Tightening

@@ -207,6 +207,12 @@ describe("SPENDING_TOOL_NAMES", () => {
         "literature_search",
         "literature_similar",
         "search",
+        // The two PLATFORM tools that ANSWER. They run the same pipeline
+        // deep_research runs — pointed at this codebase rather than the world —
+        // so they cost the same and are bounded the same. Their free sibling
+        // `platform_map` is in the exempt list below.
+        "explain_internals",
+        "improvement_areas",
         // The extension families: each reaches a metered third-party API, and
         // the imagery one a vision model on top. They arrive from the tool
         // registry rather than being written into mcp.js (invariant 7), which
@@ -233,13 +239,19 @@ describe("SPENDING_TOOL_NAMES", () => {
     }
   });
 
-  test("the free seven are exempt — a slot there is pure self-denial of service", () => {
+  test("the free tools are exempt — a slot there is pure self-denial of service", () => {
     // docs/MCP-COST.md §5: these cost nothing at a provider, so they cannot
-    // take part in the check-then-act race the cap exists to bound.
+    // take part in the check-then-act race the cap exists to bound. The four
+    // `sdk_*` names are no longer served at all (removed 2026-08-15) and stay
+    // here deliberately: the assertion is "must not hold a slot", which a
+    // deleted tool satisfies, and it costs nothing to keep the shape pinned
+    // against a re-exposure that forgot to decide what it costs.
     for (const name of [
       "literature_fetch",
       "literature_corpora",
       "fetch",
+      // Reads committed artifacts of this very deploy — no provider, no quota.
+      "platform_map",
       "sdk_list_modules",
       "sdk_show_module",
       "sdk_plan",

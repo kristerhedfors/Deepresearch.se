@@ -26,14 +26,15 @@
 // build when the two drift — so adding a tool to the MCP server without
 // deciding how an account switches it off is not possible by accident.
 //
-// Pure module: its ONE import (src/extension-tools.js, the MCP tool seam of the
-// extension registry) is itself pure and imports only the two pure schema
-// modules, so src/mcp.js still imports this statically without breaking its
+// Pure module: both its imports (src/extension-tools.js, the MCP tool seam of
+// the extension registry, and src/platform-tools.js, which imports nothing at
+// all) are themselves pure, so src/mcp.js still imports this statically without breaking its
 // keep-the-pipeline-out-of-the-test file-layout rule. The client's Settings
 // screen consumes the same catalog over /api/mcp/config rather than keeping a
 // second copy of the tool list.
 
 import { EXTENSION_MCP_CATALOG } from "./extension-tools.js";
+import { PLATFORM_AGENT, PLATFORM_MCP_CATALOG, PLATFORM_SPENDING_TOOLS } from "./platform-tools.js";
 
 /**
  * One exposable tool. `group` drives the Settings screen's headings; `label`
@@ -118,6 +119,10 @@ export const MCP_TOOL_CATALOG = [
       "practice. A direct key read: contacts no third party and spends nothing.",
     def: true,
   },
+  // The PLATFORM tools — this server asked about its own implementation. Their
+  // rows live in src/platform-tools.js beside their schemas, so a change to the
+  // family is one file rather than two that can disagree.
+  ...PLATFORM_MCP_CATALOG,
   // The EXTENSION tools (street imagery, host intelligence) come from the tool
   // registry rather than being listed here, for the same reason src/mcp.js takes
   // them from there: this file must not become a second place a third-party
@@ -203,6 +208,25 @@ export function parseMcpConfig(settingsJson) {
   if (raw.tools && typeof raw.tools === "object") {
     for (const entry of MCP_TOOL_CATALOG) {
       if (typeof raw.tools[entry.id] === "boolean") config.tools[entry.id] = raw.tools[entry.id];
+    }
+    // A NEW pipeline-spending tool does not arrive switched on for an account
+    // that had already switched the pipeline OFF.
+    //
+    // Every tool here defaults on, which is right: it reproduces the behaviour
+    // that existed before this configuration did, so an account that never opens
+    // the screen sees no change. But a stored row saying `deep_research: false`
+    // is not silence — it is an account that decided this surface may not spend
+    // its research budget, usually while handing out a long-lived key. Adding
+    // two more tools that run the SAME pipeline against the SAME quota and
+    // turning them on by default would hand that budget back without anyone
+    // choosing to, and unlike the extension tools there is no second knob to
+    // catch it. So the choice is INHERITED, once, for tools the row has never
+    // mentioned; the moment Settings writes an explicit boolean the loop above
+    // wins and this stops applying.
+    if (raw.tools.deep_research === false) {
+      for (const id of PLATFORM_SPENDING_TOOLS) {
+        if (typeof raw.tools[id] !== "boolean") config.tools[id] = false;
+      }
     }
   }
   if (raw.defaults && typeof raw.defaults === "object") {
@@ -309,6 +333,50 @@ export function resolveResearchArgs(config, args) {
   // style only shapes the text that comes back.
   const agent = typeof given.agent === "string" ? given.agent.trim().slice(0, 64) : "";
   return { time_budget_s, web_search, model, agent, style: normalizeStyle(given.style) };
+}
+
+/**
+ * The same reconciliation for a PLATFORM tool call — the two tools that ask this
+ * server about its own implementation (src/platform-tools.js).
+ *
+ * Three things are forced rather than offered, and each is forced because
+ * offering it could only produce a worse answer:
+ *
+ *   `agent` is the introspection agent. It is what the tool IS; a caller
+ *   choosing a different one would get a specialist answering about a codebase
+ *   outside its domain.
+ *
+ *   `web_search` is off. The answer is grounded in this deployment's own source,
+ *   and the introspection agent declares no web leg anyway — so the knob could
+ *   only add a search wave that pulls in unrelated third-party projects sharing
+ *   the words "deep research", which is the exact failure the pipeline's
+ *   introspection-first routing exists to prevent. A caller that wants outside
+ *   material has deep_research.
+ *
+ *   `style` DEFAULTS to voice, where deep_research defaults to text. That
+ *   asymmetry is the point of the family: these tools were added for a caller
+ *   who is listening, and a default that has to be corrected on every call is
+ *   not a default. Naming `text` still gets the screen-shaped answer, with the
+ *   file references a reader can act on.
+ *
+ * Everything else — the budget window, the model override policy — is
+ * deep_research's, unchanged, because it is the same pipeline and the same
+ * money.
+ *
+ * @param {McpConfig} config
+ * @param {any} args the tool-call arguments as sent
+ * @returns {{ time_budget_s: number, web_search: boolean, model: string | undefined, agent: string, style: "text"|"voice", require_agent: boolean }}
+ */
+export function resolveIntrospectArgs(config, args) {
+  const given = args && typeof args === "object" ? args : {};
+  const style = typeof given.style === "string" ? normalizeStyle(given.style) : "voice";
+  const base = resolveResearchArgs(config, { ...given, style });
+  // `require_agent` is the fourth forced value and the one that is not about
+  // shaping the answer: with the web off, an agent that failed to resolve leaves
+  // the run with no grounding at all, and src/mcp.js refuses rather than letting
+  // it answer from memory. deep_research does not set it, because its own
+  // degradation still searches.
+  return { ...base, web_search: false, agent: PLATFORM_AGENT, style, require_agent: true };
 }
 
 /** The voice default budget: long enough for a real search wave, short enough

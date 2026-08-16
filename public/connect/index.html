@@ -231,8 +231,10 @@
       <tr><th>Tool</th><th>What it does</th></tr>
       <tr>
         <td><code>deep_research</code></td>
-        <td>Runs the full pipeline and returns a cited answer. <b>This is the one
-        that spends</b> — each call draws on your research quota.</td>
+        <td>Runs the full pipeline and returns a cited answer over the open web
+        and the hosted corpora. <b>The most expensive call here</b> — each one
+        draws on your research quota, at your account's model and search
+        prices.</td>
       </tr>
       <tr>
         <td><code>literature_search</code><br><code>literature_similar</code></td>
@@ -248,6 +250,25 @@
         <td>Resolve exact papers by arXiv id or PMID — how an agent follows a
         citation — and ask what the two corpora actually hold: live vector
         counts, coverage windows, stored fields. Neither spends anything.</td>
+      </tr>
+      <tr>
+        <td><code>explain_internals</code><br><code>improvement_areas</code></td>
+        <td>Ask this platform about <b>itself</b> — how a part of it works, or
+        where it has room to improve — answered from the exact source this
+        deployment is running, plus its documentation and its own recorded
+        measurements. Neither searches the web. Both run the same pipeline
+        <code>deep_research</code> does and draw on the same research quota,
+        though without the search spend that dominates it. They answer in
+        speakable prose by default; pass <code>style: "text"</code> for the
+        screen-shaped answer with file references.</td>
+      </tr>
+      <tr>
+        <td><code>platform_map</code></td>
+        <td>What the platform is made of and what can be asked about it — the
+        size of the source it carries and the subsystems that have their own
+        documented playbook. Reads committed files of this same deploy, so it
+        contacts nothing and spends nothing. Worth calling first when you aren't
+        sure a subsystem exists or what it is called here.</td>
       </tr>
       <tr>
         <td><code>street_view_look</code><br><code>place_nearby</code></td>
