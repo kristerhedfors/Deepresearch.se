@@ -467,7 +467,8 @@ export function snapshotIndex(snapshot) {
 // ---- skills catalog ----------------------------------------------------------
 //
 // The repo's institutional knowledge lives as load-on-demand PLAYBOOKS under
-// .claude/skills/<name>/SKILL.md — how recurring work is actually done here
+// <root>/<name>/SKILL.md (see SKILL_PATH_RE for the two accepted roots; they
+// are parked in skills-disabled/ today) — how recurring work is actually done here
 // (deploy, the research pipeline, the eval batteries, the decision-board loops,
 // storage/privacy, the sandbox, …). That was originally a Claude Code (the CLI
 // agent) convention, so those playbooks only helped when Claude Code was the
@@ -481,8 +482,19 @@ export function snapshotIndex(snapshot) {
 // external coding agents at the same catalog, so the pickup is model- AND
 // harness-agnostic.)
 
-/** A skill's SKILL.md path → its slug name (the catalog key). */
-export const SKILL_PATH_RE = /^\.claude\/skills\/([a-z0-9][a-z0-9-]*)\/SKILL\.md$/;
+/**
+ * A skill's SKILL.md path → its slug name (the catalog key).
+ *
+ * TWO accepted roots. `.claude/skills/` is the Claude Code convention — a
+ * playbook there is auto-loaded by that harness. `skills-disabled/` is the
+ * same tree PARKED (owner experiment, 2026-08-16): moved out of `.claude/` so
+ * the CLI stops loading all 65 of them by default, to find out which are
+ * actually pulled in when they have to be asked for. The catalog matches both
+ * roots deliberately — parking is about the CLI's auto-load, not about the
+ * site, so introspection keeps surfacing every playbook either way and
+ * re-enabling is one `git mv` with no code change.
+ */
+export const SKILL_PATH_RE = /^(?:\.claude\/skills|skills-disabled)\/([a-z0-9][a-z0-9-]*)\/SKILL\.md$/;
 
 /**
  * DistillSDK's constructive module skills (sdk/skills/<name>/SKILL.md)
@@ -909,7 +921,7 @@ export function buildIntrospectionBlock(snapshot, opts = {}) {
   if (skills.length) {
     lines.push("");
     lines.push(
-      `# Skills — the project's ${skills.length} institutional playbooks: operational (.claude/skills/<name>/SKILL.md — how this deployment is run) and the Platform SDK's constructive modules (sdk/skills/<name>/SKILL.md, listed as sdk/<name> — how each capability is built from scratch; see sdk/README.md). The same catalogs guide any coding agent via the repo's AGENTS.md. Name any (e.g. "the deploy skill", /deploy, or "the sdk/pair-generator skill") for its full text, or just ask — the relevant one is retrieved into context:`,
+      `# Skills — the project's ${skills.length} institutional playbooks: operational (skills-disabled/<name>/SKILL.md — how this deployment is run; parked out of .claude/skills/ so the Claude Code CLI stops auto-loading them, but still fully readable here) and the Platform SDK's constructive modules (sdk/skills/<name>/SKILL.md, listed as sdk/<name> — how each capability is built from scratch; see sdk/README.md). The same catalogs guide any coding agent via the repo's AGENTS.md. Name any (e.g. "the deploy skill", /deploy, or "the sdk/pair-generator skill") for its full text, or just ask — the relevant one is retrieved into context:`,
     );
     lines.push(skillsIndex(snapshot));
   }

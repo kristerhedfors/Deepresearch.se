@@ -500,6 +500,36 @@ test("skillsCatalog: one entry per SKILL.md, sorted by name, non-skill files ign
   assert.deepEqual(skillsCatalog(snap()), []);
 });
 
+// The operational tree was parked at skills-disabled/ (2026-08-16) so the
+// Claude Code CLI stops auto-loading it — an experiment about the CLI, NOT
+// about the site. The catalog must keep finding the playbooks at either root,
+// so introspection is unchanged and re-enabling stays a pure `git mv`.
+test("skillsCatalog: parked skills-disabled/ root is cataloged like .claude/skills/", () => {
+  const parked = /** @type {any} */ (
+    validateSnapshot({
+      v: 1,
+      digest: "s",
+      files: [
+        {
+          p: "skills-disabled/deploy/SKILL.md",
+          s: 1,
+          t: '---\nname: deploy\ndescription: "Load when deploying to production."\n---\n\n# Deployment',
+        },
+        // Not a skill root: a same-named file one level off must stay ignored.
+        { p: "skills-disabled/README.md", s: 1, t: "not a skill" },
+      ],
+    })
+  );
+  const cat = skillsCatalog(parked);
+  assert.deepEqual(
+    cat.map((s) => s.name),
+    ["deploy"],
+  );
+  assert.equal(cat[0].path, "skills-disabled/deploy/SKILL.md");
+  // Named the way a user names it to Claude Code, it still resolves.
+  assert.deepEqual(mentionedSkills("the deploy skill", parked), ["skills-disabled/deploy/SKILL.md"]);
+});
+
 test("skillsIndex: '- name — summary' rows, clipped to the summary cap", () => {
   const idx = skillsIndex(skillSnap());
   assert.match(idx, /^- deploy — Load when deploying to production\./m);

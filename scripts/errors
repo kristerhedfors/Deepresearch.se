@@ -5,7 +5,7 @@
 # into bug-fix tasks. Wraps GET/PATCH/DELETE /api/admin/errors
 # (src/server-errors.js) using the break-glass Basic Auth credentials, the same
 # BASIC_AUTH_USER / BASIC_AUTH_PASS env vars scripts/chatlogs and
-# scripts/feedback use. See .claude/skills/live-verify/SKILL.md.
+# scripts/feedback use. See skills-disabled/live-verify/SKILL.md.
 #
 # Usage:
 #   scripts/errors                     open crashes (the work queue), readable text

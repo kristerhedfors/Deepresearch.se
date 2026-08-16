@@ -7,7 +7,7 @@ do **not** push more commits to it, do **not** reopen its PR. Branch fresh
 from the current `origin/main` instead.
 
 The companion mechanism is the **merge-branches** skill
-(`.claude/skills/merge-branches/`) — read it before integrating any branch
+(`skills-disabled/merge-branches/`) — read it before integrating any branch
 or editing this ledger. The `scripts/check-merged-branches.mjs` guard reads
 the `tip@merge` SHAs below and shouts if anyone kept working on a branch
 already marked done (see **Rule-break detection** at the bottom).

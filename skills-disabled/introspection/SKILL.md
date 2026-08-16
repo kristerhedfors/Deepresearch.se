@@ -241,7 +241,7 @@ including the ~32k-context JSON model.
 
 `buildIntrospectionBlock` also surfaces the repo's **skills catalog** as a
 first-class section — `skillsCatalog` / `skillsIndex` / `mentionedSkills` in
-`introspect-core.js`. The `.claude/skills/<name>/SKILL.md` playbooks are
+`introspect-core.js`. The `skills-disabled/<name>/SKILL.md` playbooks are
 ordinary tracked Markdown, so they already ride in the snapshot AND the dense
 RAG index like any other file. The catalog section lists every skill as
 `- name — one-line summary` (parsed from each SKILL.md's YAML frontmatter by
