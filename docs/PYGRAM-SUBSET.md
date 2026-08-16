@@ -47,7 +47,7 @@ here, which is itself a finding):
 | `python3 -c 'print(1+1)'` | `tests/e2e/sandbox-perf.spec.js:126` |
 | `python3 -c 'import json;print(json.dumps({"a":1}))'` | `tests/e2e/sandbox-perf.spec.js:127` |
 | `python3 -c "import PIL"` | `scripts/build-exec-image.sh:138`, `docs/EXECUTION-ENVIRONMENTS.md:741` |
-| `python3 -m json.tool` (piped from curl) | `.claude/skills/publish-research/SKILL.md:110` |
+| `python3 -m json.tool` (piped from curl) | `skills-disabled/publish-research/SKILL.md:110` |
 | `python3 -m http.server 8123` | `docs/TESTING.md:1226`, `docs/FOREVERAGENT-GAP-ANALYSIS.md:215` |
 | `python3 -m pip install --break-system-packages pillow` | `.github/workflows/ci.yml:114` |
 | `python3 --version` | `tests/e2e/sandbox-perf.spec.js:125`, `docs/SANDBOX-PERFORMANCE.md` §1 |

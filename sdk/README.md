@@ -154,9 +154,9 @@ the same walk in adoption mode — per module: read the skill's reference
 map, align the existing files to the module's stated contract, add any
 missing acceptance tests, record the binding.
 
-## Relationship to `.claude/skills/`
+## Relationship to `skills-disabled/`
 
-The repo's `.claude/skills/` are *operational* — they run and maintain
+The repo's `skills-disabled/` are *operational* — they run and maintain
 THIS deployment. The SDK skills are *constructive* — they build the
 capability in a fresh repo (or bind it here). They deliberately share
 vocabulary and cite the same incident history; where an operational skill

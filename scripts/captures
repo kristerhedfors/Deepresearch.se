@@ -3,7 +3,7 @@
 # the capture pipeline. Wraps /api/admin/captures (src/captures.js) using the
 # break-glass Basic Auth credentials, the same BASIC_AUTH_USER /
 # BASIC_AUTH_PASS env vars scripts/testpoints and scripts/feedback use. See
-# .claude/skills/video-capture/SKILL.md for the four stages this is the last
+# skills-disabled/video-capture/SKILL.md for the four stages this is the last
 # two of (record → edit → PUBLISH → REVIEW).
 #
 # Publishing a finished clip (after `npm run capture:edit`), three calls:

@@ -3,7 +3,7 @@
 # reader side of the try-it queue. Wraps /api/admin/testpoints
 # (src/testpoints.js) using the break-glass Basic Auth credentials, the same
 # BASIC_AUTH_USER / BASIC_AUTH_PASS env vars scripts/feedback and
-# scripts/security use. See .claude/skills/testable-interaction-points/SKILL.md
+# scripts/security use. See skills-disabled/testable-interaction-points/SKILL.md
 # for the loop this is the CRUD layer of.
 #
 # Declaring a point (do this the moment a fix is testable):

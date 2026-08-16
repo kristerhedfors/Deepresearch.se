@@ -128,7 +128,7 @@ the signed-in app's overview and links to both.
 See `docs/ARCHITECTURE.md` **§0 (the board)** for the whiteboard view of every
 component — what data each holds, who can read it, what each makes possible —
 and the rest of that document for the full design, `CLAUDE.md` for the code
-layout and load-bearing invariants, and `.claude/skills/` for the per-area
+layout and load-bearing invariants, and `skills-disabled/` for the per-area
 working guides. The complete prompt-by-prompt build history lives in
 `public/build/history.md`, rendered in-app at `/story/`. It is the origin story
 of the first weekend, kept as the record of how the project began. `/build/`
@@ -347,7 +347,7 @@ Then restore the `[[r2_buckets]]` and `[[vectorize]]` blocks in
 **Create the resources first** — a binding that points at a nonexistent
 bucket or index makes every deploy fail outright. What lands where (and what
 is or isn't encrypted) is documented in `docs/ARCHITECTURE.md` §9 and the
-**storage-privacy** skill (`.claude/skills/storage-privacy/`).
+**storage-privacy** skill (`skills-disabled/storage-privacy/`).
 
 ### 8. Optional: the hosted arXiv corpus and the cloud execution environment
 

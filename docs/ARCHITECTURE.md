@@ -1296,7 +1296,7 @@ twin of a correct implementation.
 `Content-Type: text/event-stream`; OpenAI-style deltas plus custom `status`
 events. **Clients must ignore unknown status types and fields** (forward
 compatibility). The canonical, fully-worked event reference is the
-**sse-protocol** skill (`.claude/skills/sse-protocol/SKILL.md`); summary:
+**sse-protocol** skill (`skills-disabled/sse-protocol/SKILL.md`); summary:
 
 | Event | Meaning / UI behavior |
 |---|---|

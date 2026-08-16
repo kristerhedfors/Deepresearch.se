@@ -67,7 +67,7 @@ git log --oneline origin/main..HEAD    # what this PR will actually contain
 
 The introspection snapshot walks **every git-tracked text file** (`bundle-source.mjs`
 runs `git ls-files`), not just `src/`/`public/` — so a change to `CLAUDE.md`,
-a `.claude/skills/*` file, or a `docs/*` file makes it stale just as a code
+a `skills-disabled/*` file, or a `docs/*` file makes it stale just as a code
 change does. If the diff touches ANY tracked text file (i.e. almost always,
 excluding a pure binary/artifact-only change), rebuild both committed artifacts
 IN THE SAME PR or `src/introspect.test.js`'s freshness checks fail:

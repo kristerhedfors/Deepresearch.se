@@ -28,7 +28,7 @@ git-connected push.
 |---|---|---|
 | Switch to TypeScript? | **Half-yes**: type-*check* everything now (JSDoc + `tsc --noEmit`, zero build step); consider full `.ts` for `src/` only later, via wrangler's built-in bundling. Never transpile the client. | **Shipped (step 1)** — `tsconfig.json`, `npm run typecheck`, `src/types.d.ts`, opt-in `// @ts-check` files |
 | Switch to MCP exclusively for integrations? | **No** as internal plumbing — it would re-introduce the model-driven tool selection this pipeline deliberately removed. **Yes** as a *product surface*: expose DeepResearch itself as an MCP server. Internally, formalize the enrichment pattern the integrations already share. | **Shipped, both halves** — `src/enrichment.js` + `src/search-sources.js` registries; `POST /mcp` (`src/mcp.js`) |
-| Move logic into skills? | **Yes** — for the *development* system, not the Worker. CLAUDE.md has grown into a ~10K-word monolith; restructure into a slim invariants file plus on-demand `.claude/skills/`. | **Shipped** — 17 skills in `.claude/skills/`, slim CLAUDE.md |
+| Move logic into skills? | **Yes** — for the *development* system, not the Worker. CLAUDE.md has grown into a ~10K-word monolith; restructure into a slim invariants file plus on-demand `skills-disabled/`. | **Shipped** — 17 skills in `skills-disabled/`, slim CLAUDE.md |
 | Biggest single lever for answer quality? | **Scored evaluation.** The model-eval harness collects data read by hand; it cannot hillclimb. Add an LLM-judged benchmark with tracked scores before adding pipeline sophistication. | **Shipped** — `tests/eval-bench.mjs` + `tests/hf-bench.mjs` + ledgers |
 | Biggest pipeline upgrades? | Research-notes compression, full-content fetch for top sources, outline-first synthesis at large budgets, claim-level validation — all expressible in the existing deterministic no-function-calling style. | **Built, benchmarked, disabled** (notes/full-content/claim-level — see §5.1/5.2/5.4); outline-first not built |
 | Biggest platform move? | **Cloudflare Workflows** (durable execution) when research runs grow past the current envelope — it would replace the hand-built answers-table + heartbeat + `waitUntil` recovery machinery with platform-level durability. Not urgent; the current machinery is battle-tested. | **Not adopted** — no trigger condition arrived |
@@ -249,7 +249,7 @@ lacks only a transport:
 CLAUDE.md plus on-demand skills. This is about the *development* loop,
 not the Worker.**
 
-> **Status: shipped.** `.claude/skills/` now holds 17 skills — including
+> **Status: shipped.** `skills-disabled/` now holds 17 skills — including
 > every one proposed below (`model-eval`, `storage-privacy`,
 > `sse-protocol`, `live-verify`, and the enrichment how-to as
 > `add-research-source`) plus ones this document didn't foresee
@@ -265,7 +265,7 @@ document that long stops being reliably *followed*; critical invariants
 ("don't commit mid-battery", "never key sessions on ADMIN_PASS") sit in
 paragraph twelve of section nine.
 
-Progressive disclosure via `.claude/skills/` fits the material almost
+Progressive disclosure via `skills-disabled/` fits the material almost
 embarrassingly well, because the doc already has skill-shaped seams:
 
 - **CLAUDE.md keeps** (~1–2 pages): what the product is, the §1

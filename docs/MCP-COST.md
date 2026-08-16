@@ -41,7 +41,7 @@ Four cost sources, and only two of them matter.
 | Berget `bge-reranker-v2-m3` | **€0.10/M tokens** | Berget `/v1/models`, retrieved 2026-08-05 |
 | Berget `multilingual-e5-large` (embeddings) | €0.03/M in, €0 out | same |
 | Exa search | €0.005/search × the depth tier's `costMultiplier` (12/7 at ≥420 s) | `config.exa_cost_per_search_eur`, `src/budget.js` `searchDepthFor` |
-| Cloudflare Vectorize | $0.01 per 1M queried dimensions → **$0.00001 per 1024-d query** | `docs/PUBMED-RAG.md`, `.claude/skills/bulk-corpus-etl` §"Billing" |
+| Cloudflare Vectorize | $0.01 per 1M queried dimensions → **$0.00001 per 1024-d query** | `docs/PUBMED-RAG.md`, `skills-disabled/bulk-corpus-etl` §"Billing" |
 
 Workers request and CPU cost is real but rounds to nothing at this
 granularity ($0.02/M requests, $0.02/M CPU-ms): even the 15 MB snapshot

@@ -10,7 +10,7 @@ done outside the repo.
 
 - **`scripts/scan-secrets`** — the scanner. Matches the canonical credential
   pattern set from the security-posture skill
-  (`.claude/skills/security-posture/SKILL.md` §1): OpenAI `sk-`, Berget
+  (`skills-disabled/security-posture/SKILL.md` §1): OpenAI `sk-`, Berget
   `sk_ber_`, Groq `gsk_`, Anthropic `sk-ant-` (a `sk-` variant), AWS `AKIA`,
   GitHub `ghp_` / `github_pat_`, Google `AIza`, Slack `xox*`, and PEM private-key
   blocks. Matches are **redacted** in the output (provider prefix + length only),
