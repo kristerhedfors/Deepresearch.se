@@ -59,7 +59,7 @@ parse a committed-data call does is ~€0.00001.
 | `literature_fetch` (≤20 ids) | `getByIds` key read, no embed, no rerank | ~€0 | ~0.5 s |
 | `literature_corpora` | committed facts + `describe()` | €0 | 621 ms |
 | `explain_internals` | the pipeline pointed at the committed source: 1 embed + source retrieval + an agentic read/tool loop + 1 synthesis. **No Exa** — `web_search` is forced off | **below `deep_research`** — §2b | not yet measured |
-| `improvement_areas` | same as `explain_internals` | same — §2b | not yet measured |
+| `improvement_areas` | same as `explain_internals` | **€0.0173 measured** — §2b | 22.2 s |
 | `platform_map` | committed snapshot + docs corpus through `ASSETS` | €0 | not yet measured |
 | `street_view_look` | 1–2 Google imagery fetches + 1 vision description | **Google imagery + ~€0.001 vision** — §2a | not yet measured |
 | `place_nearby` | 1 Places search (+1 free reverse geocode) | **Google Places, €0 at Berget** — §2a | not yet measured |
@@ -100,11 +100,35 @@ round cap and the time budget, whose voice default is 60 s.
 
 So the shape is: **a floor near a plain synthesis, and a ceiling set by the
 answer model over at most six investigation rounds** — comfortably inside
-`deep_research`'s €0.62, and typically well under its €0.051 median because the
-searches are gone. It is **not measured yet**, and it should be before the
-surface is widened; the reason it is not blocking is that both tools pass the
-same `researchQuotaBlock` and hold the same concurrency slot as
-`deep_research`, so nothing here is unmetered — only unpriced.
+`deep_research`'s €0.62, and well under its €0.051 median because the searches
+are gone.
+
+**MEASURED once, against production (2026-08-16, `chat_logs` #1752).** One
+`improvement_areas` call — "where does the pygram Python replacement have
+improvement potential?", default model, default voice budget:
+
+| | |
+|---|---|
+| wall time | 22.2 s |
+| searches | **0** |
+| prompt tokens | 56,860 |
+| completion tokens | 746 |
+| model | Mistral-Small-3.2-24B (€0.3/M in and out) |
+| **cost** | **€0.0173** |
+
+Three things that generalise from it. **`searches: 0` is the structural
+subtraction confirmed** — the 34-search allowance that dominates §3's €0.62
+ceiling is unreachable here, so the ceiling argument above is a measurement and
+not just an argument. **The prompt side is the cost**, at 76× the completion
+side: the injected source block (orientation + retrieved excerpts + the docs
+layer) rides every call, so the floor is roughly fixed per call and the question
+barely moves it. And at €0.017 a call the tool is **a third of
+`deep_research`'s median**, which is the number to quote when someone asks
+whether it is affordable to expose.
+
+One sample on one question, so treat it as an order of magnitude rather than a
+median; a harder question adds investigation rounds, which move the completion
+side and the wall time but not the dominant prompt term.
 
 `platform_map` is the fourth free tool beside `literature_fetch`,
 `literature_corpora` and `fetch`: it reads two committed artifacts through the `ASSETS`
