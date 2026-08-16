@@ -621,6 +621,7 @@ export async function runShodanSearch(env, log, query) {
  * @property {string} ransomware known ransomware campaign use, or ""
  * @property {string} published ISO date (YYYY-MM-DD), or ""
  * @property {string[]} products affected products, from the CPE list
+ * @property {number} productTotal distinct products the CPE list names, before truncation
  * @property {string} action the mitigation Shodan proposes, or ""
  */
 
@@ -696,6 +697,15 @@ export function summarizeVuln(data, fallbackId = "") {
   const num = (/** @type {unknown} */ v) => (Number.isFinite(Number(v)) && v !== null && v !== "" ? Number(v) : null);
   // The CPE strings are machine identifiers ("cpe:2.3:a:apache:log4j:2.14.1:…");
   // the vendor and product segments are the only parts a person hears as words.
+  //
+  // THE WHOLE LIST IS COUNTED even though only the first few are kept, and that
+  // is not tidiness. CVEDB returns the CPE list in ALPHABETICAL order, so the
+  // handful kept are the alphabetically-first products rather than the most
+  // affected ones — a live read of CVE-2021-44228 (2026-08-16) opens "apache
+  // log4j, apple xcode, bentley synchro, cisco automated_subsea_tuning…" out of
+  // several hundred. Naming six of those without the total states a sample as
+  // the population, which is the same error `total` exists to prevent on a
+  // search.
   const products = [];
   const seenProduct = new Set();
   for (const cpe of Array.isArray(row.cpes) ? row.cpes : []) {
@@ -704,8 +714,7 @@ export function summarizeVuln(data, fallbackId = "") {
     const label = [parts[3], parts[4]].filter((p) => p && p !== "*").join(" ");
     if (!label || seenProduct.has(label)) continue;
     seenProduct.add(label);
-    products.push(label);
-    if (products.length >= MAX_VULN_PRODUCTS) break;
+    if (products.length < MAX_VULN_PRODUCTS) products.push(label);
   }
   const published = typeof row.published_time === "string" ? row.published_time.slice(0, 10) : "";
   return {
@@ -717,6 +726,7 @@ export function summarizeVuln(data, fallbackId = "") {
     ransomware: typeof row.ransomware_campaign === "string" ? row.ransomware_campaign.trim() : "",
     published,
     products,
+    productTotal: seenProduct.size,
     action: typeof row.propose_action === "string" ? row.propose_action.trim() : "",
   };
 }

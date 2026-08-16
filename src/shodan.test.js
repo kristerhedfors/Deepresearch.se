@@ -470,6 +470,11 @@ describe("cveInfo and productCves — the keyless vulnerability database", () =>
       // segments are the only parts a person hears as words. Duplicates across
       // versions collapse.
       assert.deepEqual(found.vuln.products, ["apache log4j"]);
+    // The CPE list is alphabetical, so the kept products are the
+    // alphabetically-first ones — the total travels beside them so a renderer
+    // cannot state a sample as the population (live read, 2026-08-16: six of
+    // 147 for this CVE).
+    assert.equal(found.vuln.productTotal, 1);
       assert.equal(stub.requests.length, 1);
       assert.equal(new URL(stub.requests[0].url).origin, "https://cvedb.shodan.io");
       assert.equal(new URL(stub.requests[0].url).searchParams.get("key"), null);
@@ -516,5 +521,13 @@ describe("cveInfo and productCves — the keyless vulnerability database", () =>
     assert.equal(vuln.epss, null);
     assert.equal(vuln.kev, false);
     assert.deepEqual(vuln.products, []);
+    assert.equal(vuln.productTotal, 0);
+  });
+
+  test("every distinct product is COUNTED even though only a few are kept", async () => {
+    const cpes = Array.from({ length: 30 }, (_v, i) => `cpe:2.3:a:vendor${i}:product${i}:1.0:*:*:*:*:*:*:*`);
+    const vuln = summarizeVuln({ cve_id: "CVE-2030-2", cpes });
+    assert.equal(vuln.products.length, 6, "only a handful are speakable");
+    assert.equal(vuln.productTotal, 30, "but the whole list is counted");
   });
 });
