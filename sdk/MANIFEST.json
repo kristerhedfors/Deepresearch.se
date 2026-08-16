@@ -208,7 +208,7 @@
       "layer": 4, "class": "D", "deps": ["pair-architecture"],
       "skill": "sdk/skills/agent-dev-workflow/SKILL.md",
       "provides": "Slim-memory + on-demand skills structure, sync-main/merge-barrier/branch-ledger git discipline, PR watching + regression routing to author-workers, maintenance ownership registry, secret scanning hooks, docs-mirror drift tests, persist-solved-tasks-as-skills",
-      "reference": ["CLAUDE.md", ".claude/skills", ".claude/hooks", "docs/MAINTENANCE-OWNERS.md", "docs/MERGED-BRANCHES.md", "scripts/scan-secrets"],
+      "reference": ["CLAUDE.md", "skills-disabled", ".claude/hooks", "docs/MAINTENANCE-OWNERS.md", "docs/MERGED-BRANCHES.md", "scripts/scan-secrets"],
       "acceptance": "Hooks fire on session start/commit/push; a regression routes to its owning PR; skills list matches the skills directory"
     },
     {
@@ -253,7 +253,7 @@
       "layer": 5, "class": "X", "deps": ["baseplate-client"],
       "skill": "sdk/skills/symbol-language/SKILL.md",
       "provides": "Per-tier symbol characters and palettes, first-visit intros + waiting-symbol grammar (offline vs online channels, disclosure notices), the wordmark slash-spacing measurement discipline, the numbered UX-conventions registry, low-animation directives",
-      "reference": ["docs/SYMBOL-LANGUAGE.md", "public/js/balloon.js", "public/cure/umbrella.js", "scripts/slash-gap.mjs", ".claude/skills/ux-conventions"],
+      "reference": ["docs/SYMBOL-LANGUAGE.md", "public/js/balloon.js", "public/cure/umbrella.js", "scripts/slash-gap.mjs", "skills-disabled/ux-conventions"],
       "acceptance": "Pure timeline/geometry cores tested; slash gaps measured not eyeballed; every online phase carries its disclosure"
     },
     {

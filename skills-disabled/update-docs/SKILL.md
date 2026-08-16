@@ -47,7 +47,7 @@ Everything below is "documentation" for the purposes of this pass:
 | Backlog catalogs | `FEATURES.md`, `SECURITY-RISKS.md`, `SECURITY-ASSESSMENT.md` | mirrored (test-enforced §3) |
 | Design docs | `docs/*.md` (ARCHITECTURE, ARCHITECTURE-ROADMAP, DECISION-BOARD-LOOPS, SANDBOX-HOST-COMMANDS, GOOGLE-AUTH, SECRET-SCANNING, FOREVERAGENT-*) | hand-maintained |
 | Registries | `docs/MAINTENANCE-OWNERS.md`, `docs/MERGED-BRANCHES.md`, `docs/MERGE-STATUS.json`, `docs/DOC-DRIFT-LOG.md` (append-only, owner-verdicts only — see **docs-drift-validation**) | hand-maintained, update-in-place per their own rules |
-| Skills | `.claude/skills/*/SKILL.md` — body **and** `description` frontmatter | hand-maintained |
+| Skills | `skills-disabled/*/SKILL.md` — body **and** `description` frontmatter | hand-maintained |
 | Static pages | `public/{help,build,story,architecture,welcome}/index.html` + `public/build/history.md` | hand-maintained |
 | Generated artifacts | `public/introspect/source-snapshot.json`, `public/introspect/source-rag.json`, `public/pulse/data.json` | **regenerate, never hand-edit** |
 | Append-only ledgers | `tests/*-FINDINGS.md` (MODEL-EVAL, EVAL-BENCH, HF-BENCH) | leave alone unless you ran the battery |
@@ -85,7 +85,7 @@ Nothing fails when these drift. Detect them with the greps below.
   paragraph describing every client module.
 - **`docs/TESTING.md` "Unit tests" / "Additional server suites" prose ⇄
   `*.test.js`.**
-- **CLAUDE.md "Skills" bullet list ⇄ `.claude/skills/` dirs** — one `- **name**`
+- **CLAUDE.md "Skills" bullet list ⇄ `skills-disabled/` dirs** — one `- **name**`
   bullet per skill (the one-line index; the long trigger text is each skill's
   own `description` frontmatter).
 - **Each skill's `description` frontmatter** — the trigger text that decides
@@ -106,13 +106,13 @@ for f in $(ls src/*.js | grep -v '\.test\.js' | xargs -n1 basename); do
 done
 
 # skills on disk missing a bullet in CLAUDE.md's Skills list
-for s in $(ls .claude/skills/); do
+for s in $(ls skills-disabled/); do
   grep -q "^- \*\*$s\*\*" CLAUDE.md || echo "skill not in CLAUDE.md list: $s"
 done
 
 # CLAUDE.md bullets naming a skill dir that no longer exists (reverse drift)
 grep -oE '^- \*\*[a-z0-9-]+\*\*' CLAUDE.md | sed -E 's/^- \*\*(.*)\*\*/\1/' \
-  | while read s; do [ -d ".claude/skills/$s" ] || echo "CLAUDE.md lists missing skill: $s"; done
+  | while read s; do [ -d "skills-disabled/$s" ] || echo "CLAUDE.md lists missing skill: $s"; done
 
 # client modules / test files not named in the layout/testing docs (noisier — triage by hand)
 for f in $(ls public/js/*.js | xargs -n1 basename); do

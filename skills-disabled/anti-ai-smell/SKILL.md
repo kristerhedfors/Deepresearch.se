@@ -162,8 +162,8 @@ inside this skill deliberately: it is documentation tooling, not wired into
 
 ```bash
 # needs vale installed (brew install vale / go install / release binary)
-vale --config=.claude/skills/anti-ai-smell/vale/.vale.ini README.md
-vale --config=.claude/skills/anti-ai-smell/vale/.vale.ini docs/
+vale --config=skills-disabled/anti-ai-smell/vale/.vale.ini README.md
+vale --config=skills-disabled/anti-ai-smell/vale/.vale.ini docs/
 ```
 
 Severity is `suggestion`/`warning`, never `error` — this repo's docs are dense

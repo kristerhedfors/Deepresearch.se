@@ -17,7 +17,7 @@ assumptions.
    `docs/CODE-LAYOUT.md` (the per-module map), `docs/TESTING.md`,
    `docs/PRIVACY-MODEL.md`, `docs/BRANDING.md`. Everything in `CLAUDE.md`
    applies to you regardless of which model you run on.
-2. **The skills catalog** — `.claude/skills/<name>/SKILL.md` — the repo's
+2. **The skills catalog** — `skills-disabled/<name>/SKILL.md` — the repo's
    institutional **playbooks**: how each recurring kind of work is actually
    done here, written from empirically-observed practice (not docs). Each
    `SKILL.md` has YAML frontmatter with a `description` that says exactly *when
@@ -64,10 +64,17 @@ workflow is the same for any agent:
   (or add one) so the knowledge survives — see the "Persist solved tasks as
   skills" note in `CLAUDE.md`.
 
-If your harness has a native skill/plugin mechanism, these `SKILL.md` files are
-already in the standard `.claude/skills/` layout and will be discovered by it.
-If it does not, glob `.claude/skills/*/SKILL.md`, read the frontmatter, and load
-the relevant body on demand — the effect is identical.
+Glob `skills-disabled/*/SKILL.md`, read the frontmatter, and load the relevant
+body on demand.
+
+> **The tree is PARKED (owner experiment, 2026-08-16).** It used to live at
+> `.claude/skills/` — the path a native skill/plugin mechanism auto-discovers.
+> It was moved to `skills-disabled/` precisely so that auto-discovery stops, to
+> measure **which skills are actually needed** when each one has to be asked
+> for deliberately. Nothing is deleted or deprecated: the content is unchanged
+> and still authoritative, so the load-on-demand workflow above is exactly the
+> same — it is now the ONLY way in, on every harness. Re-enabling is
+> `git mv skills-disabled .claude/skills`, with no code change.
 
 ## The same catalog is surfaced to end users (regardless of model)
 
@@ -85,7 +92,7 @@ construction the source that deploy runs. See the **introspection** skill.
 
 ## The catalog
 
-Mirrors `.claude/skills/` (the frontmatter there is authoritative; regenerate
+Mirrors `skills-disabled/` (the frontmatter there is authoritative; regenerate
 the summaries below with the parser in `introspect-core.js` if a skill's
 `description` changes). Each `SKILL.md`'s frontmatter carries the full
 "load when …" trigger.

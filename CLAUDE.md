@@ -3,7 +3,7 @@
 Guidance for Claude Code when working in this repository. This file stays
 SHORT on purpose — it is loaded into every session and its opening doubles as
 the introspection orientation excerpt. The detail lives in `docs/` and the
-on-demand skills under `.claude/skills/`; load what the task needs.
+on-demand skills under `skills-disabled/`; load what the task needs.
 
 ## Project
 
@@ -410,9 +410,23 @@ sharing, workspace knowledge and quiz are still bespoke and owe one
 
 ## Skills
 
-Detailed guidance is split into on-demand skills under `.claude/skills/` —
+Detailed guidance is split into on-demand skills under `skills-disabled/` —
 load the relevant one before working in its area. Each skill's `description`
 frontmatter is its load trigger; the list below is the index.
+
+> **PARKED (owner experiment, 2026-08-16).** The whole tree was moved from
+> `.claude/skills/` to `skills-disabled/`, so the Claude Code CLI no longer
+> auto-loads any of them and `/<name>` no longer resolves. The point is to
+> find out **which skills are actually needed** — with nothing loaded by
+> default, a skill only enters a session when the work genuinely calls for it
+> and you go read it. **They are not deleted and not stale: the content is
+> unchanged and still authoritative.** When the index below tells you a skill
+> covers what you are about to do, `Read skills-disabled/<name>/SKILL.md`
+> yourself before starting — that is now a manual step, not an automatic one.
+> Re-enabling is one command with no code change:
+> `git mv skills-disabled .claude/skills`. The site is unaffected —
+> introspection's catalog matches both roots (`SKILL_PATH_RE`), so every
+> playbook is still surfaced to users and to any answer model.
 
 **Persist solved tasks as skills.** When a task gets solved in a session and
 is likely to recur — a deployment path, a debugging workflow, an eval
