@@ -219,6 +219,7 @@ import {
  *   agentId?: string | null,
  *   promptSet?: string | null,
  *   helpCommand?: boolean,
+ *   sourceFirst?: boolean,
  *   outrospectionMode?: boolean,
  *   outrospection?: { lens: string | null, items: number, texts: number, quotes: number, live: boolean },
  *   feedback?: { comment: string, question: string | null, answer_excerpt: string | null, model: string, images?: { name: string | null, data: string }[], useCase?: { id: number, tag: string } | null, scope?: import("../public/js/feedback-core.js").FeedbackScope },
@@ -645,12 +646,31 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
   // dev-mode ask to the web-search wave / a triage direct reply instead of the
   // source read loop.
   //
+  // TWO cases IGNORE externalSourceIntent, and both are callers who already said
+  // what they want.
+  //
   // The `/help` slash command (chat.js resolved it and turned the introspection
-  // enrichment on for this request, whatever mode was picked) is the one case
-  // that IGNORES externalSourceIntent: the user asked for the documentation in
-  // so many words, so a help question phrased as a comparison ("/help how does
-  // this compare to …") must not be handed back to the web-search wave.
-  if (ctx.hasSource && (/** @type {any} */ (state).helpCommand === true || !externalSourceIntent(ctx.cleanLastUser))) {
+  // enrichment on for this request, whatever mode was picked): the user asked
+  // for the documentation in so many words, so a help question phrased as a
+  // comparison ("/help how does this compare to …") must not be handed back to
+  // the web-search wave.
+  //
+  // `sourceFirst` is /mcp's platform tools (src/mcp-config.js
+  // resolveIntrospectArgs), and there the gate is not merely unhelpful but
+  // actively broken: those tools force `web_search: false`, so a turn handed
+  // back here has NO search wave to be handed back TO. It falls to triage and
+  // answers from the pre-loaded excerpt block alone — the doc-recap failure
+  // runSourceResearch exists to prevent — while the tool's own description
+  // promises it investigates the source. The caller's phrasing is what trips it:
+  // "how does your sandbox compare to Docker" and "what's new in the research
+  // pipeline" both match, and both are ordinary things to ask a platform about
+  // itself. Pinned in src/platform-dispatch.test.js.
+  if (
+    ctx.hasSource &&
+    (/** @type {any} */ (state).helpCommand === true ||
+      /** @type {any} */ (state).sourceFirst === true ||
+      !externalSourceIntent(ctx.cleanLastUser))
+  ) {
     if (quizReq && (await runQuizGeneration(ctx, quizReq))) return;
     return runSourceResearch(ctx);
   }

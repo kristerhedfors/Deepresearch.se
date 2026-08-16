@@ -353,14 +353,16 @@ CLOSED (2026-08-05).**
 
 **(a) the missing reservation.** `src/mcp.js` takes the reservation on every
 tool that reaches a provider — `deep_research`, `literature_search`,
-`literature_similar`, the `search` adapter, and since 2026-08-15 the three
-extension tools `street_view_look`, `place_nearby` and `host_intel`
+`literature_similar`, the `search` adapter, the two platform answering tools
+`explain_internals` and `improvement_areas` (since 2026-08-16), and since
+2026-08-15 the extension tools `street_view_look`, `place_nearby` and the
+host-intelligence family
 (`EXTENSION_SPENDING_TOOLS`, folded into the exported `SPENDING_TOOL_NAMES`
 from the registry, so `mcp.js` still names no service) — keyed on the request
 id and released in a `finally` covering every exit path, so an external key is
 capped at 5 concurrent spending calls exactly as a browser session is. The
-three tools that contact no provider (`literature_fetch`,
-`literature_corpora`, `fetch`) stay outside it: a slot held there could only
+four tools that contact no provider (`literature_fetch`,
+`literature_corpora`, `fetch`, `platform_map`) stay outside it: a slot held there could only
 deny the caller its own next call. (The four `sdk_*` tools were also exempt
 until their removal on 2026-08-15.) The refusal is a JSON-RPC result with
 `isError` rather than an HTTP 429 — an MCP client reads the envelope, and a

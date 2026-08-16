@@ -99,7 +99,7 @@ test("rpc and toolCall build well-formed JSON-RPC 2.0 messages", () => {
 test("the probe's expectations mirror the server's tool list", () => {
   // A tool added to src/mcp.js without being added here would pass tools-list
   // as "unknown tool" — which is the failure this constant exists to produce.
-  assert.equal(EXPECTED_TOOLS.length, 13);
+  assert.equal(EXPECTED_TOOLS.length, 16);
   assert.equal(EXPECTED_TOOLS[0], "deep_research");
   assert.deepEqual(EXPECTED_TOOLS.slice(1, 5), [
     "literature_search",
@@ -111,6 +111,12 @@ test("the probe's expectations mirror the server's tool list", () => {
   // dropped and the batch check would measure the wrong thing.
   assert.equal(BATCH_QUERIES.length, 6);
   assert.equal(new Set(BATCH_QUERIES).size, 6, "the angles must be distinct or de-duplication shrinks the batch");
+  // The PLATFORM family sits between the adapters and the extensions.
+  assert.deepEqual(EXPECTED_TOOLS.slice(7, 10), [
+    "explain_internals",
+    "improvement_areas",
+    "platform_map",
+  ]);
   // The extension families are last, mirroring the registry order ALL_MCP_TOOLS
   // appends them in.
   assert.deepEqual(EXPECTED_TOOLS.slice(-6), [

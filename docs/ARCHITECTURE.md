@@ -1555,7 +1555,10 @@ can compose with them:
   once; an `initialize` selects legacy semantics, which is what keeps every
   client that can reach us today working.
 - **The tools** (`toolsListResult()` = `DEEP_RESEARCH_TOOL` +
-  `LITERATURE_MCP_TOOLS` + `OPENAI_MCP_TOOLS` + `EXTENSION_MCP_TOOLS`):
+  `LITERATURE_MCP_TOOLS` + `OPENAI_MCP_TOOLS` + `PLATFORM_MCP_TOOLS` +
+  `EXTENSION_MCP_TOOLS` — the platform three being `explain_internals`,
+  `improvement_areas` and `platform_map`, which point the pipeline at this
+  codebase):
   `deep_research` — question in; cited, validated, source-diverse answer out;
   the handler mirrors `chat.js`'s per-request setup and runs the same
   `runPipeline` (quizzes stay off on this channel). Since 2026-08-15 it also

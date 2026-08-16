@@ -68,6 +68,12 @@ export const EXPECTED_TOOLS = [
   // mode, a server missing either name is refused outright.
   "search",
   "fetch",
+  // The PLATFORM family: this server asked about its own implementation. It
+  // sits between the outward-looking tools and the extension ones because it
+  // reaches no third party but is not a question about the world either.
+  "explain_internals",
+  "improvement_areas",
+  "platform_map",
   // The EXTENSION families, last in the list because they are last in the
   // registry. An account with their knobs off still SEES them here — the
   // exposure switch and the extension knob are different gates, and only the
