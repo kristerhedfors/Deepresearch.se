@@ -128,6 +128,15 @@ export function envSecretValues(env = process.env) {
     if (/^[a-z][a-z0-9]*(\.[a-z0-9]+)+$/.test(value)) continue; // a dotted config
     //                                      key — `GIT_CONFIG_KEY_0` is
     //                                      `credential.interactive`
+    // An EMAIL ADDRESS is never a credential, and `*AUTH*` matches `AUTHOR`:
+    // `GIT_AUTHOR_EMAIL` / `GIT_COMMITTER_EMAIL` are selected by name and hold
+    // a public address. The owner's is already committed in nine tracked files
+    // INCLUDING public/introspect/source-snapshot.json, which is regenerated on
+    // nearly every change — so in a container that sets these, the pre-commit
+    // hook refused almost every commit, and the way round it is `--no-verify`,
+    // which turns the whole gate off. A false positive that teaches people to
+    // bypass the scanner is worse than no scanner.
+    if (EMAIL_VALUE.test(value)) continue;
     if (ENV_PLACEHOLDER_VALUES.has(value.toLowerCase())) continue;
     out.push({ name, value });
   }
@@ -135,6 +144,11 @@ export function envSecretValues(env = process.env) {
   // whole rather than leaving a fragment of itself behind.
   return out.sort((a, b) => b.value.length - a.value.length);
 }
+
+/** An address, not a token. Deliberately narrow: one `@`, a dot in the domain,
+ *  no whitespace — a credential that happens to look like this does not exist,
+ *  while `GIT_AUTHOR_EMAIL` under an `*AUTH*` name certainly does. */
+const EMAIL_VALUE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
 const ENV_SECRETS = envSecretValues();
 

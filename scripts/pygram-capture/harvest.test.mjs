@@ -768,6 +768,35 @@ test("envSecretValues: the three non-credential shapes live in THIS container", 
   assert.deepEqual(got.map((s) => s.name).sort(), ["BASIC_AUTH_PASS", "REAL_API_TOKEN"]);
 });
 
+test("envSecretValues: an email address is not a credential (`*AUTH*` matches `AUTHOR`)", () => {
+  // GIT_AUTHOR_EMAIL and GIT_COMMITTER_EMAIL are SELECTED BY NAME — the name
+  // pattern's `*AUTH*` arm matches `AUTHOR` — and hold a public address. The
+  // owner's is already committed in nine tracked files, one of which is
+  // public/introspect/source-snapshot.json, regenerated on nearly every change.
+  // Treating it as a live credential made the pre-commit hook refuse almost
+  // every commit in a container that sets these, and the way round a blocking
+  // hook is `--no-verify`, which turns the whole gate off. That is why this is
+  // pinned: a false positive here does not merely annoy, it trains the bypass.
+  const got = envSecretValues({
+    GIT_AUTHOR_EMAIL: "krister.hedfors@gmail.com",
+    GIT_COMMITTER_EMAIL: "someone@example.co.uk",
+    DEBEMAIL: "a.b+tag@sub.domain.org",
+    REAL_API_TOKEN: "Zx7QpLmN4vRt2wYk8sHbJc3FdGe6Ua9T",
+  });
+  assert.deepEqual(got.map((s) => s.name), ["REAL_API_TOKEN"]);
+});
+
+test("envSecretValues: the email rule is narrow enough not to swallow a token", () => {
+  // The exclusion is one `@`, a dot in the domain, no whitespace. A credential
+  // that merely CONTAINS an @ is still a credential, and must survive.
+  const got = envSecretValues({
+    A_TOKEN: "abcdefgh@ijklmnop",              // no dot in the domain
+    B_TOKEN: "two@at@signs.example",          // two @
+    C_TOKEN: "NOTAREALTOKEN0123456789",        // ordinary opaque token
+  }).map((s) => s.name).sort();
+  assert.deepEqual(got, ["A_TOKEN", "B_TOKEN", "C_TOKEN"]);
+});
+
 test("envSecretValues: the placeholder check is case-insensitive", () => {
   assert.deepEqual(envSecretValues({ A_TOKEN: "PROXY-INJECTED", B_TOKEN: "ChangeMe" }), []);
 });
