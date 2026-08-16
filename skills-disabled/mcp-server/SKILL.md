@@ -329,6 +329,30 @@ Four things about the shape, each of which will look like something to tidy:
    presents them as sources. A caller wanting outside material has
    `deep_research`.
 
+**KNOWN DEFECT (found live 2026-08-16, unfixed): `explain_internals` overflows
+the default answer model's context window on a question whose read loop opens a
+big file.** `{"question": "how does the gap check phase work?"}` came back as an
+`isError` result naming the window; the identical call on
+`mistralai/Mistral-Medium-3.5-128B` answered in 43 s. The arithmetic is the
+finding — nothing is individually wrong, the SUM was never checked against the
+smallest model the surface routes to: the orientation block measures **32,715
+chars** against the deployed snapshot, `MAX_READ_TOTAL_CHARS` is **60,000**, and
+six retrieved chunks add ~8,400, so ~28,700 tokens arrive before the system
+prompts and before any room to answer, against Mistral Small's ~32k.
+`improvement_areas` on pygram survived only because its reads were small; "how
+does the gap check phase work" sends the loop at `src/pipeline.js`, **157,166
+chars**, which exhausts the whole budget in one file.
+
+The mismatch predates this family, but the family made it reachable twice over:
+`sourceFirst` forces the read loop on EVERY call (a chat turn could fall through
+to a direct reply), and the tools inherit the account's DEFAULT model, which is
+the small reliable one. So the tool most likely to be asked "how does <big
+module> work" is the one guaranteed to read a big module on the smallest model.
+Three fixes and their trade-offs are in the PR #477 thread; note that **no
+context-window figure is stored anywhere in the repo** — overflow is detected
+only reactively, from the provider's 400, in `answer-stream.js` — so the
+preventive fix means adding a per-model table this repo has so far avoided.
+
 **Why `platform_map` earns a slot on a surface that deletes tools.** It is the
 `literature_corpora` argument, and it is the same failure: an agent that cannot
 check what exists concludes that whatever it asked about does not. Ask about a
