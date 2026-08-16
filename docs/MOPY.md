@@ -21,44 +21,52 @@ programs an agent types are a much narrower target than "Python".
 
 ## 1. The measurement, first
 
-Everything below is downstream of one table. 420 harvested programs
+Everything below is downstream of one table. 472 harvested programs
 (`tests/pygram/corpus.jsonl` + `tests/pygram/seed-corpus.jsonl`), min of 5,
-arms interleaved per entry, on this container (2026-08-16):
+arms interleaved per entry, on this container (2026-08-16).
+
+**Do not carry a remembered corpus size.** The capture harness grows it every
+session — this project's first table was over 420 programs and the number was
+stale within the day. Every tool prints the count it loaded; quote that.
 
 ```
 startup — `-c 'pass'`
 
 arm         min ms    vs cpython
-cpython      11.05     1.000x
-pygram        1.13     0.102x
-mopy          1.18     0.107x
-mixture       1.13     0.102x
+cpython      11.04     1.000x
+pygram        1.20     0.109x
+mopy          1.03     0.093x
+mixture       1.05     0.095x
 
-corpus — 420 programs
+corpus — 472 programs
 
-arm         ran  refused   shared total (281)   vs cpython
-cpython     420        0          3800.6 ms      1.000x
-pygram      394       26           563.0 ms      0.148x
-mopy        282      138           427.8 ms      0.113x
-mixture     420        0           487.0 ms      0.128x
+arm         ran  refused   shared total (323)   vs cpython
+cpython     472        0          4314.4 ms      1.000x
+pygram      444       28           616.5 ms      0.143x
+mopy        324      148           440.3 ms      0.102x
+mixture     472        0           547.0 ms      0.127x
 
-whole corpus — what a session of 420 one-liners costs
+whole corpus — what a session of 472 one-liners costs
 
-cpython     6318.6 ms   1.000x
-pygram      1049.7 ms   0.166x   (26 unanswered)
-mopy         676.2 ms   0.107x   (138 unanswered)
-mixture     1680.6 ms   0.266x   (0 unanswered)
+cpython     6987.9 ms   1.000x
+pygram      1153.1 ms   0.165x   (28 unanswered)
+mopy         673.3 ms   0.096x   (148 unanswered)
+mixture     1860.8 ms   0.266x   (0 unanswered)
 ```
 
 Read it in this order:
 
-- **mopy is the fastest engine on the work it accepts** — 0.113x against
-  CPython on the shared subset, and faster than pygram there (0.148x). That is
-  the whole thesis: a runtime built for 67% of the distribution beats a general
-  one on that 67%.
-- **The mixture answers everything CPython answers** — 420/420, zero
+- **mopy is the fastest engine on the work it accepts** — 0.102x against
+  CPython on the shared subset, and faster than pygram there (0.143x). That is
+  the whole thesis: a runtime built for 69% of the distribution beats a general
+  one on that 69%.
+- **The mixture answers everything CPython answers** — 472/472, zero
   mismatches — at **0.266x of CPython's cost**, a 73.4% saving. The other two
   arms are cheaper only because they refuse work.
+- **The subset was not tuned to this corpus.** It was built against 420
+  programs; 52 more arrived when main folded in the day's sightings, and
+  coverage went UP (67.1% → 68.6%) with mismatches still at zero. That is a
+  small but real generalisation signal rather than a fit to the sample.
 - **Startup is at parity with pygram, not better.** mopy's binary is 1,020,600 B
   against pygram's 269,316 B; both are static musl and both open zero files, so
   they arrive at the same place by different routes.
@@ -92,13 +100,13 @@ and each engine's result is one of three things:
 | UNSUPPORTED | exit **90** with `mopy: unsupported: <kind>: <detail>` | **no** — this is coverage, and the build order |
 | MISMATCH | anything else | **yes, always** |
 
-Current (2026-08-16, 420 programs):
+Current (2026-08-16, 472 programs):
 
 ```
 engine     MATCH  UNSUPPORTED  MISMATCH   coverage
-mopy         282          138         0     67.1%
-pygram       393           26         1     93.6%
-mixture      420            0         0    100.0%
+mopy         324          148         0     68.6%
+pygram       443           28         1     93.9%
+mixture      472            0         0    100.0%
 ```
 
 The one pygram MISMATCH is pre-existing and belongs to pygram: `json.load` on a
@@ -126,7 +134,7 @@ f-strings, `%` formatting, `.format()`, functions with closures, `try`/`except`,
 `with`, slicing, unpacking — and the modules `sys`, `os`, `os.path`, `io`,
 `json`.
 
-`re` is the largest single gap (60 programs, 14.3%) and is **deliberately not
+`re` is the largest single gap (66 programs, 14.0%) and is **deliberately not
 implemented**: pygram already has a regex engine, so `import re` is a routing
 decision rather than a hole. `subprocess` appears nowhere in `src/` and goes
 straight to CPython.
@@ -174,16 +182,16 @@ the program text. That is the design:
 The routing score is asymmetric on purpose:
 
 ```
-routing over 420 programs
+routing over 472 programs
 
-  IDEAL       390  routed to the cheapest engine that works
+  IDEAL       439  routed to the cheapest engine that works
   WASTED       15  engine refused; one extra spawn, right answer
-  LATE         14  worked, but a cheaper engine would have too
+  LATE         17  worked, but a cheaper engine would have too
   UNSAFE        1  routed to an engine that MISMATCHES
   NO-ENGINE     0
 
-  accuracy 92.9% ideal, 96.2% correct-on-first-try
-  predictions: mopy=279  pygram=115  cpython=26
+  accuracy 93.0% ideal, 96.6% correct-on-first-try
+  predictions: mopy=319  pygram=122  cpython=31
 ```
 
 A wrong route costs a process spawn. A wrong *answer* costs the user's trust, so
@@ -282,7 +290,7 @@ formatting machinery. This is the clearest open work item.
 
 ## 9. What is deliberately not here
 
-- **No `re`.** 14.3% of the corpus and the single biggest routing bucket, but a
+- **No `re`.** 14.0% of the corpus and the single biggest routing bucket, but a
   regex engine is a large amount of code with deep semantics, and pygram already
   has one. If mopy ever gets one it should be a small backtracking engine that
   exits 90 on any syntax outside a measured subset — the mixture pattern applied
