@@ -23,7 +23,8 @@ the untested surface from growing back.
 `npm test` runs nine globs: `src/*.test.js`, `public/js/*.test.js`,
 `public/app-kit/*.test.js`, `public/games/*/js/*.test.js`, `sdk/*.test.mjs`,
 `scripts/*.test.mjs`, `scripts/*/*.test.mjs`, `tests/*.test.js` and
-`tests/pygram/*.test.mjs`. The first four are the Worker and the client,
+`tests/pygram/*.test.mjs`, `tests/mopy/*.test.mjs`. The first four are the
+Worker and the client,
 described below; the last five are the tooling suites, in their own section at
 the end.
 
@@ -938,6 +939,7 @@ npm test            # from the repo root: node --test src/*.test.js public/js/*.
                     #                     sdk/*.test.mjs scripts/*.test.mjs
                     #                     scripts/*/*.test.mjs
                     #                     tests/*.test.js tests/pygram/*.test.mjs
+                    #                     tests/mopy/*.test.mjs
 npm run typecheck   # zero-build-step tsc: src/ (tsconfig.json, Workers types)
                     # + public/ (tsconfig.public.json, DOM lib) — strict,
                     # opt-in per file via // @ts-check; both must stay clean
@@ -1019,8 +1021,16 @@ capture shim, and `runOne()` spawns with `PYGRAM_CAPTURE=0`), and
 against CPython's stdlib, once against `pygram/lib` — asserting byte-identical
 output, with the MicroPython C modules replaced by stand-ins cut back to the
 surface MicroPython actually ships, so a shim leaning on a CPython convenience
-fails here rather than in the sandbox. The Playwright specs in `tests/e2e/`
-are a different runner entirely; next section.
+fails here rather than in the sandbox. Under `tests/mopy/` — also its own glob
+— `routing.test.mjs` covers the MIXTURE OF PYTHONS (`docs/MOPY.md`): the
+classifier's decisions for each tier, the exit-90 refusal contract (one line, on
+stderr, and never on stdout), the commit barrier that makes falling back to
+another interpreter safe, and the dispatcher's stdin and `sys.argv` handling —
+two places where a bug is invisible to per-engine conformance and only the
+end-to-end mixture arm can see it. The scoring half of the runner needs no built
+binary, so it stays covered on a machine where nothing has been compiled; the
+rest skips with a message naming `scripts/mopy-build.sh`. The Playwright specs
+in `tests/e2e/` are a different runner entirely; next section.
 
 This adds to the live-verification convention rather than replacing it:
 anything touching an external provider or D1 (or, on the client side, the
