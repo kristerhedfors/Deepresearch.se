@@ -76,7 +76,28 @@ import {
 // WHAT this server exposes is per-account configuration (Settings → "MCP
 // server"). A pure leaf module — catalog, parse, filter, argument resolution —
 // so this static import keeps the file-layout rule above intact.
-import { defaultMcpConfig, filterMcpTools, parseMcpConfig, resolveResearchArgs, toolExposed } from "./mcp-config.js";
+import {
+  defaultMcpConfig,
+  filterMcpTools,
+  parseMcpConfig,
+  resolveIntrospectArgs,
+  resolveResearchArgs,
+  toolExposed,
+} from "./mcp-config.js";
+// The PLATFORM family: asking this server about ITSELF. Schemas and lens notes
+// only — src/platform-tools.js imports nothing, so the file-layout rule holds.
+// `platform_map` reads committed artifacts through the ASSETS binding, so its
+// runner (src/platform-tools-run.js) arrives by dynamic import in the dispatch
+// below; the two answering tools need no runner at all, because they ARE
+// deep_research with the introspection agent forced and a lens on the question.
+import {
+  PLATFORM_ANSWERING_TOOLS,
+  PLATFORM_MCP_TOOLS,
+  PLATFORM_SPENDING_TOOLS,
+  PLATFORM_TOOL_NAMES,
+  lensQuestion,
+  readPlatformQuestion,
+} from "./platform-tools.js";
 // Shaping an answer for a listener rather than a reader (pure, imports nothing).
 import { VOICE_NOTE, spokenAnswer } from "./voice-answer.js";
 
@@ -288,10 +309,15 @@ export const OPENAI_MCP_TOOLS = OPENAI_ADAPTER_TOOLS.map(({ name, description, i
 // be unable to use for a second reason (the per-account knob, not just the
 // exposure switch). Their definitions arrive from the registry, so this list
 // gains and loses tools without this file learning any service's name.
+// The PLATFORM family sits after the corpora and before the extensions: it is a
+// question about this server rather than about the world, so it does not belong
+// among the outward-looking tools, and it reaches no third party, so it does not
+// belong among the ones an account can be unable to use for a second reason.
 export const ALL_MCP_TOOLS = [
   DEEP_RESEARCH_TOOL,
   ...LITERATURE_MCP_TOOLS,
   ...OPENAI_MCP_TOOLS,
+  ...PLATFORM_MCP_TOOLS,
   ...EXTENSION_MCP_TOOLS,
 ];
 
@@ -333,6 +359,11 @@ export const SPENDING_TOOL_NAMES = new Set([
   "literature_search",
   "literature_similar",
   "search",
+  // The two answering platform tools run the pipeline, so they cost exactly what
+  // deep_research costs and are bounded exactly the same way. `platform_map`
+  // stays out: it reads committed artifacts of this deploy, and a slot held
+  // there could only deny the caller its own next call.
+  ...PLATFORM_SPENDING_TOOLS,
   ...EXTENSION_SPENDING_TOOLS,
 ]);
 
@@ -1060,8 +1091,63 @@ async function dispatchToolCall(parsed, env, log, identity, ctx, requestId, conf
     }
   }
 
-  if (name !== TOOL_NAME) {
+  // The PLATFORM family — this server asked about itself. Two shapes on one
+  // branch, because they share everything except where the work happens.
+  //
+  // `platform_map` is free: committed artifacts, no provider, no quota, so it
+  // answers here and returns. The two answering tools fall THROUGH to
+  // deep_research's own path below with their arguments already forced — the
+  // introspection agent, no web search, and the lens folded into the question.
+  // That is the whole implementation, and it is deliberate: they are the
+  // research pipeline pointed at this codebase, so giving them a runner of their
+  // own would have meant a second copy of the quota gate, the billing, the
+  // progress plumbing and the chat_logs write — four things that must not be
+  // able to disagree with the ones deep_research uses.
+  if (typeof name === "string" && PLATFORM_TOOL_NAMES.has(name) && !PLATFORM_ANSWERING_TOOLS.has(name)) {
+    try {
+      const { runPlatformTool } = await import("./platform-tools-run.js");
+      const result = await runPlatformTool(env, log, name, args);
+      log.info("mcp.platform_tool", {
+        tool: name,
+        user_id: identity?.id,
+        request_id: requestId,
+        areas: result.areas,
+      });
+      return jsonResponse(jsonRpcResult(id, mcpResult(toolResult(result.text, result.isError))));
+    } catch (err) {
+      const message = (/** @type {any} */ (err))?.message || String(err);
+      log.error("mcp.platform_tool_failed", { tool: name, error: message });
+      // Named by the TOOL rather than hardcoded to the map: this branch is
+      // generic over the free platform tools, and it is right today only because
+      // there is one of them.
+      return jsonResponse(jsonRpcResult(id, mcpResult(toolResult(`The ${name} tool failed: ${message}`, true))));
+    }
+  }
+
+  const answering = typeof name === "string" && PLATFORM_ANSWERING_TOOLS.has(name);
+  if (!answering && name !== TOOL_NAME) {
     return jsonResponse(jsonRpcError(id, RPC_INVALID_PARAMS, `Unknown tool: ${name ?? "(none)"}`));
+  }
+
+  // A platform tool's missing `question` gets its own message rather than
+  // deep_research's, because the two ask for different things and a caller told
+  // to send a research question when it meant to ask about this server would
+  // send the wrong one.
+  if (answering) {
+    const read = readPlatformQuestion(args);
+    if (!read.ok) return jsonResponse(jsonRpcResult(id, mcpResult(toolResult(read.error, true))));
+    const introspect = resolveIntrospectArgs(config, args);
+    return runResearchToolCall(
+      env,
+      log,
+      identity,
+      requestId,
+      id,
+      name,
+      introspect,
+      lensQuestion(name, read.question),
+      progress,
+    );
   }
 
   const question = typeof args.question === "string" ? args.question.trim() : "";
@@ -1076,9 +1162,33 @@ async function dispatchToolCall(parsed, env, log, identity, ctx, requestId, conf
   // resolveResearchArgs). Resolved here so the failure path below logs the run
   // that was actually attempted, not the run that was asked for.
   const research = resolveResearchArgs(config, args);
+  return runResearchToolCall(env, log, identity, requestId, id, name, research, question, progress);
+}
 
+/**
+ * Run one pipeline-backed tool call and turn it into a JSON-RPC result.
+ *
+ * Shared by `deep_research` and the two platform tools that answer by running
+ * the same pipeline with the introspection agent forced. Extracted rather than
+ * copied: the failure path writes a `chat_logs` row, and a second copy of that
+ * is a second place for the interaction log to fall out of step with what
+ * actually ran.
+ *
+ * @param {Env} env
+ * @param {Logger} log
+ * @param {Identity} identity
+ * @param {string} requestId
+ * @param {unknown} id the JSON-RPC request id
+ * @param {string} name the tool name, for the log lines
+ * @param {{ time_budget_s: number, web_search: boolean, model: string | undefined,
+ *   agent: string, style: "text"|"voice", require_agent?: boolean }} args the EFFECTIVE arguments
+ * @param {string} question the question as it will reach the model
+ * @param {ProgressSink} [progress]
+ * @returns {Promise<Response>}
+ */
+async function runResearchToolCall(env, log, identity, requestId, id, name, args, question, progress) {
   try {
-    const text = await runDeepResearch(env, log, identity, requestId, research, question, progress);
+    const text = await runDeepResearch(env, log, identity, requestId, args, question, progress);
     return jsonResponse(jsonRpcResult(id, mcpResult(toolResult(text, false))));
   } catch (err) {
     const message = (/** @type {any} */ (err))?.message || String(err);
@@ -1094,7 +1204,7 @@ async function dispatchToolCall(parsed, env, log, identity, ctx, requestId, conf
       conversation: [{ role: "user", content: question }],
       status: "error",
       error: message,
-      web_search: research.web_search,
+      web_search: args.web_search,
     });
     return jsonResponse(jsonRpcResult(id, mcpResult(toolResult("Research failed: " + message, true))));
   }
@@ -1209,9 +1319,10 @@ function errText(err) {
  * @param {Identity} identity
  * @param {string} requestId
  * @param {{ time_budget_s: number, web_search: boolean, model: string | undefined,
- *   agent: string, style: "text"|"voice" }} args
+ *   agent: string, style: "text"|"voice", require_agent?: boolean }} args
  *   the EFFECTIVE arguments — the caller's, already reconciled with this
- *   account's defaults and override policy (src/mcp-config.js)
+ *   account's defaults and override policy (src/mcp-config.js). `require_agent`
+ *   turns the agent's fail-soft miss into a refusal; see the guard below.
  * @param {string} question
  * @param {ProgressSink} [progress] the phase label an SSE progress
  *   notification reports; absent on the buffered JSON path, where nothing is
@@ -1310,6 +1421,32 @@ async function runDeepResearch(env, log, identity, requestId, args, question, pr
   // specialist agent without this module learning what any of them do.
   const agentPick = await resolveMcpAgent(env, log, identity, args.agent);
   if (agentPick?.refused) throw new Error(agentPick.refused);
+
+  // `require_agent` REFUSES where the default path degrades, and the asymmetry is
+  // deliberate rather than an inconsistency to tidy away.
+  //
+  // resolveMcpAgent fails soft: an unreadable registry, a missing grant or an
+  // unknown id all fall back to an agentless run (invariant 2 — a research call
+  // the caller is paying for should not die because a capability could not be
+  // read). For `deep_research` that degradation is honest, because the run still
+  // searches the web and still answers from sources.
+  //
+  // For the PLATFORM tools it is not. Their grounding IS the agent: it is what
+  // sets state.introspection, which is what makes the enrichment inject this
+  // deployment's own source. Lose it and `web_search: false` is still forced —
+  // so the run has no source, no search, and nothing but the model's weights,
+  // and it answers "how does the gap check work" about this platform in
+  // confident speakable prose with no marker that nothing was ever read. On a
+  // voice call there is no Sources list to notice the absence in. That is the
+  // exact failure this family was added to fix, arriving from inside it.
+  if (args.require_agent && !agentPick?.introspection) {
+    log.warn("mcp.platform_ungrounded", { user_id: identity?.id, agent: args.agent });
+    throw new Error(
+      "This deployment's own source is not available to answer from right now, so the answer " +
+        "would be from memory rather than from the code — which on this tool is worse than no " +
+        "answer. Nothing was spent. Try again shortly; if it persists, ask the site directly.",
+    );
+  }
 
   const state = newRequestState(
     model,

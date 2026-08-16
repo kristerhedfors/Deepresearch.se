@@ -58,6 +58,9 @@ parse a committed-data call does is ~€0.00001.
 | `search` (the ChatGPT adapter) | same as 1-angle `literature_search` | €0.0021 | ~1 s |
 | `literature_fetch` (≤20 ids) | `getByIds` key read, no embed, no rerank | ~€0 | ~0.5 s |
 | `literature_corpora` | committed facts + `describe()` | €0 | 621 ms |
+| `explain_internals` | the pipeline pointed at the committed source: 1 embed + source retrieval + an agentic read/tool loop + 1 synthesis. **No Exa** — `web_search` is forced off | **below `deep_research`** — §2b | not yet measured |
+| `improvement_areas` | same as `explain_internals` | same — §2b | not yet measured |
+| `platform_map` | committed snapshot + docs corpus through `ASSETS` | €0 | not yet measured |
 | `street_view_look` | 1–2 Google imagery fetches + 1 vision description | **Google imagery + ~€0.001 vision** — §2a | not yet measured |
 | `place_nearby` | 1 Places search (+1 free reverse geocode) | **Google Places, €0 at Berget** — §2a | not yet measured |
 | `host_intel` | 1 Shodan lookup or search (+1 DNS resolve per hostname) | **Shodan credits, €0 at Berget** — §2a | not yet measured |
@@ -72,6 +75,40 @@ One such call against the live endpoint reports `usage.total_tokens =
 retrieval, so a 6-angle call costs €0.0124 whether it returns 8 records or
 60. `npm run mcp:probe` confirms the leg count directly — its 6-angle batch
 reports "600 candidates examined", which is 12 legs × 50.
+
+### 2b. The platform family, and why its ceiling is BELOW `deep_research`'s
+
+`explain_internals` and `improvement_areas` (2026-08-16) run
+`runDeepResearch` itself, so every figure in §3 applies to them — with one
+structural subtraction and one addition, and the subtraction is the larger.
+
+**Subtracted: Exa, entirely.** `resolveIntrospectArgs` forces
+`web_search: false`, and a caller cannot switch it back on. §3's ceiling is
+€0.62, of which the 34-search allowance at the deep tier is the dominant term;
+none of it is reachable here. The gap-check rounds that spend those searches do
+not run either — the turn routes to `runSourceResearch` instead.
+
+**Added: retrieval over the committed source, plus a read loop.** One query
+embed, a cosine rank against the committed index (no Vectorize — the index is a
+static asset of this deploy, so it costs a fetch and no provider call), then
+either an agentic tool loop capped at `MAX_SOURCE_TOOL_ROUNDS = 6` or the
+deterministic read loop, billed to the answer model. That is bounded by the
+round cap and the time budget, whose voice default is 60 s.
+
+So the shape is: **a floor near a plain synthesis, and a ceiling set by the
+answer model over at most six investigation rounds** — comfortably inside
+`deep_research`'s €0.62, and typically well under its €0.051 median because the
+searches are gone. It is **not measured yet**, and it should be before the
+surface is widened; the reason it is not blocking is that both tools pass the
+same `researchQuotaBlock` and hold the same concurrency slot as
+`deep_research`, so nothing here is unmetered — only unpriced.
+
+`platform_map` is the third free tool beside `literature_fetch` and
+`literature_corpora`: it reads two committed artifacts through the `ASSETS`
+binding and contacts no provider. It is outside the quota gate and holds no
+concurrency slot, for the reason those two are — an agent whose budget is gone
+should still be able to learn what exists, and a slot held on a free call could
+only deny the caller its own next call.
 
 The same €0.00102 leg is what a `/api/chat` search wave buys when it reaches
 the hosted arXiv or PubMed index — the tier is one module and `/mcp` is not
