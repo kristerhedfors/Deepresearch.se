@@ -1562,8 +1562,9 @@ can compose with them:
   takes an `agent` (answer as a named specialist, resolved through the same
   registry and grant a chat turn uses, with the build and workflow phases
   refused) and a `style: "voice"` that returns speakable prose instead of
-  markdown with a numbered source list — plus the three EXTENSION tools
-  `street_view_look`, `place_nearby` and `host_intel`, which arrive from
+  markdown with a numbered source list — plus the six EXTENSION tools
+  `street_view_look`, `place_nearby` and the host-intelligence family
+  (`host_intel`, `host_search`, `domain_intel`, `cve_intel`), which arrive from
   `src/extension-tools.js` (the MCP seam of the extension registry) so this
   module names no third-party service, and which sit behind BOTH the exposure
   switch and the account's own extension knob.

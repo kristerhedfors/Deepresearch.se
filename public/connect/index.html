@@ -261,9 +261,16 @@
         View knob switched on for your account.</td>
       </tr>
       <tr>
-        <td><code>host_intel</code></td>
+        <td><code>host_intel</code><br><code>host_search</code><br><code>domain_intel</code><br><code>cve_intel</code></td>
         <td>What an internet-facing host is running, from Shodan's index — open
-        ports, service banners, associated CVEs — or a search across that index.
+        ports, service banners, associated CVEs. <code>host_search</code> asks the
+        same question of a population: which machines match a query, how many
+        match in total, and how those break down by country, port, product or
+        organization. <code>domain_intel</code> lists a domain's known subdomains
+        and the DNS records behind them, including names that were never scanned.
+        <code>cve_intel</code> says what a CVE actually is — severity, the odds it
+        is being exploited right now, which products it affects — or lists the
+        vulnerabilities in a piece of software.
         Nothing is scanned or probed. Needs the Shodan knob switched on.</td>
       </tr>
     </table>
