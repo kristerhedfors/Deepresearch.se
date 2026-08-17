@@ -98,6 +98,10 @@ import {
   lensQuestion,
   readPlatformQuestion,
 } from "./platform-tools.js";
+// The FEEDBACK tool — the one WRITE this surface serves. Pure module statically,
+// runner (src/feedback-tools-run.js, which reaches D1) by dynamic import in the
+// dispatch below, the same shape as platform_map.
+import { FEEDBACK_MCP_TOOLS, FEEDBACK_TOOL_NAMES } from "./feedback-tools.js";
 // Shaping an answer for a listener rather than a reader (pure, imports nothing).
 import { VOICE_NOTE, spokenAnswer } from "./voice-answer.js";
 
@@ -320,6 +324,11 @@ export const ALL_MCP_TOOLS = [
   ...LITERATURE_MCP_TOOLS,
   ...OPENAI_MCP_TOOLS,
   ...PLATFORM_MCP_TOOLS,
+  // FEEDBACK sits beside the platform family for the same reason: it is about
+  // this server rather than the world. It is last of the inward-looking tools
+  // because it is the only one that WRITES, and a reader of this list should
+  // see that boundary rather than have to infer it.
+  ...FEEDBACK_MCP_TOOLS,
   ...EXTENSION_MCP_TOOLS,
 ];
 
@@ -1126,6 +1135,26 @@ async function dispatchToolCall(parsed, env, log, identity, ctx, requestId, conf
       // generic over the free platform tools, and it is right today only because
       // there is one of them.
       return jsonResponse(jsonRpcResult(id, mcpResult(toolResult(`The ${name} tool failed: ${message}`, true))));
+    }
+  }
+
+  // FEEDBACK — the one write. Free, so it sits here beside the other free tool
+  // rather than below the quota gate, and it takes `billing` only for the
+  // IDENTITY: a report is filed against an account, and the runner refuses
+  // rather than guessing when there is not one.
+  if (typeof name === "string" && FEEDBACK_TOOL_NAMES.has(name)) {
+    try {
+      const { runFeedbackTool } = await import("./feedback-tools-run.js");
+      const result = await runFeedbackTool(env, log, name, args, { identity, requestId });
+      return jsonResponse(jsonRpcResult(id, mcpResult(toolResult(result.text, result.isError))));
+    } catch (err) {
+      const message = (/** @type {any} */ (err))?.message || String(err);
+      log.error("mcp.feedback_tool_failed", { tool: name, error: message });
+      // Says plainly that nothing was stored. A reporter who believes a failed
+      // report was filed stops reporting, which costs more than the failure.
+      return jsonResponse(
+        jsonRpcResult(id, mcpResult(toolResult(`The ${name} tool failed and nothing was recorded: ${message}`, true))),
+      );
     }
   }
 
