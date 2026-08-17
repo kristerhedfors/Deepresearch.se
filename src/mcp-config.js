@@ -34,6 +34,7 @@
 // second copy of the tool list.
 
 import { EXTENSION_MCP_CATALOG } from "./extension-tools.js";
+import { FEEDBACK_MCP_CATALOG } from "./feedback-tools.js";
 import { PLATFORM_AGENT, PLATFORM_MCP_CATALOG, PLATFORM_SPENDING_TOOLS } from "./platform-tools.js";
 
 /**
@@ -123,6 +124,10 @@ export const MCP_TOOL_CATALOG = [
   // rows live in src/platform-tools.js beside their schemas, so a change to the
   // family is one file rather than two that can disagree.
   ...PLATFORM_MCP_CATALOG,
+  // The FEEDBACK tool — the one WRITE on this surface. Its row sits beside the
+  // platform rows because it is the same subject (this platform, not the world)
+  // and, like them, it lives next to its schema in src/feedback-tools.js.
+  ...FEEDBACK_MCP_CATALOG,
   // The EXTENSION tools (street imagery, host intelligence) come from the tool
   // registry rather than being listed here, for the same reason src/mcp.js takes
   // them from there: this file must not become a second place a third-party

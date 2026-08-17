@@ -83,7 +83,7 @@ test("initializeResult has protocolVersion, serverInfo, and tools capability", (
 
 test("tools/list returns deep_research first plus the literature, adapter, platform and extension families", () => {
   const r = toolsListResult();
-  assert.equal(r.tools.length, 16);
+  assert.equal(r.tools.length, 17);
   const tool = r.tools[0];
   assert.equal(tool.name, TOOL_NAME);
   assert.equal(tool.name, "deep_research");
@@ -109,6 +109,11 @@ test("tools/list returns deep_research first plus the literature, adapter, platf
       "literature_search", "literature_fetch", "literature_similar", "literature_corpora",
       "search", "fetch",
       "explain_internals", "improvement_areas", "platform_map",
+      // The one WRITE on this surface (2026-08-16), last of the inward-looking
+      // tools so the read/write boundary is visible in the list rather than
+      // inferred. It files a report against the calling account and cannot read
+      // the queue back — an MCP key is not a login.
+      "send_feedback",
       "street_view_look", "place_nearby",
       // The host-intelligence family widened from one tool on 2026-08-16: the
       // lookup answers about machines you can already name, and the three that
