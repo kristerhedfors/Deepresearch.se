@@ -46,6 +46,43 @@ export const FEEDBACK_TOOL_NAMES = new Set([FEEDBACK_TOOL_NAME]);
  *  than omitted, so the mirror assertions in mcp-inflight.test.js can name it. */
 export const FEEDBACK_SPENDING_TOOLS = new Set();
 
+/**
+ * ADMIN-ONLY (owner directive, 2026-08-17). The only tool on this surface with
+ * an identity requirement beyond "the account exposes it".
+ *
+ * Why a separate gate rather than the exposure switch. The exposure config is
+ * the ACCOUNT's choice about its own key; this is the SERVER's choice about who
+ * may write into the maintainers' work queue, and the two must not be the same
+ * lever — an account could otherwise switch its own way in.
+ *
+ * A set rather than a boolean on the row, so the check reads the same way the
+ * spending check does and a second admin-only tool is a membership rather than
+ * a new branch. Enforced in TWO places on purpose: filtered out of `tools/list`
+ * so a non-admin's client never learns the name, AND refused in the dispatch,
+ * because hiding a tool is not the same as gating it — a client that guessed
+ * the name, or cached a listing from when the account was an admin, would
+ * otherwise walk straight in.
+ * @type {Set<string>}
+ */
+export const ADMIN_ONLY_MCP_TOOLS = new Set([FEEDBACK_TOOL_NAME]);
+
+/**
+ * Whether a resolved identity may reach an admin-only tool.
+ *
+ * Reads `role`, which BOTH credential paths set from the account's D1 row
+ * (src/mcp-api.js resolveMcpKeyIdentity and resolveOauthIdentity), so a key and
+ * an OAuth token are gated identically. The break-glass operator is `role:
+ * "admin"` too and passes here — it then fails the runner's own account check,
+ * for the different and equally correct reason that it has no row to file
+ * against.
+ *
+ * @param {{ role?: string } | null | undefined} identity
+ * @returns {boolean}
+ */
+export function mayUseAdminTools(identity) {
+  return identity?.role === "admin";
+}
+
 /** Recorded as the entry's `page`, which is what tells whoever reads the queue
  *  where a report came IN from. Without it an MCP report is indistinguishable
  *  from a browser one, and the first question a reader asks about a rough edge
@@ -106,9 +143,16 @@ export const FEEDBACK_MCP_TOOLS = [
 ];
 
 /**
- * The Settings → MCP server catalog row. `def: true` — it arrives exposed, like
- * every other free tool: it costs the account nothing, and an account that
- * cannot report a defect is one whose defects are found some slower way.
+ * The Settings → MCP server catalog row. `def: true` still, but read it
+ * together with ADMIN_ONLY_MCP_TOOLS: the exposure switch is the account's
+ * choice and the admin gate is the server's, and a non-admin passing the first
+ * still fails the second. Leaving `def: true` means an admin who never opens
+ * the screen has the tool, which is the behaviour every other free tool has;
+ * flipping it to false would only add a second thing for an admin to switch on.
+ *
+ * The blurb says the gate out loud, because a row that appears in a non-admin's
+ * Settings screen while the tool never appears in their client is exactly the
+ * kind of silent mismatch that costs someone an afternoon.
  */
 export const FEEDBACK_MCP_CATALOG = [
   {
@@ -116,8 +160,9 @@ export const FEEDBACK_MCP_CATALOG = [
     group: "This platform",
     label: FEEDBACK_TOOL_NAME,
     blurb:
-      "Lets a connected client file feedback against your account — a wrong answer, a rough edge, a suggestion. " +
-      "Write-only: it cannot read the feedback queue. Contacts nothing and spends nothing.",
+      "ADMIN ONLY. Lets a connected client file feedback against your account — a wrong answer, a rough edge, a " +
+      "suggestion. Write-only: it cannot read the feedback queue. Contacts nothing and spends nothing. Accounts " +
+      "without the admin role neither see it listed nor can call it.",
     def: true,
   },
 ];

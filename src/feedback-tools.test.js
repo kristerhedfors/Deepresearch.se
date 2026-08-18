@@ -17,13 +17,16 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 import {
+  ADMIN_ONLY_MCP_TOOLS,
   FEEDBACK_MCP_CATALOG,
   FEEDBACK_MCP_TOOLS,
   FEEDBACK_SPENDING_TOOLS,
   FEEDBACK_TOOL_NAME,
   FEEDBACK_TOOL_NAMES,
   FEEDBACK_TOOL_PAGE,
+  mayUseAdminTools,
 } from "./feedback-tools.js";
+import { toolsListResult } from "./mcp.js";
 import { runFeedbackTool } from "./feedback-tools-run.js";
 import { FEEDBACK_CAPS } from "./feedback.js";
 
@@ -119,6 +122,50 @@ test("the catalog row arrives exposed and says what the switch buys", () => {
   assert.equal(row.def, true, "free tools arrive on");
   assert.ok(row.blurb.length > 40);
   assert.match(row.blurb, /write-only/i, "the blurb states the posture the account is agreeing to");
+});
+
+// --- the admin gate -------------------------------------------------------
+
+test("send_feedback is admin-only, and the gate reads the role both credentials set", () => {
+  // Owner directive 2026-08-17. src/mcp-api.js sets `role` from the account's
+  // D1 row on BOTH paths (resolveMcpKeyIdentity and resolveOauthIdentity), so a
+  // key and an OAuth token are gated identically.
+  assert.ok(ADMIN_ONLY_MCP_TOOLS.has(FEEDBACK_TOOL_NAME));
+  assert.equal(mayUseAdminTools({ role: "admin" }), true);
+  assert.equal(mayUseAdminTools({ role: "user" }), false);
+  // Nothing absent, malformed or truthy-but-wrong is an admin.
+  for (const bad of [null, undefined, {}, { role: "" }, { role: "Admin" }, { role: "administrator" }, { role: true }]) {
+    assert.equal(mayUseAdminTools(/** @type {any} */ (bad)), false, JSON.stringify(bad));
+  }
+});
+
+test("a non-admin is never shown the tool", () => {
+  const admin = toolsListResult(undefined, { role: "admin" }).tools.map((t) => t.name);
+  const user = toolsListResult(undefined, { role: "user" }).tools.map((t) => t.name);
+  assert.ok(admin.includes(FEEDBACK_TOOL_NAME));
+  assert.equal(user.includes(FEEDBACK_TOOL_NAME), false);
+  // Only the admin-only tool differs — the gate must not narrow anything else.
+  assert.deepEqual(
+    admin.filter((n) => !ADMIN_ONLY_MCP_TOOLS.has(n)),
+    user,
+  );
+});
+
+test("the no-argument listing is unchanged, which is the break-glass operator's", () => {
+  // toolsListResult() with no identity keeps reporting the full set: an
+  // identity with no D1 row is the break-glass admin, and the historical
+  // callers (mcp.test.js, mcp-config.test.js) rely on this shape.
+  assert.ok(toolsListResult().tools.map((t) => t.name).includes(FEEDBACK_TOOL_NAME));
+});
+
+test("hiding it is not the gate: the dispatch refuses a non-admin on its own", () => {
+  // A listing is cacheable and a tool name is guessable, so the two checks are
+  // independent by design. This asserts the SECOND one exists in the dispatch
+  // rather than trusting the filter — the failure mode being a later refactor
+  // that "simplifies" the dispatch check away because the tool is hidden anyway.
+  const mcp = readFileSync(new URL("./mcp.js", import.meta.url), "utf8");
+  assert.match(mcp, /ADMIN_ONLY_MCP_TOOLS\.has\(name\)\s*&&\s*!mayUseAdminTools\(identity\)/);
+  assert.match(mcp, /mcp\.admin_tool_refused/, "and the attempt is logged");
 });
 
 // --- the write ------------------------------------------------------------
