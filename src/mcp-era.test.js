@@ -287,3 +287,39 @@ describe("extension tools", () => {
     assert.match(json.error.message, /Unknown tool/);
   });
 });
+
+// ---------------------------------------------------------------------------
+// THE ADMIN GATE on send_feedback (owner directive, 2026-08-17)
+// ---------------------------------------------------------------------------
+//
+// Driven through the real handleMcp rather than the pure helpers, because what
+// a client branches on is the HTTP response — and because the two halves of
+// this gate live in different places (the listing filter and the dispatch
+// check) and only an end-to-end call exercises both at once.
+
+const adminIdentity = /** @type {any} */ ({ id: "u9", role: "admin", email: "a@example.com", user: null });
+
+test("tools/list hides send_feedback from a non-admin and shows it to an admin", async () => {
+  const asUser = await post({ method: "tools/list" });
+  const asAdmin = await post({ method: "tools/list", identity: adminIdentity });
+  const names = (r) => (r.json?.result?.tools || []).map((t) => t.name);
+  assert.equal(names(asUser).includes("send_feedback"), false);
+  assert.equal(names(asAdmin).includes("send_feedback"), true);
+  // The gate narrows nothing else: every other tool is identical.
+  assert.deepEqual(names(asAdmin).filter((n) => n !== "send_feedback"), names(asUser));
+});
+
+test("a non-admin calling send_feedback by name is refused, not served", async () => {
+  // The case the listing filter cannot cover: a client that cached an older
+  // listing, or guessed the name from documentation.
+  const r = await post({
+    method: "tools/call",
+    params: { name: "send_feedback", arguments: { comment: "should not be filed" } },
+    env: { DB: { prepare: () => { throw new Error("must not be reached"); } } },
+  });
+  const content = r.json?.result?.content?.[0]?.text || "";
+  assert.equal(r.json?.result?.isError, true);
+  assert.match(content, /administrators/i);
+  // And it never reached the database — the throwing binding proves it.
+  assert.doesNotMatch(content, /must not be reached/);
+});

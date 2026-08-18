@@ -101,7 +101,12 @@ import {
 // The FEEDBACK tool — the one WRITE this surface serves. Pure module statically,
 // runner (src/feedback-tools-run.js, which reaches D1) by dynamic import in the
 // dispatch below, the same shape as platform_map.
-import { FEEDBACK_MCP_TOOLS, FEEDBACK_TOOL_NAMES } from "./feedback-tools.js";
+import {
+  ADMIN_ONLY_MCP_TOOLS,
+  FEEDBACK_MCP_TOOLS,
+  FEEDBACK_TOOL_NAMES,
+  mayUseAdminTools,
+} from "./feedback-tools.js";
 // Shaping an answer for a listener rather than a reader (pure, imports nothing).
 import { VOICE_NOTE, spokenAnswer } from "./voice-answer.js";
 
@@ -421,11 +426,26 @@ export function quotaUnavailableToolMessage() {
 // The `tools/list` result, narrowed to what this account exposes. Called with
 // no argument it reports the full set (the default config) — which is what an
 // identity with no account row, notably the break-glass operator, gets.
+//
+// The ADMIN filter is applied on top of the exposure one and is a different
+// question: exposure is the account's choice about its own key, the admin gate
+// is the server's about who may write to the maintainers' queue. A non-admin
+// never learns the name — but the dispatch refuses the call independently,
+// because a listing is a hint and not a boundary (a client can cache one, or
+// guess a name it saw elsewhere).
 /**
  * @param {import('./mcp-config.js').McpConfig} [config]
+ * @param {{ role?: string } | null} [identity] the resolved caller; omitted
+ *   means no account row, which is the break-glass operator — an admin.
  */
-export function toolsListResult(config) {
-  return { tools: filterMcpTools(config || defaultMcpConfig(), ALL_MCP_TOOLS) };
+export function toolsListResult(config, identity) {
+  const exposed = filterMcpTools(config || defaultMcpConfig(), ALL_MCP_TOOLS);
+  // `undefined` identity keeps the historical behaviour of the no-argument
+  // call: the full set. Only a resolved NON-admin loses the admin-only tools.
+  if (identity !== undefined && identity !== null && !mayUseAdminTools(identity)) {
+    return { tools: exposed.filter((t) => !ADMIN_ONLY_MCP_TOOLS.has(t.name)) };
+  }
+  return { tools: exposed };
 }
 
 // Build an MCP tools/call result envelope (text content + isError flag).
@@ -694,7 +714,7 @@ export async function handleMcp(request, env, log, identity, ctx, requestId) {
       return jsonResponse(
         jsonRpcResult(
           parsed.id,
-          mcpResult(toolsListResult(config), { ttlMs: TOOLS_LIST_TTL_MS, cacheScope: "private" }),
+          mcpResult(toolsListResult(config, identity), { ttlMs: TOOLS_LIST_TTL_MS, cacheScope: "private" }),
         ),
       );
     case "tools/call": {
@@ -1143,6 +1163,24 @@ async function dispatchToolCall(parsed, env, log, identity, ctx, requestId, conf
   // IDENTITY: a report is filed against an account, and the runner refuses
   // rather than guessing when there is not one.
   if (typeof name === "string" && FEEDBACK_TOOL_NAMES.has(name)) {
+    // THE BOUNDARY, not the hint. tools/list already hides this from a
+    // non-admin, but a listing is cacheable and a name is guessable, so the
+    // call is refused here on its own authority. Logged, because an attempt is
+    // the only signal that a client is trying a tool it was never shown.
+    if (ADMIN_ONLY_MCP_TOOLS.has(name) && !mayUseAdminTools(identity)) {
+      log.warn("mcp.admin_tool_refused", {
+        tool: name,
+        user_id: identity?.id,
+        role: identity?.role,
+        request_id: requestId,
+      });
+      return jsonResponse(
+        jsonRpcResult(
+          id,
+          mcpResult(toolResult(`The ${name} tool is available to administrators of this server only.`, true)),
+        ),
+      );
+    }
     try {
       const { runFeedbackTool } = await import("./feedback-tools-run.js");
       const result = await runFeedbackTool(env, log, name, args, { identity, requestId });
