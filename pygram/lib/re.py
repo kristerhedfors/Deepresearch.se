@@ -1,6 +1,6 @@
 # pygram frozen shim: CPython-shaped `re` over MicroPython's re1.5 engine
 # (aliased as `_re` by the variant). Adds findall/finditer/split/escape,
-# named groups, the I/M/S flags, CPython sub() semantics, and rewrites the
+# named groups, the I/M/S/X/A flags, CPython sub() semantics, and rewrites the
 # constructs re1.5 would silently mis-compile. See pygram/lib/README.md.
 import ure as _re
 
@@ -25,9 +25,12 @@ def _unsupported(tok):
 
 
 # The flags this shim actually implements. U/UNICODE is CPython 3's default and
-# a no-op here, so accepting it is honest rather than lenient.
-_FLAGS_OK = I | M | S | U
-_FLAG_NAMES = ((X, "VERBOSE"), (A, "ASCII"), (L, "LOCALE"), (DEBUG, "DEBUG"), (T, "TEMPLATE"))
+# a no-op here, so accepting it is honest rather than lenient. X and A are done
+# as pattern rewrites (_strip_verbose and the \w branches of _prep), which is
+# why they are here and L/DEBUG/TEMPLATE are not: nothing in this file could
+# honour those, so they are named back to the caller instead.
+_FLAGS_OK = I | M | S | U | X | A
+_FLAG_NAMES = ((L, "LOCALE"), (DEBUG, "DEBUG"), (T, "TEMPLATE"))
 
 
 def _check_flags(flags):
@@ -87,13 +90,147 @@ def _reps(spec):
     return (int(a), int(b) if b else None)
 
 
+# sre_parse.WHITESPACE, verbatim -- these are the characters re.X drops.
+_WS = " \t\n\r\v\f"
+
+
+def _strip_verbose(pat):
+    """re.VERBOSE, done as CPython does it: in the tokenizer, before parsing.
+
+    CPython's tokenizer hands `_parse` one token at a time, where a backslash
+    escape is ONE token, and `_parse` skips a token that is whitespace or
+    starts a `#` comment. So the rules fall out exactly:
+
+      * `\\ ` and `\\#` are escapes, never whitespace or a comment start;
+      * a character class is opaque -- `[a b]` and `[#]` keep both;
+      * `#` runs to the next newline, or to the end of the pattern.
+
+    The one case that is not a plain deletion is `{`. CPython's repeat parser
+    reads the RAW text after `{`, so `a{2, 3}` fails to parse as a repeat and
+    the brace becomes a LITERAL -- and then the space inside it is skipped like
+    any other. Deleting the space first would turn it into a valid `{2,3}` and
+    silently repeat the atom. So a brace whose raw body is not a repeat spec is
+    escaped here, which is how the decision the raw text made survives the
+    rewrite. `_reps` is the same test `_prep` applies, so the two agree.
+    """
+    out = []
+    i = 0
+    n = len(pat)
+    incls = False
+    gap = False  # something was dropped since the last character kept
+    while i < n:
+        c = pat[i]
+        if c == "\\":
+            out.append(pat[i : i + 2])
+            i += 2
+            gap = False
+            continue
+        if incls:
+            if c == "]":
+                incls = False
+            out.append(c)
+            i += 1
+            continue
+        if c == "[":
+            # A leading '^' and then a leading ']' are part of the class head,
+            # not a terminator -- same scan as _prep's.
+            incls = True
+            j = i + 1
+            if pat[j : j + 1] == "^":
+                j += 1
+            if pat[j : j + 1] == "]":
+                j += 1
+            out.append(pat[i:j])
+            i = j
+            gap = False
+            continue
+        if c in _WS:
+            i += 1
+            gap = True
+            continue
+        if c == "#":
+            # A comment runs on ESCAPE TOKENS too, not raw characters: CPython
+            # compares each token to "\n", and `\\` + newline is one token, so
+            # an escaped newline does NOT end the comment. Same reason a lone
+            # trailing backslash is an error there rather than a dropped
+            # character -- and dropping it here would be the silent kind.
+            while i < n and pat[i] != "\n":
+                i += 2 if pat[i] == "\\" else 1
+            if i > n:
+                raise error("bad escape (end of pattern)")
+            gap = True
+            continue
+        if c == "{":
+            j = pat.find("}", i)
+            if j < 0 or _reps(pat[i + 1 : j]) is None:
+                out.append("\\{")
+                i += 1
+            else:
+                out.append(pat[i : j + 1])
+                i = j + 1
+            gap = False
+            continue
+        if gap and (c == "?" or c == "+") and out and (
+            out[-1] in ("*", "+", "?") or (out[-1][:1] == "{" and out[-1][-1:] == "}")
+        ):
+            # `*?` and `*+` are one token pair in CPython and are matched with
+            # no whitespace skip between them, so `a* # c\n ?` is "multiple
+            # repeat" there, not a lazy quantifier. Closing the gap here would
+            # invent a pattern CPython refuses to compile -- found by fuzzing
+            # 68,928 verbose patterns against CPython, and the only divergence
+            # that survived it.
+            raise error("multiple repeat")
+        out.append(c)
+        i += 1
+        gap = False
+    return "".join(out)
+
+
+# re.ASCII narrows \w to [a-zA-Z0-9_]. It has to be done here and it can only
+# be done for the POSITIVE form:
+#
+#   * \d and \s need nothing -- re1.5's named classes are already exactly
+#     [0-9] and [ \t\n\v\f\r], which is what re.A asks for. Their negations
+#     \D and \S are likewise unchanged by the flag on this engine.
+#   * \w is the one the variant patched to be unicode-aware
+#     (lib/re1.5/charclass.c: every byte >= 0x80 is a word constituent), so
+#     re.A is the exact opposite and needs the explicit class back.
+#   * \W -- and \w inside a NEGATED class, which is the same thing -- cannot be
+#     done at all. re1.5 matches BYTES, so [^a-zA-Z0-9_] matches one byte of a
+#     UTF-8 character where CPython matches the whole character: measured on
+#     this build, searching it in "a\xe5b" raises UnicodeError from the
+#     mid-codepoint span. Refused by name rather than answered approximately.
+_ASCII_W = "a-zA-Z0-9_"
+
+
+def _ascii_class(cls):
+    out = []
+    neg = cls[1:2] == "^"
+    i = 0
+    n = len(cls)
+    while i < n:
+        c = cls[i]
+        if c != "\\":
+            out.append(c)
+            i += 1
+            continue
+        nx = cls[i + 1 : i + 2]
+        if nx == "W":
+            _unsupported("\\W with re.ASCII")
+        if nx == "w" and neg:
+            _unsupported("[^\\w] with re.ASCII")
+        out.append(_ASCII_W if nx == "w" else c + nx)
+        i += 2
+    return "".join(out)
+
+
 def _prep(pat, flags):
     """Rewrite a CPython pattern into one re1.5 compiles with the same meaning.
 
     Returns (native_pattern, name->group index, starts_with_^, ends_with_$).
     """
-    _check_flags(flags)
     ic = flags & I
+    asc = flags & A
     out = []
     names = {}
     gi = 0
@@ -107,6 +244,12 @@ def _prep(pat, flags):
                 _unsupported("\\" + nx)  # re1.5 would match these as literals
             if nx.isdigit():
                 _unsupported("\\" + nx)  # backreferences are not supported
+            if asc and (nx == "w" or nx == "W"):
+                if nx == "W":
+                    _unsupported("\\W with re.ASCII")
+                out.append("[" + _ASCII_W + "]")
+                i += 2
+                continue
             out.append(c + nx)
             i += 2
             continue
@@ -121,6 +264,8 @@ def _prep(pat, flags):
             if j >= n:
                 raise error("unterminated character set")
             cls = pat[i : j + 1]
+            if asc:
+                cls = _ascii_class(cls)
             out.append(_fold_class(cls) if ic else cls)
             i = j + 1
             continue
@@ -227,7 +372,11 @@ class Match:
 
 class Pattern:
     def __init__(self, pattern, flags=0, _notrim=False):
-        native, names, anchored, dollar = _prep(pattern, flags)
+        _check_flags(flags)
+        # `pattern` stays the source the caller passed, as CPython's does;
+        # `_src` is what every rewrite downstream works from.
+        self._src = _strip_verbose(pattern) if flags & X else pattern
+        native, names, anchored, dollar = _prep(self._src, flags)
         self.pattern = pattern
         self.flags = flags
         self.groupindex = names
@@ -241,8 +390,11 @@ class Pattern:
         if self._full is None:
             # `(?:…)$` is non-capturing, so group numbering is unchanged; the
             # trailing-newline trim is suppressed because CPython's fullmatch
-            # has to consume the newline too.
-            self._full = Pattern("(?:" + self.pattern + ")$", self.flags, True)
+            # has to consume the newline too. The wrap is built from the
+            # already-stripped source, with X cleared: appending `)$` to a
+            # verbose pattern that ends in a `#` comment would put the wrap
+            # INSIDE the comment and lose it.
+            self._full = Pattern("(?:" + self._src + ")$", self.flags & ~X, True)
             self._full._names = self._names
         return self._full.match(string)
 

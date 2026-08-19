@@ -498,19 +498,74 @@ check "a module CPython lacks too still exits 1" \
 # shim-level gap. All three execution paths are pinned because they do not share
 # a handler: -c and a script file leave through shared/runtime/pyexec.c, a
 # program on STDIN leaves through main.c's handle_uncaught_exception().
+#
+# The PROBE has to be a gap that is still open, and it moves as coverage lands:
+# it was `re.VERBOSE` until VERBOSE was implemented, and `csv(quoting=)` until
+# quoting was. That is the probe going stale, not the contract changing — when
+# these fail with `got 0, want 90`, check whether the feature was just built
+# before touching anything else, and move the probe to a gap listed in
+# pygram/lib/README.md rather than reopening the one that closed.
 check "shim unsupported exits 90 (-c)" \
-    "$("$OUT" -c 'import re; re.findall(r"\d+", "a1", re.VERBOSE)' >/dev/null 2>&1; echo $?)" "90"
+    "$("$OUT" -c 'import re; re.findall(r"\d+", "a1", re.LOCALE)' >/dev/null 2>&1; echo $?)" "90"
 check "shim unsupported: one stderr line" \
-    "$("$OUT" -c 'import re; re.findall(r"\d+", "a1", re.VERBOSE)' 2>&1 >/dev/null)" \
-    "pygram: unsupported: argument: re(VERBOSE)"
+    "$("$OUT" -c 'import re; re.findall(r"\d+", "a1", re.LOCALE)' 2>&1 >/dev/null)" \
+    "pygram: unsupported: argument: re(LOCALE)"
 check "shim unsupported: stdout untouched" \
-    "$("$OUT" -c 'import re; re.findall(r"\d+", "a1", re.VERBOSE)' 2>/dev/null | wc -c | tr -d ' ')" "0"
+    "$("$OUT" -c 'import re; re.findall(r"\d+", "a1", re.LOCALE)' 2>/dev/null | wc -c | tr -d ' ')" "0"
 check "shim unsupported exits 90 (file)" \
-    "$(printf 'import re\nre.findall(r"\\d+", "a1", re.VERBOSE)\n' > "$WORK/u.py"; "$OUT" "$WORK/u.py" >/dev/null 2>&1; echo $?)" "90"
+    "$(printf 'import re\nre.findall(r"\\d+", "a1", re.LOCALE)\n' > "$WORK/u.py"; "$OUT" "$WORK/u.py" >/dev/null 2>&1; echo $?)" "90"
 check "shim unsupported exits 90 (stdin)" \
-    "$(printf 'import re\nre.findall(r"\\d+", "a1", re.VERBOSE)\n' | "$OUT" - >/dev/null 2>&1; echo $?)" "90"
+    "$(printf 'import re\nre.findall(r"\\d+", "a1", re.LOCALE)\n' | "$OUT" - >/dev/null 2>&1; echo $?)" "90"
 check "csv silently-swallowed kwarg exits 90" \
-    "$("$OUT" -c 'import csv, io; csv.writer(io.StringIO(), quoting=csv.QUOTE_ALL)' >/dev/null 2>&1; echo $?)" "90"
+    "$("$OUT" -c 'import csv, io; csv.reader(io.StringIO("a\n"), restkey="x")' >/dev/null 2>&1; echo $?)" "90"
+
+# Syntax CPython accepts and this parser cannot read is the same contract seen
+# from the other side, and it is the LARGEST class of silent divergence there
+# was: `match`, `{**d}`, `except*` and a positional-only `/` all exited 1 with
+# "SyntaxError: invalid syntax", which tells an agent its own correct program is
+# broken. All three execution paths are pinned for the same reason as above —
+# the source reaches the scanner differently in each (a string for -c, a path
+# for a file, a buffered read for stdin), so one working proves nothing about
+# the others. pygram/variant/pygram_compat.h; the scanner's own battery is
+# tests/pygram/syntax-scan.test.mjs.
+check "missing syntax exits 90 (-c)" \
+    "$("$OUT" -c 'match x:
+    case 1: pass' >/dev/null 2>&1; echo $?)" "90"
+check "missing syntax: one stderr line" \
+    "$("$OUT" -c 'print({**a, "b": 1})' 2>&1 >/dev/null)" \
+    "pygram: unsupported: syntax: dict unpacking in a literal ({**d})"
+check "missing syntax exits 90 (file)" \
+    "$(printf 'x = 1\nmatch x:\n    case 1: pass\n' > "$WORK/s.py"; "$OUT" "$WORK/s.py" >/dev/null 2>&1; echo $?)" "90"
+check "missing syntax exits 90 (stdin)" \
+    "$(printf 'x = 1\nmatch x:\n    case 1: pass\n' | "$OUT" - >/dev/null 2>&1; echo $?)" "90"
+# The other direction: a program that is genuinely malformed is not pygram being
+# too small, and must keep CPython's exit 1.
+check "a real syntax error still exits 1" \
+    "$("$OUT" -c 'print(1' >/dev/null 2>&1; echo $?)" "1"
+
+# An uncaught MemoryError is the GC heap running out, which is never the
+# program's answer — it was the single MISMATCH in a 472-entry conformance run.
+check "heap exhaustion exits 90" \
+    "$("$OUT" -c 'x = "a" * (200 * 1024 * 1024)' >/dev/null 2>&1; echo $?)" "90"
+
+# A C function handed a keyword it does not take, named rather than generic.
+check "builtin keyword exits 90, naming it" \
+    "$("$OUT" -c 'print(list(zip([1], [2], strict=True)))' 2>&1 >/dev/null)" \
+    "pygram: unsupported: argument: keyword strict"
+
+# str() on a subclass of a native type must reach the subclass's __repr__, the
+# way CPython's object.__str__ does. It did not, and print(defaultdict) and
+# print(Counter) answered with a plain dict at exit 0 — a silent wrong answer,
+# which docs/PYGRAM-SUBSET.md calls the one unacceptable outcome.
+check "print() reaches a subclass __repr__" \
+    "$("$OUT" -c 'import collections
+d = collections.defaultdict(int)
+d["x"] += 1
+print(d)' 2>/dev/null)" "defaultdict(<class 'int'>, {'x': 1})"
+check "print() on a str subclass keeps str semantics" \
+    "$("$OUT" -c 'class S(str):
+    def __repr__(self): return "S!"
+print(S("x"))' 2>/dev/null)" "x"
 # The other direction: hijacking a program's OWN NotImplementedError would be a
 # worse bug than the one being fixed.
 check "a program's own NotImplementedError still exits 1" \

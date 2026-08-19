@@ -329,6 +329,39 @@ miss, and a no-search control arm that measures the memorised share instead of
 assuming it; append-only ledgers, don't deploy mid-battery):
 **`docs/TESTING.md`**.
 
+## Python in the sandbox — write it in pygram's subset
+
+The in-browser sandbox runs **pygram**, a Python SUBSET (`docs/PYGRAM.md`), not
+CPython — because `python3 --version` alone costs **8573 ms cold** in there and
+can cross the 30 s ceiling that destroys the VM, while pygram opens zero files.
+When it meets something outside the subset it exits **90** with one line naming
+it — `pygram: unsupported: module: subprocess` — which is a fork, not a wall:
+retry the line with real `python3` (always correct), or rewrite it (usually two
+or three tokens, and then it runs at a fraction of the cost).
+
+The rewrites worth knowing before you type the line:
+
+| instead of | write |
+|---|---|
+| `subprocess.run([...], capture_output=True)` | run it in the bash block and pipe: `cmd \| pygram s.py` + `sys.stdin.read()` |
+| `os.system(cmd)` / `input()` | same hoist; `sys.stdin.readline()` |
+| `match x: case 1: ...` | `if` / `elif` — the 3.10 statement is not in this parser |
+| `{**a, **b}` | `m = dict(a); m.update(b)` — `f(**kw)` is fine, the LITERAL is not |
+| `def f(a, /, b)` · `except* E` · `with (a as f,):` | drop the `/` · plain `except` · one unparenthesized `with` |
+| `zip(xs, ys, strict=True)` · `round(x, ndigits=2)` · `s.split(" ", maxsplit=1)` | pass them POSITIONALLY — the C builtins take the value, just not the name |
+| `import itertools, functools, string, operator, bisect, copy, decimal` | inline it; a comprehension or a loop is the same length |
+| `@dataclass` · `enum.Enum` | a plain class — annotations are parsed and DISCARDED here, and there is no metaclass |
+| `str.removeprefix` · `str.casefold` · `math.prod` · `heapq.nsmallest` | slice on `startswith` · `.lower()` · a loop · `sorted()[:n]` |
+| `json.load(f)` then `json.dumps(d)` on a big file | never hold both — heap exhaustion now exits 90, but the answer is to work on the text |
+
+**The full page is `docs/PYGRAM-COOKBOOK.md`, and every recipe on it is
+EXECUTED** by `tests/pygram/cookbook.test.mjs` against a real build: the before
+must still exit 90, the after must match CPython byte for byte, and the two must
+compute the same thing. A recipe whose gap gets closed fails the suite as
+obsolete, so the page cannot drift into telling you to work around something
+that works. Add recipes from the conformance run's UNSUPPORTED list, never from
+memory.
+
 ## The SDKs and interchange standards
 
 Two DISTINCT SDKs, both distilled from this repo (division per owner directive,
@@ -478,7 +511,7 @@ Debugging & live verification:
 - **on-device-trace** — remote-debugging device-only bugs (iOS PWA) via build stamp + copyable on-device event trace.
 - **sandbox-debug** — the sandbox boot-hang playbook: debug switches, the `boot_stage` timeline, the stall watchdog.
 - **sandbox-perf-eval** — measuring how long sandbox commands take: the cold/warm battery + agent-turn trace, and the two traps (cross-origin auth kills the boot; the 30 s ceiling destroys the VM).
-- **pygram** — the minimal Python-subset runtime for the sandbox (`docs/PYGRAM.md`): why `python3` costs 8573 ms cold there and pygram opens zero files, the two gates (build shape + CPython conformance, where MISMATCH is fatal and UNSUPPORTED is just the build order), the capture harness that grows the corpus from real invocations by itself, the musl-i386 build, and the six traps already paid for — a bare `lib/` in .gitignore that swallowed the whole frozen stdlib, tracebacks on stdout poisoning pipelines, and a strace parser whose bug inverted into a perfect score. ALSO why the COMPILER lane is now closed (2026-08-15): `-O2` costs 24.7% of the binary for 0.6%, PGO is 11% SLOWER on anything its profile missed, and `llvm-bolt` has no i386 target — because 96% of an invocation is the OS spawning a process, so the wins are algorithmic (16x on `re.sub` by not re-slicing a string). Plus the cost model's missing constant, the 131,072 B CheerpX device block that makes cold cost a step function, and `pygram-corpus-time.mjs`, the instrument a speed change is accepted on.
+- **pygram** — the minimal Python-subset runtime for the sandbox (`docs/PYGRAM.md`): why `python3` costs 8573 ms cold there and pygram opens zero files, the two gates (build shape + CPython conformance, where MISMATCH is fatal and UNSUPPORTED is just the build order), the capture harness that grows the corpus from real invocations by itself, the musl-i386 build, and the six traps already paid for — a bare `lib/` in .gitignore that swallowed the whole frozen stdlib, tracebacks on stdout poisoning pipelines, and a strace parser whose bug inverted into a perfect score. ALSO why the COMPILER lane is now closed (2026-08-15): `-O2` costs 24.7% of the binary for 0.6%, PGO is 11% SLOWER on anything its profile missed, and `llvm-bolt` has no i386 target — because 96% of an invocation is the OS spawning a process, so the wins are algorithmic (16x on `re.sub` by not re-slicing a string). Plus the cost model's missing constant, the 131,072 B CheerpX device block that makes cold cost a step function, and `pygram-corpus-time.mjs`, the instrument a speed change is accepted on. ALSO the CONTRACT-HOLE class found 2026-08-19 — the ways pygram exited 1 for something that was not the program's fault (heap exhaustion, syntax CPython accepts, a keyword a C builtin does not take) and the one that answered WRONG at exit 0 (`str()` on a native subclass skipping its `__repr__`, which shipped in `collections.defaultdict` and `Counter`) — plus `pygram/variant/pygram_compat.h`, where a correction goes when the right behaviour is known and cheap rather than worth a 90, and `docs/PYGRAM-COOKBOOK.md`, the executed rewrite page.
 - **mopy** — the MIXTURE OF PYTHONS (`docs/MOPY.md`): a second, from-scratch
   Python subset written in Rust and sized to the BOTTOM of the corpus, plus the
   classifier that picks between mopy, pygram and CPython per one-liner and the
