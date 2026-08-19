@@ -99,8 +99,40 @@ case "$DISTRO" in
   alpine)
     # Alpine i386 — the small default (~100–200MB with the toolchain).
     MIRROR="http://dl-cdn.alpinelinux.org/alpine/latest-stable/main"
-    apk --arch x86 -X "$MIRROR" -U --allow-untrusted --root "$MNT" --initdb add \
-        alpine-base $PKGS_COMMON py3-pip
+    if command -v apk >/dev/null 2>&1; then
+        apk --arch x86 -X "$MIRROR" -U --allow-untrusted --root "$MNT" --initdb add \
+            alpine-base $PKGS_COMMON py3-pip
+    else
+        # NO apk ON THE HOST, which is the normal case anywhere that is not
+        # Alpine — this script used to simply die here with "apk: command not
+        # found", which made the whole VM measurement unreachable from an
+        # ordinary Debian/Ubuntu box or a CI container.
+        #
+        # The bootstrap does not need a host apk: the minirootfs tarball IS an
+        # Alpine userland, and it ships its own. i386 binaries execute fine
+        # under an x86_64 host kernel, so unpacking it and chrooting in gives a
+        # working apk with no cross-tooling at all — the same reason
+        # scripts/pygram-build.sh can build and gate an i386 binary here.
+        echo "    no host apk — bootstrapping from the i386 minirootfs instead"
+        ALPINE_REL="http://dl-cdn.alpinelinux.org/alpine/latest-stable/releases/x86"
+        ROOTFS_TGZ="$OUT_DIR/alpine-minirootfs-x86.tar.gz"
+        if [ ! -f "$ROOTFS_TGZ" ]; then
+            # Take the newest minirootfs the release index lists, rather than
+            # pinning a version that goes 404 on the next Alpine point release.
+            NAME="$(curl -sS "$ALPINE_REL/" \
+                | grep -oE 'alpine-minirootfs-[0-9.]+-x86\.tar\.gz' | sort -V | tail -1)"
+            [ -n "$NAME" ] || { echo "could not find a minirootfs at $ALPINE_REL" >&2; exit 1; }
+            echo "    fetching $NAME"
+            curl -sS -o "$ROOTFS_TGZ" "$ALPINE_REL/$NAME"
+        fi
+        tar -xzf "$ROOTFS_TGZ" -C "$MNT"
+        cp /etc/resolv.conf "$MNT/etc/resolv.conf"
+        printf '%s/main\n%s/community\n' \
+            "http://dl-cdn.alpinelinux.org/alpine/latest-stable" \
+            "http://dl-cdn.alpinelinux.org/alpine/latest-stable" > "$MNT/etc/apk/repositories"
+        chroot "$MNT" /sbin/apk update
+        chroot "$MNT" /sbin/apk add alpine-base $PKGS_COMMON py3-pip
+    fi
     ;;
   debian)
     # Debian i386-slim — the compatibility option (glibc, WebVM's lineage).
@@ -154,6 +186,34 @@ if [ -f "$PYGRAM_BIN" ]; then
     echo "    installed $(stat -c %s "$PYGRAM_BIN") B from $PYGRAM_BIN"
 else
     echo "    SKIPPED — no binary at $PYGRAM_BIN (build it: bash scripts/pygram-build.sh)"
+fi
+
+echo "==> Installing mopy (docs/MOPY.md)"
+# The Rust Python subset, as /usr/local/bin/mopy. Same shape as pygram — one
+# static ELF, zero file opens — and the same hard requirement: CheerpX is 32-bit
+# x86 ONLY, so this must be the i686 build. The x86_64 one the benchmark uses
+# CANNOT RUN HERE, which is worth stating plainly because every published mopy
+# number so far was measured with it, on a normal filesystem.
+#
+# The interesting number in this image is not the speed, it is the SIZE. Cold
+# cost is a step function in 131,072 B CheerpX device blocks (the pygram skill
+# §2d), and:
+#     pygram   ~269 KB   3 blocks
+#     mopy     ~986 KB   8 blocks
+# so mopy is 1.7x faster than pygram warm on a normal filesystem and streams
+# more than twice as many block fetches cold. Which one wins in the sandbox is
+# an empirical question, and scripts/pygram-vm-measure.mjs is what answers it.
+MOPY_BIN="${MOPY_BIN:-$(dirname "$0")/../mopy/target/i686-unknown-linux-musl/release/mopy}"
+if [ -f "$MOPY_BIN" ]; then
+    if file -L "$MOPY_BIN" | grep -q 'ELF 32-bit'; then
+        install -Dm755 "$MOPY_BIN" "$MNT/usr/local/bin/mopy"
+        echo "    installed $(stat -c %s "$MOPY_BIN") B from $MOPY_BIN"
+    else
+        echo "    SKIPPED — $MOPY_BIN is not i386; CheerpX cannot run it."
+        echo "    Build it with: bash scripts/mopy-build.sh --target i686"
+    fi
+else
+    echo "    SKIPPED — no binary at $MOPY_BIN (build it: bash scripts/mopy-build.sh --target i686)"
 fi
 
 echo "==> Configuring root shell + /root (sandbox.js launches /bin/bash --login, HOME=/root, uid 0)"

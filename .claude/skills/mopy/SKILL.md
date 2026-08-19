@@ -167,10 +167,20 @@ Two rules that are easy to break:
 ## 8. Honest scope
 
 mopy answers 68.6% of the corpus and the mixture saves 73.4% of CPython's wall
-clock over it. Both numbers are on a normal Linux filesystem, not in the CheerpX
-VM where the 8,573 ms figure that motivates all of this was measured — the
-sandbox arm has not been run (`scripts/pygram-vm-measure.mjs` is the instrument;
-it has no mopy probe yet). And cold VM boot still dominates a sandbox turn
+clock over it. Both numbers are on a normal Linux filesystem.
+
+**The sandbox arm HAS now been run** (2026-08-19, `docs/MOPY.md` §8a), and it
+does not say what the filesystem numbers imply. Two corrections came out of it.
+Every published mopy figure had been measured with the **x86_64** binary, which
+CheerpX — 32-bit x86 only — cannot load at all; the i686 build is the one that
+runs there, and it now ships in the image. And in the VM the two subsets are
+within noise of each other on every probe, because a 50–85 ms exec round-trip
+floor sits under both, while mopy costs **1.67x pygram's bytes on first touch**
+(1,280 KB vs 768 KB — 8 device blocks against 3). What the measurement DOES
+support is the case for a subset at all: `python3 -c 'import json; …'` takes
+**13.3 s** cold in that image against pygram's 61 ms and mopy's 23 ms, and the
+exec ceiling that destroys the VM is 30 s. Do not argue mopy over pygram on
+sandbox speed; the evidence is not there. And cold VM boot still dominates a sandbox turn
 regardless: 24.4 s of boot against 290 ms of commands. This is a real but
 **secondary** term, and no user-facing copy should say the sandbox is fast
 because of it.
