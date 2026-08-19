@@ -69,6 +69,25 @@
 // crypto stack behind a 350 KB binary. sha256 is on and covers the corpus's
 // main digest use; md5/sha1 belong in the frozen shim stdlib as pure Python if
 // they are ever needed.
+//
+// RE-CONFIRMED against the pinned 1.28.0 tree, so this is not re-derived a
+// third time. The names are MICROPY_PY_HASHLIB_MD5 / MICROPY_PY_HASHLIB_SHA1
+// (py/mpconfig.h:1997-2002); the older UHASHLIB_* spellings do not exist. In
+// extmod/modhashlib.c sha256 has a non-SSL fallback and md5/sha1 do NOT: their
+// make_new/update/digest bodies sit entirely inside `#if MICROPY_SSL_AXTLS` and
+// `#if MICROPY_SSL_MBEDTLS`, while the type definition that references them does
+// not. So `#define MICROPY_PY_HASHLIB_MD5 (1)` here does not merely cost bytes —
+// it fails to LINK, with hashlib_md5_make_new undefined. ports/rp2 sets both to
+// 1 only because rp2 links mbedtls. `git submodule status lib/axtls lib/mbedtls`
+// in the pinned tree reports both UNINITIALIZED, so switching either on adds a
+// submodule download to a build that has exactly two pinned ones.
+//
+// What this costs in coverage: nothing that counts. hashlib.md5(...) already
+// exits 90 with `attribute: hashlib.md5` (pygram_check_unsupported_attr sees a
+// missing attribute on a module whose __name__ is in the stdlib blob), which is
+// UNSUPPORTED, not MISMATCH. The one real divergence was hashlib.new("md5"),
+// which took a getattr default and landed on ValueError/exit 1; that is fixed in
+// the shim, not here.
 
 // Language surface the corpus needs and EXTRA_FEATURES does not give.
 #define MICROPY_PY_BUILTINS_SLICE_ATTRS (1)

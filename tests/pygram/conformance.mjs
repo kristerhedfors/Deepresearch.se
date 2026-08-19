@@ -159,6 +159,13 @@ function runOne(bin, entry) {
       encoding: "utf8",
       timeout: TIMEOUT_MS,
       cwd,
+      // Node's default is 1 MB, and a harvested corpus entry blew straight
+      // through it: an agent's own differential grid printed 18,454 lines and
+      // came back as `spawnSync ... ENOBUFS`, which classify() reads as
+      // "pygram failed to start" — a MISMATCH pinned on the interpreter for
+      // something the HARNESS could not hold. The corpus grows by capturing
+      // whatever was really run, so it will keep acquiring programs like that.
+      maxBuffer: 64 * 1024 * 1024,
       // A clean, minimal environment: the corpus must not depend on this
       // machine's env, and pygram in the sandbox will not have one either.
       // PYGRAM_CAPTURE=0 breaks the capture FEEDBACK LOOP. The capture shim
@@ -284,7 +291,7 @@ export function classify(ref, got, entry = null) {
     return { verdict: "MISMATCH", why: "exit 90 without a `pygram: unsupported: …` line on stderr" };
   }
   const skipStdout = isNondeterministic(entry);
-  if (!skipStdout && got.stdout !== ref.stdout) {
+  if (!skipStdout && got.stdout !== ref.stdout && !onlySetOrderDiffers(ref.stdout, got.stdout)) {
     return { verdict: "MISMATCH", why: "stdout differs", diff: firstDiff(ref.stdout, got.stdout) };
   }
   if (got.code !== ref.code) {
@@ -294,6 +301,62 @@ export function classify(ref, got, entry = null) {
     return { verdict: "MISMATCH", why: "CPython reported an error on stderr, pygram was silent" };
   }
   return skipStdout ? { verdict: "MATCH", stdoutUncompared: true } : { verdict: "MATCH" };
+}
+
+
+/**
+ * Do the two outputs differ ONLY by the order of elements inside set displays?
+ *
+ * `print({1, 2})` is `{1, 2}` under CPython and `{2, 1}` under pygram. The
+ * language does not specify which: the data model calls a set "an unordered
+ * collection", so two conformant implementations may legitimately disagree and
+ * pygram is not wrong here. It belongs to the same class as
+ * `len(zlib.compress(...))` above — a quantity the standard declines to fix.
+ *
+ * It is detected by COMPARING THE OUTPUTS rather than by pattern-matching the
+ * source, which matters. A source regex would have to tell a set display from a
+ * dict display from a f-string brace from a regex `{2,3}` repeat, get it wrong
+ * in both directions, and — the expensive direction — silently excuse a real
+ * divergence in any program that happened to contain a brace. This asks the
+ * only question that actually licenses the exemption: are the two braced
+ * regions the SAME ELEMENTS in a different order? If any element differs, or a
+ * count differs, or anything outside the braces differs, it is a MISMATCH as
+ * before.
+ *
+ * Dict displays are excluded by the `:` test, so a dict whose ORDER differs
+ * stays a MISMATCH — dict order IS specified (insertion order, since 3.7) and
+ * pygram implements it deliberately.
+ */
+export function onlySetOrderDiffers(want, got) {
+  const BRACE = /\{[^{}]*\}/g;
+  const wantParts = want.split(BRACE);
+  const gotParts = got.split(BRACE);
+  const wantBraces = want.match(BRACE) || [];
+  const gotBraces = got.match(BRACE) || [];
+  // Everything outside the braces must be identical, and there must be the
+  // same number of braced regions in the same places.
+  if (wantParts.length !== gotParts.length) return false;
+  for (let i = 0; i < wantParts.length; i++) {
+    if (wantParts[i] !== gotParts[i]) return false;
+  }
+  if (wantBraces.length === 0) return false;
+  let sawReorder = false;
+  for (let i = 0; i < wantBraces.length; i++) {
+    const a = wantBraces[i];
+    const b = gotBraces[i];
+    if (a === b) continue;
+    // A dict display: order is specified, so a difference is a real one.
+    if (a.includes(":") || b.includes(":")) return false;
+    const split = (s) => s.slice(1, -1).split(", ").sort();
+    const ea = split(a);
+    const eb = split(b);
+    if (ea.length !== eb.length) return false;
+    for (let j = 0; j < ea.length; j++) {
+      if (ea[j] !== eb[j]) return false;
+    }
+    sawReorder = true;
+  }
+  return sawReorder;
 }
 
 /** The first differing line, rendered short enough to read in a terminal. */

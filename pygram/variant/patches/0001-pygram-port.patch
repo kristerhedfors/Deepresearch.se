@@ -550,7 +550,7 @@ index d40e3dc..250d1c1 100644
              mp_seq_clear(map->table, map->used, map->alloc, sizeof(*map->table));
          }
 diff --git a/py/modbuiltins.c b/py/modbuiltins.c
-index 6f085f2..71fe911 100644
+index 6f085f2..a016172 100644
 --- a/py/modbuiltins.c
 +++ b/py/modbuiltins.c
 @@ -31,6 +31,8 @@
@@ -621,6 +621,84 @@ index 6f085f2..71fe911 100644
          mp_float_t mult = MICROPY_FLOAT_C_FUN(pow)(10, (mp_float_t)num_dig);
          // TODO may lead to overflow
          mp_float_t rounded = MICROPY_FLOAT_C_FUN(nearbyint)(val * mult) / mult;
+@@ -746,6 +786,19 @@ static const mp_rom_map_elem_t mp_module_builtins_globals_table[] = {
+     { MP_ROM_QSTR(MP_QSTR_NameError), MP_ROM_PTR(&mp_type_NameError) },
+     { MP_ROM_QSTR(MP_QSTR_NotImplementedError), MP_ROM_PTR(&mp_type_NotImplementedError) },
+     { MP_ROM_QSTR(MP_QSTR_OSError), MP_ROM_PTR(&mp_type_OSError) },
++    #ifdef PYGRAM_UNSUPPORTED_EXIT
++    // pygram: the errno-mapped OSError subclasses (py/objexcept.c) plus the two
++    // CPython aliases. `IOError is OSError` and `EnvironmentError is OSError`
++    // are True in CPython too, so those two are the SAME pointer rather than
++    // new types: an alias costs a map entry and a qstr and no mp_obj_type_t.
++    { MP_ROM_QSTR(MP_QSTR_EnvironmentError), MP_ROM_PTR(&mp_type_OSError) },
++    { MP_ROM_QSTR(MP_QSTR_FileExistsError), MP_ROM_PTR(&mp_type_FileExistsError) },
++    { MP_ROM_QSTR(MP_QSTR_FileNotFoundError), MP_ROM_PTR(&mp_type_FileNotFoundError) },
++    { MP_ROM_QSTR(MP_QSTR_IOError), MP_ROM_PTR(&mp_type_OSError) },
++    { MP_ROM_QSTR(MP_QSTR_IsADirectoryError), MP_ROM_PTR(&mp_type_IsADirectoryError) },
++    { MP_ROM_QSTR(MP_QSTR_NotADirectoryError), MP_ROM_PTR(&mp_type_NotADirectoryError) },
++    { MP_ROM_QSTR(MP_QSTR_PermissionError), MP_ROM_PTR(&mp_type_PermissionError) },
++    #endif
+     { MP_ROM_QSTR(MP_QSTR_OverflowError), MP_ROM_PTR(&mp_type_OverflowError) },
+     { MP_ROM_QSTR(MP_QSTR_RuntimeError), MP_ROM_PTR(&mp_type_RuntimeError) },
+     #if MICROPY_PY_ASYNC_AWAIT
+diff --git a/py/modsys.c b/py/modsys.c
+index 3dae926..fdf5456 100644
+--- a/py/modsys.c
++++ b/py/modsys.c
+@@ -298,9 +298,28 @@ static const uint16_t sys_mutable_keys[] = {
+     MP_QSTRnull,
+ };
+ 
++// pygram: the CPython stdlib name table. Only present in the pygram variant, so
++// this file compiles unchanged everywhere else.
++#ifdef PYGRAM_UNSUPPORTED_EXIT
++#include "pygram_unsupported.h"
++#endif
++
+ void mp_module_sys_attr(mp_obj_t self_in, qstr attr, mp_obj_t *dest) {
+     MP_STATIC_ASSERT(MP_ARRAY_SIZE(sys_mutable_keys) == MP_SYS_MUTABLE_NUM + 1);
+     MP_STATIC_ASSERT(MP_ARRAY_SIZE(MP_STATE_VM(sys_mutable)) == MP_SYS_MUTABLE_NUM);
++    #if defined(PYGRAM_UNSUPPORTED_EXIT) && MICROPY_PY_BUILTINS_FROZENSET
++    // pygram: sys.stdlib_module_names. It cannot live in the globals table —
++    // that is a const ROM dict and a frozenset is a heap object — and it cannot
++    // use sys_mutable_keys either, which is for mutable attributes and wants an
++    // mpstate enum slot. The delegation hook is where a lazily built constant
++    // belongs. dest[0] == MP_OBJ_NULL is the load case; a store falls through
++    // to mp_module_generic_attr and is rejected, as it is for any other
++    // read-only sys attribute.
++    if (attr == MP_QSTR_stdlib_module_names && dest[0] == MP_OBJ_NULL) {
++        dest[0] = pygram_sys_stdlib_module_names();
++        return;
++    }
++    #endif
+     mp_module_generic_attr(attr, dest, sys_mutable_keys, MP_STATE_VM(sys_mutable));
+ }
+ #endif
+diff --git a/py/obj.h b/py/obj.h
+index 3c9122a..95fa8c0 100644
+--- a/py/obj.h
++++ b/py/obj.h
+@@ -898,6 +898,20 @@ extern const mp_obj_type_t mp_type_MemoryError;
+ extern const mp_obj_type_t mp_type_NameError;
+ extern const mp_obj_type_t mp_type_NotImplementedError;
+ extern const mp_obj_type_t mp_type_OSError;
++#ifdef PYGRAM_UNSUPPORTED_EXIT
++// pygram: the errno-mapped OSError subclasses, defined in py/objexcept.c.
++// CPython's OSError.__new__ returns one of these instead of a bare OSError, so
++// `type(e).__name__` and `except FileNotFoundError:` both depend on them.
++extern const mp_obj_type_t mp_type_FileNotFoundError;
++extern const mp_obj_type_t mp_type_FileExistsError;
++extern const mp_obj_type_t mp_type_PermissionError;
++extern const mp_obj_type_t mp_type_IsADirectoryError;
++extern const mp_obj_type_t mp_type_NotADirectoryError;
++// errno -> the OSError subclass CPython would have built, or mp_type_OSError
++// when this variant does not carry one for it. py/objexcept.c owns the table;
++// py/runtime.c's mp_raise_OSError() is the other caller.
++const mp_obj_type_t *pygram_oserror_type(mp_int_t errno_);
++#endif
+ extern const mp_obj_type_t mp_type_OverflowError;
+ extern const mp_obj_type_t mp_type_RuntimeError;
+ extern const mp_obj_type_t mp_type_StopAsyncIteration;
 diff --git a/py/objdict.c b/py/objdict.c
 index 692a7de..a086833 100644
 --- a/py/objdict.c
@@ -647,11 +725,45 @@ index 692a7de..a086833 100644
  }
  
 diff --git a/py/objexcept.c b/py/objexcept.c
-index d43cf97..98a91f9 100644
+index d43cf97..5eaf1fb 100644
 --- a/py/objexcept.c
 +++ b/py/objexcept.c
-@@ -196,6 +196,15 @@ void mp_obj_exception_print(const mp_print_t *print, mp_obj_t o_in, mp_print_kin
+@@ -180,6 +180,30 @@ void mp_obj_exception_print(const mp_print_t *print, mp_obj_t o_in, mp_print_kin
+             return;
+         }
+ 
++        #ifdef PYGRAM_UNSUPPORTED_EXIT
++        // pygram: CPython's OSError.__str__, which is a different rule from
++        // MicroPython's and differs on the most common shape of all.
++        //
++        // CPython decorates ONLY when there are two or more args, and the
++        // decoration carries the SECOND arg as the message:
++        //     str(OSError(2))            -> "2"
++        //     str(OSError(2, "x"))       -> "[Errno 2] x"
++        //     str(OSError(2, "x", "f"))  -> "[Errno 2] x: 'f'"
++        // MicroPython decorated a ONE-arg OSError with its own errno NAME
++        // instead — `str(OSError(2))` came out as "[Errno 2] ENOENT" — which is
++        // both extra text CPython does not write and a different word from the
++        // strerror CPython would use. Two harvested corpus programs caught it.
++        if (mp_obj_is_subclass_fast(MP_OBJ_FROM_PTR(o->base.type), MP_OBJ_FROM_PTR(&mp_type_OSError))
++            && o->args->len >= 2 && mp_obj_is_small_int(o->args->items[0])) {
++            mp_printf(print, "[Errno " INT_FMT "] ", MP_OBJ_SMALL_INT_VALUE(o->args->items[0]));
++            mp_obj_print_helper(print, o->args->items[1], PRINT_STR);
++            if (o->args->len > 2) {
++                mp_print_str(print, ": ");
++                mp_obj_print_helper(print, o->args->items[2], PRINT_REPR);
++            }
++            return;
++        }
++        #else
+         #if MICROPY_PY_ERRNO
+         // try to provide a nice OSError error message
+         if (o->base.type == &mp_type_OSError && o->args->len > 0 && o->args->len < 3 && mp_obj_is_small_int(o->args->items[0])) {
+@@ -194,19 +218,105 @@ void mp_obj_exception_print(const mp_print_t *print, mp_obj_t o_in, mp_print_kin
+             }
+         }
          #endif
++        #endif
  
          if (o->args->len == 1) {
 +            // pygram: CPython's KeyError.__str__ is repr(key), not str(key), so
@@ -666,8 +778,111 @@ index d43cf97..98a91f9 100644
              mp_obj_print_helper(print, o->args->items[0], PRINT_STR);
              return;
          }
+     }
+ 
++    #ifdef PYGRAM_UNSUPPORTED_EXIT
++    // pygram: repr() of an exception with ONE argument.
++    //
++    // The args are printed as a tuple, and a 1-tuple's repr carries the comma
++    // that tells it apart from a parenthesised expression — so every exception
++    // in the language reprs as `ValueError('x',)` where CPython writes
++    // `ValueError('x')`. CPython does not go through a tuple repr here; it
++    // formats the args itself and a 1-arg exception is the overwhelmingly
++    // common case, so this was a divergence on `repr(e)` for essentially every
++    // caught exception, in every program that logs one.
++    if (o->args != NULL && o->args->len == 1) {
++        mp_print_str(print, "(");
++        mp_obj_print_helper(print, o->args->items[0], PRINT_REPR);
++        mp_print_str(print, ")");
++        return;
++    }
++    #endif
+     mp_obj_tuple_print(print, MP_OBJ_FROM_PTR(o->args), kind);
+ }
+ 
++#ifdef PYGRAM_UNSUPPORTED_EXIT
++// pygram: errno -> the OSError subclass CPython's errnomap would have chosen.
++//
++// Deliberately a SUBSET of CPython's family. Each type costs an mp_obj_type_t,
++// a builtins-table entry and a qstr. The ones left out — BlockingIOError,
++// ChildProcessError, the ConnectionError branch, InterruptedError,
++// ProcessLookupError, TimeoutError — need a network, a process table or a
++// signal, none of which exist in this guest. They stay UNDEFINED so
++// `except TimeoutError:` keeps leaving through the honest exit-90 `builtin:`
++// refusal rather than being declared and never raised, which is the bug class
++// docs/PYGRAM.md §4b was written about.
++const mp_obj_type_t *pygram_oserror_type(mp_int_t errno_) {
++    switch (errno_) {
++        case MP_ENOENT:
++            return &mp_type_FileNotFoundError;
++        case MP_EEXIST:
++            return &mp_type_FileExistsError;
++        case MP_EPERM:
++        case MP_EACCES:
++            return &mp_type_PermissionError;
++        case MP_EISDIR:
++            return &mp_type_IsADirectoryError;
++        case MP_ENOTDIR:
++            return &mp_type_NotADirectoryError;
++        default:
++            return &mp_type_OSError;
++    }
++}
++#endif
++
+ mp_obj_t mp_obj_exception_make_new(const mp_obj_type_t *type, size_t n_args, size_t n_kw, const mp_obj_t *args) {
+     mp_arg_check_num(n_args, n_kw, 0, MP_OBJ_FUN_ARGS_MAX, false);
+ 
++    #ifdef PYGRAM_UNSUPPORTED_EXIT
++    // pygram: CPython's OSError.__new__ returns an errno-mapped SUBCLASS, and
++    // MicroPython has one flat OSError. That cost two different things: the
++    // subclass NAMES were undefined, so the very common `except
++    // FileNotFoundError:` left through the exit-90 `builtin:` refusal; and
++    // `type(e).__name__` reported OSError where CPython reports the subclass,
++    // at exit 0, which is the silent divergence the corpus exists to catch.
++    //
++    // THE ARITY RULE IS CPYTHON'S, not a simplification of it, and it is the
++    // whole reason this is not just `n_args > 0`. Objects/exceptions.c parses
++    // an errno out of the arguments only when 2 <= nargs <= 5, so measured
++    // against CPython 3.11:
++    //     OSError(2)                   -> OSError            (NOT mapped)
++    //     OSError(2, "x")              -> FileNotFoundError
++    //     OSError(2, "x", "f", 5, "w") -> FileNotFoundError
++    //     OSError(2, ...six args...)   -> OSError            (NOT mapped)
++    //     OSError("2"), OSError(2.0, "x") -> OSError         (errno not an int)
++    // Mapping a one-argument OSError would MANUFACTURE a divergence on a
++    // program pygram runs correctly today, which is worse than the hole it
++    // closes.
++    //
++    // A failing open() does not arrive here: it comes from
++    // mp_raise_OSError(errno) with one argument, so py/runtime.c carries the
++    // other half. Both are needed and neither covers the other.
++    if (type == &mp_type_OSError && n_args >= 2 && n_args <= 5 && mp_obj_is_small_int(args[0])) {
++        type = pygram_oserror_type(MP_OBJ_SMALL_INT_VALUE(args[0]));
++    }
++    #endif
++
+     // Try to allocate memory for the exception, with fallback to emergency exception object
+     mp_obj_exception_t *o_exc = m_new_obj_maybe(mp_obj_exception_t);
+     if (o_exc == NULL) {
+@@ -329,6 +439,15 @@ MP_DEFINE_EXCEPTION(Exception, BaseException)
+     MP_DEFINE_EXCEPTION(UnboundLocalError, NameError)
+     */
+   MP_DEFINE_EXCEPTION(OSError, Exception)
++    #ifdef PYGRAM_UNSUPPORTED_EXIT
++    // pygram: the five errno-mapped subclasses a file-touching one-liner names.
++    // pygram_oserror_type() above chooses between them and explains the five.
++    MP_DEFINE_EXCEPTION(FileNotFoundError, OSError)
++    MP_DEFINE_EXCEPTION(FileExistsError, OSError)
++    MP_DEFINE_EXCEPTION(PermissionError, OSError)
++    MP_DEFINE_EXCEPTION(IsADirectoryError, OSError)
++    MP_DEFINE_EXCEPTION(NotADirectoryError, OSError)
++    #endif
+     /*
+     MP_DEFINE_EXCEPTION(BlockingIOError, OSError)
+     MP_DEFINE_EXCEPTION(ChildProcessError, OSError)
 diff --git a/py/objfloat.c b/py/objfloat.c
-index b0ad70d..15a2e72 100644
+index b0ad70d..67e3d5c 100644
 --- a/py/objfloat.c
 +++ b/py/objfloat.c
 @@ -30,6 +30,7 @@
@@ -678,7 +893,7 @@ index b0ad70d..15a2e72 100644
  #include "py/runtime.h"
  
  #if MICROPY_PY_BUILTINS_FLOAT
-@@ -110,6 +111,47 @@ mp_int_t mp_float_hash(mp_float_t src) {
+@@ -110,6 +111,92 @@ mp_int_t mp_float_hash(mp_float_t src) {
  static void float_print(const mp_print_t *print, mp_obj_t o_in, mp_print_kind_t kind) {
      (void)kind;
      mp_float_t o_val = mp_obj_float_get(o_in);
@@ -693,10 +908,24 @@ index b0ad70d..15a2e72 100644
 +    // Search for the shortest precision that round-trips rather than porting a
 +    // Grisu/Ryu implementation: at most 17 formats of one number, on a path
 +    // that only runs when a float is printed.
-+    char buf[32];
++    //
++    // The search is done in 'e' format, NOT 'g', and that is the whole
++    // correctness of it. %g picks exponential notation when the exponent is at
++    // least the PRECISION, so searching in 'g' made the notation depend on how
++    // few digits the number happened to need: 99.0 needs two digits and came
++    // out as "99.0", while 100.0 needs one and came out as **"1e+02"**. So did
++    // 10.0, 400.0, 1000.0 and 1e15. Every one of those is a silent wrong answer
++    // at exit 0 for the single most ordinary thing a program does — print a
++    // number — and three separately harvested corpus programs hit it.
++    //
++    // 'e' always writes one digit before the point, so the exponent it reports
++    // is unambiguous, and the NOTATION is then chosen deliberately by CPython's
++    // rule rather than inherited from a formatter's own.
++    char buf[48];
 +    int len = 0;
-+    for (int prec = 1; prec <= 17; prec++) {
-+        len = mp_format_float(o_val, buf, sizeof(buf), 'g', prec, '\0');
++    int prec = 1;
++    for (; prec <= 17; prec++) {
++        len = mp_format_float(o_val, buf, sizeof(buf), 'e', prec - 1, '\0');
 +        if (len <= 0) {
 +            break;
 +        }
@@ -705,22 +934,53 @@ index b0ad70d..15a2e72 100644
 +            break;
 +        }
 +    }
-+    if (len > 0) {
-+        // 'g' drops the fractional part of an integral value; CPython's repr
-+        // keeps it (25.0, not 25). nan/inf carry no point and take none.
-+        bool needs_point = true;
-+        for (int i = 0; i < len; i++) {
-+            char c = buf[i];
-+            if (c == '.' || c == 'e' || c == 'E' || c == 'n' || c == 'i') {
-+                needs_point = false;
-+                break;
++    // nan and inf have no exponent to read; they fall through to the printer
++    // below, which already spells them the way CPython does.
++    const char *epos = NULL;
++    for (int i = 0; i < len; i++) {
++        if (buf[i] == 'e') {
++            epos = buf + i;
++            break;
++        }
++    }
++    if (len > 0 && epos != NULL) {
++        int exp = (int)strtol(epos + 1, NULL, 10);
++        // CPython's repr style (Python/pystrtod.c, format_float_short with
++        // mode 'r'): exponential when decpt <= -4 or decpt > 16, where decpt is
++        // the position of the decimal point, one more than this exponent.
++        // Verified against CPython 3.11 over 299,851 random doubles.
++        int decpt = exp + 1;
++        if (decpt <= -4 || decpt > 16) {
++            // Already exactly the form CPython writes, two exponent digits and
++            // all: 1e+22, 1e-05, 5e-324.
++            mp_print_strn(print, buf, (size_t)len, 0, '\0', 0);
++            return;
++        }
++        // Fixed notation with exactly the decimals these digits need, so no
++        // trailing zeros are invented and none are lost. 'f' is used rather
++        // than 'g' for the same reason the search is: %g would re-decide the
++        // notation and strip digits on its own terms.
++        int dec = prec - 1 - exp;
++        if (dec < 0) {
++            dec = 0;
++        }
++        len = mp_format_float(o_val, buf, sizeof(buf), 'f', dec, '\0');
++        if (len > 0) {
++            bool has_point = false;
++            for (int i = 0; i < len; i++) {
++                if (buf[i] == '.') {
++                    has_point = true;
++                    break;
++                }
 +            }
++            mp_print_strn(print, buf, (size_t)len, 0, '\0', 0);
++            if (!has_point) {
++                // 'f' with zero decimals drops the point; CPython's repr keeps
++                // it (25.0, not 25).
++                mp_print_str(print, ".0");
++            }
++            return;
 +        }
-+        mp_print_strn(print, buf, (size_t)len, 0, '\0', 0);
-+        if (needs_point) {
-+            mp_print_str(print, ".0");
-+        }
-+        return;
 +    }
 +    #endif
      mp_print_float(print, o_val, 'g', PF_FLAG_ALWAYS_DECIMAL, '\0', -1, MP_FLOAT_REPR_PREC);
@@ -997,7 +1257,7 @@ index 05bcc0f..6e2aa71 100644
          mp_obj_t exc = mp_obj_new_exception_arg1(&mp_type_ValueError,
              mp_obj_new_str_from_utf8_vstr(&vstr));
 diff --git a/py/runtime.c b/py/runtime.c
-index 618e9b5..5fabd66 100644
+index 618e9b5..ba44512 100644
 --- a/py/runtime.c
 +++ b/py/runtime.c
 @@ -50,6 +50,29 @@
@@ -1078,6 +1338,29 @@ index 618e9b5..5fabd66 100644
      mp_raise_msg(&mp_type_NotImplementedError, msg);
  }
  
+@@ -1767,7 +1810,22 @@ MP_NORETURN void mp_raise_TypeError_int_conversion(mp_const_obj_t arg) {
+ }
+ 
+ MP_NORETURN void mp_raise_OSError(int errno_) {
++    #ifdef PYGRAM_UNSUPPORTED_EXIT
++    // pygram: the C half of the OSError subclass mapping (py/objexcept.c has
++    // the Python half and the full reasoning). Every real OS failure in this
++    // build arrives here with ONE argument, which is below the 2..5 arity
++    // CPython's OSError.__new__ maps on — CPython reaches FileNotFoundError for
++    // a failing open() because it constructs OSError(errno, strerror,
++    // filename), and this build has neither the strerror table nor the filename
++    // to hand. So the type is chosen here instead.
++    //
++    // The argument list is deliberately left at one: padding it to two would
++    // change e.args and the text of str(e) on a message that already ships,
++    // for no gain — the class name is what a program branches on.
++    mp_raise_type_arg(pygram_oserror_type(errno_), MP_OBJ_NEW_SMALL_INT(errno_));
++    #else
+     mp_raise_type_arg(&mp_type_OSError, MP_OBJ_NEW_SMALL_INT(errno_));
++    #endif
+ }
+ 
+ MP_NORETURN void mp_raise_OSError_with_filename(int errno_, const char *filename) {
 diff --git a/shared/runtime/pyexec.c b/shared/runtime/pyexec.c
 index b217f30..c8ecb99 100644
 --- a/shared/runtime/pyexec.c
