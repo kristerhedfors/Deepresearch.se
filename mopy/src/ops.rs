@@ -128,6 +128,20 @@ impl Interp {
                         _ => unreachable!(),
                     });
                 }
+                // NaN IS UNORDERED, AND THAT IS AN ANSWER, NOT AN ERROR.
+                //
+                // Every ordering comparison involving a NaN is False in Python
+                // — `nan > 99.0`, `nan < 99.0` and `nan >= nan` alike — because
+                // IEEE 754 says the relation does not hold, not because the
+                // operands cannot be compared. mopy raised TypeError("cannot
+                // order NaN") instead, turning a value CPython computes into an
+                // exception. Found by scripts/mopy-fuzz.mjs.
+                //
+                // Equality already behaves correctly through eq() above, where
+                // `nan == nan` is False for the same reason.
+                if is_nan(a) || is_nan(b) {
+                    return Ok(false);
+                }
                 let o = order(a, b)?;
                 match op {
                     CmpOp::Lt => o == Ordering::Less,
@@ -505,16 +519,72 @@ fn num_binop(op: BinOp, a: Num, b: Num) -> R<Value> {
             if y == 0.0 {
                 return Err(zero_div("float floor division by zero"));
             }
-            Value::Float((x / y).floor())
+            // inf // 2.5 is nan in CPython, not inf: the floor of an infinite
+            // quotient has no value, and math.floor(inf) is an error. Rust's
+            // (inf/2.5).floor() is inf, so this needed saying.
+            let q = x / y;
+            if !q.is_finite() {
+                // inf // 2.5 is nan in CPython, not inf: the floor of an
+                // infinite quotient has no value. Rust's (inf/2.5).floor() is
+                // inf, so this needed saying.
+                Value::Float(f64::NAN)
+            } else {
+                // CPython computes fmod first and derives the quotient from it,
+                // which is exact where flooring the rounded quotient is not:
+                // 1e16 // -3.0 is -3333333333333335.0, and (1e16 / -3.0).floor()
+                // gives -3333333333333334.0 because the division rounded up
+                // before the floor could see it.
+                let mod_ = x % y;
+                let mut div = (x - mod_) / y;
+                if mod_ != 0.0 && (mod_ < 0.0) != (y < 0.0) {
+                    div -= 1.0;
+                }
+                // A ZERO QUOTIENT KEEPS THE SIGN THE DIVISION WOULD HAVE
+                // GIVEN IT. -0.0 // 1.0 is -0.0 in CPython, and deriving div
+                // from (x - mod_) loses that because the subtraction produces a
+                // positive zero. repr() shows the sign, so it is observable.
+                if div == 0.0 {
+                    Value::Float(if x.is_sign_negative() != y.is_sign_negative() { -0.0 } else { 0.0 })
+                } else {
+                    Value::Float(div.floor())
+                }
+            }
         }
         Mod => {
             if y == 0.0 {
                 return Err(zero_div("float modulo"));
             }
             let r = x % y;
-            Value::Float(if r != 0.0 && (r < 0.0) != (y < 0.0) { r + y } else { r })
+            let mut m = if r != 0.0 && (r < 0.0) != (y < 0.0) { r + y } else { r };
+            // A ZERO REMAINDER TAKES THE DIVISOR'S SIGN. Rust's % keeps the
+            // DIVIDEND's, so -516.0 % 1.0 was -0.0 where CPython gives 0.0, and
+            // 99.0 % -3.0 was 0.0 where CPython gives -0.0. repr() shows the
+            // sign of zero, so this is visible in output rather than academic.
+            if m == 0.0 {
+                m = if y.is_sign_negative() { -0.0 } else { 0.0 };
+            }
+            Value::Float(m)
         }
-        Pow => Value::Float(x.powf(y)),
+        Pow => {
+            // Three cases Rust's powf answers and Python does not.
+            if x == 0.0 && y < 0.0 {
+                return Err(zero_div("0.0 cannot be raised to a negative power"));
+            }
+            if x < 0.0 && y != y.trunc() {
+                // CPython returns a COMPLEX number here. mopy has no complex
+                // type, so this is a refusal, not a nan: (-2.0) ** 0.5 answered
+                // nan at exit 0 where CPython answers 1.4142135623730951j.
+                return Err(unsupported(
+                    "complex",
+                    "a negative float raised to a fractional power (Python returns a complex number)",
+                ));
+            }
+            let r = x.powf(y);
+            if r.is_infinite() && x.is_finite() && y.is_finite() {
+                return Err(overflow_err("(34, 'Numerical result out of range')"));
+            }
+            Value::Float(r)
+        }
         _ => unreachable!(),
     })
 }
@@ -549,6 +619,12 @@ pub fn op_sym(op: BinOp) -> &'static str {
         LShift => "<<",
         RShift => ">>",
     }
+}
+
+/// Is this value a float NaN? Only a float can be one — an int never is, and a
+/// bool never is — so this deliberately does not go through as_num().
+fn is_nan(v: &Value) -> bool {
+    matches!(v, Value::Float(f) if f.is_nan())
 }
 
 // ---- ordering -------------------------------------------------------------

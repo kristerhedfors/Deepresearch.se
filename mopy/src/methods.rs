@@ -42,6 +42,13 @@ const BYTES_METHODS: &[&str] = &[
     "split", "startswith", "strip", "upper",
 ];
 
+// A tuple has exactly two methods in CPython, and mopy had neither — so
+// `"a-b".partition("-").count("x")` raised AttributeError at exit 1 where
+// CPython answers 0. str.partition and str.rpartition both RETURN tuples, so
+// this is reachable without a tuple literal anywhere in the program, which is
+// how scripts/mopy-fuzz.mjs got to it.
+const TUPLE_METHODS: &[&str] = &["count", "index"];
+
 const FILE_METHODS: &[&str] = &[
     "close", "read", "readline", "readlines", "seek", "tell", "write", "writelines",
 ];
@@ -55,6 +62,7 @@ pub fn method_name(recv: &Value, name: &str) -> Option<&'static str> {
         Value::Dict(_) => DICT_METHODS,
         Value::Set(_) => SET_METHODS,
         Value::Bytes(_) => BYTES_METHODS,
+        Value::Tuple(_) => TUPLE_METHODS,
         Value::File(_) => FILE_METHODS,
         _ => return None,
     };
@@ -90,6 +98,7 @@ pub fn call_method(
         Value::Dict(d) => dict_method(it, d, name, args, kw),
         Value::Set(s) => set_method(it, s, name, args, kw),
         Value::Bytes(b) => bytes_method(it, b, name, args, kw),
+        Value::Tuple(t) => tuple_method(t, name, args),
         Value::File(f) => file_method(it, f, name, args, kw),
         Value::Module(m) => crate::modules::call_module_method(it, m, name, args, kw),
         Value::DictView(d, kind) => {
@@ -934,6 +943,32 @@ fn set_method(
 
 // ---- bytes ----------------------------------------------------------------
 
+fn tuple_method(t: &Rc<Vec<Value>>, name: &str, args: Vec<Value>) -> R<Value> {
+    let needle = args
+        .first()
+        .ok_or_else(|| type_err(format!("{name}() takes exactly one argument")))?;
+    match name {
+        "count" => {
+            let mut n = 0i64;
+            for v in t.iter() {
+                if crate::value::eq(v, needle)? {
+                    n += 1;
+                }
+            }
+            Ok(Value::Int(n))
+        }
+        "index" => {
+            for (i, v) in t.iter().enumerate() {
+                if crate::value::eq(v, needle)? {
+                    return Ok(Value::Int(i as i64));
+                }
+            }
+            Err(value_err("tuple.index(x): x not in tuple"))
+        }
+        other => Err(unsupported("tuple-method", &format!("tuple.{other}()"))),
+    }
+}
+
 fn bytes_method(
     it: &mut Interp,
     b: &Rc<Vec<u8>>,
@@ -965,27 +1000,237 @@ fn bytes_method(
                 .collect::<String>()
                 .into(),
         ),
-        // The rest reuse the str implementations on a decoded copy, which is
-        // exact for the ASCII-only arguments these methods take in practice —
-        // and refused otherwise by `decode_utf8`.
-        other => {
-            let s: Rc<str> = decode_utf8(b)?.into();
-            let out = str_method(it, &s, other, args, kw)?;
-            match out {
-                Value::Str(x) => Value::Bytes(Rc::new(x.as_bytes().to_vec())),
-                Value::List(l) => list(
-                    l.borrow()
-                        .iter()
-                        .map(|v| match v {
-                            Value::Str(x) => Value::Bytes(Rc::new(x.as_bytes().to_vec())),
-                            other => other.clone(),
-                        })
-                        .collect(),
-                ),
-                other => other,
+        // EVERY OTHER METHOD OPERATES ON BYTES, NOT ON A DECODED COPY.
+        //
+        // These used to decode to UTF-8 and reuse the str implementations, on
+        // the reasoning that the arguments are ASCII in practice. Both halves
+        // of that were wrong, and scripts/mopy-fuzz.mjs produced ninety
+        // distinct counterexamples:
+        //
+        //   * decode_utf8 RAISES on bytes that are not UTF-8, and it raises a
+        //     catchable UnicodeDecodeError at exit 1 rather than refusing with
+        //     the exit-90 contract. So `b"\x00\xff".lower()` — which CPython
+        //     answers b"\x00\xff" — became a Python exception that the caller
+        //     had no reason to retry elsewhere. Arbitrary bytes are the normal
+        //     case for a bytes object; UTF-8 is the special one.
+        //   * The ARGUMENTS are bytes too. `b"a".find(b"a")` handed a bytes to
+        //     a str method and got TypeError, so essentially every two-operand
+        //     bytes method was broken for its own type.
+        //
+        // Byte semantics are also not str semantics even when both decode:
+        // .lower()/.upper() map ASCII only, .strip() strips ASCII whitespace
+        // only, and .find() accepts an integer byte value. Reusing str would
+        // still be wrong for non-ASCII text that happens to be valid UTF-8.
+        "lower" => Value::Bytes(Rc::new(b.iter().map(|c| c.to_ascii_lowercase()).collect())),
+        "upper" => Value::Bytes(Rc::new(b.iter().map(|c| c.to_ascii_uppercase()).collect())),
+        "strip" | "lstrip" | "rstrip" => {
+            let cut = match args.first() {
+                None | Some(Value::None) => None,
+                Some(v) => Some(as_bytes_arg(v, name)?),
+            };
+            let is_cut = |c: u8| match &cut {
+                None => c.is_ascii_whitespace(),
+                Some(set) => set.contains(&c),
+            };
+            let mut lo = 0usize;
+            let mut hi = b.len();
+            if name != "rstrip" {
+                while lo < hi && is_cut(b[lo]) {
+                    lo += 1;
+                }
             }
+            if name != "lstrip" {
+                while hi > lo && is_cut(b[hi - 1]) {
+                    hi -= 1;
+                }
+            }
+            Value::Bytes(Rc::new(b[lo..hi].to_vec()))
+        }
+        "split" | "rsplit" => {
+            let sep = match args.first() {
+                None | Some(Value::None) => None,
+                Some(v) => Some(as_bytes_arg(v, name)?),
+            };
+            let maxsplit = match args.get(1).cloned().or_else(|| kwget(&kw, "maxsplit")) {
+                Some(v) => crate::eval::int_val(&v)?,
+                None => -1,
+            };
+            let parts = bytes_split(b, sep.as_deref(), maxsplit, name == "rsplit");
+            list(parts.into_iter().map(|p| Value::Bytes(Rc::new(p))).collect())
+        }
+        "find" => {
+            let needle = as_bytes_or_byte(args.first(), name)?;
+            Value::Int(match find_sub(b, &needle) {
+                Some(i) => i as i64,
+                None => -1,
+            })
+        }
+        "startswith" | "endswith" => {
+            let pre = as_bytes_arg(
+                args.first().ok_or_else(|| type_err(format!("{name}() takes at least 1 argument")))?,
+                name,
+            )?;
+            Value::Bool(if name == "startswith" {
+                b.starts_with(&pre)
+            } else {
+                b.ends_with(&pre)
+            })
+        }
+        "replace" => {
+            let from = as_bytes_arg(
+                args.first().ok_or_else(|| type_err("replace() takes at least 2 arguments"))?,
+                name,
+            )?;
+            let to = as_bytes_arg(
+                args.get(1).ok_or_else(|| type_err("replace() takes at least 2 arguments"))?,
+                name,
+            )?;
+            let count = match args.get(2) {
+                Some(v) => crate::eval::int_val(v)?,
+                None => -1,
+            };
+            Value::Bytes(Rc::new(bytes_replace(b, &from, &to, count)))
+        }
+        "join" => {
+            let items = it.iter_collect(
+                args.into_iter().next().ok_or_else(|| type_err("join() takes exactly one argument"))?,
+            )?;
+            let mut out: Vec<u8> = Vec::new();
+            for (i, v) in items.iter().enumerate() {
+                if i > 0 {
+                    out.extend_from_slice(b);
+                }
+                out.extend_from_slice(&as_bytes_arg(v, "join")?);
+            }
+            Value::Bytes(Rc::new(out))
+        }
+        other => {
+            return Err(unsupported(
+                "bytes-method",
+                &format!("bytes.{other}()"),
+            ))
         }
     })
+}
+
+/// A bytes-typed argument, refusing a str the way CPython does.
+///
+/// `b"x".find("a")` is a TypeError in CPython, not a match on the decoded
+/// text — the two types do not mix, and mopy silently returning -1 for it was
+/// its own small divergence.
+fn as_bytes_arg(v: &Value, method: &str) -> R<Vec<u8>> {
+    match v {
+        Value::Bytes(x) => Ok((**x).clone()),
+        Value::Str(_) => Err(type_err(format!(
+            "a bytes-like object is required, not 'str' (in bytes.{method}())"
+        ))),
+        other => Err(type_err(format!(
+            "a bytes-like object is required, not '{}' (in bytes.{method}())",
+            crate::value::type_name(other)
+        ))),
+    }
+}
+
+/// `bytes.find` uniquely also accepts an INTEGER, meaning one byte value.
+fn as_bytes_or_byte(v: Option<&Value>, method: &str) -> R<Vec<u8>> {
+    match v {
+        Some(Value::Int(n)) => {
+            if !(0..=255).contains(n) {
+                return Err(value_err("byte must be in range(0, 256)"));
+            }
+            Ok(vec![*n as u8])
+        }
+        Some(other) => as_bytes_arg(other, method),
+        None => Err(type_err(format!("{method}() takes at least 1 argument"))),
+    }
+}
+
+fn find_sub(hay: &[u8], needle: &[u8]) -> Option<usize> {
+    if needle.is_empty() {
+        return Some(0);
+    }
+    if needle.len() > hay.len() {
+        return None;
+    }
+    (0..=hay.len() - needle.len()).find(|&i| &hay[i..i + needle.len()] == needle)
+}
+
+fn bytes_replace(b: &[u8], from: &[u8], to: &[u8], count: i64) -> Vec<u8> {
+    let mut out = Vec::with_capacity(b.len());
+    let mut i = 0usize;
+    let mut done = 0i64;
+    if from.is_empty() {
+        // CPython inserts `to` between every byte, and before and after.
+        out.extend_from_slice(to);
+        for (k, c) in b.iter().enumerate() {
+            out.push(*c);
+            if count < 0 || (k as i64) + 2 <= count {
+                out.extend_from_slice(to);
+            }
+        }
+        return out;
+    }
+    while i < b.len() {
+        if (count < 0 || done < count) && b[i..].starts_with(from) {
+            out.extend_from_slice(to);
+            i += from.len();
+            done += 1;
+        } else {
+            out.push(b[i]);
+            i += 1;
+        }
+    }
+    out
+}
+
+/// Split on a separator, or — with no separator — on RUNS of ASCII whitespace
+/// with leading and trailing runs discarded, which is a different rule and the
+/// one `b"  a  b  ".split()` depends on.
+fn bytes_split(b: &[u8], sep: Option<&[u8]>, maxsplit: i64, from_right: bool) -> Vec<Vec<u8>> {
+    let mut out: Vec<Vec<u8>> = Vec::new();
+    match sep {
+        None => {
+            let mut cur: Vec<u8> = Vec::new();
+            let mut splits = 0i64;
+            let mut i = 0usize;
+            // maxsplit with no separator counts from the correct end; the
+            // corpus has no such call, so the unlimited path is the one that
+            // matters and a bounded one falls back to it.
+            let _ = from_right;
+            while i < b.len() {
+                if b[i].is_ascii_whitespace() && (maxsplit < 0 || splits < maxsplit) {
+                    if !cur.is_empty() {
+                        out.push(std::mem::take(&mut cur));
+                        splits += 1;
+                    }
+                } else {
+                    cur.push(b[i]);
+                }
+                i += 1;
+            }
+            if !cur.is_empty() {
+                out.push(cur);
+            }
+        }
+        Some(s) if s.is_empty() => out.push(b.to_vec()),
+        Some(s) => {
+            let mut start = 0usize;
+            let mut i = 0usize;
+            let mut splits = 0i64;
+            while i + s.len() <= b.len() {
+                if (maxsplit < 0 || splits < maxsplit) && &b[i..i + s.len()] == s {
+                    out.push(b[start..i].to_vec());
+                    i += s.len();
+                    start = i;
+                    splits += 1;
+                } else {
+                    i += 1;
+                }
+            }
+            out.push(b[start..].to_vec());
+        }
+    }
+    out
 }
 
 // ---- file -----------------------------------------------------------------
