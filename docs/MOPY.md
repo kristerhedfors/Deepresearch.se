@@ -288,6 +288,51 @@ blocks needs 103,096 B, which no single flag provides; the levers not yet tried
 are `build-std` with `panic_immediate_abort` (nightly) and cutting the `std`
 formatting machinery. This is the clearest open work item.
 
+## 8a. In a real VM — the measurement that was missing
+
+Every mopy figure before 2026-08-19 came from a normal Linux filesystem, with
+the **x86_64** binary. CheerpX is 32-bit x86 only, so that binary cannot be
+loaded in the sandbox at all: the numbers that motivate the project were taken
+with an artifact that does not run in the environment they are about.
+
+The i686 build now ships in the image (`scripts/build-sandbox-image.sh` installs
+it beside pygram) and `scripts/pygram-vm-measure.mjs` has mopy probes. Measured
+2026-08-19 against `build/alpine-i386-mopy.ext2`, 5 repeats, headless CheerpX:
+
+| probe | pygram cold | mopy cold | python3 cold |
+|---|---|---|---|
+| `--version` (first touch of the binary) | 80 ms / **768 KB** | 193 ms / **1,280 KB** | 281 ms / 3,584 KB |
+| `-c 'print(1+1)'` | 52 ms | 31 ms | 3,353 ms |
+| `-c 'import json; …'` | 61 ms | 23 ms | **13,281 ms** |
+| a 200,000-iteration loop | 964 ms | 815 ms | — |
+
+Three things follow, and only the third is the one anyone expected.
+
+**mopy costs 1.67x pygram's bytes on first touch** — 1,280 KB against 768 KB,
+which is the 8-blocks-against-3 of §8 showing up as real fetches. Cold cost in
+this environment is a step function in 131,072 B device blocks, so size is not a
+tiebreak here, it is the dominant term for anything that runs once.
+
+**mopy's warm advantage does not clearly survive.** It is 0.102x CPython on a
+normal filesystem and the fastest engine on what it accepts; here the two
+subsets are within noise of each other on every probe, because a 50–85 ms exec
+round-trip floor sits under all of them and neither interpreter's own execution
+is anywhere near it. The loop probe — the only one with real work in it — is
+0.85x, and a single run at that magnitude is not a finding.
+
+**Both subsets keep CPython away from the ceiling, and that is the result that
+matters.** `python3 -c 'import json; …'` takes **13.3 seconds** cold in this
+image. The exec ceiling is 30 s and crossing it destroys the VM and ends the
+agent's turn, so that one line spends nearly half the budget; pygram does the
+same work in 61 ms and mopy in 23 ms. The case for a Python subset in the
+sandbox does not rest on mopy being faster than pygram, and on this evidence it
+should not be argued that way.
+
+**Read the byte columns with the tool's ordering caveat in hand.** The IDB cache
+is fresh per RUN, not per probe, so the first probe to touch a binary pays for
+all of its blocks and later probes on the same binary read as free. Compare each
+runtime's FIRST probe; a later one's byte count is not a size.
+
 ## 9. What is deliberately not here
 
 - **No `re`.** 14.0% of the corpus and the single biggest routing bucket, but a

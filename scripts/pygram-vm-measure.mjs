@@ -183,6 +183,17 @@ await new Promise((r) => server.listen(PORT, r));
 // /bin/sh so that every later probe measures its OWN binary. Without it the
 // first probe reads ~350 ms and the second ~20 ms for the same work.
 // --------------------------------------------------------------------------
+// THE BYTE COLUMNS ARE ORDER-DEPENDENT WITHIN A RUN, and reading them without
+// knowing that gives the wrong answer twice over. The IDB cache is fresh per
+// RUN, not per probe, so the FIRST probe to touch a binary pays for all of its
+// device blocks and every later probe using the same binary reads as free.
+// `mopy-hello` showing 128K and `mopy-import-json` showing 0K does not mean
+// mopy is smaller than pygram — it means `mopy-version` ran first and already
+// pulled mopy's blocks in.
+//
+// So the honest cross-runtime comparison is between each runtime's FIRST probe,
+// which is `pygram-version` against `mopy-version`. Keep those first in their
+// groups, and do not quote a later probe's byte count as a size.
 const PROBES = [
   { id: 'warm-shell',         cmd: 'true' },
   { id: 'pygram-version',     cmd: 'pygram --version 2>&1' },
@@ -193,6 +204,22 @@ const PROBES = [
   // probe printed [] at exit 0. Measuring the wrong thing successfully is the
   // exact failure this project cares most about, so the escaping is avoided.
   { id: 'pygram-re',          cmd: 'pygram -c \'import re;print(re.findall(r"[0-9]+","a1 b22"))\'' },
+  // mopy (docs/MOPY.md), the same four tasks. It has never been measured in a
+  // VM: every published mopy figure is from a normal Linux filesystem, with the
+  // x86_64 binary, which CheerpX cannot even load. `import re` is deliberately
+  // absent from mopy's set — mopy refuses it by design (regex is a routing
+  // decision, pygram owns it), so a probe would time the refusal, not the work.
+  // No `| head`: a pipe spawns busybox, whose own blocks land in this probe's
+  // byte count and made mopy look 5.9x pygram on a probe that measures neither.
+  { id: 'mopy-version',       cmd: 'mopy --version 2>&1' },
+  { id: 'mopy-hello',         cmd: "mopy -c 'print(1+1)'" },
+  { id: 'mopy-import-json',   cmd: 'mopy -c \'import json;print(json.dumps({"a":1}))\'' },
+  // A probe with actual WORK in it. Everything above is startup-dominated —
+  // `print(1+1)` measures the exec round-trip and the block fetches and almost
+  // nothing else — so a runtime that is genuinely faster at running code cannot
+  // show it. This one loops enough to be visible above the floor.
+  { id: 'pygram-work',        cmd: 'pygram -c \'t=0\nfor i in range(200000): t+=i*i\nprint(t)\'' },
+  { id: 'mopy-work',          cmd: 'mopy -c \'t=0\nfor i in range(200000): t+=i*i\nprint(t)\'' },
   { id: 'python-version',     cmd: 'python3 --version 2>&1' },
   { id: 'python-hello',       cmd: "python3 -c 'print(1+1)'" },
   { id: 'python-import-json', cmd: 'python3 -c \'import json;print(json.dumps({"a":1}))\'' },
@@ -272,6 +299,21 @@ for (const r of rows) {
 const pick = (id) => rows.find((r) => r.id === id && !r.hung);
 const pairs = [['pygram-version', 'python-version'], ['pygram-hello', 'python-hello'],
                ['pygram-import-json', 'python-import-json'], ['pygram-re', 'python-re']];
+const mopyPairs = [['mopy-hello', 'pygram-hello'], ['mopy-import-json', 'pygram-import-json'],
+                   ['mopy-version', 'pygram-version'], ['mopy-work', 'pygram-work']];
+// mopy against pygram, which is the comparison that decides anything: CPython
+// cannot run a one-liner in this image at all, so "faster than CPython" is not
+// the question. The question is whether mopy's 1.7x warm advantage on a normal
+// filesystem survives streaming 8 device blocks against pygram's 3.
+if (pick('mopy-hello')) {
+  console.log('\n  mopy vs pygram, same task (bytes is the column that transfers):');
+  for (const [a, b] of mopyPairs) {
+    const x = pick(a), y = pick(b);
+    if (!x || !y) continue;
+    console.log(`    ${a.replace('mopy-', '').padEnd(12)} ms ${(x.coldMs / Math.max(y.coldMs, 0.1)).toFixed(2)}x   bytes ${(x.coldB / Math.max(y.coldB, 1)).toFixed(2)}x   (mopy ${k(x.coldB)} vs pygram ${k(y.coldB)})`);
+  }
+}
+
 console.log('\n  pygram vs CPython, same task (bytes is the column that transfers):');
 for (const [a, b] of pairs) {
   const x = pick(a), y = pick(b);

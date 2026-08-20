@@ -403,6 +403,41 @@ pub fn format_value(v: &Value, spec_src: &str) -> R<String> {
         return to_str(v);
     }
     let sp = parse_spec(spec_src)?;
+
+    // A FLOAT WITH NO PRESENTATION TYPE IS NOT 'g'.
+    //
+    // CPython gives the empty presentation type its own mode for floats: "like
+    // 'g', except that when fixed-point notation is used it always includes at
+    // least one digit past the decimal point, and the default precision is as
+    // high as needed to represent the particular value". That is str(float),
+    // padded and signed. Defaulting to 'g' instead lost the fractional part and
+    // took the 6-digit default precision with it, so
+    //     format(0.0, "+")        gave '+0'          not '+0.0'
+    //     f"{12345.0:^7}"         gave ' 12345 '     not '12345.0'
+    //     format(1e10, ",")       gave '1e+10'       not '10,000,000,000.0'
+    // — a whole family of wrong answers at exit 0 on the most ordinary
+    // formatting there is. scripts/mopy-fuzz.mjs found sixteen of them.
+    if sp.ty.is_none() {
+        if let Value::Float(f) = v {
+            let body = if f.is_finite() {
+                let s = to_str(&Value::Float(f.abs()))?;
+                group_float(&s, sp.grouping)
+            } else {
+                return Ok(pad(&nonfinite(*f, false), &sp, false));
+            };
+            let signch = if f.is_sign_negative() {
+                "-"
+            } else {
+                match sp.sign {
+                    Some('+') => "+",
+                    Some(' ') => " ",
+                    _ => "",
+                }
+            };
+            return Ok(pad_signed(signch, &body, &sp));
+        }
+    }
+
     let ty = sp.ty.unwrap_or_else(|| match v {
         Value::Int(_) | Value::Bool(_) => 'd',
         Value::Float(_) => 'g',

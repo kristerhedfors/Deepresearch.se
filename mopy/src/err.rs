@@ -88,7 +88,63 @@ pub fn type_err(msg: impl Into<String>) -> MopyError {
 pub fn value_err(msg: impl Into<String>) -> MopyError {
     MopyError::exc("ValueError", msg)
 }
+/// Every name CPython 3.11 puts in `builtins`, minus the dunders — 149 of them.
+///
+/// This is the SAME distinction pygram draws in pygram_unsupported.h and for
+/// the same reason (docs/PYGRAM-SUBSET.md §7 rule 4): a name CPython HAS and
+/// mopy does not is mopy being too small, and must leave by the exit-90
+/// contract so the dispatcher retries on an interpreter that has it. A name
+/// NEITHER has is the program's own bug and keeps CPython's NameError and
+/// exit 1.
+///
+/// Without the split, `dir(sys)` and `hash("a")` raised NameError at exit 1 —
+/// an ordinary traceback, which the dispatcher deliberately does NOT treat as a
+/// refusal (re-running would repeat the program's side effects). So the router
+/// sent the program to mopy, mopy failed, and the chain stopped: a program
+/// CPython runs, reported as broken. That is an UNSAFE route, the one outcome
+/// docs/MOPY.md §3 says must not happen.
+static CPYTHON_BUILTINS: &[&str] = &[
+    "ArithmeticError", "AssertionError", "AttributeError", "BaseException",
+    "BaseExceptionGroup", "BlockingIOError", "BrokenPipeError", "BufferError",
+    "BytesWarning", "ChildProcessError", "ConnectionAbortedError",
+    "ConnectionError", "ConnectionRefusedError", "ConnectionResetError",
+    "DeprecationWarning", "EOFError", "Ellipsis", "EncodingWarning",
+    "EnvironmentError", "Exception", "ExceptionGroup", "False",
+    "FileExistsError", "FileNotFoundError", "FloatingPointError",
+    "FutureWarning", "GeneratorExit", "IOError", "ImportError",
+    "ImportWarning", "IndentationError", "IndexError", "InterruptedError",
+    "IsADirectoryError", "KeyError", "KeyboardInterrupt", "LookupError",
+    "MemoryError", "ModuleNotFoundError", "NameError", "None",
+    "NotADirectoryError", "NotImplemented", "NotImplementedError", "OSError",
+    "OverflowError", "PendingDeprecationWarning", "PermissionError",
+    "ProcessLookupError", "RecursionError", "ReferenceError",
+    "ResourceWarning", "RuntimeError", "RuntimeWarning", "StopAsyncIteration",
+    "StopIteration", "SyntaxError", "SyntaxWarning", "SystemError",
+    "SystemExit", "TabError", "TimeoutError", "True", "TypeError",
+    "UnboundLocalError", "UnicodeDecodeError", "UnicodeEncodeError",
+    "UnicodeError", "UnicodeTranslateError", "UnicodeWarning", "UserWarning",
+    "ValueError", "Warning", "ZeroDivisionError", "abs", "aiter", "all",
+    "anext", "any", "ascii", "bin", "bool", "breakpoint", "bytearray", "bytes",
+    "callable", "chr", "classmethod", "compile", "complex", "copyright",
+    "credits", "delattr", "dict", "dir", "divmod", "enumerate", "eval", "exec",
+    "exit", "filter", "float", "format", "frozenset", "getattr", "globals",
+    "hasattr", "hash", "help", "hex", "id", "input", "int", "isinstance",
+    "issubclass", "iter", "len", "license", "list", "locals", "map", "max",
+    "memoryview", "min", "next", "object", "oct", "open", "ord", "pow",
+    "print", "property", "quit", "range", "repr", "reversed", "round", "set",
+    "setattr", "slice", "sorted", "staticmethod", "str", "sum", "super",
+    "tuple", "type", "vars", "zip",
+];
+
+pub fn is_cpython_builtin(name: &str) -> bool {
+    CPYTHON_BUILTINS.contains(&name)
+}
+
+/// An undefined name: mopy being small, or the program being wrong.
 pub fn name_err(name: &str) -> MopyError {
+    if is_cpython_builtin(name) {
+        return unsupported("builtin", name);
+    }
     MopyError::exc("NameError", format!("name '{name}' is not defined"))
 }
 pub fn index_err(msg: impl Into<String>) -> MopyError {
@@ -100,6 +156,14 @@ pub fn key_err(msg: impl Into<String>) -> MopyError {
 pub fn attr_err(msg: impl Into<String>) -> MopyError {
     MopyError::exc("AttributeError", msg)
 }
+/// CPython raises OverflowError where a float result leaves the double range
+/// or a float cannot become an integer. mopy must NOT return infinity or a
+/// saturated i64 for these: both are answers, and a wrong answer at exit 0 is
+/// the outcome the whole refusal contract exists to prevent.
+pub fn overflow_err(msg: impl Into<String>) -> MopyError {
+    MopyError::exc("OverflowError", msg)
+}
+
 pub fn zero_div(msg: &str) -> MopyError {
     MopyError::exc("ZeroDivisionError", msg)
 }

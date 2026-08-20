@@ -24,6 +24,38 @@ pub const BUILTINS: &[&str] = &[
     "sorted", "str", "sum", "tuple", "type", "zip",
 ];
 
+/// f64 -> i64 the way CPython converts, refusing where it cannot.
+///
+/// `as i64` SATURATES in Rust: `1e308 as i64` is i64::MAX and `f64::INFINITY as
+/// i64` is i64::MAX, so `int(1e308)` answered 9223372036854775807 and
+/// `round(1e100)` answered the same — both at exit 0, both wrong, and both in
+/// exactly the place docs/MOPY.md §5 promises an `unsupported: bigint` refusal.
+/// The promise was kept for arithmetic (every op is checked) and quietly broken
+/// on the two conversions. scripts/mopy-fuzz.mjs found it in its first 120
+/// probes.
+///
+/// The three outcomes are CPython's, not an approximation of them: NaN is a
+/// ValueError, an infinity is an OverflowError, and a finite value too large
+/// for i64 is a value Python WOULD represent — so it is the bigint refusal, and
+/// the dispatcher hands the program to an interpreter that has bignums.
+pub fn float_to_int(f: f64, what: &str) -> R<i64> {
+    if f.is_nan() {
+        return Err(value_err(format!("cannot convert float NaN to integer")));
+    }
+    if f.is_infinite() {
+        return Err(overflow_err("cannot convert float infinity to integer"));
+    }
+    // 2^63 exactly; f64 cannot represent i64::MAX, so comparing against the
+    // power of two is the only correct bound.
+    if f >= 9223372036854775808.0 || f < -9223372036854775808.0 {
+        return Err(unsupported(
+            "bigint",
+            &format!("{what}() of a float beyond 64-bit range (Python would use a bignum)"),
+        ));
+    }
+    Ok(f as i64)
+}
+
 pub const EXCEPTIONS: &[&str] = &[
     "ArithmeticError",
     "AssertionError",
@@ -37,6 +69,7 @@ pub const EXCEPTIONS: &[&str] = &[
     "LookupError",
     "NameError",
     "NotImplementedError",
+    "OverflowError",
     "OSError",
     "IOError",
     "PermissionError",
@@ -204,12 +237,7 @@ pub fn call_builtin(
                         }
                     }
                 }
-                Some(Value::Float(f)) => {
-                    if !f.is_finite() {
-                        return Err(value_err("cannot convert float infinity to integer"));
-                    }
-                    Value::Int(f.trunc() as i64)
-                }
+                Some(Value::Float(f)) => Value::Int(float_to_int(*f, "int")?),
                 Some(Value::Int(i)) => Value::Int(*i),
                 Some(Value::Bool(b)) => Value::Int(*b as i64),
                 Some(Value::Bytes(b)) => {
@@ -413,7 +441,7 @@ pub fn call_builtin(
             match (&v, nd) {
                 (Value::Int(i), None) => Value::Int(*i),
                 (Value::Int(i), Some(n)) if n >= 0 => Value::Int(*i),
-                (Value::Float(f), None) => Value::Int(round_half_even(*f, 0) as i64),
+                (Value::Float(f), None) => Value::Int(float_to_int(round_half_even(*f, 0), "round")?),
                 (Value::Float(f), Some(n)) => Value::Float(round_half_even(*f, n)),
                 (Value::Bool(b), _) => Value::Int(*b as i64),
                 _ => {
@@ -669,7 +697,14 @@ pub fn call_builtin(
                 let items = it.iter_collect(other.clone())?;
                 let mut out = Vec::with_capacity(items.len());
                 for x in items {
-                    out.push(int_val(&x)? as u8);
+                    // `as u8` TRUNCATES in Rust, so bytes([2**62]) was b"\x00"
+                    // and bytes([300]) was b"\x2c" — silent data corruption at
+                    // exit 0 where CPython raises. Found by scripts/mopy-fuzz.mjs.
+                    let n = int_val(&x)?;
+                    if !(0..=255).contains(&n) {
+                        return Err(value_err("bytes must be in range(0, 256)"));
+                    }
+                    out.push(n as u8);
                 }
                 Value::Bytes(Rc::new(out))
             }
