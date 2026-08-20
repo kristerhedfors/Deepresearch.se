@@ -264,6 +264,16 @@ def _prep(pat, flags):
             if j >= n:
                 raise error("unterminated character set")
             cls = pat[i : j + 1]
+            # A `]` as the FIRST member of a class is a literal `]`, not the
+            # terminator — the scan above already knows that, but re1.5 does
+            # not, so `[]]` reached it as an empty class followed by a stray
+            # `]` and `re.findall('[]]+', ']] a')` returned [] where CPython
+            # returns [']]']. Escaping it says the same thing in a form the
+            # engine reads the same way.
+            if cls[:2] == "[]":
+                cls = "[\\]" + cls[2:]
+            elif cls[:3] == "[^]":
+                cls = "[^\\]" + cls[3:]
             if asc:
                 cls = _ascii_class(cls)
             out.append(_fold_class(cls) if ic else cls)
@@ -321,6 +331,27 @@ def _prep(pat, flags):
     return ("".join(out), names, out[:1] == ["^"], out[-1:] == ["$"])
 
 
+def _slice_guard(fn):
+    """Run `fn`, turning a mid-codepoint slice into the exit-90 refusal.
+
+    re1.5 matches BYTES. The variant patches its charclass so that a byte >=
+    0x80 is a word constituent, which makes `\w+` match a whole non-ASCII word
+    — but an UNQUANTIFIED `\w` still matches exactly one byte, so on
+    "raksmorgas" with combining characters it lands mid-character and slicing
+    the span raises UnicodeError.
+
+    That is pygram being unable to produce CPython's answer, not the program
+    being wrong, so it belongs to the 90 rather than to a traceback at exit 1.
+    Turning it into a refusal is all that is available here: matching a whole
+    UTF-8 sequence would need an alternation, which cannot appear inside a
+    character class, so the fix is in the engine or nowhere.
+    """
+    try:
+        return fn()
+    except UnicodeError:
+        _unsupported("a match that splits a multi-byte character (an unquantified \\w matches one byte)")
+
+
 class Match:
     def __init__(self, m, names, off, string):
         self._m = m
@@ -337,13 +368,13 @@ class Match:
 
     def group(self, *a):
         if len(a) == 0:
-            return self._m.group(0)
+            return _slice_guard(lambda: self._m.group(0))
         if len(a) == 1:
-            return self._m.group(self._idx(a[0]))
-        return tuple(self._m.group(self._idx(x)) for x in a)
+            return _slice_guard(lambda: self._m.group(self._idx(a[0])))
+        return tuple(_slice_guard(lambda i=x: self._m.group(self._idx(i))) for x in a)
 
     def groups(self, default=None):
-        g = self._m.groups()
+        g = _slice_guard(lambda: self._m.groups())
         if default is None:
             return g
         return tuple(default if x is None else x for x in g)
@@ -351,16 +382,16 @@ class Match:
     def groupdict(self, default=None):
         d = {}
         for k in self._names:
-            v = self._m.group(self._names[k])
+            v = _slice_guard(lambda kk=k: self._m.group(self._names[kk]))
             d[k] = default if v is None else v
         return d
 
     def start(self, g=0):
-        v = self._m.start(self._idx(g))
+        v = _slice_guard(lambda: self._m.start(self._idx(g)))
         return v if v < 0 else v + self._off
 
     def end(self, g=0):
-        v = self._m.end(self._idx(g))
+        v = _slice_guard(lambda: self._m.end(self._idx(g)))
         return v if v < 0 else v + self._off
 
     def span(self, g=0):
@@ -474,13 +505,62 @@ def _trim(p, s):
 
 
 def _segments(p, s):
-    if p.flags & M:
+    # MULTILINE is implemented by splitting the subject into lines, because
+    # re1.5's Bol/Eol only match at the two ends of the string it is given.
+    #
+    # SPLIT ONLY WHEN THE PATTERN ACTUALLY USES `^` OR `$`. MULTILINE changes
+    # nothing else in CPython — it is defined purely as "^ also matches after a
+    # newline, $ also matches before one" — so splitting a pattern that has
+    # neither anchor cannot help and actively breaks it: no pattern could match
+    # ACROSS a newline. `re.findall(r"\s\w+", "ab\ncd", re.M)` is ['\ncd'] in
+    # CPython and was [] here, and there is no `^` or `$` anywhere in it. A
+    # harvested corpus entry caught it on line 2098 of a 3,900-case sweep.
+    if (p.flags & M) and (p._anchored or p._dollar):
+        # The residual limit, refused rather than answered wrongly: with the
+        # subject split, a pattern that is anchored AND can consume a newline
+        # can no longer match one, and unlike the case above there is nothing
+        # to fall back to. The test is deliberately conservative — anything
+        # that could put a newline inside the match.
+        if _may_match_newline(p._src):
+            _unsupported("re.M with a pattern that can match a newline")
         off = 0
         for line in s.split("\n"):
             yield line, off
             off += len(line) + 1
     else:
         yield _trim(p, s), 0
+
+
+def _may_match_newline(pat):
+    """Could this pattern consume a newline?
+
+    Only asked for an anchored MULTILINE pattern, where a wrong answer cannot
+    be recovered. Over-reporting costs a refusal and a retry on real python3;
+    under-reporting is a silent wrong answer, so the doubt goes one way.
+    """
+    i = 0
+    n = len(pat)
+    while i < n:
+        c = pat[i]
+        if c == "\\":
+            nx = pat[i + 1 : i + 2]
+            if nx in ("n", "s", "S", "D", "W"):
+                return True
+            i += 2
+            continue
+        if c == "[":
+            # A negated class matches a newline unless it excludes one, and
+            # working out which is not worth the risk here.
+            j = pat.find("]", i + 1)
+            cls = pat[i : j + 1] if j > 0 else pat[i:]
+            if cls[:2] == "[^" or "\\n" in cls or "\\s" in cls or "\\S" in cls:
+                return True
+            i = (j + 1) if j > 0 else n
+            continue
+        if c == "\n":
+            return True
+        i += 1
+    return False
 
 
 def _find(p, s):
@@ -541,6 +621,13 @@ def _find(p, s):
 
 
 def _findall(p, s):
+    # Guarded at the boundary rather than at each span access: the fast
+    # paths below reach the native match object directly, so a slice that
+    # lands mid-character can surface from several places.
+    return _slice_guard(lambda: _findall_raw(p, s))
+
+
+def _findall_raw(p, s):
     out = []
     for m in _find(p, s):
         g = m._m.groups()
@@ -554,6 +641,13 @@ def _findall(p, s):
 
 
 def _split(p, s, maxsplit):
+    # Guarded at the boundary rather than at each span access: the fast
+    # paths below reach the native match object directly, so a slice that
+    # lands mid-character can surface from several places.
+    return _slice_guard(lambda: _split_raw(p, s, maxsplit))
+
+
+def _split_raw(p, s, maxsplit):
     out = []
     last = 0
     k = 0
@@ -619,6 +713,13 @@ def _expand(m, t):
 
 
 def _subn(p, repl, s, count):
+    # Guarded at the boundary rather than at each span access: the fast
+    # paths below reach the native match object directly, so a slice that
+    # lands mid-character can surface from several places.
+    return _slice_guard(lambda: _subn_raw(p, repl, s, count))
+
+
+def _subn_raw(p, repl, s, count):
     # Every match _find yields is substituted, INCLUDING an empty one that
     # abuts the previous match. This looks like a bug and is the rule: CPython
     # skipped that match up to 3.6 and stopped skipping it in 3.7 (bpo-32308),

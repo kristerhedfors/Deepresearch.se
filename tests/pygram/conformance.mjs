@@ -236,6 +236,21 @@ export function isNondeterministic(entry) {
 // arrive automatically from the capture harness and nobody will tag them.
 const INTERPRETER_SPECIFIC = [
   /\bsys\s*\.\s*(?:version|executable|implementation|path|prefix|base_prefix|maxsize|byteorder|flags)\b/,
+  // sys.stdlib_module_names is the strongest member of this class, not the
+  // weakest: it names the modules THAT INTERPRETER ships, and it differs
+  // between two conformant CPythons — 305 names on 3.11, 293 on 3.12, which
+  // dropped _bootsubprocess, asynchat, asyncore, distutils, imp and smtpd. So
+  // an entry printing it cannot be pinned by a corpus at all; the same program
+  // gives a different answer on the machine next to this one, and three
+  // harvested entries did exactly that when CI's oracle turned out to be 3.12
+  // where the development machine had 3.11.
+  //
+  // pygram exposes the list for a different job — pygram_unsupported.h carries
+  // it as the table that decides whether a missing module is CPython's or the
+  // program's — and being slightly generous there is the safe direction: a
+  // module CPython dropped exits 90 and the caller retries, rather than being
+  // reported as the program's own bug.
+  /\bsys\s*\.\s*stdlib_module_names\b/,
   /\bplatform\s*\.\s*\w+/,
   /\bdir\s*\(/,
   /\bos\s*\.\s*uname\b/,

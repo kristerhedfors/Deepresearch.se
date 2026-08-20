@@ -24,6 +24,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "py/mperrno.h"
 #include "py/obj.h"
 #include "py/objtype.h"
 #include "py/runtime.h"
@@ -450,6 +451,71 @@ static inline void pygram_check_memory_exc(mp_obj_t exc) {
 static inline void pygram_check_compat_exc(mp_obj_t exc) {
     pygram_check_missing_syntax(exc);
     pygram_check_memory_exc(exc);
+}
+
+/*
+ * ---------------------------------------------------------------------------
+ * What CPython puts in an OSError, and what a failing open() looks like
+ * ---------------------------------------------------------------------------
+ *
+ * CPython raises OSError(errno, strerror, filename) for a real OS failure, and
+ * then hides the third argument: `.args` is the first TWO, and the filename
+ * comes back through `.filename` and through `str(e)`:
+ *
+ *     >>> open("nope.txt")
+ *     FileNotFoundError: [Errno 2] No such file or directory: 'nope.txt'
+ *     >>> e.args
+ *     (2, 'No such file or directory')
+ *
+ * MicroPython raises OSError(errno) with one argument and no message at all, so
+ * `str(e)` was the bare number `2` — which is the least useful form of the most
+ * common error a sandbox program hits, and a corpus entry printing it diverged
+ * on every line.
+ *
+ * The table is the ~20 errnos a file-touching one-liner can actually produce,
+ * with CPython's exact strerror text. It is NOT the full errno space: an errno
+ * outside it falls back to a one-argument OSError, which is what MicroPython
+ * did for everything before. Roughly 500 B of .rodata for the most-read error
+ * message in the runtime.
+ */
+typedef struct {
+    int err;
+    const char *msg;
+} pygram_strerror_t;
+
+static const pygram_strerror_t pygram_strerror_table[] = {
+    { MP_EPERM, "Operation not permitted" },
+    { MP_ENOENT, "No such file or directory" },
+    { MP_EIO, "Input/output error" },
+    { MP_EBADF, "Bad file descriptor" },
+    { MP_EAGAIN, "Resource temporarily unavailable" },
+    { MP_EACCES, "Permission denied" },
+    { MP_EBUSY, "Device or resource busy" },
+    { MP_EEXIST, "File exists" },
+    { MP_EXDEV, "Invalid cross-device link" },
+    { MP_ENODEV, "No such device" },
+    { MP_ENOTDIR, "Not a directory" },
+    { MP_EISDIR, "Is a directory" },
+    { MP_EINVAL, "Invalid argument" },
+    { MP_EMFILE, "Too many open files" },
+    { MP_EFBIG, "File too large" },
+    { MP_ENOSPC, "No space left on device" },
+    { MP_EROFS, "Read-only file system" },
+    { MP_EPIPE, "Broken pipe" },
+    { MP_ERANGE, "Numerical result out of range" },
+    // Not in MicroPython's mperrno.h; the numbers are the Linux ones the
+    // guest's syscalls actually return.
+    { 36, "File name too long" },
+    { 39, "Directory not empty" },
+};
+
+static inline const char *pygram_strerror(int err) {
+    for (size_t i = 0; i < MP_ARRAY_SIZE(pygram_strerror_table); i++) {
+        if (pygram_strerror_table[i].err == err) {
+            return pygram_strerror_table[i].msg;
+        }
+    }
+    return NULL;
 }
 
 #endif // PYGRAM_COMPAT_H

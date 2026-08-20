@@ -48,6 +48,25 @@ index d2a7af5..a07d0b5 100644
      };
  
      // parse args
+diff --git a/extmod/vfs_posix_file.c b/extmod/vfs_posix_file.c
+index 5fe330d..1665f66 100644
+--- a/extmod/vfs_posix_file.c
++++ b/extmod/vfs_posix_file.c
+@@ -103,7 +103,14 @@ mp_obj_t mp_vfs_posix_file_open(const mp_obj_type_t *type, mp_obj_t file_in, mp_
+ 
+     const char *fname = mp_obj_str_get_str(fid);
+     int fd;
++    #ifdef PYGRAM_UNSUPPORTED_EXIT
++    // pygram: the filename is right here, and CPython puts it in the exception.
++    // Without it a failing open() says "[Errno 2] No such file or directory"
++    // and leaves the caller to guess WHICH file.
++    MP_HAL_RETRY_SYSCALL(fd, open(fname, mode_x | mode_rw, 0644), pygram_raise_oserror_filename(err, fname));
++    #else
+     MP_HAL_RETRY_SYSCALL(fd, open(fname, mode_x | mode_rw, 0644), mp_raise_OSError(err));
++    #endif
+     o->fd = fd;
+     return MP_OBJ_FROM_PTR(o);
+ }
 diff --git a/lib/re1.5/charclass.c b/lib/re1.5/charclass.c
 index 2553b40..6d8bf04 100644
 --- a/lib/re1.5/charclass.c
@@ -79,6 +98,72 @@ index 2553b40..6d8bf04 100644
              off ^= 1;
          }
      }
+diff --git a/lib/re1.5/recursiveloop.c b/lib/re1.5/recursiveloop.c
+index 17ecea3..0a0a3a2 100644
+--- a/lib/re1.5/recursiveloop.c
++++ b/lib/re1.5/recursiveloop.c
+@@ -4,6 +4,28 @@
+ 
+ #include "re1.5.h"
+ 
++// pygram: one CLASS match consumes one CHARACTER, not one byte.
++//
++// re1.5 matches bytes. charclass.c already treats every byte >= 0x80 as a word
++// constituent, which keeps `\w+` from shredding "räksmörgås" into
++// ['r','ksm','rg','s'] — but that works only because `+` happens to consume the
++// remaining bytes. An UNQUANTIFIED class matched exactly one byte and left the
++// cursor mid-character, so `re.findall(r"\w", "räksmörgås")` produced spans
++// that could not be sliced and raised UnicodeError, where CPython returns the
++// ten characters. The same held for `.` and for any negated class: `[^a]`
++// matched a third of an "ö".
++//
++// Advancing over the UTF-8 continuation bytes after a consuming instruction
++// makes each of those consume a whole character, which is what CPython's `.`
++// and its character classes do. A literal Char is deliberately excluded — see
++// the case below.
++#define PYGRAM_SKIP_CONT(sp, end) \
++	do { \
++		while ((sp) < (end) && ((unsigned char)*(sp) & 0xC0) == 0x80) { \
++			(sp)++; \
++		} \
++	} while (0)
++
+ static int
+ recursiveloop(char *pc, const char *sp, Subject *input, const char **subp, int nsubp)
+ {
+@@ -20,11 +42,16 @@ recursiveloop(char *pc, const char *sp, Subject *input, const char **subp, int n
+ 		}
+ 		switch(*pc++) {
+ 		case Char:
++			// pygram: a LITERAL stays byte-wise. A multi-byte character in
++			// the pattern compiles to a SEQUENCE of Char instructions, so
++			// skipping continuation bytes here would consume it twice over.
+ 			if(*sp != *pc++)
+ 				return 0;
+-			MP_FALLTHROUGH
++			sp++;
++			continue;
+ 		case Any:
+ 			sp++;
++			PYGRAM_SKIP_CONT(sp, input->end);
+ 			continue;
+ 		case Class:
+ 		case ClassNot:
+@@ -32,12 +59,14 @@ recursiveloop(char *pc, const char *sp, Subject *input, const char **subp, int n
+ 				return 0;
+ 			pc += *(unsigned char*)pc * 2 + 1;
+ 			sp++;
++			PYGRAM_SKIP_CONT(sp, input->end);
+ 			continue;
+                 case NamedClass:
+ 			if (!_re1_5_namedclassmatch(pc, sp))
+ 				return 0;
+ 			pc++;
+ 			sp++;
++			PYGRAM_SKIP_CONT(sp, input->end);
+ 			continue;
+ 		case Match:
+ 			return 1;
 diff --git a/ports/unix/main.c b/ports/unix/main.c
 index 9e9704a..e083f32 100644
 --- a/ports/unix/main.c
@@ -675,10 +760,10 @@ index 3dae926..fdf5456 100644
  }
  #endif
 diff --git a/py/obj.h b/py/obj.h
-index 3c9122a..95fa8c0 100644
+index 3c9122a..2319b0d 100644
 --- a/py/obj.h
 +++ b/py/obj.h
-@@ -898,6 +898,20 @@ extern const mp_obj_type_t mp_type_MemoryError;
+@@ -898,6 +898,23 @@ extern const mp_obj_type_t mp_type_MemoryError;
  extern const mp_obj_type_t mp_type_NameError;
  extern const mp_obj_type_t mp_type_NotImplementedError;
  extern const mp_obj_type_t mp_type_OSError;
@@ -695,6 +780,9 @@ index 3c9122a..95fa8c0 100644
 +// when this variant does not carry one for it. py/objexcept.c owns the table;
 +// py/runtime.c's mp_raise_OSError() is the other caller.
 +const mp_obj_type_t *pygram_oserror_type(mp_int_t errno_);
++// OSError(errno, strerror, filename), as CPython builds it for a real OS
++// failure. py/objexcept.c hides the third argument from `.args`.
++MP_NORETURN void pygram_raise_oserror_filename(int errno_, const char *filename);
 +#endif
  extern const mp_obj_type_t mp_type_OverflowError;
  extern const mp_obj_type_t mp_type_RuntimeError;
@@ -725,10 +813,10 @@ index 692a7de..a086833 100644
  }
  
 diff --git a/py/objexcept.c b/py/objexcept.c
-index d43cf97..5eaf1fb 100644
+index d43cf97..4f48368 100644
 --- a/py/objexcept.c
 +++ b/py/objexcept.c
-@@ -180,6 +180,30 @@ void mp_obj_exception_print(const mp_print_t *print, mp_obj_t o_in, mp_print_kin
+@@ -180,6 +180,43 @@ void mp_obj_exception_print(const mp_print_t *print, mp_obj_t o_in, mp_print_kin
              return;
          }
  
@@ -746,12 +834,25 @@ index d43cf97..5eaf1fb 100644
 +        // both extra text CPython does not write and a different word from the
 +        // strerror CPython would use. Two harvested corpus programs caught it.
 +        if (mp_obj_is_subclass_fast(MP_OBJ_FROM_PTR(o->base.type), MP_OBJ_FROM_PTR(&mp_type_OSError))
-+            && o->args->len >= 2 && mp_obj_is_small_int(o->args->items[0])) {
-+            mp_printf(print, "[Errno " INT_FMT "] ", MP_OBJ_SMALL_INT_VALUE(o->args->items[0]));
++            && o->args->len >= 2 && o->args->len <= 5) {
++            // ANY first argument, not just an int: CPython renders
++            // str(OSError(2.0, "x")) as "[Errno 2.0] x". Only the errno ->
++            // subclass MAPPING requires an int; the message does not.
++            mp_print_str(print, "[Errno ");
++            mp_obj_print_helper(print, o->args->items[0], PRINT_STR);
++            mp_print_str(print, "] ");
 +            mp_obj_print_helper(print, o->args->items[1], PRINT_STR);
 +            if (o->args->len > 2) {
 +                mp_print_str(print, ": ");
 +                mp_obj_print_helper(print, o->args->items[2], PRINT_REPR);
++                // CPython's 5-argument form is (errno, strerror, filename,
++                // winerror, filename2) and renders the pair as "'f' -> 'w'".
++                // Four arguments show only the first filename; six or more are
++                // not an OSError shape at all and fall back to the tuple.
++                if (o->args->len > 4) {
++                    mp_print_str(print, " -> ");
++                    mp_obj_print_helper(print, o->args->items[4], PRINT_REPR);
++                }
 +            }
 +            return;
 +        }
@@ -759,7 +860,7 @@ index d43cf97..5eaf1fb 100644
          #if MICROPY_PY_ERRNO
          // try to provide a nice OSError error message
          if (o->base.type == &mp_type_OSError && o->args->len > 0 && o->args->len < 3 && mp_obj_is_small_int(o->args->items[0])) {
-@@ -194,19 +218,105 @@ void mp_obj_exception_print(const mp_print_t *print, mp_obj_t o_in, mp_print_kin
+@@ -194,19 +231,105 @@ void mp_obj_exception_print(const mp_print_t *print, mp_obj_t o_in, mp_print_kin
              }
          }
          #endif
@@ -865,7 +966,50 @@ index d43cf97..5eaf1fb 100644
      // Try to allocate memory for the exception, with fallback to emergency exception object
      mp_obj_exception_t *o_exc = m_new_obj_maybe(mp_obj_exception_t);
      if (o_exc == NULL) {
-@@ -329,6 +439,15 @@ MP_DEFINE_EXCEPTION(Exception, BaseException)
+@@ -280,6 +403,42 @@ void mp_obj_exception_attr(mp_obj_t self_in, qstr attr, mp_obj_t *dest) {
+         }
+         return;
+     }
++    #ifdef PYGRAM_UNSUPPORTED_EXIT
++    // pygram: CPython's OSError argument split. It builds
++    // OSError(errno, strerror, filename) and then does NOT show the third:
++    //     >>> open("nope.txt").args      -> (2, 'No such file or directory')
++    //     >>> e.filename                 -> 'nope.txt'
++    //     >>> str(e)  -> "[Errno 2] No such file or directory: 'nope.txt'"
++    // The filename has to be kept somewhere for str() to print, and a third
++    // args slot is the cheapest place — an extra field on mp_obj_exception_t
++    // would cost memory on every exception in the runtime. So it is stored
++    // there and hidden here, which reproduces every observable behaviour.
++    if (self->args != NULL && self->args->len >= 3 && self->args->len <= 5
++        && mp_obj_is_subclass_fast(MP_OBJ_FROM_PTR(self->base.type), MP_OBJ_FROM_PTR(&mp_type_OSError))) {
++        if (attr == MP_QSTR_args) {
++            mp_obj_t two[2] = { self->args->items[0], self->args->items[1] };
++            dest[0] = mp_obj_new_tuple(2, two);
++            return;
++        }
++        if (attr == MP_QSTR_filename) {
++            dest[0] = self->args->items[2];
++            return;
++        }
++        if (attr == MP_QSTR_filename2) {
++            dest[0] = self->args->len > 4 ? self->args->items[4] : mp_const_none;
++            return;
++        }
++        if (attr == MP_QSTR_strerror) {
++            dest[0] = self->args->items[1];
++            return;
++        }
++    }
++    if (attr == MP_QSTR_strerror && self->args != NULL && self->args->len >= 2
++        && mp_obj_is_subclass_fast(MP_OBJ_FROM_PTR(self->base.type), MP_OBJ_FROM_PTR(&mp_type_OSError))) {
++        dest[0] = self->args->items[1];
++        return;
++    }
++    #endif
+     if (attr == MP_QSTR_args) {
+         decompress_error_text_maybe(self);
+         dest[0] = MP_OBJ_FROM_PTR(self->args);
+@@ -329,6 +488,15 @@ MP_DEFINE_EXCEPTION(Exception, BaseException)
      MP_DEFINE_EXCEPTION(UnboundLocalError, NameError)
      */
    MP_DEFINE_EXCEPTION(OSError, Exception)
@@ -1257,7 +1401,7 @@ index 05bcc0f..6e2aa71 100644
          mp_obj_t exc = mp_obj_new_exception_arg1(&mp_type_ValueError,
              mp_obj_new_str_from_utf8_vstr(&vstr));
 diff --git a/py/runtime.c b/py/runtime.c
-index 618e9b5..ba44512 100644
+index 618e9b5..a130edb 100644
 --- a/py/runtime.c
 +++ b/py/runtime.c
 @@ -50,6 +50,29 @@
@@ -1290,17 +1434,26 @@ index 618e9b5..ba44512 100644
  #if MICROPY_DEBUG_VERBOSE // print debugging info
  #define DEBUG_PRINT (1)
  #define DEBUG_printf DEBUG_printf
-@@ -252,6 +275,9 @@ mp_obj_t MICROPY_WRAP_MP_LOAD_GLOBAL(mp_load_global)(qstr qst) {
+@@ -252,8 +275,18 @@ mp_obj_t MICROPY_WRAP_MP_LOAD_GLOBAL(mp_load_global)(qstr qst) {
              #if MICROPY_ERROR_REPORTING <= MICROPY_ERROR_REPORTING_TERSE
              mp_raise_msg(&mp_type_NameError, MP_ERROR_TEXT("name not defined"));
              #else
 +            // pygram: a name CPython HAS in builtins (FileNotFoundError,
 +            // frozenset, complex) is a coverage gap, not the program's bug.
 +            PYGRAM_CHECK_UNSUPPORTED_NAME(qstr_str(qst));
++            #ifdef PYGRAM_UNSUPPORTED_EXIT
++            // pygram: CPython's wording, verbatim. A program that PRINTS a
++            // caught NameError's message — and a harvested corpus entry does —
++            // diverges on the contraction alone.
++            mp_raise_msg_varg(&mp_type_NameError, MP_ERROR_TEXT("name '%q' is not defined"), qst);
++            #else
              mp_raise_msg_varg(&mp_type_NameError, MP_ERROR_TEXT("name '%q' isn't defined"), qst);
              #endif
++            #endif
          }
-@@ -711,6 +737,18 @@ mp_obj_t mp_call_function_n_kw(mp_obj_t fun_in, size_t n_args, size_t n_kw, cons
+     }
+     return elem->value;
+@@ -711,6 +744,18 @@ mp_obj_t mp_call_function_n_kw(mp_obj_t fun_in, size_t n_args, size_t n_kw, cons
      // get the type
      const mp_obj_type_t *type = mp_obj_get_type(fun_in);
  
@@ -1319,7 +1472,7 @@ index 618e9b5..ba44512 100644
      // do the call
      if (MP_OBJ_TYPE_HAS_SLOT(type, call)) {
          return MP_OBJ_TYPE_GET_SLOT(type, call)(fun_in, n_args, n_kw, args);
-@@ -1229,6 +1267,7 @@ void mp_load_method(mp_obj_t base, qstr attr, mp_obj_t *dest) {
+@@ -1229,6 +1274,7 @@ void mp_load_method(mp_obj_t base, qstr attr, mp_obj_t *dest) {
  
      if (dest[0] == MP_OBJ_NULL) {
          // no attribute/method called attr
@@ -1327,7 +1480,7 @@ index 618e9b5..ba44512 100644
          #if MICROPY_ERROR_REPORTING <= MICROPY_ERROR_REPORTING_TERSE
          mp_raise_msg(&mp_type_AttributeError, MP_ERROR_TEXT("no such attribute"));
          #else
-@@ -1739,6 +1778,10 @@ MP_NORETURN void mp_raise_TypeError(mp_rom_error_text_t msg) {
+@@ -1739,6 +1785,10 @@ MP_NORETURN void mp_raise_TypeError(mp_rom_error_text_t msg) {
  }
  
  MP_NORETURN void mp_raise_NotImplementedError(mp_rom_error_text_t msg) {
@@ -1338,7 +1491,7 @@ index 618e9b5..ba44512 100644
      mp_raise_msg(&mp_type_NotImplementedError, msg);
  }
  
-@@ -1767,7 +1810,22 @@ MP_NORETURN void mp_raise_TypeError_int_conversion(mp_const_obj_t arg) {
+@@ -1767,9 +1817,50 @@ MP_NORETURN void mp_raise_TypeError_int_conversion(mp_const_obj_t arg) {
  }
  
  MP_NORETURN void mp_raise_OSError(int errno_) {
@@ -1354,13 +1507,41 @@ index 618e9b5..ba44512 100644
 +    // The argument list is deliberately left at one: padding it to two would
 +    // change e.args and the text of str(e) on a message that already ships,
 +    // for no gain — the class name is what a program branches on.
++    // ... and CPython's (errno, strerror) pair, so `str(e)` reads
++    // "[Errno 2] No such file or directory" rather than the bare "2".
++    const char *msg = pygram_strerror(errno_);
++    if (msg != NULL) {
++        mp_obj_t args[2] = { MP_OBJ_NEW_SMALL_INT(errno_), mp_obj_new_str(msg, strlen(msg)) };
++        nlr_raise(mp_obj_new_exception_args(pygram_oserror_type(errno_), 2, args));
++    }
 +    mp_raise_type_arg(pygram_oserror_type(errno_), MP_OBJ_NEW_SMALL_INT(errno_));
 +    #else
      mp_raise_type_arg(&mp_type_OSError, MP_OBJ_NEW_SMALL_INT(errno_));
 +    #endif
  }
  
++#ifdef PYGRAM_UNSUPPORTED_EXIT
++// pygram: OSError(errno, strerror, filename), the way CPython builds it for a
++// real OS failure. The third argument is deliberately kept in `args` here and
++// hidden by py/objexcept.c's attribute handler, which is where CPython's
++// "args is the first two, filename is the third" split is reproduced.
++MP_NORETURN void pygram_raise_oserror_filename(int errno_, const char *filename) {
++    const char *msg = pygram_strerror(errno_);
++    if (msg != NULL && filename != NULL) {
++        mp_obj_t args[3] = {
++            MP_OBJ_NEW_SMALL_INT(errno_),
++            mp_obj_new_str(msg, strlen(msg)),
++            mp_obj_new_str(filename, strlen(filename)),
++        };
++        nlr_raise(mp_obj_new_exception_args(pygram_oserror_type(errno_), 3, args));
++    }
++    mp_raise_OSError(errno_);
++}
++#endif
++
  MP_NORETURN void mp_raise_OSError_with_filename(int errno_, const char *filename) {
+     vstr_t vstr;
+     vstr_init(&vstr, 32);
 diff --git a/shared/runtime/pyexec.c b/shared/runtime/pyexec.c
 index b217f30..c8ecb99 100644
 --- a/shared/runtime/pyexec.c
