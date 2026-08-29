@@ -56,6 +56,7 @@
      dark amber. Applied to the real .check span under :root.models-mode so the
      canvas ✓ and the swapped-in span agree. */
   --check-amber: #b8860b;
+  --check-green: #107452;
   /* Deep Science's ✓ — the gold-recoloured waiting balloon
      (public/js/mode-spinner.js SCIENCE_SPINNER.check must match) folds into this
      gilt. Applied to the real .check span under :root.sci-mode so the canvas ✓
@@ -145,6 +146,21 @@
   --accent: #b8860b;      /* dark amber — links, buttons, focus */
   --on-accent: #14100a;   /* white on this amber is 3.2:1 — below AA */
   --user: #fff3cf;
+}
+/* • lypning → GREEN: the stopwatch. Green is not decoration here — it is the
+     colour the /lypning/ dashboard already uses for MEASURED HERE, against blue
+     for a figure quoted from somebody else's run. Carrying it into the mode
+     keeps one meaning for one colour across both surfaces. */
+:root.lypning-mode {
+  --bg: #23b483;          /* the measured green */
+  --panel: #f3fbf7;
+  --panel-2: #e2f4ec;
+  --border: #a9d9c4;
+  --text: #06241a;
+  --muted: #35604f;
+  --accent: #107452;      /* deep green — links, buttons, focus */
+  --on-accent: #f3fbf7;
+  --user: #d8f1e6;
 }
 /* • Deep Science → PARCHMENT: the reading room. A dark field rather than a
      bright one, because this is the only mode that answers exclusively from
@@ -894,6 +910,7 @@ img.doc-img { max-width: 100%; height: auto; border-radius: 10px; border: 1px so
 :root.orch-mode .step .check { color: var(--check-violet); }
 :root.outro-mode .step .check { color: var(--check-red); }
 :root.models-mode .step .check { color: var(--check-amber); }
+:root.lypning-mode .step .check { color: var(--check-green); }
 :root.sci-mode .step .check { color: var(--check-gold); }
 :root.cyber-mode .step .check { color: var(--check-crimson); }
 /* A step settled by run-end (e.g. one still mid-flight when the stream

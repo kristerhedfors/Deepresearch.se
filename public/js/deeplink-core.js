@@ -9,7 +9,7 @@
 // app.js does the DOM side effects from what this returns.
 
 /** Canonical chat-mode ids (mirror chat-mode-core.js CHAT_MODES — all seven). */
-export const DEEPLINK_MODES = ["science", "cyber", "introspection", "sdk", "orchestrator", "outrospection", "models"];
+export const DEEPLINK_MODES = ["science", "cyber", "introspection", "sdk", "orchestrator", "outrospection", "models", "lypning"];
 
 /** Friendly aliases → canonical mode id, so links can read naturally. The
  * `agent-builder` entry is the AgentSpec's name for the `sdk` mode
@@ -43,6 +43,19 @@ const MODE_ALIASES = {
   hf: "models",
   huggingface: "models",
   "hugging-face": "models",
+  // lypning (2026-08-29). Swedish ships with English for the same reason as
+  // Deep Science below: a deep link IS the deterministic routing surface
+  // invariant 6 is about. The words a reader would actually type for this mode
+  // are about SPEED and MEASUREMENT, not about the project's name, so both
+  // languages carry those too.
+  lypning: "lypning",
+  python: "lypning",
+  interpreter: "lypning",
+  tolk: "lypning",
+  "mätningar": "lypning",
+  "mätning": "lypning",
+  prestanda: "lypning",
+  hastighet: "lypning",
   // Deep Science (2026-07-31). The Swedish forms ship WITH the English ones
   // rather than "later" (invariant 6) — a link is exactly the deterministic
   // routing surface the rule is about, and a Swedish reader given a Swedish

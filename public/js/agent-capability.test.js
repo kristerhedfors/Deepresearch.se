@@ -100,7 +100,7 @@ test("every mode-select offers only real chat modes", () => {
 
 test("the defaults table covers every chat mode, in chat.js precedence order", () => {
   const reg = realRegistry();
-  assert.deepEqual(reg.defaults.map((r) => r.mode), ["sdk", "orchestrator", "outrospection", "models", "introspection", "cyber", "science"]);
+  assert.deepEqual(reg.defaults.map((r) => r.mode), ["sdk", "orchestrator", "outrospection", "models", "introspection", "cyber", "lypning", "science"]);
   // EVERY row names a request flag now — there is no `flag: null` row any more.
   // Until 2026-08-13 the last row was `normal` → the general research agent,
   // reachable by no flag at all, which is what "terminal fallback" meant: the
@@ -114,7 +114,7 @@ test("the defaults table covers every chat mode, in chat.js precedence order", (
   // made it the derived leftover of the developer_mode knob.
   assert.deepEqual(
     reg.defaults.map((r) => r.flag),
-    ["sdk_mode", "orchestrator_mode", "outrospection_mode", "models_mode", "introspection_mode", "cyber_mode", "science_mode"],
+    ["sdk_mode", "orchestrator_mode", "outrospection_mode", "models_mode", "introspection_mode", "cyber_mode", "lypning_mode", "science_mode"],
   );
   assert.equal(reg.defaults.some((r) => !r.flag), false, "no row is reachable without being asked for by name");
   assert.equal(reg.defaults.at(-1).mode, DEFAULT_CHAT_MODE, "the last row is the default mode's — the terminal one");
@@ -227,6 +227,12 @@ test("declared answer phases are one per shipped answer path", () => {
     // context blocks and gates. A domain is a SELECTION, so retiring the
     // catch-all and adding a domain agent moved no code into the executor table.
     cyber: "research",
+    // And lypning, the fourth: it is the research phase with the web leg turned
+    // OFF and one context block — the dashboard's own dataset — in its place.
+    // A stats agent for an external project needed no executor either, which is
+    // the strongest version of the same point: even a mode whose subject is not
+    // research at all is a SELECTION over shipped behaviour.
+    lypning: "research",
   });
   // The retired mode cannot be asked for by name here: the defaults table is
   // keyed on live chat modes, and `normal` resolves only through
@@ -329,12 +335,13 @@ test("the closed vocabularies stay closed", () => {
   // downstream of the extension registry (invariant 7).
   assert.deepEqual(Object.keys(GATE_IDS), [
     "external-source", "lens", "quiz", "model-lifecycle", "ancient-sample", "scholar-venue",
-    "security-assessment", "entity-research", "person-research", "host-intel", "place-lookup",
-    "feedback",
+    "security-assessment", "entity-research", "person-research", "lypning-series", "host-intel",
+    "place-lookup", "feedback",
   ]);
   assert.ok(Object.keys(CONTEXT_BLOCKS).includes("source-snapshot"));
   assert.ok(Object.keys(CONTEXT_BLOCKS).includes("ancient-samples"));
   assert.ok(Object.keys(CONTEXT_BLOCKS).includes("scholar-metrics"));
+  assert.ok(Object.keys(CONTEXT_BLOCKS).includes("lypning-stats"));
   // The blocks the two new domain rosters select — Cyber's four and the
   // literature legs Deep Science and Palaeogenomics declare.
   for (const b of ["owasp", "entity-method", "person-method", "host-intel", "street-imagery",

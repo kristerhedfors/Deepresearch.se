@@ -246,6 +246,14 @@ export const CONTEXT_BLOCKS = {
   "literature-peer-reviewed": { label: "Peer-reviewed literature", desc: "the merged peer-reviewed search — OpenAlex, Europe PMC's reviewed slice, Semantic Scholar, the hosted PubMed index and, where licensed, Google Scholar's own ranking (src/scholar.js)", serverOnly: true },
   "model-catalog": { label: "Model catalog", desc: "the live cross-provider model catalog — priced and annotated with verification state — folded in for a model ask (src/model-catalog.js catalogBlock)", serverOnly: true },
   "ancient-samples": { label: "Ancient samples", desc: "a structured query over the committed ancient-DNA sample corpus — geography, date window, haplogroup prefix, coverage floor — folded in as exact rows and counts (src/aadr.js)", serverOnly: true },
+  // ---- the lypning measurements (2026-08-29) -------------------------------
+  // The stats agent's whole subject, and the reason it is a DECLARED block
+  // rather than a knob: the figures must be the ones the /lypning/ dashboard is
+  // rendering, including whatever the reader's own browser VM measured a moment
+  // ago. An agent that recomputed them a second way would eventually disagree
+  // with the chart on screen, which is the one failure a stats agent cannot
+  // afford.
+  "lypning-stats": { label: "lypning measurements", desc: "the committed history of the lypning project's published and counted metrics, plus whatever the reader's own browser Linux VM measured this session (src/lypning-stats.js)", serverOnly: true },
   "scholar-metrics": { label: "Scholar metrics", desc: "Google Scholar's robots-allowed surfaces — an author profile fetched live from citations?user=, and the committed venue h5-index table — folded in as attributed metrics, and the switch restricting the turn to the peer-reviewed source (src/scholar-metrics.js)", serverOnly: true },
 };
 
@@ -267,6 +275,7 @@ export const GATE_IDS = {
   "security-assessment": { label: "Security assessment", desc: "is this ask for a security assessment, audit, posture review or threat model? — the one that reaches for the OWASP reference (public/js/introspect-core.js securityAssessmentIntent)" },
   "entity-research": { label: "Entity OSINT", desc: "is this ask shaped like a dossier on an organisation — OSINT, threat intel, due diligence, bakgrundskoll? (public/js/entity-research-core.js entityResearchIntent)" },
   "person-research": { label: "Person OSINT", desc: "is this ask research about a named individual, rather than about a topic? (public/js/person-research-core.js personResearchIntent)" },
+  "lypning-series": { label: "lypning series", desc: "which measurement is this ask about, and is it asking for the battery to be RUN? — the dashboard's own EN+SV gate, which moves the chart as it answers (public/js/lypning-core.js matchSeries / wantsRun)" },
   // The last two name no module, deliberately. Their gates live downstream of
   // the extension registry (invariant 7), and the vocabulary a spec selects
   // from must stay readable as if no particular third party existed.

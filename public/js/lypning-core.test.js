@@ -1,4 +1,3 @@
-// @ts-check
 // The lypning dashboard's pure core. What is pinned here is not arithmetic for
 // its own sake — it is the two properties the page would be dishonest without:
 //

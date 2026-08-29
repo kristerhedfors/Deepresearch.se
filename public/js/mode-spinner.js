@@ -83,6 +83,19 @@ export const MODELS_SPINNER = {
   check: "#b8860b",
 };
 
+/** lypning's balloon palette: the MEASURED-HERE green the dashboard already
+ * uses, so one colour keeps one meaning across the mode and the page. `check`
+ * MUST match MODE_THEMES.lypning.check and app.css --check-green. */
+export const LYPNING_SPINNER = {
+  palette: {
+    col: "#bdead6",
+    alt: "#7fd0b0",
+    border: "#107452",
+    fill: { a: "#23b483", b: "#107452" },
+  },
+  check: "#107452",
+};
+
 /** Deep Science's balloon palette: parchment crown, aged-paper alt, a gilt
  * border folding into the gold ✓. `check` MUST match app.css --check-gold (the
  * introspection-recolour pattern). */
@@ -155,14 +168,16 @@ export function mountModeSpinner(host, opts = {}) {
   }
   if (kind === "plant") return mountPlantSpinner(host, opts);
   // Introspection wears the titanium balloon, Orchestrator the violet one,
-  // Outrospection the newsprint one, Models the amber one, Deep Science the
-  // gilt one and Cyber the crimson one; anything left over keeps the tier's
+  // Outrospection the newsprint one, Models the amber one, lypning the measured
+  // green one, Deep Science the gilt one and Cyber the crimson one; anything
+  // left over keeps the tier's
   // blue-and-gold (caller opts win if they ever pass a palette/check).
   const balloonOpts =
     mode === "introspection" ? { ...TITANIUM_SPINNER, ...opts }
     : mode === "orchestrator" ? { ...ORCH_SPINNER, ...opts }
     : mode === "outrospection" ? { ...NEWSPRINT_SPINNER, ...opts }
     : mode === "models" ? { ...MODELS_SPINNER, ...opts }
+    : mode === "lypning" ? { ...LYPNING_SPINNER, ...opts }
     : mode === "science" ? { ...SCIENCE_SPINNER, ...opts }
     : mode === "cyber" ? { ...CYBER_SPINNER, ...opts }
     : opts;

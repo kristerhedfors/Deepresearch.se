@@ -50,6 +50,11 @@
       "flag": "cyber_mode"
     },
     {
+      "mode": "lypning",
+      "agent": "lypning",
+      "flag": "lypning_mode"
+    },
+    {
       "mode": "science",
       "agent": "scholar",
       "flag": "science_mode"
@@ -713,6 +718,97 @@
       }
     },
     {
+      "id": "lypning",
+      "name": "lypning",
+      "platform": "server",
+      "tier": "Se/rver",
+      "derivesFrom": "baseplate",
+      "mode": "lypning",
+      "tagline": "The measurements of one external project, and nothing else. It holds two kinds of number — what your own browser's Linux VM measured just now, and what each lypning commit published about itself — and it never lets one stand in for the other.",
+      "description": "A stats agent for github.com/kristerhedfors/lypning, the mixture of Pythons the execution sandbox runs: a Rust subset, a MicroPython variant with a frozen stdlib, and CPython, with a classifier that picks per program and a refusal contract (exit 90, one line on stderr, nothing on stdout) that makes a wrong pick cost one wasted spawn instead of a wrong answer. Its home is the /lypning/ dashboard, where the live half of its data comes from: the visitor's own browser Linux VM runs the battery and the agent is handed the result. Everything it says traces to one of two places and is labelled with which — COUNTED, meaning this site counted it out of the lypning tree at that commit (corpus entries, Rust lines, frozen stdlib modules), or QUOTED, meaning some commit's README published it after a run on the author's machine on a day that is gone. That distinction is not decoration: lypning's own third invariant is that a remembered corpus size is never quoted as a measurement, because every tool over there prints the count it loaded precisely because yours will differ. So this agent will say 'the mixture cost 0.302x on the author's machine at d0e7f6f, and your VM has not run the battery' rather than answering as if the two were the same claim. It searches nothing: there is no web leg and no literature leg, because the question 'how fast is this interpreter' is not answered by reading about it. When the dataset cannot be loaded it says so rather than recalling figures.",
+      "theme": {
+        "--agent-accent": "#1baf7a",
+        "--agent-accent-soft": "rgba(35,180,131,0.16)",
+        "--agent-bg": "#08150f",
+        "--agent-fg": "#e6f4ec"
+      },
+      "intro": {
+        "kind": "fade",
+        "durationMs": 400
+      },
+      "loading": {
+        "kind": "pipeline-phases",
+        "messages": [
+          "Reading the history…",
+          "Checking what your VM measured…",
+          "Answering from the numbers…"
+        ]
+      },
+      "backdrop": {
+        "kind": "terminal"
+      },
+      "examples": [
+        "How did the corpus grow?",
+        "What happened to the mixture cost ratio, and on whose machine?",
+        "Are there MISMATCHes, and whose are they?",
+        "Hur stor är binären, och hur har den ändrats?",
+        "What does my own VM measure, and how does it compare?"
+      ],
+      "controls": [
+        {
+          "type": "prompt-input",
+          "placeholder": "Ask about a measurement — what moved, when, and who measured it…"
+        },
+        {
+          "type": "model-select",
+          "providers": "all",
+          "allowLocal": false
+        },
+        {
+          "type": "toggle",
+          "id": "incognito",
+          "label": "Incognito",
+          "default": false
+        },
+        {
+          "type": "send-button"
+        }
+      ],
+      "capability": {
+        "answerPhase": "research",
+        "prompts": "research",
+        "tools": [],
+        "toolFallback": "none",
+        "context": [
+          "lypning-stats"
+        ],
+        "search": {
+          "web": false,
+          "auxSources": false,
+          "maxQueries": 0
+        },
+        "routing": {
+          "planModel": "json-default",
+          "answerModel": "user"
+        },
+        "gates": [
+          {
+            "id": "lypning-series",
+            "langs": [
+              "en",
+              "sv"
+            ]
+          }
+        ],
+        "bounds": {},
+        "emits": [
+          "step"
+        ],
+        "requires": [],
+        "team": null
+      }
+    },
+    {
       "id": "agent-builder",
       "name": "Agent Studio",
       "tagline": "The mode that builds agents — distil this site into a new flavour and publish it live.",
@@ -981,13 +1077,13 @@
       "loading": {
         "kind": "pipeline-phases",
         "messages": [
-          "Triaging\u2026",
-          "Resolving the subject\u2026",
-          "Searching\u2026",
-          "Looking up what is exposed\u2026",
-          "Checking gaps\u2026",
-          "Synthesising\u2026",
-          "Validating\u2026"
+          "Triaging…",
+          "Resolving the subject…",
+          "Searching…",
+          "Looking up what is exposed…",
+          "Checking gaps…",
+          "Synthesising…",
+          "Validating…"
         ]
       },
       "backdrop": {
@@ -996,7 +1092,7 @@
       "controls": [
         {
           "type": "prompt-input",
-          "placeholder": "Name a host, a domain, an organisation or a place\u2026"
+          "placeholder": "Name a host, a domain, an organisation or a place…"
         },
         {
           "type": "model-select",
@@ -1120,7 +1216,7 @@
       },
       "examples": [
         "What services and known CVEs does the host I name expose, and which of them are actually reachable?",
-        "G\u00f6r en OSINT-genomg\u00e5ng av ett svenskt bolag jag namnger \u2014 dom\u00e4ner, tj\u00e4nster och digitalt fotavtryck.",
+        "Gör en OSINT-genomgång av ett svenskt bolag jag namnger — domäner, tjänster och digitalt fotavtryck.",
         "Walk the OWASP Top 10 for a web app that stores uploads in object storage and renders them back.",
         "What is at this address, and what does the street-level imagery show about physical access?"
       ],

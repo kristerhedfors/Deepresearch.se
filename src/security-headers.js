@@ -58,7 +58,7 @@ const STORY_INLINE_HASH = "'sha256-ATMgXgI8+2fgznyrbCNX5n9ZAqIHL8/YoN64WD6CwlI='
 // or `models-mode` (Models, amber).
 // Recompute on edit:
 //   node -e 'const c=require("crypto"),h=require("fs").readFileSync("public/index.html","utf8").match(/<script data-devtheme>([\s\S]*?)<\/script>/)[1];console.log("sha256-"+c.createHash("sha256").update(h).digest("base64"))'
-const THEME_BOOT_HASH = "'sha256-BfWkLmb37bpPpc9HF2zYuepj4Z3taG00+/JPZ5vl5ks='";
+const THEME_BOOT_HASH = "'sha256-CbCbAyZtgz/fXNclKR3MfSI7Q2TdHUacutvlc8RS+Qg='";
 const CSP = [
   "default-src 'self'",
   "base-uri 'self'",

@@ -105,6 +105,7 @@ export const CHAT_MODE_OPTIONS = [
   { value: "orchestrator", label: "Orchestrator" },
   { value: "outrospection", label: "Outrospection" },
   { value: "models", label: "Models" },
+  { value: "lypning", label: "lypning" },
 ];
 
 // The execution-sandbox knob sits in Settings (short note; the
@@ -406,6 +407,7 @@ export function wireModeKnob(ctx) {
     orchestrator: "Orchestrator — the composer pane turns violet, and each request runs as a planned team of sub-agents working in the background.",
     outrospection: "Outrospection — the composer pane turns newsprint, and questions are answered from the outward feed of what everyone else shipped, never from invented articles.",
     models: "Models — the composer pane turns amber, and questions about models are answered against the live cross-provider catalog: what each one costs, what has been verified, and what you have enabled.",
+    lypning: "lypning — the composer pane turns green, and questions are answered from the measurements of the mixture-of-Pythons the sandbox runs: what each commit published, what this site counted out of its tree, and what your own browser VM measured. It searches nothing, and it never lets one of those stand in for another. Its home is the /lypning/ dashboard.",
   };
   sel.addEventListener("change", async () => {
     const mode = sel.value;

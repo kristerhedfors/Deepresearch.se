@@ -102,7 +102,7 @@ test("build → parse round-trips", () => {
   // an invalid mode is dropped, ask still set
   const u2 = buildComposerDeepLink({ mode: "nope", ask: "x" });
   assert.ok(!u2.includes("mode="));
-  assert.deepEqual(DEEPLINK_MODES, ["science", "cyber", "introspection", "sdk", "orchestrator", "outrospection", "models"]);
+  assert.deepEqual(DEEPLINK_MODES, ["science", "cyber", "introspection", "sdk", "orchestrator", "outrospection", "models", "lypning"]);
 });
 
 // ---- the capture link ------------------------------------------------------

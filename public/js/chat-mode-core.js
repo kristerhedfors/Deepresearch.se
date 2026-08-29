@@ -37,7 +37,7 @@
 //  2. **The registry is no longer optional** — see `routingNeedsRegistry`.
 
 /** The modes, in dropdown order. */
-export const CHAT_MODES = ["science", "cyber", "introspection", "sdk", "orchestrator", "outrospection", "models"];
+export const CHAT_MODES = ["science", "cyber", "introspection", "sdk", "orchestrator", "outrospection", "models", "lypning"];
 
 /** The mode a request falls back to when it names none — Deep Science. */
 export const DEFAULT_CHAT_MODE = "science";
@@ -67,6 +67,9 @@ export const MODE_REQUEST_FLAGS = [
   { mode: "models", flag: "models_mode" },
   { mode: "introspection", flag: "introspection_mode" },
   { mode: "cyber", flag: "cyber_mode" },
+  { mode: "lypning", flag: "lypning_mode" },
+  // Deep Science stays LAST: it is the default and therefore the terminal
+  // fallback, and a row after it could never be reached by the walk.
   { mode: "science", flag: "science_mode" },
 ];
 
@@ -106,6 +109,12 @@ export function normalizeChatMode(v, fallback = DEFAULT_CHAT_MODE) {
 // outright now, which also means the next domain mode inherits nothing by
 // accident: a mode carries the source because it is named here, not because it
 // happens not to be the default.
+//
+// LYPNING is the third and is absent for the strongest version of the reason:
+// its subject is a DIFFERENT repository. It answers about the lypning project's
+// measurements, from a committed dataset and from whatever the reader's own VM
+// just measured, and this repo's source would be a multi-megabyte no-op on
+// every turn.
 //
 // CYBER (2026-08-13) is the second domain mode and is absent for the same
 // reason. It reads OWASP reference material and third-party host/imagery
