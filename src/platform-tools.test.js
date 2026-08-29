@@ -214,7 +214,7 @@ test("platform_map speaks the size, the areas and where to go next", async () =>
     srcFile("src/mcp.js", "y".repeat(1_000_000)),
     srcFile("public/js/app.js", "z"),
     srcFile("docs/PYGRAM.md", "w"),
-    skillFile("pygram", "The minimal Python subset runtime for the sandbox."),
+    skillFile("cache-helper", "Every cache layer and the stale-site playbook."),
     skillFile("execution-sandbox", "The in-browser Linux sandbox and its bash agent."),
   ]);
   const env = fakeEnv({ "/introspect/source-snapshot.json": snapshot });
@@ -252,22 +252,22 @@ test("platform_map speaks the size, the areas and where to go next", async () =>
 test("platform_map narrowed to an area finds it by name, then by summary", async () => {
   const snapshot = fakeSnapshot([
     srcFile("src/mcp.js", "x"),
-    skillFile("pygram", "The minimal Python subset runtime. Why python3 costs 8573 ms cold."),
-    skillFile("execution-sandbox", "The in-browser Linux sandbox; runs pygram and shell code."),
+    skillFile("cache-helper", "Every cache layer. Why a stale edge serves last week's bundle."),
+    skillFile("execution-sandbox", "The in-browser Linux sandbox; its cache-helper interactions and shell code."),
     skillFile("deploy", "How code reaches production."),
   ]);
   const env = fakeEnv({ "/introspect/source-snapshot.json": snapshot });
 
-  // A NAME hit outranks a SUMMARY hit, and both fixtures below mention pygram:
-  // someone who says "pygram" means the pygram playbook, not the one that
+  // A NAME hit outranks a SUMMARY hit, and both fixtures below mention caching:
+  // someone who says "cache-helper" means the cache-helper playbook, not the one that
   // happens to name it in passing. Ordering is the assertion — both are
   // returned, and which comes first is what a listener hears as the answer.
-  const byName = await runPlatformTool(env, quiet, "platform_map", { area: "pygram" });
+  const byName = await runPlatformTool(env, quiet, "platform_map", { area: "cache-helper" });
   assert.equal(byName.isError, false);
   assert.equal(byName.areas, 2);
   const listed = byName.text.slice(byName.text.indexOf("own documented playbook"));
   assert.ok(
-    listed.indexOf("pygram,") < listed.indexOf("execution sandbox"),
+    listed.indexOf("cache helper,") < listed.indexOf("execution sandbox"),
     `name match should lead: ${listed}`,
   );
 
@@ -405,8 +405,8 @@ test("the docs corpus is optional — the map degrades by one clause, not by fai
 test("a playbook's LOAD TRIGGER is not spoken as its description", async () => {
   // A SKILL.md `description` is an instruction about when to READ THE FILE, not
   // a description of the subsystem — nearly every one opens "Load when working
-  // on X". Spoken unedited, the map said "pygram covers load when working on
-  // pygram", which is not clumsy so much as not about pygram at all.
+  // on X". Spoken unedited, the map said "cache-helper covers load when working on
+  // cache-helper", which is not clumsy so much as not about caching at all.
   const env = fakeEnv({
     "/introspect/source-snapshot.json": fakeSnapshot([
       srcFile("src/mcp.js", "x"),
@@ -422,14 +422,14 @@ test("a playbook's LOAD TRIGGER is not spoken as its description", async () => {
 });
 
 test("a skill named after its subject takes the clause AFTER the dash", async () => {
-  // "working on pygram — the minimal Python-subset runtime" : the half before
-  // the dash is only the skill's own name, so keeping it says "pygram covers
-  // pygram". Cutting at the dash UNCONDITIONALLY was the opposite bug and threw
+  // "working on cache-helper — every cache layer" : the half before
+  // the dash is only the skill's own name, so keeping it says "cache-helper
+  // covers cache-helper". Cutting at the dash UNCONDITIONALLY was the opposite bug and threw
   // away the good half for every skill whose head is a real description.
   const env = fakeEnv({
     "/introspect/source-snapshot.json": fakeSnapshot([
       srcFile("src/mcp.js", "x"),
-      skillFile("pygram", "Load when working on pygram — the minimal Python-subset runtime for the sandbox."),
+      skillFile("cache-helper", "Load when working on cache-helper — every cache layer and the stale-site playbook."),
       skillFile(
         "deploy",
         "Load when working on the release pipeline and its rollback path — the git-connected " +
@@ -439,8 +439,8 @@ test("a skill named after its subject takes the clause AFTER the dash", async ()
   });
   // Tail wins: the head is only the skill's own name. A DETAIL is a noun phrase,
   // so it takes the "covers" frame.
-  const named = await runPlatformTool(env, quiet, "platform_map", { area: "pygram" });
-  assert.match(named.text, /pygram covers the minimal Python-subset runtime/);
+  const named = await runPlatformTool(env, quiet, "platform_map", { area: "cache-helper" });
+  assert.match(named.text, /cache helper covers every cache layer/);
 
   // Head wins: it is a real description, so the detail after the dash is the
   // part that gets dropped. Cutting at the dash unconditionally would lose this.

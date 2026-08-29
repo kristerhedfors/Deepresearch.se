@@ -119,6 +119,15 @@ export function isPublicAsset(url, method) {
     // state, nothing a paper's own arXiv or PubMed listing does not say.
     url.pathname === "/corpora" ||
     url.pathname.startsWith("/corpora/") ||
+    // The lypning stats dashboard (/lypning/): the page, its committed commit
+    // history (lypning/history.json), and the pure core that reads them.
+    // Public for the same reason as /pulse/ and /corpora/ — it is reachable
+    // from BOTH tiers and describes an external open-source project's public
+    // git history, so serving it unauthenticated exposes nothing. Its live
+    // half runs entirely in the visitor's own browser VM and never reaches
+    // this server at all, which is why the page is useful signed out.
+    url.pathname === "/lypning" ||
+    url.pathname.startsWith("/lypning/") ||
     // The space-animations showcase (/space/): an archive of playable
     // wireframe animations answering common space questions. Public like
     // /pulse/ — a promotional/educational surface with nothing user-specific;

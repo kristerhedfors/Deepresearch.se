@@ -17,9 +17,10 @@ eggs/
 # ANCHORED (2026-08-13). These come from the standard Python-packaging
 # template and are meant to ignore a top-level build tree — but unanchored,
 # `lib/` matches a directory named lib at ANY depth. It was silently swallowing
-# every module in pygram/lib/ (pygram's frozen standard library), which would
-# have built fine locally and produced a stdlib-less binary in CI. `/build/`
-# above is already anchored; these now match it.
+# a vendored interpreter's frozen standard library, which built fine locally and
+# produced a stdlib-less binary in CI. `/build/` above is already anchored;
+# these now match it. Keep them anchored even though that tree has since moved
+# out to the lypning project — the trap is in the pattern, not in one directory.
 /lib/
 /lib64/
 parts/

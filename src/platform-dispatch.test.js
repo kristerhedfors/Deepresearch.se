@@ -50,7 +50,7 @@ const SNAPSHOT = (() => {
   };
   const files = [
     { p: "src/mcp.js", s: 4, t: "code" },
-    skill("pygram", "The minimal Python subset runtime for the sandbox."),
+    skill("cache-helper", "Every cache layer and the stale-site playbook."),
   ];
   return { v: 1, digest: "d", count: files.length, bytes: files.reduce((n, f) => n + f.s, 0), files };
 })();
@@ -129,9 +129,9 @@ describe("platform_map", () => {
   });
 
   test("narrows to an area", async () => {
-    const { body } = await callTool("platform_map", { area: "python" });
+    const { body } = await callTool("platform_map", { area: "cache" });
     assert.equal(body.result.isError, false);
-    assert.match(textOf(body), /pygram/);
+    assert.match(textOf(body), /cache helper/);
   });
 
   test("is refused when the account switches it off, not just hidden from the listing", async () => {

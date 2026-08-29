@@ -112,7 +112,7 @@ case "$DISTRO" in
         # Alpine userland, and it ships its own. i386 binaries execute fine
         # under an x86_64 host kernel, so unpacking it and chrooting in gives a
         # working apk with no cross-tooling at all — the same reason
-        # scripts/pygram-build.sh can build and gate an i386 binary here.
+        # an i386 interpreter can be built and gated here with no cross-tooling.
         echo "    no host apk — bootstrapping from the i386 minirootfs instead"
         ALPINE_REL="http://dl-cdn.alpinelinux.org/alpine/latest-stable/releases/x86"
         ROOTFS_TGZ="$OUT_DIR/alpine-minirootfs-x86.tar.gz"
@@ -161,60 +161,59 @@ case "$DISTRO" in
     echo "Unknown distro: $DISTRO (alpine|debian|arch32)"; exit 1 ;;
 esac
 
-echo "==> Installing pygram (docs/PYGRAM.md)"
-# The Python-subset runtime, as /usr/local/bin/pygram. One static i386 ELF with
-# its stdlib frozen in, so it opens ZERO files at startup.
+echo "==> Installing the lypning engines (docs/LYPNING.md)"
+# The interpreters the sandbox's Python actually runs on, from the lypning
+# project — https://github.com/kristerhedfors/lypning. Two static i386 ELFs with
+# their stdlib frozen in, so they open ZERO files at startup, plus the
+# dispatcher that picks between them and CPython per program.
 #
-# MEASURED IN A REAL VM on 2026-08-14 with scripts/pygram-vm-measure.mjs against
-# this image, and the result is stronger than the speed-up it was built for:
+# WHY THIS IMAGE CARRIES THEM AT ALL, measured in a real VM on 2026-08-14
+# against this image:
 #
-#   pygram -c 'import json; …'   27 ms cold, streaming ZERO bytes off the disk
-#   pygram --version             86 ms cold, 1,152 KB
-#   python3 --version           318 ms cold, 3,460 KB
-#   python3 -c 'print(1+1)'     NEVER COMPLETED — 2.3 MB streamed, then the
-#                               block fetches stop dead and the VM is wedged.
-#                               `-S` does not save it either.
+#   a frozen subset -c 'import json; …'   27 ms cold, streaming ZERO bytes
+#   a frozen subset --version             86 ms cold, 1,152 KB
+#   python3 --version                    318 ms cold, 3,460 KB
+#   python3 -c 'print(1+1)'              NEVER COMPLETED — 2.3 MB streamed,
+#                                        then the block fetches stop dead and
+#                                        the VM is wedged. `-S` does not save it.
 #
-# So in this image CPython cannot run a one-liner at all, while pygram runs the
-# same work in tens of milliseconds. That turns docs/PYGRAM.md §5's "alias vs
-# add alongside" from a preference into an evidence-backed question for the
-# owner: what is here now is ADD ALONGSIDE, because aliasing changes what the
-# agent can do and is not a call this script should make silently.
-PYGRAM_BIN="${PYGRAM_BIN:-$(dirname "$0")/../pygram/build/pygram}"
-if [ -f "$PYGRAM_BIN" ]; then
-    install -Dm755 "$PYGRAM_BIN" "$MNT/usr/local/bin/pygram"
-    echo "    installed $(stat -c %s "$PYGRAM_BIN") B from $PYGRAM_BIN"
-else
-    echo "    SKIPPED — no binary at $PYGRAM_BIN (build it: bash scripts/pygram-build.sh)"
-fi
+# So in this image CPython cannot run a one-liner at all. That is not a
+# preference between interpreters, it is the difference between the sandbox
+# having Python and not having it — which is why these binaries are installed
+# ALONGSIDE python3 rather than aliased over it: aliasing changes what the agent
+# can do, and is not a call this script makes silently.
+#
+# CheerpX is 32-bit x86 ONLY. An x86_64 build cannot run here, and every number
+# lypning publishes upstream was measured on one, on a normal filesystem — so a
+# binary that is not i386 is SKIPPED rather than installed and hoped for.
+#
+# Build them from a lypning checkout:
+#     git clone https://github.com/kristerhedfors/lypning ../lypning
+#     cd ../lypning && pip install -e . && lypning build --rust --target i686
+#     lypning build --micropython          # already musl-i386
+# then point LYPNING_REPO (or the two *_BIN vars) at the result.
+LYPNING_REPO="${LYPNING_REPO:-$(dirname "$0")/../../lypning}"
+LYPNING_BIN="${LYPNING_BIN:-$LYPNING_REPO/src/lypning/assets/rust/target/i686-unknown-linux-musl/release/lypning}"
+LYPNING_MP_BIN="${LYPNING_MP_BIN:-$LYPNING_REPO/src/lypning/assets/micropython/build/lypning-mp}"
 
-echo "==> Installing mopy (docs/MOPY.md)"
-# The Rust Python subset, as /usr/local/bin/mopy. Same shape as pygram — one
-# static ELF, zero file opens — and the same hard requirement: CheerpX is 32-bit
-# x86 ONLY, so this must be the i686 build. The x86_64 one the benchmark uses
-# CANNOT RUN HERE, which is worth stating plainly because every published mopy
-# number so far was measured with it, on a normal filesystem.
-#
-# The interesting number in this image is not the speed, it is the SIZE. Cold
-# cost is a step function in 131,072 B CheerpX device blocks (the pygram skill
-# §2d), and:
-#     pygram   ~269 KB   3 blocks
-#     mopy     ~986 KB   8 blocks
-# so mopy is 1.7x faster than pygram warm on a normal filesystem and streams
-# more than twice as many block fetches cold. Which one wins in the sandbox is
-# an empirical question, and scripts/pygram-vm-measure.mjs is what answers it.
-MOPY_BIN="${MOPY_BIN:-$(dirname "$0")/../mopy/target/i686-unknown-linux-musl/release/mopy}"
-if [ -f "$MOPY_BIN" ]; then
-    if file -L "$MOPY_BIN" | grep -q 'ELF 32-bit'; then
-        install -Dm755 "$MOPY_BIN" "$MNT/usr/local/bin/mopy"
-        echo "    installed $(stat -c %s "$MOPY_BIN") B from $MOPY_BIN"
-    else
-        echo "    SKIPPED — $MOPY_BIN is not i386; CheerpX cannot run it."
-        echo "    Build it with: bash scripts/mopy-build.sh --target i686"
+install_engine() {
+    name="$1"; path="$2"; how="$3"
+    if [ ! -f "$path" ]; then
+        echo "    SKIPPED $name — no binary at $path"
+        echo "      build it: $how"
+        return
     fi
-else
-    echo "    SKIPPED — no binary at $MOPY_BIN (build it: bash scripts/mopy-build.sh --target i686)"
-fi
+    if ! file -L "$path" | grep -q 'ELF 32-bit'; then
+        echo "    SKIPPED $name — $path is not i386; CheerpX cannot run it."
+        echo "      build it: $how"
+        return
+    fi
+    install -Dm755 "$path" "$MNT/usr/local/bin/$name"
+    echo "    installed $name — $(stat -c %s "$path") B from $path"
+}
+
+install_engine lypning "$LYPNING_BIN" "lypning build --rust --target i686"
+install_engine lypning-mp "$LYPNING_MP_BIN" "lypning build --micropython"
 
 echo "==> Configuring root shell + /root (sandbox.js launches /bin/bash --login, HOME=/root, uid 0)"
 mkdir -p "$MNT/root"
