@@ -532,3 +532,28 @@ export function statsContextBlock(history, live) {
   }
   return lines.join("\n");
 }
+
+/**
+ * The y-axis band for a series.
+ *
+ * The padding exists so a FLAT series still gets a band to draw in rather than
+ * collapsing onto one pixel row. It must not push the axis below zero on a
+ * series that counts things: an axis labelled −167 corpus entries is a chart
+ * making a claim about a quantity that cannot exist, and this page is about not
+ * telling that kind of small lie. A series that genuinely goes negative keeps
+ * its padding in both directions.
+ *
+ * Lives here rather than in the page because it is arithmetic, and arithmetic
+ * on this page is tested.
+ *
+ * @param {number[]} values
+ * @returns {{lo: number, hi: number}}
+ */
+export function chartScale(values) {
+  const ys = (values || []).filter((v) => Number.isFinite(v));
+  if (!ys.length) return { lo: 0, hi: 1 };
+  const lo = Math.min(...ys);
+  const hi = Math.max(...ys);
+  const pad = (hi - lo) * 0.12 || Math.abs(hi) * 0.12 || 1;
+  return { lo: lo >= 0 ? Math.max(0, lo - pad) : lo - pad, hi: hi + pad };
+}

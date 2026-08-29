@@ -8,7 +8,7 @@
 
 import {
   ENGINES, PROBE_COMMAND, parseProbe, batterySteps, parseTiming, summarize,
-  movement, seriesPoints, formatValue, answerLocally, statsContextBlock,
+  movement, seriesPoints, formatValue, answerLocally, statsContextBlock, chartScale,
 } from "./lypning-core.js";
 import { ensureSandboxBooted, execInSandbox, sandboxSupported } from "./sandbox.js";
 
@@ -103,7 +103,13 @@ function detailChart(key) {
   const lo = Math.min(...ys), hi = Math.max(...ys);
   // A flat series still needs a band, or every point lands on one pixel row.
   const pad = (hi - lo) * 0.12 || Math.abs(hi) * 0.12 || 1;
-  const yLo = lo - pad, yHi = hi + pad;
+  // The padding exists so a FLAT series still gets a band to draw in. It must
+  // not push the axis below zero on a series that counts things: an axis
+  // labelled −167 corpus entries is a chart making a claim about a quantity
+  // that cannot exist, which is exactly the kind of small lie this page is
+  // about not telling.
+  const yLo = lo >= 0 ? Math.max(0, lo - pad) : lo - pad;
+  const yHi = hi + pad;
   const X = (v) => l + ((v - x0) / (x1 - x0 || 1)) * (w - l - r);
   const Y = (v) => t + (1 - (v - yLo) / (yHi - yLo || 1)) * (h - t - b);
   const colour = m.measuredHere ? "var(--measured)" : "var(--quoted)";
@@ -203,18 +209,27 @@ function setStatus(text, warn = false) {
   el.style.fontSize = ".82rem";
 }
 
-function renderEngines(present) {
+function renderEngines(present, probed = true) {
+  // BEFORE the probe has run, "not in this VM" is a claim nobody checked. The
+  // page is about the difference between a measurement and an assumption, so
+  // an unprobed engine reads as unprobed.
   const bits = ENGINES.map((e) => {
+    if (!probed) {
+      return `<span style="margin-right:.9rem">· <span class="mono">${esc(e.id)}</span> — ` +
+        `<span style="color:var(--absent)">not looked for yet</span></span>`;
+    }
     const yes = present[e.id];
     return `<span style="margin-right:.9rem">${yes ? "●" : "○"} <span class="mono">${esc(e.id)}</span> — ${
       yes ? esc(e.note) : "<span style='color:var(--absent)'>not in this VM</span>"
     }</span>`;
   }).join("");
   const missing = ENGINES.filter((e) => !present[e.id]);
-  const note = missing.length
-    ? `<p class="sub" style="margin:.4rem 0 0">${missing.length === ENGINES.length ? "" : "The missing engines are musl-i386 binaries that have to be put in the VM image; "}` +
-      `their rows stay empty rather than being filled from the published table. ` +
-      `Getting them in there is <span class="mono">docs/LYPNING.md</span> §sandbox.</p>`
+  const note = probed && missing.length
+    ? `<p class="sub" style="margin:.4rem 0 0">The ${missing.length === ENGINES.length ? "" : "missing "}` +
+      `engine${missing.length === 1 ? "" : "s"} ${missing.map((m) => `<span class="mono">${esc(m.id)}</span>`).join(", ")} ` +
+      `${missing.length === 1 ? "is" : "are"} not installed in this VM, so ${missing.length === 1 ? "its row stays" : "their rows stay"} ` +
+      `empty rather than being filled from the published table. Getting them in there is ` +
+      `<span class="mono">scripts/build-sandbox-image.sh</span> — see <span class="mono">docs/LYPNING.md</span> §3.</p>`
     : "";
   $("engines").innerHTML = bits + note;
 }
@@ -374,7 +389,7 @@ $("composer").addEventListener("submit", (ev) => {
 for (const b of document.querySelectorAll(".chips button")) {
   b.addEventListener("click", () => ask(b.getAttribute("data-q") || ""));
 }
-renderEngines({});
+renderEngines({}, false);
 loadHistory();
 say(
   "bot",

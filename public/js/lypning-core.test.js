@@ -14,7 +14,7 @@ import {
   ENGINES, PROBE_COMMAND, parseProbe, batterySteps, parseTiming, summarize,
   timingProgram, shellQuote, seriesPoints, movement, pluck, formatValue,
   matchSeries, wantsRun, answerLocally, statsContextBlock, SERIES_INTENT,
-  WORKLOADS, STEP_BUDGET_MS, EXEC_CEILING_MS,
+  WORKLOADS, STEP_BUDGET_MS, EXEC_CEILING_MS, chartScale,
 } from "./lypning-core.js";
 
 const HISTORY = JSON.parse(readFileSync(new URL("../lypning/history.json", import.meta.url), "utf8"));
@@ -249,4 +249,22 @@ test("formatValue distinguishes a missing value from a zero", () => {
   assert.equal(formatValue(987336, "B"), "987,336 B");
   assert.equal(formatValue(950, "us"), "950 µs");
   assert.equal(formatValue(8_573_000, "us"), "8573.00 ms");
+});
+
+test("a counting series never gets an axis below zero", () => {
+  // A chart labelled −167 corpus entries claims a quantity that cannot exist.
+  // The padding is for flat series; it must not manufacture negative counts.
+  const { lo, hi } = chartScale([0, 681, 1390]);
+  assert.equal(lo, 0);
+  assert.ok(hi > 1390);
+  // A flat series still gets a band rather than collapsing to one row.
+  const flat = chartScale([5, 5, 5]);
+  assert.ok(flat.hi > flat.lo);
+  assert.equal(flat.lo, 4.4);
+  // A series that genuinely goes negative keeps padding in both directions.
+  const signed = chartScale([-10, 10]);
+  assert.ok(signed.lo < -10);
+  // Nothing to draw is a band, not a crash.
+  assert.deepEqual(chartScale([]), { lo: 0, hi: 1 });
+  assert.deepEqual(chartScale([NaN, Infinity]), { lo: 0, hi: 1 });
 });
