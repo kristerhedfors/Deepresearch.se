@@ -134,6 +134,7 @@ export const PROMPT_ROLES = [
   "answer-tools", // the variant for a model driving native tools
   "answer-direct", // the answer when triage decided no sources are needed
   "answer-search-off", // the answer when there is nothing external to consult
+  "brief", // the whole task described to a model that chooses its own tools
 ];
 
 /** Which function takes the answer phase. One member per shipped answer path.
@@ -191,7 +192,7 @@ export const ANSWER_PHASES = {
  * answer phase become INDEPENDENT choices — an agent can run the research phase
  * in the source-research voice, which was not expressible before. */
 export const PROMPT_SETS = {
-  "research": { label: "Research", desc: "the deep-research synthesis voice: cited, hedged, report-tiered", roles: ["plan", "reflect", "answer", "answer-direct", "answer-search-off"] },
+  "research": { label: "Research", desc: "the deep-research synthesis voice: cited, hedged, report-tiered", roles: ["plan", "reflect", "answer", "answer-direct", "answer-search-off", "brief", "answer-tools"] },
   "source-research": { label: "Source research", desc: "answers about this platform from its own source, with the read loop's planner", roles: ["plan", "answer", "answer-tools"] },
   "build": { label: "Build", desc: "the Agent Studio build voice: ship the app this turn, state the privacy posture", roles: ["answer", "answer-tools"] },
   "workflow": { label: "Workflow", desc: "the sub-agent team: a plan prompt, one node's persona, and the merge", roles: ["plan", "worker", "answer"] },
