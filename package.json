@@ -28,6 +28,7 @@
     "capture:edit": "node scripts/capture-edit.mjs",
     "capture:topup": "node scripts/capture-topup.mjs",
     "proof:agents": "node scripts/agent-proof.mjs",
+    "proof:lypning": "node scripts/lypning-ladder-proof.mjs",
     "mcp:probe": "node scripts/mcp-probe.mjs",
     "arxiv:harvest": "node scripts/arxiv-harvest.mjs",
     "arxiv:sets": "node scripts/arxiv-oai-sets.mjs",

@@ -71,7 +71,22 @@ silently.
 | `scripts/build-lypning.mjs` | walks a lypning clone's history into `public/lypning/history.json`. |
 | `scripts/lypning-vm-measure.mjs` | the headless-CheerpX harness — the only instrument that can measure either engine in a real VM. lypning does not own it, deliberately: its own bench measures a normal filesystem, and the whole premise here is that the sandbox is not one. `npm run lypning:vm <image.ext2>`. |
 | `public/js/lypning-core.js` | the dashboard's pure core — the battery, the series, the local responder. |
+| `public/js/lypning-exec-core.js` | the run_python exec ladder both tiers share: the probe command, the refusal parse, the CPython retry. |
+| `scripts/lypning-ladder-proof.mjs` | `npm run proof:lypning` — runs that ladder against real interpreters on the current machine. |
 | `public/lypning/index.html` + `public/js/lypning-page.js` | the dashboard. |
+
+**What the ladder proof covers (measured 2026-08-29).** `npm run proof:lypning`
+drove `runPythonLadder` with a real `sh` against a pip-installed lypning 0.1.0
+and CPython 3.11 on an x86_64 dev container, both with lypning present and with
+it masked: the subset answered `print(sum(range(100)))`, `import subprocess`
+took the refusal fork exactly as written (exit 90, one contract line on stderr,
+empty stdout, the same program then answered by python3, both runs in the
+model-facing text), a `ZeroDivisionError` came back as exit 1 with no retry,
+and åäö survived stdout and the stdin heredoc byte-clean — 22/22 and 16/16
+checks. That proves the command, the probe, the marker and the fork on a normal
+filesystem. It does NOT prove the CheerpX VM (where only `lypning:vm` measures
+anything) or the deployed container image, and their numbers are not inferred
+from this run.
 
 **CheerpX is 32-bit x86 only.** An x86_64 build cannot run there, and lypning's
 published numbers were all measured on one, on a normal filesystem. A binary
