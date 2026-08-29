@@ -1,4 +1,6 @@
-// @ts-check
+// (no @ts-check: node:test / node:assert have no type declarations in this
+// repo — tsconfig's types is workers-only and @types/node would be a new
+// dependency.)
 // The Worker's lypning seam. Two properties, both about honesty rather than
 // arithmetic: the figures come from the SAME module the dashboard renders from,
 // and a deployment that cannot load the dataset says so instead of recalling.

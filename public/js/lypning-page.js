@@ -63,15 +63,15 @@ function renderCards() {
 }
 
 /** A 40px sparkline. No axes — the card's two numbers are the scale. */
-function sparkline(m) {
-  const pts = m.points;
+function sparkline(/** @type {any} */ m) {
+  const pts = /** @type {any[]} */ (m.points);
   if (pts.length < 2) return "";
   const w = 200, h = 40, pad = 3;
-  const ys = pts.map((p) => p.y);
+  const ys = pts.map((/** @type {any} */ p) => p.y);
   const lo = Math.min(...ys), hi = Math.max(...ys);
   const span = hi - lo || 1;
   const d = pts
-    .map((p, i) => {
+    .map((/** @type {any} */ p, /** @type {number} */ i) => {
       const x = pad + (i / (pts.length - 1)) * (w - 2 * pad);
       const y = h - pad - ((p.y - lo) / span) * (h - 2 * pad);
       return `${i ? "L" : "M"}${x.toFixed(1)},${y.toFixed(1)}`;
@@ -83,7 +83,7 @@ function sparkline(m) {
 }
 
 /** Open one or more series in the detail panel and highlight their cards. */
-function focus(keys) {
+function focus(/** @type {string[]} */ keys) {
   focused = (keys || []).filter(Boolean);
   renderCards();
   const panels = focused.map(detailChart).filter(Boolean);
@@ -92,38 +92,31 @@ function focus(keys) {
 }
 
 /** The opened chart: full width, dated axis, one dot per commit that carried a value. */
-function detailChart(key) {
+function detailChart(/** @type {string} */ key) {
   const m = movement(history_, key);
   if (!m) return "";
   const pts = m.points;
   const w = 900, h = 240, l = 56, r = 12, t = 16, b = 34;
-  const xs = pts.map((p) => p.at);
-  const ys = pts.map((p) => p.y);
+  const xs = pts.map((/** @type {any} */ p) => p.at);
+  const ys = pts.map((/** @type {any} */ p) => p.y);
   const x0 = Math.min(...xs), x1 = Math.max(...xs) || x0 + 1;
-  const lo = Math.min(...ys), hi = Math.max(...ys);
-  // A flat series still needs a band, or every point lands on one pixel row.
-  const pad = (hi - lo) * 0.12 || Math.abs(hi) * 0.12 || 1;
-  // The padding exists so a FLAT series still gets a band to draw in. It must
-  // not push the axis below zero on a series that counts things: an axis
-  // labelled −167 corpus entries is a chart making a claim about a quantity
-  // that cannot exist, which is exactly the kind of small lie this page is
-  // about not telling.
-  const yLo = lo >= 0 ? Math.max(0, lo - pad) : lo - pad;
-  const yHi = hi + pad;
-  const X = (v) => l + ((v - x0) / (x1 - x0 || 1)) * (w - l - r);
-  const Y = (v) => t + (1 - (v - yLo) / (yHi - yLo || 1)) * (h - t - b);
+  // The band comes from the tested core, which is where the do-not-draw-a-
+  // negative-count rule lives.
+  const { lo: yLo, hi: yHi } = chartScale(ys);
+  const X = (/** @type {number} */ v) => l + ((v - x0) / (x1 - x0 || 1)) * (w - l - r);
+  const Y = (/** @type {number} */ v) => t + (1 - (v - yLo) / (yHi - yLo || 1)) * (h - t - b);
   const colour = m.measuredHere ? "var(--measured)" : "var(--quoted)";
-  const line = pts.map((p, i) => `${i ? "L" : "M"}${X(p.at).toFixed(1)},${Y(p.y).toFixed(1)}`).join(" ");
+  const line = pts.map((/** @type {any} */ p, /** @type {number} */ i) => `${i ? "L" : "M"}${X(p.at).toFixed(1)},${Y(p.y).toFixed(1)}`).join(" ");
   const dots = pts
     .map(
-      (p) =>
+      (/** @type {any} */ p) =>
         `<circle cx="${X(p.at).toFixed(1)}" cy="${Y(p.y).toFixed(1)}" r="3" fill="${colour}">` +
         `<title>${esc(p.sha)} · ${esc(dateOf(p.at))}\n${esc(formatValue(p.y, m.unit))}\n${esc(p.subject)}</title></circle>`,
     )
     .join("");
   const ticks = [yHi, (yHi + yLo) / 2, yLo]
     .map(
-      (v) =>
+      (/** @type {number} */ v) =>
         `<line x1="${l}" x2="${w - r}" y1="${Y(v).toFixed(1)}" y2="${Y(v).toFixed(1)}" stroke="var(--grid)" stroke-width="1"/>` +
         `<text x="${l - 6}" y="${(Y(v) + 4).toFixed(1)}" text-anchor="end" font-size="11" fill="var(--muted)">${esc(formatValue(v, m.unit))}</text>`,
     )
@@ -202,14 +195,14 @@ function endRun() {
   $("stop").hidden = true;
 }
 
-function setStatus(text, warn = false) {
+function setStatus(/** @type {string} */ text, warn = false) {
   const el = $("live-status");
   el.textContent = text;
   el.className = warn ? "warn" : "muted";
   el.style.fontSize = ".82rem";
 }
 
-function renderEngines(present, probed = true) {
+function renderEngines(/** @type {Record<string, boolean>} */ present, probed = true) {
   // BEFORE the probe has run, "not in this VM" is a claim nobody checked. The
   // page is about the difference between a measurement and an assumption, so
   // an unprobed engine reads as unprobed.
@@ -234,7 +227,7 @@ function renderEngines(present, probed = true) {
   $("engines").innerHTML = bits + note;
 }
 
-function markStep(step, state, detail = "") {
+function markStep(/** @type {any} */ step, /** @type {string} */ state, detail = "") {
   let el = document.getElementById(`step-${cssId(step.id)}`);
   if (!el) {
     el = document.createElement("div");
@@ -250,7 +243,7 @@ function markStep(step, state, detail = "") {
 
 const cssId = (/** @type {string} */ s) => s.replace(/[^a-z0-9]+/gi, "-");
 
-function renderTable(steps, results, present) {
+function renderTable(/** @type {any[]} */ steps, /** @type {Record<string, any>} */ results, /** @type {any} */ present) {
   const sum = summarize(steps, results);
   if (!sum.engines.length) { $("live-table").innerHTML = ""; return; }
   const head =
@@ -289,7 +282,7 @@ function renderTable(steps, results, present) {
 
 // ---- chat
 
-function say(role, text, source = "") {
+function say(/** @type {string} */ role, /** @type {string} */ text, source = "") {
   const el = document.createElement("div");
   el.className = `msg ${role}`;
   // Only the local responder's own **bold** markers are honoured; nothing here
@@ -301,7 +294,7 @@ function say(role, text, source = "") {
   return el;
 }
 
-async function ask(question) {
+async function ask(/** @type {string} */ question) {
   if (!question.trim()) return;
   say("you", question);
   const local = answerLocally(question, { history: history_, live });
@@ -334,7 +327,7 @@ async function ask(question) {
  * up with the question so the agent answers from the rows on screen; it is a
  * plain SSE read with no client-side pipeline, because this mode has none.
  */
-async function askAgent(question) {
+async function askAgent(/** @type {string} */ question) {
   const res = await fetch("/api/chat", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -380,7 +373,7 @@ async function askAgent(question) {
 
 $("run").addEventListener("click", runBattery);
 $("stop").addEventListener("click", () => { stopping = true; });
-$("composer").addEventListener("submit", (ev) => {
+$("composer").addEventListener("submit", (/** @type {Event} */ ev) => {
   ev.preventDefault();
   const q = $("q").value;
   $("q").value = "";

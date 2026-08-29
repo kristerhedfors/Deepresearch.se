@@ -1,4 +1,6 @@
-// @ts-check
+// (no @ts-check: node:test / node:assert have no type declarations in this
+// repo — tsconfig's types is workers-only and @types/node would be a new
+// dependency.)
 // The provider-agnostic tool loop. What is pinned is the OpenAI dialect (the
 // new half — the Anthropic one is pinned by src/anthropic.test.js) and the two
 // properties that make a wrong turn survivable: a tool that throws still gets

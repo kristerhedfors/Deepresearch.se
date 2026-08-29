@@ -207,7 +207,7 @@ export async function openAiToolRun(env, {
 }
 
 /** Some OpenAI-compatible backends answer with content PARTS rather than a string. */
-function textOfParts(content) {
+function textOfParts(/** @type {any} */ content) {
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return "";
   return content.map((p) => (typeof p === "string" ? p : p?.text || "")).join("");
@@ -262,7 +262,7 @@ export async function toolRun(env, opts) {
  */
 export function openAiWireFor(env, provider) {
   const e = /** @type {any} */ (env);
-  const bearer = (/** @type {string} */ token) => ({
+  const bearer = (/** @type {any} */ token) => ({
     "content-type": "application/json",
     authorization: `Bearer ${token}`,
   });
