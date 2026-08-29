@@ -362,8 +362,9 @@ declared bound is pinned against the constant that enforces it — so a spec
 describing behaviour the code does not have fails `npm test`.
 
 **Prompt set and answer phase are independent choices.** A set is a named group
-of system prompts covering some of six closed ROLES (`plan`, `worker`, `answer`,
-`answer-tools`, `answer-direct`, `answer-search-off`);
+of system prompts covering some of eight closed ROLES (`plan`, `reflect`,
+`worker`, `answer`, `answer-tools`, `answer-direct`, `answer-search-off`,
+`brief` — the whole task described to a model that chooses its own tools);
 [`src/prompt-sets.js`](../src/prompt-sets.js) binds each (set, role) pair to the
 shipped builder, and each phase declares the roles it needs. So an agent can run
 the research phase in the source-research voice — a combination that was not
