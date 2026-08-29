@@ -115,6 +115,34 @@ test("a tool round pairs every call with a reply, by id", async (t) => {
   assert.equal(toolMsgs[0].content, "result for grep_source");
 });
 
+test("the echoed assistant turn carries ONLY role, content and tool_calls", async (t) => {
+  // Measured against the live Berget catalog on 2026-08-29: echoing the
+  // provider's own message back verbatim makes three of its seven chat models
+  // reject it — "body/messages/1/function_call Invalid input: expected object,
+  // received null" — because they return function_call:null and then refuse
+  // that null on the way back in. One of the three is Mistral-Small, the fixed
+  // planning model. Invisible until round two, so it is pinned here.
+  const fetchMock = fakeFetch([
+    {
+      choices: [{
+        message: {
+          role: "assistant", content: null, reasoning: null, refusal: null,
+          annotations: null, audio: null, function_call: null,
+          tool_calls: [call("c1", "no_args", {})],
+        },
+        finish_reason: "tool_calls",
+      }],
+    },
+    assistant("done"),
+  ]);
+  t.mock.method(globalThis, "fetch", fetchMock);
+  await openAiToolRun({}, { model: "m", userContent: "q", tools: TOOLS, ...WIRE, execTool: async () => "r" });
+  const echoed = fetchMock.sent[1].body.messages.find((m) => m.role === "assistant");
+  assert.deepEqual(Object.keys(echoed).sort(), ["content", "role", "tool_calls"]);
+  assert.equal(echoed.content, "", "a null content must go back as a string, not as null");
+  assert.equal(echoed.tool_calls.length, 1);
+});
+
 test("a tool that THROWS still gets a reply — an unpaired call is rejected outright", async (t) => {
   const fetchMock = fakeFetch([
     assistant(null, [call("c1", "grep_source", { pattern: "x" })]),

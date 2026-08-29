@@ -160,12 +160,30 @@ export async function openAiToolRun(env, {
         usage, rounds: round, toolCalls, stopReason: choice.finish_reason || null,
       };
     }
-    // The assistant's tool_calls turn goes back verbatim, then one `tool`
-    // message per call. The pairing is by `tool_call_id` and a provider will
-    // reject the next request outright if one is missing — so a tool that
-    // THREW still gets a reply, carrying the error as its result. That is also
-    // the better answer: a model told what failed usually recovers.
-    messages.push(msg);
+    // The assistant's tool_calls turn goes back NARROWED TO THE THREE FIELDS
+    // THE WIRE DEFINES, then one `tool` message per call. The pairing is by
+    // `tool_call_id` and a provider will reject the next request outright if
+    // one is missing — so a tool that THREW still gets a reply, carrying the
+    // error as its result. That is also the better answer: a model told what
+    // failed usually recovers.
+    //
+    // The narrowing is not tidiness, it is the fix for a measured failure.
+    // Echoing the message back VERBATIM — the obvious implementation, and what
+    // the Anthropic dialect requires — makes three of Berget's seven chat
+    // models reject their own output:
+    //
+    //   body/messages/1/function_call Invalid input: expected object, received null
+    //
+    // The provider returns `function_call: null` (with `reasoning`, `refusal`,
+    // `annotations` and `audio` alongside it) on the message it just sent, and
+    // its own validator then refuses that null on the way back in. Measured
+    // 2026-08-29 against the live catalog: it hit Mistral-Small — the fixed
+    // planning model this whole project routes JSON to — plus gpt-oss-120b and
+    // Llama-3.3-70B, while GLM-5.3, Kimi-K3, Qwen3.8 and Gemma-4 round-tripped
+    // the verbatim echo fine. So it is a per-model defect on the primary
+    // provider, it is invisible until round two, and sending only role +
+    // content + tool_calls makes all seven complete the loop.
+    messages.push({ role: "assistant", content: msg.content ?? "", tool_calls: calls });
     for (const tc of calls) {
       toolCalls++;
       const name = tc.function?.name || "";
