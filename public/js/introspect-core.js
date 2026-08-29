@@ -1901,6 +1901,13 @@ export function toolStepHeadline(name, input) {
   }
   if (name === "list_files") return `list_files  ${input?.filter ? `'${input.filter}'` : "(all)"}`;
   if (name === "run_bash") return `run_bash  $ ${String(input?.command ?? "").slice(0, 120)}`;
+  // run_python's key argument is a whole program; its FIRST line is the
+  // headline (whitespace-led continuation lines say nothing), same clamp as
+  // run_bash so a long one-liner cannot stretch the activity row.
+  if (name === "run_python") {
+    const first = String(input?.source ?? "").split("\n").find((l) => l.trim()) || "";
+    return `run_python  ${first.trim().slice(0, 120)}`;
+  }
   return String(name || "tool");
 }
 
