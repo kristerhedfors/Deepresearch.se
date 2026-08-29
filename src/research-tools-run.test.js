@@ -15,16 +15,11 @@ import test, { describe } from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  ENGINE_ORDER,
   REFUSAL_EXIT,
   execEnvironmentFor,
-  formatPythonResult,
-  parseRefusalLine,
-  pythonCommand,
   runResearchTool,
   sampleQueryFromArgs,
 } from "./research-tools-run.js";
-import { EXEC_CEILING_MS } from "../public/js/lypning-core.js";
 import { SAMPLES_LAYOUT, parseSamples } from "../public/js/aadr-core.js";
 import { SAMPLES_PATH } from "./aadr.js";
 import { fakeLog } from "./test-helpers/env.js";
@@ -383,85 +378,11 @@ describe("run_python — it runs in the sandbox, or it says it did not", () => {
   });
 });
 
-describe("the command run_python builds", () => {
-  test("resolves the engine in the command, so the probe cannot go stale", () => {
-    const cmd = pythonCommand("print(1)");
-    for (const engine of ENGINE_ORDER) assert.ok(cmd.includes(`/${engine} ]`), engine);
-    assert.match(cmd, /drpy-engine/);
-  });
-
-  test("the probe is a builtin test, never a PATH walk", () => {
-    // docs/SANDBOX-LOCAL-IMAGE.md records a `command -v` for a tool that was
-    // NOT INSTALLED consuming the whole 30 s exec ceiling — which calls
-    // resetSandbox and DESTROYS the VM, taking every later command with it. A
-    // missing interpreter is exactly the case here: the stock image carries
-    // neither fast engine. tests/e2e/sandbox-perf.spec.js probes the same
-    // binaries the same way for the same reason.
-    const cmd = pythonCommand("print(1)");
-    assert.ok(!/command -v/.test(cmd), "a PATH walk for a missing tool once destroyed the VM");
-    assert.match(cmd, /\[ -x \/usr\/local\/bin\/lypning \]/);
-    // Every probed path is absolute — a bare name would be a PATH walk by
-    // another spelling.
-    for (const m of cmd.matchAll(/\[ -x ([^\]]+) \]/g)) {
-      assert.match(m[1].trim(), /^\//, `${m[1]} is not an absolute path`);
-    }
-  });
-
-  test("stays well inside the ceiling that destroys the VM", () => {
-    // Crossing EXEC_CEILING_MS does not fail the command, it destroys the VM
-    // mid-answer.
-    const seconds = Number(/timeout (\d+)/.exec(pythonCommand("print(1)"))?.[1]);
-    assert.ok(seconds * 1000 < EXEC_CEILING_MS - 4_000, `${seconds}s is too close to the ceiling`);
-  });
-
-  test("a program containing the heredoc delimiter cannot break out of it", () => {
-    // Otherwise the rest of the program is executed as shell.
-    const nasty = "print('DRPY_SRC')\nDRPY_SRC\nrm -rf /\n";
-    const cmd = pythonCommand(nasty);
-    const delim = /cat >"\$P" <<'([A-Z_X]+)'/.exec(cmd)?.[1];
-    assert.ok(delim && delim !== "DRPY_SRC", "the delimiter is extended past the collision");
-    assert.equal(nasty.includes(/** @type {string} */ (delim)), false);
-  });
-
-  test("stdin is a separate document, so a program can read what it was given", () => {
-    const cmd = pythonCommand("import sys; print(sys.stdin.read())", { stdin: "hello" });
-    assert.match(cmd, /<<'DRPY_IN'\nhello\nDRPY_IN/);
-    assert.equal(pythonCommand("print(1)").includes("DRPY_IN"), false);
-    assert.match(pythonCommand("print(1)"), /<\/dev\/null/);
-  });
-});
-
-describe("the refusal contract", () => {
-  test("a refusal line parses into its three parts", () => {
-    assert.deepEqual(parseRefusalLine("lypning: unsupported: module: subprocess"), {
-      engine: "lypning",
-      kind: "module",
-      detail: "subprocess",
-    });
-  });
-
-  test("a traceback is not a refusal", () => {
-    // Confusing the two retries a program that already answered.
-    assert.equal(parseRefusalLine("Traceback (most recent call last):"), null);
-    assert.equal(parseRefusalLine(""), null);
-    assert.equal(parseRefusalLine("python3: can't open file '/tmp/x.py'"), null);
-  });
-
-  test("the result always names which engine answered", () => {
-    const text = formatPythonResult(
-      [{ engine: "lypning", exitCode: 0, stdout: "4\n", stderr: "", refusal: null }],
-      "the browser sandbox",
-    );
-    assert.match(text, /Ran on lypning in the browser sandbox/);
-    assert.match(text, /STDOUT:\n4/);
-  });
-
-  test("a killed program says it was killed rather than returning silence", () => {
-    const text = formatPythonResult([{ engine: "python3", exitCode: 124, stdout: "", stderr: "", refusal: null }], "x");
-    assert.match(text, /past its time budget/);
-    assert.match(text, /\(empty\)/);
-  });
-});
+// The pure ladder mechanics — the command shape, the refusal contract, the
+// fall-onward logic — are tested where they now live:
+// public/js/lypning-exec-core.test.js. This file keeps the INTEGRATION level:
+// run_python reached through the tool dispatch, the environment ladder, and
+// the never-throws contract around it.
 
 describe("the never-throws contract", () => {
   test("an unknown tool is a sentence", async () => {

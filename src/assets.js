@@ -243,6 +243,15 @@ export function isPublicAsset(url, method) {
     // the public graph under the same rule as the line above. (Its DRS-side
     // glue, /js/exec-env.js, is NOT here: only the signed-in app imports that.)
     url.pathname === "/js/exec-backends-core.js" ||
+    // The lypning exec LADDER (run a Python program over a DREE/1 runner:
+    // probe by builtin `[ -x … ]`, refusal contract, CPython retry) — the
+    // shared pure core src/research-tools-run.js re-exports, and the module
+    // Se/cure's browser research loop imports so its run_python executes in
+    // the VM the reader already has (invariant 4: never relayed through this
+    // server). Same public-graph rule as exec-backends-core.js above; its own
+    // import, /js/lypning-core.js, is already allowlisted with the /lypning/
+    // dashboard entries.
+    url.pathname === "/js/lypning-exec-core.js" ||
     // The search-SOURCE preference behind the "Exa web search" settings knob —
     // /cure/drc.js statically imports it (the same public-graph rule).
     url.pathname === "/js/search-source.js" ||
