@@ -35,9 +35,7 @@ import { getModelProfile } from "./model-profiles.js";
 
 /**
  * The static allocation planResearch returns. Same shape as
- * import('./types.js').BudgetPlan, except `estimates` also carries the
- * budget-gated phases (digest/fetch/claim — the PRIORS_MS keys), which the
- * five-phase PhaseName record there predates.
+ * import('./types.js').BudgetPlan.
  * @typedef {Object} BudgetPlan
  * @property {number} budgetMs
  * @property {number} budgetS
@@ -62,14 +60,6 @@ const PRIORS_MS = {
   gap: 4500,
   synth: 16000,
   validate: 13000,
-  // Budget-gated deep-research phases (only ever run at mid/high tiers — see
-  // wantsNotes / wantsFullContent / wantsClaimValidation): the per-wave notes
-  // digest, the top-source full-content fetch, and one claim-verification
-  // call. Seeded as priors so a cold isolate can budget them before their EWMA
-  // warms up; each is dropped first under deadline pressure (fitsDeadline).
-  digest: 4000,
-  fetch: 2500,
-  claim: 3500,
   // The STANDARD topology's phases (src/pipeline-standard.js) and the agentic
   // answer phase's loop. Every one of these is a key recordPhase() is actually
   // called with, and a key that is not in this table is DROPPED SILENTLY
@@ -80,11 +70,18 @@ const PRIORS_MS = {
   // commit as the phases that record them.
   //
   // `queries` and `reflect` are the standard pipeline's two JSON nodes, seeded
-  // at their five-phase counterparts' priors: the query plan does triage's job
-  // (one planning call on the fixed JSON model) and reflect does the gap
-  // check's, on the same model, so those are the measured numbers to start
-  // from. `round` and `tool` are the agentic answer phase's — one model round
-  // that may call tools, and one tool execution.
+  // at the measured priors of the triage and gap phases they replaced: one
+  // planning call and one coverage call, both on the same fixed JSON model.
+  //
+  // `triage` and `gap` stay in this table even though the phases named after
+  // them are gone. `triage` is still recorded — the source-read loop budgets
+  // its planning turn under that key — and BOTH are still read by
+  // planResearch below, which costs a run's planning call and a round against
+  // them; model-profiles.js's per-model overrides are keyed on those names
+  // too, so dropping the rows would silently un-warm every slow model's plan.
+  //
+  // `round` and `tool` are the agentic answer phase's — one model round that
+  // may call tools, and one tool execution.
   queries: 6000,
   reflect: 4500,
   round: 9000,
@@ -160,21 +157,25 @@ export function planResearch(model, budgetS, jsonModel = model) {
   // triage that a fast Mistral now handles.
   const u = phaseEstimates(model);
   const j = jsonModel === model ? u : phaseEstimates(jsonModel);
-  // The digest and claim phases are JSON-mode calls on jsonModel; the
-  // full-content fetch is an Exa call (model-independent, estimated off the
-  // user model's history like search). These estimates only inform the
-  // runtime deadline checks for the budget-gated phases — they do NOT reduce
-  // the search/gap allocation below, so planned depth (and hence default
-  // behavior) is unchanged at every tier.
+  // The estimate bag handed to the request as plan.estimates. `queries` and
+  // `reflect` ride along because the standard engine's runtime deadline check
+  // reads them (src/pipeline-standard.js) — without the rows their warmed
+  // EWMAs would be recorded every request and never read once.
+  //
+  // The arithmetic below still costs the planning call at t.triage and a round
+  // at t.gap, and deliberately so: model-profiles.js's per-model priorsMs
+  // overrides are keyed on those two names (GLM's 45 s planning call is the
+  // case in point), so switching the arithmetic to the new keys would silently
+  // drop every slow model's calibration. The two pairs are seeded from the
+  // same numbers, so nothing moves until one of them warms.
   const t = {
     triage: j.triage,
     gap: j.gap,
+    queries: j.queries,
+    reflect: j.reflect,
     validate: j.validate,
     synth: u.synth,
     search: u.search,
-    digest: j.digest,
-    fetch: u.fetch,
-    claim: j.claim,
   };
   const budgetMs = budgetS * 1000;
   const reportTier = reportTierFor(budgetS);
@@ -298,45 +299,6 @@ const REPORT_TIER_CAPS = {
   full: { synthMaxTokens: 8192, validateMaxTokens: 9000 },
 };
 
-// Complexity-scaled effort: after triage classifies the question (see
-// prompts.js's DECOMPOSITION_RULE), a "simple" question gets its research
-// depth capped BELOW what the time budget alone would buy. The project's own
-// de-noised benchmark found that extra research machinery at high budgets was
-// net-negative on focused questions — the failure mode is OVER-researching a
-// simple question because time happens to be available, diluting the answer
-// (the same lesson as Anthropic's published effort-scaling rules: simple
-// fact-finding warrants a handful of calls, not a survey's worth). Only ever
-// scales DOWN — the budget plan remains the ceiling for every complexity —
-// and an absent/unknown complexity (schema miss, older model output) leaves
-// the plan untouched, so the pre-decomposition behavior is the exact
-// fallback. Mutates and returns `plan` (it's the per-request state's plan).
-/**
- * @param {BudgetPlan | null | undefined} plan
- * @param {unknown} complexity Triage's classification — only "simple" acts.
- * @returns {BudgetPlan | null | undefined} The same `plan` object.
- */
-export function applyComplexityToPlan(plan, complexity) {
-  if (!plan || complexity !== "simple") return plan;
-  plan.gapIterations = Math.min(plan.gapIterations, 1);
-  // One initial wave plus at most one follow-up round's worth of searches.
-  plan.maxSearches = Math.min(plan.maxSearches, plan.queries + plan.followups);
-  // Output-side counterpart (2026-07-15 seam battery, EVAL-BENCH-FINDINGS):
-  // a simple question gets at most the STANDARD report shape even when the
-  // slider bought extended/full. The paired 179s/180s A/B showed the
-  // structured-report tiers helping broad kinds (comparison, contested,
-  // diversity-trap) but consistently hurting focused-lookup kinds (numeric,
-  // recency, platform lookups: 0 wins / 7 losses) — stretching a one-fact
-  // answer across report sections dilutes it, the same failure mode that
-  // motivated the research-depth cap above. Only ever scales DOWN, and
-  // brief stays brief.
-  if (plan.reportTier === "extended" || plan.reportTier === "full") {
-    plan.reportTier = "standard";
-    plan.synthMaxTokens = REPORT_TIER_CAPS.standard.synthMaxTokens;
-    plan.validateMaxTokens = REPORT_TIER_CAPS.standard.validateMaxTokens;
-  }
-  return plan;
-}
-
 // A round 6 assessment found the time-budget slider scaled how MANY
 // searches ran, but never how deep any single one went: numResults was a
 // hardcoded 5 (Exa's own default is 10) and `type` was always "auto",
@@ -363,11 +325,12 @@ function searchDepthFor(budgetS) {
   return { numResults: 5, type: "auto", costMultiplier: 1 };
 }
 
-// Exa's /contents endpoint (the budget-gated full-content fetch) is billed
-// well below a standard search (~$1/1k vs $7/1k as of 2026). The admin's
-// per-search price is scaled by this ratio per URL fetched, so the top-tier
-// full-content spend is counted rather than silently ignored — the same
-// approach searchDepth.costMultiplier takes for deeper search tiers.
+// The search provider's /contents endpoint is billed well below a standard
+// search (~$1/1k vs $7/1k as of 2026). The admin's per-search price is scaled
+// by this ratio per URL fetched, so page-extraction spend is counted rather
+// than silently ignored — the same approach searchDepth.costMultiplier takes
+// for deeper search tiers. Its one consumer is the research toolbox's
+// read_pages (src/research-tools-run.js), which fills state.fetchedUrls.
 export const CONTENTS_COST_MULTIPLIER = 1 / 7;
 
 // ---- runtime deadline checks (mechanism 3) ----------------------------------
@@ -381,107 +344,4 @@ export const CONTENTS_COST_MULTIPLIER = 1 / 7;
  */
 export function fitsDeadline(startedAt, budgetMs, upcomingMs) {
   return Date.now() - startedAt + upcomingMs <= budgetMs * 1.15;
-}
-
-// ---- gap-strive: don't settle for "coverage sufficient" while a deep budget
-// sits unspent (feedback #16, chat_logs #609: a 600s budget wrapped a niche
-// question in 123s because round 3's gap check said complete). The 2026-07-19
-// fix raised the ROUND ceiling; this is its complement on the OTHER binding
-// constraint, the gap check's own judgment: at the deep tiers, the first
-// "complete" verdicts are challenged — runGapChecks re-asks with a wider-
-// aperture prompt (communities, marketplaces, alternate terminology,
-// non-English sources) instead of stopping. Bounded three ways: only
-// extended/full tiers (a simple question never reaches them —
-// applyComplexityToPlan drops its tier to standard), only while less than
-// half the budget is spent, and at most GAP_STRIVE_MAX pushes per request; a
-// strive wave that surfaces no new sources still exits via gap_saturated.
-
-export const GAP_STRIVE_MAX = 2;
-
-/**
- * Should a "coverage sufficient" gap verdict be challenged with a deeper look?
- * @param {BudgetPlan | null | undefined} plan
- * @param {number} elapsedMs time spent so far this request
- * @param {number} striveCount strive pushes already spent this request
- * @returns {boolean}
- */
-export function wantsGapStrive(plan, elapsedMs, striveCount) {
-  if (!plan || (plan.reportTier !== "extended" && plan.reportTier !== "full")) return false;
-  if (striveCount >= GAP_STRIVE_MAX) return false;
-  return elapsedMs < plan.budgetMs * 0.5;
-}
-
-// ---- budget-tier gates for the deep-research phases ------------------------
-//
-// These decide whether the NEW, optional pipeline phases run at all. They are
-// deliberately tiered ABOVE the default budget so a 15-60s request runs
-// byte-identically to before these phases existed — wantsNotes is off at the
-// 60s default, and full-content / claim-level validation only unlock at the
-// long tiers (mirroring searchDepth's own 240s boundary). Under runtime
-// deadline pressure each phase additionally gates on fitsDeadline and is
-// dropped before synthesis/validation.
-//
-// DISABLED (2026-07): a de-noised benchmark (4 samples/cell, tests/
-// denoise-driver.mjs) found these three phases NET-NEGATIVE at the deep tier —
-// batch overall 2.65 (off) → 2.43 (on), with real regressions on focused
-// recency/contested questions (calibration bled as distilled notes + full-page
-// text diluted the answer) and NO real gain on multi-hop (1.67 → 1.89, inside
-// the noise). Multi-hop needs sub-question decomposition, not more source
-// material. So the activation is flipped off via this one flag while the code
-// is kept for a future INTENT-gated rework (run these only for genuinely broad/
-// multi-hop questions, decided by triage — not by budget alone), to be
-// re-enabled only once the benchmark shows a real gain. The schema hardening in
-// pipeline.js is unaffected (harmless — it only normalizes JSON behind the
-// existing fail-soft fallbacks). Re-enable by flipping this to true.
-const DEEP_TIER_FEATURES_ENABLED = false;
-
-// Per-wave notes digest: mid tier and up (never at the ≤60s default).
-/**
- * @param {BudgetPlan | null | undefined} plan
- * @returns {boolean}
- */
-export function wantsNotes(plan) {
-  return DEEP_TIER_FEATURES_ENABLED && !!plan && plan.budgetS >= 120;
-}
-
-// Full-content fetch of the top sources: only the long tiers (≥240s), where
-// there is budget to read whole pages, matching searchDepth's 240s boundary.
-/**
- * @param {BudgetPlan | null | undefined} plan
- * @returns {boolean}
- */
-export function wantsFullContent(plan) {
-  return DEEP_TIER_FEATURES_ENABLED && !!plan && plan.budgetS >= 240;
-}
-
-// Claim-level (per-claim) validation instead of the single whole-draft pass:
-// long tiers only. A tight budget still runs the cheap single-pass validate.
-/**
- * @param {BudgetPlan | null | undefined} plan
- * @returns {boolean}
- */
-export function wantsClaimValidation(plan) {
-  return DEEP_TIER_FEATURES_ENABLED && !!plan && plan.budgetS >= 240;
-}
-
-// Sub-question fan-out (roadmap §5.5's full form): at the long tiers, audit
-// each independent sub-question's coverage CONCURRENTLY (one bounded JSON
-// call per sub-question, comparison/survey questions only — see
-// pipeline.js's runSubquestionFanout) and run one merged follow-up wave,
-// instead of leaving all per-sub-question digging to the serial gap cascade.
-// OFF until the bench gate (tests/bench-gate.mjs) proves it earns its cost.
-// Flipping it on is ALSO the agreed platform trigger: migrate the
-// orchestration shell to Cloudflare Workflows in the same effort that
-// enables this (docs/ARCHITECTURE-ROADMAP.md §6; ARCHITECTURE-GAP-ANALYSIS
-// P4/P19). Deliberately a separate flag from DEEP_TIER_FEATURES_ENABLED:
-// those features measured net-negative; this one is unmeasured, not
-// disproven.
-const SUBQ_FANOUT_ENABLED = false;
-
-/**
- * @param {BudgetPlan | null | undefined} plan
- * @returns {boolean}
- */
-export function wantsSubqFanout(plan) {
-  return SUBQ_FANOUT_ENABLED && !!plan && plan.budgetS >= 240;
 }

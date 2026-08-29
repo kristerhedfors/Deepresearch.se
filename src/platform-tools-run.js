@@ -155,10 +155,12 @@ async function runPlatformMap(env, log, area) {
     );
   } else {
     parts.push(
-      "This is a deep research platform running as a single Cloudflare Worker. It orchestrates " +
-        "a fixed research pipeline — triage, search, gap check, synthesis, validation — with no " +
-        "function calling, so the same pipeline runs on any model. It has two tiers: one where " +
-        "the server is never in the data path, and one that is account-scoped and cloud-first.",
+      "This is a deep research platform running as a single Cloudflare Worker. A research turn " +
+        "runs one of two engines: a model-driven tool loop that chooses its own calls, and a " +
+        "compact four-node graph — plan queries, search, reflect on the gaps, write and validate " +
+        "— that every model without tool use falls back to, so the platform works on any model. " +
+        "It has two tiers: one where the server is never in the data path, and one that is " +
+        "account-scoped and cloud-first.",
     );
     const sizeLine = describeSize(snapshot, await docsCount(env, log));
     if (sizeLine) parts.push(sizeLine);

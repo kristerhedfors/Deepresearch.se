@@ -5,7 +5,7 @@
 // ---- why this exists --------------------------------------------------------
 //
 // Nothing in this pipeline that decides WHAT to research can see an image.
-// Triage, the gap check and validation are JSON calls on the fixed planning
+// The query-plan node, reflect and validation are JSON calls on the fixed planning
 // model (invariant 3), and every one of them reads the conversation through
 // conversation.js `textOf`, which flattens image parts to "[N image(s)
 // attached]". The one model that CAN see the picture — the user's answer model
@@ -22,7 +22,7 @@
 //
 // ---- why it runs on the ANSWER model, and must keep doing so ----------------
 //
-// Invariant 3 pins the THREE JSON PLANNING PHASES (triage, gap check,
+// Invariant 3 pins the THREE JSON PLANNING PHASES (query plan, reflect,
 // validation) to the fixed reliable planning model. This is not one of them —
 // it is an enrichment, like the source snapshot or the sample corpus — and it
 // deliberately calls `state.model`, the user's answer model.
@@ -66,7 +66,7 @@ import { addUsage } from "./quota.js";
 // speculate past the end of what it can actually read.
 export const IMAGE_READ_MAX_TOKENS = 700;
 
-// The read blocks triage, so a backend that accepts the request and then stalls
+// The read blocks the planner, so a backend that accepts the request and then stalls
 // would hang the whole turn on "Reading the attached image…" with no way out —
 // the failure mode berget.js's stream guards exist for, and the one the Street
 // View describe helper already opts into. `idleMs` bounds the wait for the next

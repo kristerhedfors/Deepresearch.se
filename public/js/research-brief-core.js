@@ -2,8 +2,8 @@
 // THE RESEARCH BRIEF — the one instruction that replaces a deterministic
 // pipeline on the tool-driven research path.
 //
-// On the five-phase path the ORDER of the work is code: triage plans, the wave
-// searches, the gap check decides whether to search again, synthesis writes.
+// On the deterministic path the ORDER of the work is code: a node plans, the
+// wave searches, a node decides whether to search again, the writer writes.
 // The model is told what to produce at each step and never what a finished
 // answer looks like, because it only ever sees one step of it. On the tool path
 // that scaffolding is gone — the model picks its own tools and decides when it
@@ -19,7 +19,7 @@
 // alternative already exists and is the reason this file does: public/js/
 // drc-research.js carries ~265 lines of prompts whose only relationship to
 // src/prompts.js is a comment saying they mirror it. Under a deterministic
-// pipeline that drift is cosmetic — the phases still run in the same order on
+// pipeline that drift is cosmetic — the nodes still run in the same order on
 // both sides. Under a tool loop it is not: the prompt is the only thing
 // deciding what gets called, so two copies are two different agents.
 //

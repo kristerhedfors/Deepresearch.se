@@ -130,8 +130,11 @@
       "capability": {
         "answerPhase": "research",
         "prompts": "research",
-        "tools": [],
-        "toolFallback": "none",
+        "tools": [
+          "web-research",
+          "python"
+        ],
+        "toolFallback": "pipeline",
         "context": [
           "shell-transcript"
         ],
@@ -668,8 +671,12 @@
       "capability": {
         "answerPhase": "research",
         "prompts": "research",
-        "tools": [],
-        "toolFallback": "none",
+        "tools": [
+          "web-research",
+          "source-search",
+          "python"
+        ],
+        "toolFallback": "pipeline",
         "context": [
           "model-catalog",
           "shell-transcript",
@@ -1007,8 +1014,14 @@
       "capability": {
         "answerPhase": "research",
         "prompts": "research",
-        "tools": [],
-        "toolFallback": "none",
+        "tools": [
+          "web-research",
+          "source-search",
+          "literature",
+          "ancient-samples-query",
+          "python"
+        ],
+        "toolFallback": "pipeline",
         "context": [
           "ancient-samples",
           "literature-pubmed"
@@ -1147,8 +1160,14 @@
       "capability": {
         "answerPhase": "research",
         "prompts": "research",
-        "tools": [],
-        "toolFallback": "none",
+        "tools": [
+          "web-research",
+          "source-search",
+          "host-intel-tools",
+          "street-imagery-tools",
+          "python"
+        ],
+        "toolFallback": "pipeline",
         "context": [
           "owasp",
           "entity-method",
@@ -1313,8 +1332,13 @@
       "capability": {
         "answerPhase": "research",
         "prompts": "research",
-        "tools": [],
-        "toolFallback": "none",
+        "tools": [
+          "web-research",
+          "source-search",
+          "literature",
+          "python"
+        ],
+        "toolFallback": "pipeline",
         "context": [
           "scholar-metrics",
           "literature-peer-reviewed",

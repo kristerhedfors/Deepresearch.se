@@ -16,7 +16,7 @@
 // free-text answers grade via POST /api/quiz/grade. Material comes from
 // whatever the pipeline already has in front of it: the conversation
 // (attached documents, project materials, RAG excerpts all ride inside it)
-// plus the web-search source registry when triage chose research.
+// plus the web-search source registry when the planner chose research.
 
 /**
  * One hardened quiz question the client renders (`correct` is the 0-based
@@ -53,9 +53,11 @@ export const MAX_QUIZ_ALTERNATIVES = 6;
 // arrived as "Bygg en wuiz på 10 varierade frågor…" — a q→w adjacent-key
 // typo that defeated the gate and dumped the questions as a plain research
 // answer. Tolerating the mistyped first letter is cheap and unambiguous
-// ("wuiz" means nothing else); triage also carries a fail-soft `quiz` flag
-// as the catch-all for paraphrases the regexes can't foresee
-// (prompts.js triagePrompt, pipeline.js runPipeline).
+// ("wuiz" means nothing else). This gate is now the ONLY one: the triage
+// phase carried a fail-soft `quiz` flag as a catch-all for paraphrases the
+// regexes cannot foresee, and it went with the phase — a paraphrase these
+// patterns miss is answered as ordinary research, which is the same fail-soft
+// direction, one step less forgiving.
 const QUIZ_REQUEST_PATTERNS = [
   /\b(?:[qw]uiz(?:za)?|förhör|grill|test|testa)\s+(?:me|mig|us|oss)\b/i, // "quiz me", "förhör mig", "testa mig"
   /\b(?:make|create|generate|build|prepare|start|run|give\s+me|skapa|gör|bygg|ge\s+mig|kör|starta)\b[^.?!\n]{0,60}?\b(?:[qw]uiz|kunskapstest|förhör)\b/i,
@@ -70,8 +72,7 @@ const QUIZ_REQUEST_PATTERNS = [
 const QUESTION_COUNT_RE = /(\d{1,2})\s*(?:[\p{L}-]+\s+){0,2}?(?:questions?|frågor|fråga|q\b)/iu;
 
 // The requested question count parsed on its own (null when the message
-// names none) — quizIntent uses it, and pipeline.js reuses it when the
-// triage `quiz` flag (not this module's regexes) detected the request.
+// names none) — quizIntent uses it.
 /**
  * @param {unknown} text
  * @returns {number | null} the clamped requested count, or null when unnamed

@@ -81,35 +81,33 @@ export const PIPELINE_NODES = [
   { id: "executor", label: "Agent runs", sub: "its own executor", group: "pipeline", kind: "terminal", layer: 9, lane: 1 },
   { id: "source", label: "Source loop", sub: "introspection", group: "pipeline", kind: "loop", layer: 10, lane: 1,
     note: "Reads the deployed source file by file until the question is answered — this is the path an introspection question takes." },
-  { id: "triage", label: "Triage", sub: "fixed JSON model", group: "pipeline", kind: "decision", layer: 11, lane: 0,
-    note: "Always the same reliable planning model, never your chosen answer model." },
+  { id: "plan", label: "Query plan", sub: "fixed JSON model", group: "pipeline", kind: "decision", layer: 11, lane: 0,
+    note: "Always the same reliable planning model, never your chosen answer model. It writes the search angles and decides whether any source is needed at all." },
   { id: "direct", label: "Direct reply", sub: "no research", group: "answer", kind: "terminal", layer: 11, lane: 1 },
-  { id: "clarify", label: "Clarify", sub: "asks you back", group: "answer", kind: "terminal", layer: 12, lane: 1 },
-  // ---- research ----------------------------------------------------------
-  { id: "search", label: "Search wave", sub: "web · sources", group: "research", kind: "loop", layer: 12, lane: 0 },
-  { id: "digest", label: "Notes digest", sub: "budget-gated", group: "research", kind: "step", layer: 13, lane: 0 },
-  { id: "fanout", label: "Subquestions", sub: "budget-gated", group: "research", kind: "step", layer: 14, lane: 0 },
-  { id: "gap", label: "Gap checks", sub: "until covered", group: "research", kind: "loop", layer: 15, lane: 0,
-    note: "Each round asks what is still missing and searches again — the loop that keeps lighting up." },
-  { id: "contents", label: "Full pages", sub: "top sources", group: "research", kind: "step", layer: 16, lane: 0 },
-  // ---- the two ENGINES the research phase routes between (2026-08-29) ------
-  // src/pipeline.js runResearchPhase hands the turn to one of these; the nodes
-  // above are the deterministic flow they replaced and stay drawn until it is
-  // retired, so a run on either engine is legible on the same map. Both sit in
-  // the branch column: they are alternatives to the spine, not steps along it.
+  // ---- research: the two ENGINES the research phase routes between ---------
+  // src/pipeline.js runResearchPhase hands the turn to one of them. The SPINE
+  // is the standard four-node graph — plan, wave, reflect, write — because it
+  // is what every model without tool use falls back to; the model-driven loop
+  // sits in the branch column beside it, as an alternative to those steps
+  // rather than a step along them.
   //
   // Two of the standard graph's four nodes get NO box of their own, and that is
   // this table's honesty rule rather than an omission. Its generate_queries
-  // node emits the `plan` step id and is the same thing `Triage` already draws
-  // — one JSON call on the fixed model that decides the angles — and its
-  // finalize node IS runSynthesis followed by runValidation, which are the two
-  // boxes below. A duplicate box for either would be a box no signal can ever
-  // light, which reads as "this never happens" (pinned by the "every node can
-  // be lit by some observable signal" test).
+  // node IS the `plan` box above — one JSON call on the fixed model that
+  // decides the angles — and its finalize node IS runSynthesis followed by
+  // runValidation, the two boxes below. A duplicate box for either would be a
+  // box no signal can ever light, which reads as "this never happens" (pinned
+  // by the "every node can be lit by some observable signal" test).
+  //
+  // The deterministic cascade that used to fill this column — the notes
+  // digest, the sub-question fan-out, the gap-check loop and the full-page
+  // fetch — was deleted with the phases (2026-08-29). Their boxes went with
+  // them for the same honesty rule: no signal can light them any more.
+  { id: "search", label: "Search wave", sub: "web · sources", group: "research", kind: "loop", layer: 12, lane: 0 },
+  { id: "reflect", label: "Reflect", sub: "states the gap", group: "research", kind: "loop", layer: 13, lane: 0,
+    note: "The standard graph's loop edge: each round names what is still missing, in words, and searches again for it." },
   { id: "loop", label: "Research loop", sub: "the model's own", group: "research", kind: "loop", layer: 13, lane: 1,
     note: "The answer model picks its own tools and their order, one step per call, until it stops or a bound stops it — then the report is written by the same synthesis step every other run uses." },
-  { id: "reflect", label: "Reflect", sub: "states the gap", group: "research", kind: "loop", layer: 14, lane: 1,
-    note: "The standard graph's loop edge: each round names what is still missing, in words, and searches again for it." },
   // ---- the answer --------------------------------------------------------
   { id: "synth", label: "Synthesis", sub: "streamed answer", group: "answer", kind: "step", layer: 17, lane: 0 },
   { id: "validate", label: "Validation", sub: "fact-check", group: "answer", kind: "step", layer: 18, lane: 0 },
@@ -145,35 +143,30 @@ export const PIPELINE_EDGES = [
   { from: "enrich", to: "mode" },
   { from: "mode", to: "executor", label: "agent", weak: true },
   { from: "mode", to: "source", label: "own source", weak: true },
-  { from: "mode", to: "triage" },
-  { from: "triage", to: "direct", label: "direct", weak: true },
-  { from: "triage", to: "clarify", label: "clarify", weak: true },
-  { from: "triage", to: "search", label: "research" },
-  // The engine router. Both edges leave `triage` because both engines run in
-  // its place — the loop instead of a plan, the reflect round instead of a gap
-  // check — and both rejoin at the writer, which neither of them replaces.
-  { from: "triage", to: "loop", label: "model-driven", weak: true },
+  { from: "mode", to: "plan" },
+  { from: "plan", to: "direct", label: "direct", weak: true },
+  { from: "plan", to: "search", label: "research" },
+  // The engine router. The loop's edge leaves `mode`, not `plan`: the
+  // model-driven engine has no planning call of its own — the brief and the
+  // toolbox go straight to the answer model — so drawing it downstream of the
+  // plan box would claim a JSON phase that never ran. It rejoins at the
+  // writer, which it does not replace.
+  { from: "mode", to: "loop", label: "model-driven", weak: true },
   { from: "loop", to: "loop", back: true },
   { from: "loop", to: "synth", weak: true },
-  { from: "search", to: "reflect", label: "reflect", weak: true },
-  // No label: it is a CROSS-LANE edge, so a label would move to the target
-  // node's tooltip (branchCondition) and read there as a second condition on
-  // reaching the search wave, which it is not — it is the same wave, again. The
-  // round count the node already draws (×N) is the honest version of it.
+  { from: "search", to: "reflect", label: "reflect" },
+  // No label: a label here would move to the target node's tooltip
+  // (branchCondition) and read as a second condition on reaching the search
+  // wave, which it is not — it is the same wave, again. The round count the
+  // node already draws (×N) is the honest version of it.
   { from: "reflect", to: "search", back: true },
-  { from: "search", to: "digest" },
-  { from: "digest", to: "fanout" },
-  { from: "fanout", to: "gap" },
-  { from: "gap", to: "search", back: true, label: "another wave" },
-  { from: "gap", to: "contents" },
-  { from: "contents", to: "synth" },
+  { from: "reflect", to: "synth" },
   { from: "synth", to: "validate" },
   { from: "validate", to: "done" },
   { from: "fbreply", to: "done", ends: true },
   { from: "executor", to: "done", ends: true },
   { from: "source", to: "done", ends: true },
   { from: "direct", to: "done", ends: true },
-  { from: "clarify", to: "done", ends: true },
 ];
 
 /** @type {Map<string, PipelineNode>} */
@@ -186,7 +179,7 @@ const NODE_BY_ID = new Map(PIPELINE_NODES.map((n) => [n.id, n]));
  * gate, the enrichment pass with an empty registry, the mode-executor dispatch.
  * Left to their own signals those nodes could NEVER light, which is worse than
  * leaving them out — a permanently dark box reads as "this never happens". They
- * are not guesses either: the pipeline reaches triage only by passing the
+ * are not guesses either: the pipeline reaches the query plan only by passing the
  * feedback gate, then the enrichments, then the dispatch, in that order
  * (`src/pipeline.js` runPipeline). Same class of inference as STREAM_OPEN_NODES —
  * what an observed event PROVES about the path behind it — and, like it, nothing
@@ -202,14 +195,9 @@ export const IMPLIED_UPSTREAM = {
   mode: ["enrich"],
   executor: ["mode"],
   source: ["mode"],
-  triage: ["mode"],
-  direct: ["triage"],
-  clarify: ["triage"],
-  search: ["triage"],
-  digest: ["search"],
-  fanout: ["search"],
-  gap: ["search"],
-  contents: ["gap"],
+  plan: ["mode"],
+  direct: ["plan"],
+  search: ["plan"],
   synth: ["search"],
   loop: ["mode"],
   reflect: ["search"],
@@ -259,7 +247,7 @@ export const STREAM_OPEN_NODES = ["post", "route", "checks", "quota", "stream"];
  * genuine last resort rather than the enrichment pass's normal route.
  */
 const STEP_NODES = {
-  plan: "triage",
+  plan: "plan",
   introspect: "enrich",
   geocode: "enrich",
   shodan: "enrich",
@@ -275,9 +263,6 @@ const STEP_NODES = {
   source: "source",
   bcont: "source",
   loop: "loop",
-  digest: "digest",
-  fanout: "fanout",
-  contents: "contents",
   synth: "synth",
   failover: "synth",
   quiz: "synth",
@@ -290,7 +275,11 @@ const STEP_NODES = {
  * @type {Array<[RegExp, string]>}
  */
 const LOOP_STEP_PATTERNS = [
-  [/^gap\d+$/, "gap"],
+  // `gap<n>` is deliberately absent: the gap-check loop was deleted with the
+  // bespoke phases, and a REPLAYED old run still carrying those ids falls to
+  // FALLBACK_STEP_NODE below — the research loop, whose meaning is "the engine
+  // is working". Mapping them to a box that no longer exists would be the one
+  // thing this table must not do.
   [/^reflect\d+$/, "reflect"],
   // src/agentic.js loopStepId: `tool_<n>`, one pair per tool call. A NUMBER
   // rather than the tool's name, because a tool name is a service name here
@@ -317,16 +306,19 @@ const LOOP_STEP_PATTERNS = [
 const FALLBACK_STEP_NODE = "loop";
 
 /**
- * Triage/route outcome (`route` on the `plan` step_done — src/pipeline.js) →
- * the node that outcome hands the answer to. Deterministic and language-free:
- * the alternative, sniffing the step's English label, would break the moment a
- * label is reworded.
+ * Route outcome (`route` on the `plan` step_done — src/pipeline.js and
+ * src/pipeline-standard.js) → the node that outcome hands the answer to.
+ * Deterministic and language-free: the alternative, sniffing the step's English
+ * label, would break the moment a label is reworded.
+ *
+ * `clarify` is gone with the triage phase that emitted it — no engine asks the
+ * user a question back — so an old replayed run carrying that route now lights
+ * nothing rather than a box that is not drawn.
  */
 const ROUTE_NODES = {
   feedback: "fbreply",
   search_off: "direct",
   direct: "direct",
-  clarify: "clarify",
 };
 
 /**

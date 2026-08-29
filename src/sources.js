@@ -42,8 +42,8 @@ import { platformDiversityKey } from "./search-sources.js";
 // result set, independent of how a caller phrases its queries. Doing it
 // here as a hard cap (not a prompt instruction) guarantees it regardless
 // of whether a given model reliably follows the softer prompt-level asks
-// in prompts.js (triagePrompt's mandatory independent-source query,
-// gapPrompt's dominance check) — belt and suspenders, not either/or.
+// in prompts.js (the query-plan node's mandatory independent-source query,
+// the reflect node's dominance check) — belt and suspenders, not either/or.
 const DOMAIN_CAP = 3;
 
 /**

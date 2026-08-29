@@ -302,7 +302,15 @@ async function runReadPages(env, log, args, rctx) {
   const missed = urls.filter((/** @type {string} */ u) => !pages.has(u));
   if (missed.length && env.EXA_API_KEY) {
     const backfill = await fetchContents(env, missed, log).catch(() => ({ results: [], durationMs: 0, cached: false }));
-    for (const r of backfill.results) pages.set(r.url, { title: r.title || r.url, url: r.url, text: r.text });
+    for (const r of backfill.results) {
+      pages.set(r.url, { title: r.title || r.url, url: r.url, text: r.text });
+      // The provider bills /contents per URL, well below a search, and
+      // src/billing.js prices this set with budget.js's
+      // CONTENTS_COST_MULTIPLIER. Recorded HERE because this is now the only
+      // phase that reaches that endpoint: leaving it unrecorded would spend
+      // real money the request's own cost line never mentions.
+      state.fetchedUrls?.add(r.url);
+    }
   }
 
   const items = [...pages.values()].map((p) => ({
@@ -630,9 +638,14 @@ async function runPython(env, log, args, rctx) {
 
 /**
  * The execution environment this request can reach, or null.
+ *
+ * Typed on the four fields it reads rather than the whole tool context, so the
+ * toolbox can PROBE for an environment before a run has one — src/agentic.js
+ * asks this same function whether to offer a compute tool at all, and it has no
+ * pipeline state to hand over at that point.
  * @param {Env} env
  * @param {Logger} log
- * @param {ResearchToolCtx} rctx
+ * @param {Pick<ResearchToolCtx, "exec" | "execLabel" | "identity" | "requestId">} rctx
  * @returns {{ label: string, run: (command: string, opts: { timeoutMs: number }) => Promise<{ exitCode: number, stdout: string, stderr: string }> } | null}
  */
 export function execEnvironmentFor(env, log, rctx) {

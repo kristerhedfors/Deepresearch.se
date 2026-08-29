@@ -533,7 +533,7 @@ export function scholarLeadIntent(text) {
   return NAMED.test(s) || SCHOLAR_AS_SOURCE.test(s) || LEAD_PHRASE.test(s);
 }
 
-/** The planner-vocabulary sentence spliced into the triage and gap prompts.
+/** The planner-vocabulary sentence spliced into the query-plan and reflect prompts.
  *
  * The English instruction is the same evidence-backed rule Europe PMC records:
  * the indexed titles and abstracts are English, so a Swedish question must

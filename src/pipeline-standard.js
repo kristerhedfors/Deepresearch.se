@@ -1,6 +1,10 @@
 // @ts-check
-// The STANDARD compact deep-research pipeline — the four-node topology, as an
-// OPTION beside the bespoke five-phase flow in src/pipeline.js.
+// The STANDARD compact deep-research pipeline — the four-node topology, and
+// one of the two engines src/pipeline.js's research phase routes to (the other
+// is the model-driven loop in src/agentic.js). It is also that loop's
+// FALLBACK: every model without a tool dialect, and every run whose resolved
+// toolbox is empty, lands here, which is what keeps the whole catalog working
+// (invariant 1).
 //
 //   generate_queries → web_research → reflect → finalize
 //                          ↑______________|
@@ -18,21 +22,24 @@
 // cap, the cross-wave dedup, the deterministic absorption order that fixes
 // citation numbering, the source-policy narrowing, the search_start /
 // search_done cards, the streamed answer, the citation audit and the
-// validation pass all come from there. Those were never "the five-phase
-// pipeline" — they are the platform — and a topology option that forked them
-// would be a topology option that quietly regressed them.
+// validation pass all come from there. Those were never "the pipeline" — they
+// are the platform, which is exactly why they outlived the five-phase
+// orchestration that used to call them — and an engine that forked them would
+// be an engine that quietly regressed them.
 //
 // So this module is four nodes and one loop edge, and nothing else:
 //
 //   1. generateQueries — ONE JSON call. Angles, a rationale shown to the user,
-//      and a `direct` boolean that stands in for triage's direct branch. No
-//      clarify branch: this graph has nowhere to put one (see queryPlanPrompt).
+//      and a `direct` boolean: the one decision the deleted triage phase made
+//      that a research turn still needs. No clarify branch: this graph has
+//      nowhere to put one (see queryPlanPrompt).
 //   2. the initial wave — runNamedUrlReads then runSearches, from pipeline.js.
 //   3. reflect — ONE JSON call per round, at most STANDARD_MAX_REFLECT_ROUNDS.
-//      It emits an artefact the gap check never did: a STATED knowledge gap,
-//      in words, that the trail shows and the answer must carry as an explicit
-//      limitation. The gap check's verdict was a saturation boolean, so a run
-//      that stopped short left no record of what it had failed to find.
+//      It emits an artefact the deleted gap cascade never did: a STATED
+//      knowledge gap, in words, that the trail shows and the answer must carry
+//      as an explicit limitation. That cascade's verdict was a saturation
+//      boolean, so a run that stopped short left no record of what it had
+//      failed to find.
 //   4. finalize — runSynthesis (streamed) then runValidation, from pipeline.js.
 //
 // Invariant 1 holds throughout: every node is a plain JSON-mode or streamed
@@ -49,6 +56,7 @@ import { previousUserText } from "./conversation.js";
 import { extractNamedUrls } from "./named-urls.js";
 import { knowledgeGapsSection } from "./pipeline-inputs.js";
 import { phasePrompt } from "./prompt-sets.js";
+import { focusQueriesOnSubject } from "./query-focus.js";
 import { arrayOf, boolean, object, string } from "./schema.js";
 import { sourceDigest } from "./sources.js";
 import { hardenJson, seedFromConversation } from "./triage.js";
@@ -125,11 +133,12 @@ function defaultDeps() {
  * How many reflect rounds this budget buys.
  *
  * ONE whenever the budget affords any follow-up work at all, none at the
- * floor, and two only when a planner says so explicitly. The five-phase flow's
- * `gapIterations` is a striving ceiling — it climbs to eight at the deepest
- * tiers — and reading it as a reflect count would turn the compact topology
- * into the cascade it is offered as an alternative to. `plan.reflectRounds` is
- * read first so a planner that grows the field governs without a change here.
+ * floor, and two only when a planner says so explicitly. `plan.gapIterations`
+ * is a striving ceiling the budget planner still computes — it climbs to eight
+ * at the deepest tiers — and reading it as a reflect count would turn the
+ * compact topology back into the cascade this replaced. `plan.reflectRounds`
+ * is read first so a planner that grows the field governs without a change
+ * here.
  * @param {import('./budget.js').BudgetPlan & { reflectRounds?: number }} plan
  * @returns {number}
  */
@@ -140,8 +149,7 @@ export function reflectRoundsFor(plan) {
 }
 
 /**
- * Hardens node 1's raw JSON into a usable plan, with the same model-free
- * fallback triage has.
+ * Hardens node 1's raw JSON into a usable plan, with a model-free fallback.
  *
  * The fallback is not a nicety. This node writes the strings that go to a
  * search engine, and a planner failing on a follow-up turn ("undersök saken",
@@ -248,6 +256,21 @@ export async function generateQueries(ctx, deps = null) {
     priorUser: previousUserText(ctx.conversation),
     maxQueries,
   });
+  // The DETERMINISTIC half of the subject-vs-format split (feedback #65). The
+  // prompt rule alone does not hold on the fixed JSON planner this node runs on
+  // (invariant 3), so an angle that came back about the report FORMAT rather
+  // than its subject is dropped here. Disengages entirely when no method block
+  // applied on this turn or the conversation resolves no subject, so a question
+  // genuinely about a framework still searches that framework. Read off
+  // cleanConvText — the pre-enrichment conversation — because what the user
+  // asked about is a fact about their words, never about prose an enrichment
+  // appended to them. See public/js/query-focus-core.js.
+  const methodApplied = Array.isArray(state.methodBlocks) && state.methodBlocks.length > 0;
+  const focused = focusQueriesOnSubject(plan.queries, { cleanText: ctx.cleanConvText, methodApplied });
+  if (focused.dropped.length) {
+    ctx.log.info("chat.query_focus", { dropped: focused.dropped.length, kept: focused.queries.length });
+  }
+  plan.queries = focused.queries;
   ctx.log.info("chat.query_plan", {
     queries: plan.queries.length,
     direct: plan.direct,
@@ -329,7 +352,7 @@ export async function reflect(ctx, round = 1, deps = null) {
 
 /**
  * Runs the whole four-node graph for one request. Same contract as
- * pipeline.js's research flow: everything streams through ctx.emit, and it
+ * pipeline.js's research phase: everything streams through ctx.emit, and it
  * resolves when the answer (and any revision) has been written.
  *
  * `deps` exists for the unit suite, which drives the graph with fake nodes so
@@ -351,9 +374,8 @@ export async function runStandardResearch(ctx, deps = null) {
   // Node 1.
   const queryPlan = await generateQueries(ctx, d);
 
-  // Node 2, first half: read the pages the user NAMED, before any search.
-  // Unchanged from the five-phase flow, and it runs ABOVE the direct branch
-  // for the same reason it does there — what came back decides that branch.
+  // Node 2, first half: read the pages the user NAMED, before any search. It
+  // runs ABOVE the direct branch, because what came back decides that branch.
   // Feedback #67: five pasted URLs the run then spent fifteen angles failing
   // to rediscover.
   await d.runNamedUrlReads(ctx, extractNamedUrls(ctx.cleanLastUser));

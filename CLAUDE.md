@@ -10,10 +10,17 @@ on-demand skills under `skills-disabled/`; load what the task needs.
 A Cloudflare Worker that serves a static chat UI (`public/`) and a streaming
 `/api/chat` endpoint. Deployed via `npx wrangler deploy` (config in
 `wrangler.toml`), git-connected to Cloudflare. The site is a *deep research*
-assistant, matching its name: `/api/chat` runs a Worker-orchestrated pipeline
-(triage → search → gap check → synthesis → validation) with **no function
-calling** — every phase is a direct JSON-mode or streamed call, so it is
-deterministic and works on any model in the catalog. The primary LLM provider
+assistant, matching its name: a research turn on `/api/chat` runs one of TWO
+engines (the bespoke five-phase cascade was deleted 2026-08-29 — owner
+directive, "don't keep this static pipeline"). The **agentic** engine
+(`src/agentic.js`) hands the answer model a research brief and a toolbox and
+lets it choose its own calls; the **standard** engine
+(`src/pipeline-standard.js`) is the four-node compact graph
+(generate_queries → web_research → reflect → finalize), every node a direct
+JSON-mode or streamed call. `engineFor` picks: what the request asked for,
+else what the agent declared, else the loop wherever the model can drive one —
+and the standard graph everywhere else, which is the FALLBACK that keeps the
+whole catalog working. The primary LLM provider
 is **Berget.ai** (OpenAI-compatible); **Anthropic (Claude)** and **OpenAI
 (GPT)** are secondary, key-gated providers for answer/synthesis models
 (claude-* opus/sonnet/haiku — `src/anthropic.js`; bare gpt-* —
@@ -161,25 +168,31 @@ loop: the **feature-maintenance** skill.
 
 ## Load-bearing invariants
 
-1. **Deterministic orchestration — NO function calling.** Every pipeline
-   phase is a direct JSON-mode or streamed call, so the whole thing works
-   across Berget's entire catalog, including models with unreliable
-   tool-calling. Don't introduce function/tool-calling into the pipeline.
-   ONE authorized exception (owner directive, 2026-07-12; extended to SDK
-   mode 2026-07-18): DEVELOPER MODE's source investigation and SDK MODE's
-   build flow — when the mode is on AND the answer model supports real tool
-   use, the ANSWER model drives `grep_source` / `read_file` / `list_files`
-   over the site's own source (Se/cure adds a real `run_bash` over the
-   sandbox), and in SDK mode additionally the `sdk_*` planning tools +
-   `write_file`/`publish_app`. This is DELIBERATE and must not be "fixed"
-   back; models without tool use fall back to the deterministic source read
-   loop (introspection) / the fenced `FILE:`-block convention (SDK mode),
-   and the JSON planning phases (invariant 3) never use tools. See the
+1. **Deterministic orchestration — the FALLBACK is never optional.** The
+   platform must work across Berget's entire catalog, including models with
+   unreliable tool-calling, so every deterministic phase stays a direct
+   JSON-mode or streamed call and nothing may depend on tool use being
+   available. Authorized exceptions (owner directive, 2026-07-12; extended to
+   SDK mode 2026-07-18, and to RESEARCH 2026-08-29): DEVELOPER MODE's source
+   investigation, SDK MODE's build flow, and the AGENTIC research engine —
+   when the answer model supports real tool use, IT drives the calls
+   (`grep_source` / `read_file` / `list_files` over the site's own source,
+   Se/cure adding a real `run_bash`; in SDK mode the `sdk_*` planning tools +
+   `write_file`/`publish_app`; on the research path the toolbox in
+   `src/research-tools.js`). Each one is DELIBERATE and must not be "fixed"
+   back, and each one is paired with a fallback that carries the same request
+   without tools: the deterministic source read loop (introspection), the
+   fenced `FILE:`-block convention (SDK mode), and the four-node standard
+   graph `src/pipeline-standard.js` (research — `engineFor` routes there for
+   any model with no tool dialect and any run whose toolbox resolves empty).
+   The JSON planning phases (invariant 3) never use tools. See the
    **introspection** and **sdk-mode** skills.
-2. **Helper phases fail soft, never break the request.** Search, gap check,
-   validation, and every enrichment (geocode + every extension) degrade to a lesser
-   result (fewer searches, accepted draft, conversation unchanged) rather
-   than erroring the chat. Both Berget calls are time-bounded so a hung
+2. **Helper phases fail soft, never break the request.** Search, the reflect
+   round, validation, and every enrichment (geocode + every extension) degrade
+   to a lesser result (fewer searches, an unreflected wave, accepted draft,
+   conversation unchanged) rather than erroring the chat — and on the agentic
+   engine every tool refusal is a SENTENCE the model reads next round, never a
+   throw. Both Berget calls are time-bounded so a hung
    backend can't defeat that.
 3. **Split model routing.** The three JSON planning phases (triage, gap
    check, validation) always run on the fixed reliable `DEFAULT_MODEL`

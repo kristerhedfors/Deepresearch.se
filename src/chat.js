@@ -192,8 +192,6 @@ import { runMemoryExtraction } from "./memory.js";
  *   subquestions: any[],
  *   conflicts: any[],
  *   aux: Record<string, { count: number, ran: Set<string> }>,
- *   notes: any[],
- *   notesCursor: number,
  *   fetchedUrls: Set<string>,
  *   failoverModel?: string,
  *   shellTranscript?: Array<{ command: string, exitCode: number, stdout: string, stderr: string }>,
@@ -618,7 +616,7 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
     // researching" apart from "nothing will ever come".
     await markAnswerRunning(env, log, requestId, identity.id);
 
-    // The JSON helper phases (triage/gap/validation) emit nothing for
+    // The JSON helper phases (query plan / reflect / validation) emit nothing for
     // tens of seconds; idle HTTP connections get dropped by proxies on
     // the way to the client. SSE comment lines (":" prefix) keep bytes
     // flowing — every SSE client ignores them. Started before geocoding
@@ -1333,11 +1331,12 @@ function newRequestState(model, jsonModel, webSearch, budgetS, extras = {}) {
     quiz: null, // the delivered quiz (normalized), when this request became one
 
     plan: planResearch(model, budgetS, jsonModel),
-    // Triage decomposition (pipeline.js runTriage): the classified question
-    // complexity (caps research depth for "simple" — budget.js
-    // applyComplexityToPlan), its sub-questions (the gap check audits
-    // coverage against each; synthesis must address each), and the source
-    // disagreements gap rounds reported (synthesis addresses them explicitly).
+    // The deleted triage phase's decomposition fields. Nothing writes them any
+    // more — the phase that classified a question's complexity, split it into
+    // sub-questions and collected the gap rounds' reported source conflicts is
+    // gone — but both chat-log rows (here and src/mcp.js) still persist them,
+    // so the D1 meta column keeps ONE shape across the cutover and a query
+    // written against older rows does not have to special-case a missing key.
     complexity: null,
     subquestions: [],
     conflicts: [],
@@ -1348,7 +1347,7 @@ function newRequestState(model, jsonModel, webSearch, budgetS, extras = {}) {
     searchCount: 0,
     cachedSearchCount: 0, // searches served from the Exa result cache (not billed)
     namedUrlCount: 0, // pages read directly because the message named their URL
-    iterations: 1, // search waves (initial + gap rounds that ran)
+    iterations: 1, // search waves (the initial one, plus each follow-up round)
     ranQueries: new Set(),
     // Queries actually DISPATCHED, as opposed to ranQueries' planned set. The
     // two diverge whenever a wave's web leg stands down (knob off, or an aux
@@ -1356,13 +1355,12 @@ function newRequestState(model, jsonModel, webSearch, budgetS, extras = {}) {
     issuedQueries: new Set(),
     sources: [], // numbered registry, deduped by URL
     byUrl: new Map(),
-    // Budget-gated notes digest (src/pipeline.js maybeDigest, mid/high tiers):
-    // structured research notes distilled from each search wave, plus a cursor
-    // marking how far into the source registry has been digested. Empty at the
-    // default budget (the digest phase never runs there).
-    notes: [],
-    notesCursor: 0,
-    fetchedUrls: new Set(), // top-source URLs already full-content fetched (>=240s tier)
+    // Pages pulled through the search provider's /contents endpoint this
+    // request (src/research-tools-run.js read_pages). Billed separately from a
+    // search — src/billing.js prices the set with budget.js's
+    // CONTENTS_COST_MULTIPLIER — so an empty set is a request that paid for no
+    // page extraction, not an unbilled one.
+    fetchedUrls: new Set(),
     // Synthesis/direct token usage (the user's model) and JSON-phase token
     // usage (jsonModel) are tracked separately so each is billed at its own
     // model's price — the JSON phases on cheap Mistral shouldn't be charged at

@@ -133,7 +133,7 @@ import {
  * @property {number} [maxPerRequest]
  *   Wave cap per request (default 3 — pipeline.js MAX_AUX_SEARCHES_DEFAULT).
  * @property {string} [promptNote]
- *   Planner-vocabulary sentence spliced into the triage AND gap prompts
+ *   Planner-vocabulary sentence spliced into the query-plan AND reflect prompts
  *   (site-specific abbreviations, "never clarify X", query-spelling
  *   guidance). Starts with a leading space; keep it ONE sentence.
  * @property {string} [diversityHost]
@@ -317,7 +317,7 @@ export function capabilityAllowsSource(cap, source) {
   return capHasContext(cap, source.requiresContext);
 }
 
-// The concatenated planner-vocabulary notes for the triage/gap prompts
+// The concatenated planner-vocabulary notes for the query-plan/reflect prompts
 // (prompts.js splices this next to its other standing rules). Empty string
 // when no source declares one, so the prompts are byte-identical to a
 // registry with no notes.
@@ -326,7 +326,7 @@ export function capabilityAllowsSource(cap, source) {
 // vocabulary of a source ("arXiv means arxiv.org, never clarify it", "phrase at
 // least one query as the biomedical concepts"). Teaching that for a source the
 // answering agent is not allowed to consult is worse than teaching nothing — it
-// spends triage's attention shaping queries for a leg that will never run, and
+// spends the planner's attention shaping queries for a leg that will never run, and
 // it invites the planner to promise a corpus the answer cannot cite. The
 // capability is threaded in from pipeline.js's two prompt call sites; omitted
 // (or null — an MCP call that named no agent), every note is composed, which is

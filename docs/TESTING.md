@@ -348,8 +348,9 @@ wording; a 55-angle list has to say "showing 40 of 55 issued" and drop the
 exhaustiveness sentence. Guards over `pipeline.js`'s
 SOURCE read the file rather than importing it, because the bug each pins was a
 call site and not a unit: that every aux gate passes `ctx.gateLastUser` and none
-passes `ctx.lastUser`, that the three query-writing phases (`runTriage`,
-`runGapChecks`, `runSubquestionFanout`) plan from `planLastUser`/`planConvText`
+passes `ctx.lastUser`, that the two query-writing nodes (`generateQueries` and
+`reflect`, in `pipeline-standard.js` since the triage/gap cascade was deleted —
+the pin moved with them) plan from `planLastUser`/`planConvText`
 and that `PipelineCtx` declares that third view built through
 `withoutMethodBlocks` — the feedback-#65 guard, mutation-verified, and the first
 instance of this bug class that landed outside a deterministic gate, which is
@@ -359,8 +360,9 @@ of the clean message and
 never from `state.ranQueries` with both dispatch points recording, that the aux
 registry reserve moves `plan.digestCap` and `plan.maxSources` by the same
 widening and clamps it at `DIGEST_CAP_CEILING`, and that synthesis logs
-`chat.digest_coverage` off `digestShownCount`),
-`notes.js` (note normalization + cross-wave merge + the bounded digest),
+`chat.digest_coverage` off `digestShownCount`, that the deleted phases stay
+deleted, and that the quiz turn reuses the standard graph's nodes rather than a
+planner of its own),
 `schema.js` (the validator combinators and the coerce-or-return-original
 contract), `assets.js` (the public no-auth allowlist, the caching
 policy, COEP request shaping) and `security-headers.js` (the site-wide

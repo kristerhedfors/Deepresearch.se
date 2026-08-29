@@ -212,14 +212,26 @@ describe("the capability actually REACHES the prompt layer", () => {
   });
 
   test("the planning phases pass it too", () => {
-    // triagePrompt and gapPrompt take it through JsonPromptOpts, so they are
-    // spelled differently and would slip past the matcher above. They are the
-    // ones that decide whether triage is taught a search source's query
-    // vocabulary, which is the difference between planning queries for a leg
-    // that will run and planning them for one that cannot.
-    for (const phase of ["triagePrompt", "gapPrompt"]) {
-      assert.ok(pipelineSrc.includes(phase), `${phase} is not called from pipeline.js any more`);
+    // The standard graph's two JSON nodes take it through JsonPromptOpts, so
+    // they are spelled differently and would slip past the matcher above.
+    // They are the ones that decide whether the planner is taught a search
+    // source's query vocabulary, which is the difference between planning
+    // queries for a leg that will run and planning them for one that cannot.
+    //
+    // They live in src/pipeline-standard.js since the triage and gap phases
+    // this used to read out of pipeline.js were deleted; the wiring is what is
+    // pinned, so the pin follows the wiring.
+    const standardSrc = readFileSync(new URL("./pipeline-standard.js", import.meta.url), "utf8");
+    for (const role of ['"plan"', '"reflect"']) {
+      assert.ok(
+        standardSrc.includes(`phasePrompt(state, "research", ${role})`),
+        `the ${role} node is not built through phasePrompt any more`,
+      );
     }
+    // Once per node, and off the run's own state.
+    const passes = [...standardSrc.matchAll(/capability: \/\*\* @type \{any\} \*\/ \(state\)\.capability \|\| null/g)];
+    assert.equal(passes.length, 2, "both planning nodes pass the run's capability");
+    // The answer phases still pass it from pipeline.js.
     assert.match(pipelineSrc, /capability:\s*(state|ctx\.state)\.capability/);
   });
 });

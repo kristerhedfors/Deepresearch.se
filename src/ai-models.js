@@ -9,7 +9,7 @@
 // public/js/bash-core.js — do NOT reintroduce a second copy.
 //
 // Server consumers: src/prompts.js (AI_MODEL_NOT_A_PACKAGE_NOTE in
-// bashAgentPrompt, AI_MODEL_RESEARCH_NOTE in triagePrompt).
+// bashAgentPrompt, AI_MODEL_RESEARCH_NOTE in queryPlanPrompt).
 
 export {
   aiModelIntent,
