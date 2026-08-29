@@ -69,6 +69,7 @@ silently.
 | `.claude/hooks/lypning.sh` | SessionStart: uses lypning's own shim when lypning is pip-installed, and says so when it is not. Never blocks, never fails a session. |
 | `tests/e2e/sandbox-perf.spec.js` | probes both engines against the three CPython probes. The pair IS the acceptance metric. |
 | `scripts/build-lypning.mjs` | walks a lypning clone's history into `public/lypning/history.json`. |
+| `scripts/lypning-vm-measure.mjs` | the headless-CheerpX harness — the only instrument that can measure either engine in a real VM. lypning does not own it, deliberately: its own bench measures a normal filesystem, and the whole premise here is that the sandbox is not one. `npm run lypning:vm <image.ext2>`. |
 | `public/js/lypning-core.js` | the dashboard's pure core — the battery, the series, the local responder. |
 | `public/lypning/index.html` + `public/js/lypning-page.js` | the dashboard. |
 
@@ -87,6 +88,21 @@ lypning build --micropython            # → assets/micropython/build/lypning-mp
 
 then point `LYPNING_REPO` (or `LYPNING_BIN` / `LYPNING_MP_BIN`) at the result and
 run `scripts/build-sandbox-image.sh`.
+
+### Measuring an image before you ship it
+
+```bash
+npm run lypning:vm out/sandbox.ext2 -- --repeats 5
+```
+
+It serves the ext2 over loopback, boots CheerpX in headless Chromium and times
+probes. Read the **bytes** column, not the milliseconds: the image arrives over
+loopback here and over a WebSocket from R2 in production — `python3 --version`
+measures ~340 ms here against 8573 ms there, about 26x — but the same command
+pulls the same device blocks either way, and cold cost tracks bytes and file
+opens. An engine the image does not carry reports ABSENT and is left out of the
+ratios; it is never a zero, and never filled in from lypning's published table,
+which was measured on another machine on a filesystem this one is not.
 
 **lypning is never a runtime import of the Worker** (CLAUDE.md invariant 5).
 Nothing in `src/` imports it, `package.json` gains no dependency, and the

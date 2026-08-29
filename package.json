@@ -23,6 +23,7 @@
     "pulse:all": "npm run pulse && npm run pulse:timeline && npm run pulse:size",
     "lypning": "node scripts/build-lypning.mjs",
     "lypning:check": "node scripts/build-lypning.mjs --check",
+    "lypning:vm": "node scripts/lypning-vm-measure.mjs",
     "capture": "node tests/capture.mjs",
     "capture:edit": "node scripts/capture-edit.mjs",
     "capture:topup": "node scripts/capture-topup.mjs",
