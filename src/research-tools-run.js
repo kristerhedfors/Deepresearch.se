@@ -219,7 +219,7 @@ async function runWebSearch(env, log, args, rctx) {
     const items = labelWebItems(state, result.items);
     addSources(state, items);
     added += items.length;
-    lines.push(renderItems(query, items));
+    lines.push(renderItems(query, items, state));
   }
   return {
     text: lines.join("\n\n"),
@@ -427,7 +427,7 @@ async function runSourceSearch(env, log, args, rctx) {
   addSources(state, items);
   return {
     text: items.length
-      ? renderItems(`${source.service}: ${query}`, items)
+      ? renderItems(`${source.service}: ${query}`, items, state)
       : `${source.service} returned nothing for that query. That is an empty result, not a failure — the source was asked and had no match above its relevance floor. Try different terms, another source, or say the record is silent on this.`,
     isError: false,
     found: items.length > 0,
@@ -710,11 +710,34 @@ export function pythonCommand(source, opts = {}) {
   const budgetMs = Math.min(opts.budgetMs || STEP_BUDGET_MS, EXEC_CEILING_MS - 5_000);
   const seconds = Math.max(1, Math.round(budgetMs / 1000));
   const engines = opts.engine ? [opts.engine] : ENGINE_ORDER;
-  const probe = engines.map((e) => `command -v ${e} 2>/dev/null`).join(" || ");
+  // THE PROBE IS A BUILTIN TEST ON ABSOLUTE PATHS, NEVER `command -v`.
+  //
+  // This is the trap this repository has already paid for once and written
+  // down: docs/SANDBOX-LOCAL-IMAGE.md records a `command -v` for a tool that
+  // was NOT INSTALLED consuming the entire 30 s exec ceiling — which calls
+  // resetSandbox and destroys the VM, taking every later command with it. A
+  // missing interpreter is exactly the case here (the stock image carries none
+  // of the two fast engines), so a PATH walk is the one thing this must not do.
+  // tests/e2e/sandbox-perf.spec.js probes the same binaries the same way for
+  // the same reason. Builtin `[ -x … ]` is ~0.1 ms and cannot walk anything.
+  //
+  // The path list is small and closed rather than derived: the image installer
+  // (scripts/build-sandbox-image.sh) puts both engines in /usr/local/bin, and a
+  // distro python3 is in one of two places. An engine somewhere else reads as
+  // absent, which costs a fall-through to the next tier — the cheap failure,
+  // against a destroyed VM as the expensive one.
+  const probe = engines
+    .flatMap((e) => (e === "python3" ? [`/usr/local/bin/${e}`, `/usr/bin/${e}`] : [`/usr/local/bin/${e}`]))
+    // `if … then … fi` rather than a `&&` chain: a chain whose last link is
+    // false leaves a non-zero $? behind, which is a trap under any shell
+    // invoked with -e and noise in the exit code either way.
+    .map((path) => `if [ -z "$E" ] && [ -x ${path} ]; then E=${path}; fi`)
+    .join("\n");
   const src = heredoc("DRPY_SRC", source);
   const stdin = opts.stdin ? heredoc("DRPY_IN", opts.stdin) : null;
   return [
-    `E=$(${probe})`,
+    `E=`,
+    probe,
     `[ -n "$E" ] || { echo "no Python interpreter is installed in this sandbox" >&2; exit 127; }`,
     `printf 'drpy-engine:%s\\n' "\${E##*/}" >&2`,
     `P=/tmp/drpy-$$.py`,
@@ -834,13 +857,26 @@ async function runExtension(env, log, name, args, rctx) {
  * @param {SearchSourceItem[]} items
  * @returns {string}
  */
-function renderItems(heading, items) {
+function renderItems(heading, items, /** @type {any} */ state) {
   if (!items.length) {
     return `${heading}\n(no results — the provider was asked and found nothing)`;
   }
-  const lines = items.map((item, i) => {
+  const lines = items.map((item) => {
     const highlights = (item.highlights || []).join(" … ").slice(0, 1200);
-    return `${i + 1}. ${item.title}\n   ${item.url}${highlights ? `\n   ${highlights}` : ""}`;
+    // THE REGISTRY'S NUMBER, not this call's position in its own result list.
+    // Numbering each call 1..n was a quiet way of handing the model wrong
+    // citations: the brief tells it these ordinals ARE the [n] it cites, and
+    // the registry numbers in arrival order across the WHOLE request — so the
+    // second search's "1." is [6], and a conclusion written from those ordinals
+    // names five other people's sources. The loop's working text goes to the
+    // writer verbatim, so the error survives all the way into the answer.
+    const entry = state?.byUrl?.get?.(item.url);
+    // An item the registry did NOT take (a domain cap, the source ceiling, a
+    // duplicate) has no number and must not be given one. Saying so is better
+    // than omitting it: the model can still use what it read, and knows not to
+    // cite it.
+    const label = entry?.n ? `[${entry.n}]` : "(not cited — the registry was full or already had it)";
+    return `${label} ${item.title}\n   ${item.url}${highlights ? `\n   ${highlights}` : ""}`;
   });
   return `${heading}\n${lines.join("\n")}`;
 }

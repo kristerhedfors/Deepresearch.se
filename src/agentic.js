@@ -227,6 +227,43 @@ export function researchToolsForRun(ctx) {
   return toolsForRun(state.capability, RESEARCH_TOOL_CLASSES, have);
 }
 
+/**
+ * When the loop must stop GATHERING — which is not when the request runs out.
+ *
+ * Two mistakes are easy here and this function exists to make both hard.
+ *
+ * The first is reading a `deadlineAt` off the plan. There isn't one: budget.js
+ * expresses the bound as `startedAt` plus `budgetMs` (with fitsDeadline's 1.15
+ * slack), and a plan field that does not exist reads as 0, which turns the
+ * whole wall clock into dead code that no test notices because the loop simply
+ * never stops early.
+ *
+ * The second is stopping at the request's own deadline. The report still has to
+ * be WRITTEN after the loop, and the writer is the expensive half — the
+ * planner's own estimates put synthesis and validation an order of magnitude
+ * above a tool call. A loop that gathers until the budget is gone leaves
+ * nothing to write with, so the writer's estimate is reserved out of the
+ * loop's share. That is the same reasoning the standard graph applies when it
+ * re-checks fitsDeadline before each wave, made explicit because a loop has no
+ * wave boundary to hang it on.
+ *
+ * 0 (no bound) when the state carries no start or the plan no budget — a caller
+ * mid-refactor or a test, and an unbounded loop is still bounded by its rounds.
+ *
+ * @param {any} state
+ * @param {any} plan
+ * @returns {number}
+ */
+export function loopDeadlineAt(state, plan) {
+  const startedAt = Number(state?.startedAt);
+  const budgetMs = Number(plan?.budgetMs);
+  if (!Number.isFinite(startedAt) || !Number.isFinite(budgetMs) || budgetMs <= 0) return 0;
+  const writer = Number(plan?.estimates?.synth || 0) + Number(plan?.estimates?.validate || 0);
+  // Never below the start: a budget smaller than the writer's own estimate
+  // means gather nothing and write, which is the honest answer at that size.
+  return Math.max(startedAt, startedAt + budgetMs * 1.15 - writer);
+}
+
 /** The two fields execEnvironmentFor reads, lifted off a pipeline ctx. Kept as
  * its own function so the toolbox's probe and the runner's real call are built
  * the same way from the same place.
@@ -558,7 +595,7 @@ export async function runAgenticResearch(ctx, deps = null) {
       // actually holds, and passing it means STOP GATHERING rather than fail:
       // the loop falls into its forced tools-off turn and the report is written
       // from what was collected.
-      deadlineAt: plan?.deadlineAt || 0,
+      deadlineAt: loopDeadlineAt(state, plan),
       onToolUse: (/** @type {any} */ info) => {
         if (typeof info?.round === "number" && info.round > round) round = info.round;
       },
@@ -568,6 +605,11 @@ export async function runAgenticResearch(ctx, deps = null) {
     // rather than a second answer on top of half of one. The gathering the loop
     // DID do is not lost either: sources it absorbed are in the registry, and
     // the standard graph writes over the same registry.
+    // Bill what the loop spent before it died. The tokens are real whether or
+    // not the loop produced an answer, and the fallback below runs a whole
+    // second engine on top of them — a request that quietly forgot the first
+    // half would under-report its own cost by exactly the expensive part.
+    if (err?.usage) addUsage(state.totals, err.usage);
     log.warn("chat.agentic_loop_failed", { error: err?.message || String(err), calls });
     ctx.stepDone("loop", "Research loop failed — falling back", [], { route: "research" });
     return d.runStandardResearch(ctx);

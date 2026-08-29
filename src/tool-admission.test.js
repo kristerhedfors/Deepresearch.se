@@ -445,3 +445,55 @@ test("a refusal is always a sentence, never an exception", () => {
     }
   }
 });
+
+test("the per-call fan-out bound is not the request's search budget", () => {
+  // takeSearchBatch's third argument is a REQUEST-WIDE ceiling: it mins with
+  // plan.maxSearches and compares against state.searchCount. Passing
+  // MAX_WEB_QUERIES there — the per-call bound scrubQueries has already applied
+  // — gave the whole engine four web queries for the entire request. A loop
+  // bounded at sixteen calls would have run out of searching on its second one
+  // and spent the rest being refused.
+  const state = {
+    ranQueries: new Set(),
+    searchCount: 0,
+    capability: null,
+    plan: { maxSearches: 40 },
+    ext: {},
+  };
+  const budget = newToolBudget();
+  const plan = { maxSearches: 40 };
+  const policy = { web: true, auxSources: true, maxQueries: null };
+  let admitted = 0;
+  for (let call = 1; call <= 5; call++) {
+    const r = admitToolCall(
+      "web_search",
+      { queries: [`angle ${call}a`, `angle ${call}b`, `angle ${call}c`, `angle ${call}d`] },
+      { state, budget, plan, policy, tools: RESEARCH_TOOLS },
+    );
+    if (!r.ok) break;
+    admitted += r.args.queries.length;
+    // The runner is what advances searchCount, so the loop does it here.
+    state.searchCount += r.args.queries.length;
+  }
+  assert.equal(admitted, 20, "five calls of four angles each must all be admitted");
+});
+
+test("…and the request-wide ceiling still bites when it is reached", () => {
+  // The other direction: the bound that SHOULD stop a run still does.
+  const state = { ranQueries: new Set(), searchCount: 0, capability: null, plan: { maxSearches: 6 }, ext: {} };
+  const budget = newToolBudget();
+  const plan = { maxSearches: 6 };
+  const policy = { web: true, auxSources: true, maxQueries: null };
+  let admitted = 0;
+  for (let call = 1; call <= 5; call++) {
+    const r = admitToolCall(
+      "web_search",
+      { queries: [`q${call}a`, `q${call}b`, `q${call}c`, `q${call}d`] },
+      { state, budget, plan, policy, tools: RESEARCH_TOOLS },
+    );
+    if (!r.ok) break;
+    admitted += r.args.queries.length;
+    state.searchCount += r.args.queries.length;
+  }
+  assert.equal(admitted, 6, "plan.maxSearches is the request's real budget");
+});

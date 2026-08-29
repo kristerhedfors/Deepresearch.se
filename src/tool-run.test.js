@@ -269,3 +269,21 @@ test("no deadline passed means no wall clock, as before", async (t) => {
   assert.equal(out.text, "straight answer");
   assert.equal(out.stoppedBy, "answered");
 });
+
+test("a failed round still reports the tokens it already spent", async (t) => {
+  // The usage accumulator is a closure local, so it dies with the throw. A
+  // caller that catches and falls back to another engine would then bill
+  // NOTHING for the rounds that did run — and it runs a whole second engine on
+  // top of them, so the request under-reports its cost by exactly the expensive
+  // part.
+  const fetchMock = fakeFetch([
+    assistant(null, [call("c1", "no_args", {})]),
+    { __status: 502, __text: "upstream gone" },
+  ]);
+  t.mock.method(globalThis, "fetch", fetchMock);
+  const err = await openAiToolRun({}, {
+    model: "m", userContent: "q", tools: TOOLS, ...WIRE, execTool: async () => "r",
+  }).then(() => null, (e) => e);
+  assert.ok(err, "the failure must still throw — the caller decides what to do");
+  assert.deepEqual(err.usage, { prompt_tokens: 10, completion_tokens: 5 }, "the first round's tokens");
+});

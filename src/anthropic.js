@@ -363,10 +363,15 @@ export async function anthropicChatCompletion(env, messages, { model, maxTokens 
  *   maxTokens?: number,
  *   timeoutMs?: number,
  *   onToolUse?: (info: { round: number, name: string, input: any, result: string }) => void,
+ *   deadlineAt?: number,
+ *   now?: () => number,
  * }} opts
- * @returns {Promise<{ text: string, usage: { prompt_tokens: number, completion_tokens: number }, rounds: number, toolCalls: number, stopReason: string | null }>}
+ * @returns {Promise<{ text: string, usage: { prompt_tokens: number, completion_tokens: number }, rounds: number, toolCalls: number, stopReason: string | null, stoppedBy: string }>}
  */
-export async function anthropicToolRun(env, { model, system, userContent, tools, execTool, maxRounds = 8, maxTokens = MAX_TOKENS, timeoutMs = JSON_CALL_TIMEOUT_MS, onToolUse }) {
+export async function anthropicToolRun(env, {
+  model, system, userContent, tools, execTool, maxRounds = 8, maxTokens = MAX_TOKENS,
+  timeoutMs = JSON_CALL_TIMEOUT_MS, onToolUse, deadlineAt = 0, now = Date.now,
+}) {
   /** @type {Array<{ role: string, content: any }>} */
   const messages = [{ role: "user", content: userContent }];
   const usage = { prompt_tokens: 0, completion_tokens: 0 };
@@ -386,7 +391,12 @@ export async function anthropicToolRun(env, { model, system, userContent, tools,
     });
     if (!resp.ok) {
       const detail = await resp.text().catch(() => "");
-      throw new Error(`Anthropic tool call failed (${resp.status}): ${detail.slice(0, 200)}`);
+      const err = new Error(`Anthropic tool call failed (${resp.status}): ${detail.slice(0, 200)}`);
+      // See the same note in src/tool-run.js: the accumulator is a closure
+      // local, so a caller that catches and falls back would bill nothing for
+      // the rounds that did run.
+      /** @type {any} */ (err).usage = { ...usage };
+      throw err;
     }
     const data = /** @type {any} */ (await resp.json());
     usage.prompt_tokens += data.usage?.input_tokens || 0;
@@ -402,7 +412,19 @@ export async function anthropicToolRun(env, { model, system, userContent, tools,
       .join("");
 
   const thinking = thinkingConfigFor(model);
+  let stoppedBy = "round_cap";
+  // The rounds actually RUN, which is not the cap — see the same note in
+  // src/tool-run.js's OpenAI half.
+  let ran = 0;
   for (let round = 1; round <= maxRounds; round++) {
+    // The caller's wall clock, checked before the round. A round cap bounds how
+    // many times the model may ask for tools; it does not bound TIME. Passing
+    // it means stop GATHERING: the break falls into the forced tools-off turn
+    // below, so the caller still gets an answer written from what was
+    // collected. Both dialects have to honour it or the bound depends on which
+    // provider happened to serve the request.
+    if (deadlineAt && now() >= deadlineAt) { stoppedBy = "deadline"; break; }
+    ran = round;
     /** @type {any} */
     const payload = { model, max_tokens: maxTokens, messages, tools };
     if (system) payload.system = system;
@@ -415,7 +437,7 @@ export async function anthropicToolRun(env, { model, system, userContent, tools,
       // lets the caller tell a real answer from a max_tokens truncation that
       // cut a tool_use off mid-input (the response then carries no usable
       // tool call and often no text — NOT a completed build turn).
-      return { text: textOfBlocks(data), usage, rounds: round, toolCalls, stopReason: data.stop_reason || null };
+      return { text: textOfBlocks(data), usage, rounds: round, toolCalls, stopReason: data.stop_reason || null, stoppedBy: "answered" };
     }
     // Echo the assistant's tool_use turn back, then run each tool and reply with
     // the matching tool_result blocks (Anthropic requires them paired by id).
@@ -448,7 +470,7 @@ export async function anthropicToolRun(env, { model, system, userContent, tools,
   if (system) finalPayload.system = system;
   if (thinking) finalPayload.thinking = thinking;
   const finalData = await call(finalPayload);
-  return { text: textOfBlocks(finalData), usage, rounds: maxRounds, toolCalls, stopReason: finalData.stop_reason || null };
+  return { text: textOfBlocks(finalData), usage, rounds: ran, toolCalls, stopReason: finalData.stop_reason || null, stoppedBy };
 }
 
 // Non-streaming JSON completion, same contract as berget.js's completeJson

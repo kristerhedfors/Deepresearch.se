@@ -354,7 +354,7 @@ describe("run_python — it runs in the sandbox, or it says it did not", () => {
     const { rctx } = ctx(researchState(), { exec, execLabel: "the test runner" });
     const r = await runResearchTool(/** @type {any} */ ({}), fakeLog(), "run_python", { source: "import subprocess" }, rctx);
     assert.equal(commands.length, 2);
-    assert.match(commands[1], /command -v python3/);
+    assert.match(commands[1], /\[ -x \/usr\/bin\/python3 \]/);
     assert.equal(commands[1].includes("command -v lypning"), false, "the retry is forced onto CPython");
     assert.match(r.text, /lypning refused this program \(module: subprocess\)/);
     assert.match(r.text, /Ran on python3/);
@@ -386,8 +386,25 @@ describe("run_python — it runs in the sandbox, or it says it did not", () => {
 describe("the command run_python builds", () => {
   test("resolves the engine in the command, so the probe cannot go stale", () => {
     const cmd = pythonCommand("print(1)");
-    for (const engine of ENGINE_ORDER) assert.ok(cmd.includes(`command -v ${engine}`), engine);
+    for (const engine of ENGINE_ORDER) assert.ok(cmd.includes(`/${engine} ]`), engine);
     assert.match(cmd, /drpy-engine/);
+  });
+
+  test("the probe is a builtin test, never a PATH walk", () => {
+    // docs/SANDBOX-LOCAL-IMAGE.md records a `command -v` for a tool that was
+    // NOT INSTALLED consuming the whole 30 s exec ceiling — which calls
+    // resetSandbox and DESTROYS the VM, taking every later command with it. A
+    // missing interpreter is exactly the case here: the stock image carries
+    // neither fast engine. tests/e2e/sandbox-perf.spec.js probes the same
+    // binaries the same way for the same reason.
+    const cmd = pythonCommand("print(1)");
+    assert.ok(!/command -v/.test(cmd), "a PATH walk for a missing tool once destroyed the VM");
+    assert.match(cmd, /\[ -x \/usr\/local\/bin\/lypning \]/);
+    // Every probed path is absolute — a bare name would be a PATH walk by
+    // another spelling.
+    for (const m of cmd.matchAll(/\[ -x ([^\]]+) \]/g)) {
+      assert.match(m[1].trim(), /^\//, `${m[1]} is not an absolute path`);
+    }
   });
 
   test("stays well inside the ceiling that destroys the VM", () => {
@@ -471,4 +488,30 @@ describe("the never-throws contract", () => {
       assert.ok(r.text.length > 20, name);
     }
   });
+});
+
+test("results carry the REGISTRY's citation number, not this call's position", async () => {
+  // The brief tells the loop these ordinals ARE the [n] it cites, and the
+  // registry numbers in arrival order across the whole request. Numbering each
+  // call 1..n from scratch meant the second search's "1." was really [3] — and
+  // because the loop's working conclusion reaches the writer verbatim, a
+  // conclusion written from those ordinals names other people's sources in the
+  // finished answer.
+  const state = researchState();
+  const { rctx } = ctx(state);
+  const env = /** @type {any} */ ({ EXA_API_KEY: "k" });
+  await withFakeFetch([[/api\.exa\.ai\/search/, exaHit]], () =>
+    runResearchTool(env, fakeLog(), "web_search", { queries: ["first angle"] }, rctx),
+  );
+  const second = await withFakeFetch(
+    [[/api\.exa\.ai\/search/, { results: [
+      { title: "Later paper", url: "https://later.example/1", highlights: ["a finding"] },
+    ] }]],
+    () => runResearchTool(env, fakeLog(), "web_search", { queries: ["second angle"] }, rctx),
+  );
+  // The registry held two after the first call, so the next one is [3].
+  assert.equal(state.sources.length, 3);
+  assert.equal(state.sources[2].title, "Later paper");
+  assert.match(second.text, /\[3\] Later paper/);
+  assert.ok(!/\[1\] Later paper/.test(second.text), "the second call restarted its numbering");
 });

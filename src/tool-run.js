@@ -140,7 +140,14 @@ export async function openAiToolRun(env, {
     });
     if (!resp.ok) {
       const detail = await resp.text().catch(() => "");
-      throw new Error(`tool call failed (${resp.status}): ${detail.slice(0, 200)}`);
+      const err = new Error(`tool call failed (${resp.status}): ${detail.slice(0, 200)}`);
+      // The tokens this loop already spent ride on the error. Without them a
+      // caller that catches and falls back bills NOTHING for every round that
+      // did run, because the accumulator is a closure local that dies with the
+      // throw — a request that spent six rounds and then failed over looked
+      // free in the quota and the cost ledger.
+      /** @type {any} */ (err).usage = { ...usage };
+      throw err;
     }
     const data = /** @type {any} */ (await resp.json());
     usage.prompt_tokens += data.usage?.prompt_tokens || 0;
@@ -279,12 +286,19 @@ function textOfParts(/** @type {any} */ content) {
 export async function toolRun(env, opts) {
   const dialect = toolDialectFor(env, opts.model);
   if (!dialect) throw new Error(`no tool dialect for model ${opts.model}`);
-  if (dialect === "anthropic") return anthropicToolRun(env, opts);
+  // The per-round timeout is defaulted HERE rather than left to each dialect.
+  // Anthropic's own default is the 45 s JSON-call ceiling, which is right for a
+  // planning call and wrong for a tool round asking for 8k tokens — the same
+  // call would have had 120 s on any other provider, so a round that finished
+  // on Berget aborted on Claude and the whole loop fell back. A bound that
+  // depends on which provider served the request is not a bound.
+  const round = { timeoutMs: DEFAULT_TIMEOUT_MS, ...opts };
+  if (dialect === "anthropic") return anthropicToolRun(env, round);
 
   const provider = providerIdFor(opts.model);
   const wire = openAiWireFor(env, provider);
   if (!wire) throw new Error(`provider ${provider} has no OpenAI-compatible endpoint configured`);
-  return openAiToolRun(env, { ...opts, ...wire });
+  return openAiToolRun(env, { ...round, ...wire });
 }
 
 /**

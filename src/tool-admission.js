@@ -272,10 +272,20 @@ export function admitToolCall(name, args, opts) {
     // gets an unbounded ceiling instead of a TypeError out of a function whose
     // whole contract is that it refuses in words.
     const ranQueries = state.ranQueries instanceof Set ? state.ranQueries : (state.ranQueries = new Set());
+    // The third argument is the REQUEST-WIDE ceiling, not the per-call one.
+    // takeSearchBatch mins it with plan.maxSearches and compares the result
+    // against state.searchCount, so passing MAX_WEB_QUERIES here — the per-call
+    // fan-out bound, which scrubQueries has ALREADY applied above — gave the
+    // whole engine four web queries for the entire request rather than four per
+    // call. A loop bounded at sixteen calls would have run out of searching on
+    // its first or second one and spent the rest being refused.
+    //
+    // policy.maxQueries is what the wave path passes (pipeline.js), which is
+    // the point of calling this function instead of reimplementing it.
     batch = takeSearchBatch(
       { ranQueries, searchCount: state.searchCount || 0, plan: { maxSearches: plan.maxSearches ?? Infinity } },
       queries,
-      MAX_WEB_QUERIES,
+      policy.maxQueries ?? Infinity,
     );
     // takeSearchBatch is the one check that WRITES as it decides (it records
     // the queries in state.ranQueries so a later wave cannot repeat them), so
@@ -516,10 +526,22 @@ function clampNumber(value, min, max, fallback) {
  * @returns {boolean}
  */
 function withinDeadline(state, plan, now = Date.now()) {
+  // What this call is about to cost, PLUS what still has to happen after the
+  // loop ends. Reserving only the tool's own estimate was the bug: the report
+  // still has to be written and validated afterwards, and the planner's own
+  // numbers put those an order of magnitude above a tool call (a 60 s budget
+  // estimates ~1.3 s for a search against ~16 s for synthesis). A gate that
+  // reserved 1.3 s admitted calls right up to the budget and then overshot it
+  // by the whole writer.
+  //
+  // The writer's share is a RESERVE rather than part of `upcoming` because it
+  // is spent once at the end, not per call — adding it to each call's cost
+  // would refuse the first call of a short run that could comfortably afford
+  // several.
   const upcoming = plan?.estimates?.search || ASSUMED_TOOL_MS;
-  if (typeof plan?.deadlineAt === "number") return now + upcoming <= plan.deadlineAt;
+  const writer = Number(plan?.estimates?.synth || 0) + Number(plan?.estimates?.validate || 0);
   if (typeof state?.startedAt === "number" && typeof plan?.budgetMs === "number") {
-    return fitsDeadline(state.startedAt, plan.budgetMs, upcoming);
+    return fitsDeadline(state.startedAt, plan.budgetMs, upcoming + writer);
   }
   return true;
 }
