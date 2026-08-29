@@ -20,7 +20,10 @@ import {
   runResearchTool,
   sampleQueryFromArgs,
 } from "./research-tools-run.js";
+import { admitToolCall, newToolBudget } from "./tool-admission.js";
+import { ExecSandbox } from "./exec-container.js";
 import { SAMPLES_LAYOUT, parseSamples } from "../public/js/aadr-core.js";
+import { EXEC_CEILING_MS, STEP_BUDGET_MS } from "../public/js/lypning-core.js";
 import { SAMPLES_PATH } from "./aadr.js";
 import { fakeLog } from "./test-helpers/env.js";
 import { withFakeFetch } from "./test-helpers/fetch.js";
@@ -375,6 +378,171 @@ describe("run_python — it runs in the sandbox, or it says it did not", () => {
     const r = await runResearchTool(/** @type {any} */ ({}), fakeLog(), "run_python", { source: "print(1)" }, rctx);
     assert.equal(r.isError, true);
     assert.match(r.text, /VM gone/);
+  });
+});
+
+// ---- run_python over the Se/rver container ---------------------------------
+//
+// The one server-side environment the loop can reach on its own. Faked at the
+// BINDING level — a real ExecSandbox over a container double, the same doubles
+// src/exec-container.test.js drives — so the test crosses every seam a
+// production call crosses: admission → the runner → execEnvironmentFor →
+// handleExecApi → the Durable Object → `bash -lc` → the ladder's marker parse.
+// Anything intercepted higher up would let those seams drift apart unnoticed.
+
+/** An identity whose account turned the execution-sandbox knob on/off — what
+ * bashLiteEnabled reads (a user row with no stored settings is OFF). */
+const knobOn = /** @type {any} */ ({ id: "u1", user: { id: "u1", settings_json: '{"bash_lite_mcp":true}' } });
+const knobOff = /** @type {any} */ ({ id: "u1", user: { id: "u1" } });
+
+/**
+ * An env whose EXEC_SANDBOX namespace routes into a real ExecSandbox over a
+ * container double, recording what crossed the wire: the Durable Object names
+ * addressed, the parsed /exec bodies forwarded to the DO, and every argv the
+ * container was asked to run.
+ * @param {(command: string) => {exitCode?: number, stdout?: string, stderr?: string}} [handler]
+ */
+function containerEnv(handler) {
+  const seen = { names: /** @type {string[]} */ ([]), bodies: /** @type {any[]} */ ([]), argv: /** @type {string[][]} */ ([]) };
+  const enc = new TextEncoder();
+  const container = {
+    running: false,
+    start() {
+      this.running = true;
+    },
+    async destroy() {
+      this.running = false;
+    },
+    async exec(/** @type {string[]} */ argv) {
+      if (!this.running) throw new Error("container is not running");
+      seen.argv.push(argv);
+      // The readiness probe (["true"]) succeeds silently; a real command runs
+      // through the handler, which plays the sandbox image's part.
+      const planned = argv[0] === "true" ? {} : (handler ? handler(String(argv[2] || "")) : {});
+      const exitCode = planned.exitCode ?? 0;
+      return {
+        pid: 1,
+        exitCode: Promise.resolve(exitCode),
+        kill() {},
+        output: () =>
+          Promise.resolve({ stdout: enc.encode(planned.stdout ?? ""), stderr: enc.encode(planned.stderr ?? ""), exitCode }),
+      };
+    },
+  };
+  const map = new Map();
+  const sandbox = new ExecSandbox(
+    {
+      container,
+      storage: {
+        async get(/** @type {string} */ k) {
+          return map.get(k);
+        },
+        async put(/** @type {any} */ obj) {
+          for (const [k, v] of Object.entries(obj)) map.set(k, v);
+        },
+        async setAlarm() {},
+      },
+      blockConcurrencyWhile: (/** @type {any} */ fn) => fn(),
+    },
+    {},
+  );
+  const env = /** @type {any} */ ({
+    EXEC_SANDBOX: {
+      idFromName(/** @type {string} */ name) {
+        seen.names.push(name);
+        return name;
+      },
+      get() {
+        return {
+          fetch: async (/** @type {string} */ url, /** @type {any} */ init) => {
+            if (new URL(url).pathname === "/exec") seen.bodies.push(JSON.parse(String(init?.body || "null")));
+            return sandbox.fetch(new Request(url, init));
+          },
+        };
+      },
+    },
+  });
+  return { env, seen };
+}
+
+describe("run_python over the Se/rver container — the real seam, end to end", () => {
+  test("an admitted call runs in the container and the model reads its stdout", async () => {
+    const { env, seen } = containerEnv(() => ({
+      // The image's part: lypning answers, prints the engine marker on stderr
+      // and the program's own output on stdout.
+      exitCode: 0,
+      stdout: "42\n",
+      stderr: "drpy-engine:lypning\n",
+    }));
+    const state = researchState();
+    // Admission first — the same gate the loop applies. run_python names no
+    // context block and spends nothing, so a toolbox that carries it is enough.
+    const admission = admitToolCall(
+      "run_python",
+      { source: "print(6*7)" },
+      { state, budget: newToolBudget(state.plan), plan: state.plan, tools: ["run_python"] },
+    );
+    assert.equal(admission.ok, true);
+    const rctx = /** @type {any} */ ({ state, identity: knobOn, requestId: "dr-req-1", round: 1 });
+    const r = await runResearchTool(env, fakeLog(), "run_python", /** @type {any} */ (admission).args, rctx);
+
+    // The wire: the Durable Object is addressed as (user, session) — the user
+    // half from the server-side identity, the session from the request id — so
+    // the loop's commands land in THIS conversation's container.
+    assert.deepEqual(seen.names, ["u1|dr-req-1"]);
+    // The command the container ran is the ladder's shell program: builtin
+    // [ -x … ] probes on absolute paths (a `command -v` PATH walk once consumed
+    // the whole exec ceiling and destroyed the VM), through an explicit shell.
+    const body = seen.bodies[0];
+    assert.match(body.command, /\[ -x \/usr\/local\/bin\/lypning \]/);
+    assert.equal(body.command.includes("command -v"), false);
+    assert.match(body.command, /print\(6\*7\)/);
+    assert.deepEqual(seen.argv[0], ["true"], "readiness is probed with the cheapest process");
+    assert.deepEqual(seen.argv[1].slice(0, 2), ["bash", "-lc"]);
+    // The budget stays inside the VM ceiling twice over: the transport timeout
+    // and the in-command `timeout` both carry the step budget, which pythonCommand
+    // caps below EXEC_CEILING_MS — a command that crosses that ceiling does not
+    // fail, it destroys the VM.
+    assert.equal(body.timeoutMs, STEP_BUDGET_MS);
+    assert.ok(body.timeoutMs < EXEC_CEILING_MS);
+    assert.match(body.command, new RegExp(`timeout ${Math.round(STEP_BUDGET_MS / 1000)} `));
+
+    // The result the model reads: the marker was parsed into "which engine
+    // answered", stripped from the streams, and the program's stdout is there.
+    assert.equal(r.isError, false);
+    assert.match(r.text, /Ran on lypning in an ephemeral cloud container/);
+    assert.match(r.text, /STDOUT:\n42/);
+    assert.equal(r.text.includes("drpy-engine:"), false, "the marker is bookkeeping, not output");
+  });
+
+  test("a refusal in the container forks onto CPython, same as everywhere", async () => {
+    let calls = 0;
+    const { env, seen } = containerEnv((command) => {
+      calls++;
+      return calls === 1
+        ? { exitCode: REFUSAL_EXIT, stdout: "", stderr: "drpy-engine:lypning\nlypning: unsupported: module: statistics\n" }
+        : { exitCode: 0, stdout: "3.5\n", stderr: "drpy-engine:python3\n" };
+    });
+    const rctx = /** @type {any} */ ({ state: researchState(), identity: knobOn, requestId: "dr-req-2" });
+    const r = await runResearchTool(env, fakeLog(), "run_python", { source: "import statistics" }, rctx);
+    assert.equal(seen.bodies.length, 2, "the same program went back once, pinned to CPython");
+    assert.match(seen.bodies[1].command, /\[ -x \/usr\/bin\/python3 \]/);
+    assert.match(r.text, /lypning refused this program \(module: statistics\)/);
+    assert.match(r.text, /Ran on python3 in an ephemeral cloud container/);
+    assert.equal(r.isError, false);
+  });
+
+  test("the knob-off account gets the honest sentence and the container is never addressed", async () => {
+    // The account-level consent execContainerAvailable enforces: the binding is
+    // there, but this account has not turned the execution sandbox on — so a
+    // directly-issued call (a model repeating a tool from an earlier
+    // conversation) answers in words instead of computing (invariant 2).
+    const { env, seen } = containerEnv();
+    const rctx = /** @type {any} */ ({ state: researchState(), identity: knobOff, requestId: "dr-req-3" });
+    const r = await runResearchTool(env, fakeLog(), "run_python", { source: "print(1)" }, rctx);
+    assert.equal(r.isError, true);
+    assert.match(r.text, /No execution environment is bound/);
+    assert.equal(seen.names.length, 0, "no Durable Object was ever resolved");
   });
 });
 

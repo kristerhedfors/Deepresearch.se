@@ -518,6 +518,29 @@ test("with no execution environment bound, the compute tool is not offered", () 
   );
 });
 
+test("the Se/rver container serves the python class exactly as far as the knob allows", () => {
+  // have.exec is asked of execEnvironmentFor itself — the same function that
+  // would run the program — so the toolbox and the runner cannot disagree.
+  // Pinned in BOTH directions: a container deploy with the account's
+  // execution-sandbox knob ON offers run_python; the knob OFF or the binding
+  // absent drops the class, so the model is never handed a compute tool that
+  // every call would only refuse (the honest-sentence side of that same gate is
+  // pinned in src/research-tools-run.test.js).
+  const names = (/** @type {any} */ c) => researchToolsForRun(c).map((/** @type {any} */ t) => t.name);
+  const knobOn = { id: "u", user: { id: "u", settings_json: '{"bash_lite_mcp":true}' } };
+  const knobOff = { id: "u", user: { id: "u" } };
+  const serverCtx = (identity, env = { ...CONFIGURED, EXEC_SANDBOX: {} }) => {
+    // `exec: null` — no caller-bound runner, which is every Worker-side
+    // research turn: the container is the only environment the loop can reach.
+    const { ctx } = harness({ exec: null, env });
+    ctx.state.identity = identity;
+    return ctx;
+  };
+  assert.ok(names(serverCtx(knobOn)).includes("run_python"), "binding + knob → the class is offered");
+  assert.ok(!names(serverCtx(knobOff)).includes("run_python"), "knob off → the class is dropped");
+  assert.ok(!names(serverCtx(knobOn, CONFIGURED)).includes("run_python"), "binding absent → dropped too");
+});
+
 describe("the loop is asked from the PLANNING view (feedback #65, fifth instance)", () => {
   const SCAFFOLD =
     "Structure the dossier as a TIBER-EU threat-intelligence report: Targeting, " +

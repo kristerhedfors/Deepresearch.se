@@ -640,6 +640,29 @@ export function execEnvironmentFor(env, log, rctx) {
   if (typeof rctx?.exec === "function") {
     return { label: rctx.execLabel || "the runner bound to this request", run: rctx.exec };
   }
+  // With no caller-bound runner, the container is the ONLY environment this
+  // loop can reach — and it is used even when the account's per-device
+  // execution pick says "browser VM" or "local runner". That is a decision,
+  // not an oversight, and it rests on three facts:
+  //
+  //  · The pick cannot be honoured from here. It lives in the browser
+  //    (localStorage / sealed state, per device — docs/EXECUTION-ENVIRONMENTS.md
+  //    §4, where keeping the runner's URL and key off this server is called out
+  //    as a privacy dividend), and a Worker mid-answer cannot call into a tab
+  //    anyway. "Honouring" it could only mean dropping compute entirely.
+  //  · Routing here widens nothing the ledger (§5) does not already own. The
+  //    container row's cost is "commands and mounted files pass through this
+  //    server" — but this path mounts NO file, and the program is composed by
+  //    the model ON this server from a conversation that already rests here
+  //    (cloud storage is implicit on Se/rver, invariant 4). The pick protects
+  //    the interactive shell pass and the user's files; neither is touched.
+  //  · The consent that matters IS enforced: execContainerAvailable requires
+  //    the account's execution-sandbox knob, the same gate /api/bash/step
+  //    applies. Knob off → null → runPython answers in a sentence.
+  //
+  // A client that wants its own environment on this path binds a runner into
+  // the request (rctx.exec above), which always wins — that is how the Se/cure
+  // browser loop keeps the program off this server entirely.
   if (execContainerAvailable(env, rctx?.identity)) {
     const session = sanitizeSession(rctx?.requestId) || "research";
     return {
