@@ -98,6 +98,12 @@ export const ASSUMED_TOOL_MS = 6_000;
  * FORECAST (what this request may spend) and a budget is a LEDGER (what it has
  * spent); merging them means a retried run silently inherits the last one's
  * spend.
+ *
+ * `plan` is accepted and deliberately unused: a budget is created at the one
+ * place the request's forecast is already in hand, and taking it here keeps
+ * that call site honest — but nothing in the ledger is DERIVED from it, because
+ * deriving a spent-so-far from a forecast is the exact merge this split exists
+ * to prevent.
  * @param {any} [plan]
  * @returns {ToolBudget}
  */
@@ -239,6 +245,8 @@ export function admitToolCall(name, args, opts) {
   // ---- 6. the source's own caps, the cross-wave dedup, the query budget ----
   /** @type {string[]} */
   let batch = [];
+  /** @type {() => void} */
+  let undo = () => {};
   /** @type {string} */
   let sourceKey = "";
   if (name === "web_search") {
@@ -250,7 +258,26 @@ export function admitToolCall(name, args, opts) {
     // request already ran and stops at plan.maxSearches. Calling it here rather
     // than reimplementing the rule is the point — a model-issued search is
     // budgeted and deduped exactly like a planned one.
-    batch = takeSearchBatch(state, queries, MAX_WEB_QUERIES);
+    // Called through a defensive view of the state rather than the state
+    // itself: `ranQueries` is shared by reference, so the dedup commit is real,
+    // but a request that arrived without a plan (a caller mid-refactor, a test)
+    // gets an unbounded ceiling instead of a TypeError out of a function whose
+    // whole contract is that it refuses in words.
+    const ranQueries = state.ranQueries instanceof Set ? state.ranQueries : (state.ranQueries = new Set());
+    batch = takeSearchBatch(
+      { ranQueries, searchCount: state.searchCount || 0, plan: { maxSearches: plan.maxSearches ?? Infinity } },
+      queries,
+      MAX_WEB_QUERIES,
+    );
+    // takeSearchBatch is the one check that WRITES as it decides (it records
+    // the queries in state.ranQueries so a later wave cannot repeat them), so
+    // the commit-once rule needs an undo for the checks that follow it.
+    // Without one, a call refused for being out of budget would still have
+    // burned its angles' dedup slots, and the same angle could never be asked
+    // again on a request that later had room for it.
+    undo = () => {
+      for (const query of batch) state.ranQueries.delete(query.toLowerCase());
+    };
     if (!batch.length) {
       const spent = (state.searchCount || 0) >= (plan.maxSearches ?? Infinity);
       return refuse(
@@ -263,14 +290,14 @@ export function admitToolCall(name, args, opts) {
   if (source) {
     const st = state.aux?.[source.id];
     const override = state.auxMaxPerRequest?.[source.id];
-    const cap2 = typeof override === "number" && override > 0 ? override : (source.maxPerRequest ?? 3);
+    const perRequestCap = typeof override === "number" && override > 0 ? override : (source.maxPerRequest ?? 3);
     const used = st?.count || 0;
-    if (used >= cap2) {
+    if (used >= perRequestCap) {
       // arXiv's cap is 2 because arXiv publishes one request per three seconds
       // and sells no way past it; the number is the source's, stated here so
       // the model reads a reason rather than a wall.
       return refuse(
-        `${source.service} allows ${cap2} search${cap2 === 1 ? "" : "es"} per request and this run has used ${used}. That ceiling is the source's own rate limit, not a budget you can spend elsewhere — use what came back, or another source.`,
+        `${source.service} allows ${perRequestCap} search${perRequestCap === 1 ? "" : "es"} per request and this run has used ${used}. That ceiling is the source's own rate limit, not a budget you can spend elsewhere — use what came back, or another source.`,
       );
     }
     sourceKey = sourceDedupKey(source, String(given.query || ""));
@@ -284,11 +311,13 @@ export function admitToolCall(name, args, opts) {
   // ---- 7. the run's tool budget and its deadline ---------------------------
   const spends = RESEARCH_SPENDING_TOOLS.has(name);
   if (spends && budget.spendCalls >= MAX_SPENDING_CALLS) {
+    undo();
     return refuse(
       `This answer's tool budget is spent: ${budget.spendCalls} of ${MAX_SPENDING_CALLS} calls to a paid source have been made. The free tools you were given still work; otherwise write the answer from what you have and say what you could not check.`,
     );
   }
   if (!withinDeadline(state, plan, opts?.now)) {
+    undo();
     return refuse(
       "The time budget for this answer is nearly spent, so no further lookup was made. Write the answer now from what you have, and say plainly what is missing.",
     );

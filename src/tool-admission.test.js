@@ -285,6 +285,19 @@ describe("7. the run's budget and its deadline", () => {
     assert.equal(s.ranQueries.size, 0);
   });
 
+  test("a call refused AFTER the dedup ledger was written leaves the ledger clean", () => {
+    // takeSearchBatch is the one check that writes as it decides, and the two
+    // checks after it can still refuse. Without the undo, an angle refused for
+    // being out of budget could never be asked again on a request that later
+    // had room for it — a dedup set that remembers searches nobody ran.
+    const s = state();
+    const budget = newToolBudget();
+    budget.spendCalls = MAX_SPENDING_CALLS;
+    const r = admit("web_search", { queries: ["a fresh angle"] }, { state: s, budget });
+    assert.equal(r.ok, false);
+    assert.deepEqual([...s.ranQueries], []);
+  });
+
   test("a spent time budget stops further lookups without erroring", () => {
     // Past the budget plus fitsDeadline's 15% grace, which is the point the
     // wave path stops planning further work too.
