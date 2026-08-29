@@ -510,7 +510,7 @@ URI from step 4. Note that client-disconnect detection doesn't fire in
 npm install           # once: the unit suite needs the root devDependencies
 npm test              # unit suite: node --test src/*.test.js public/js/*.test.js
                       #   public/app-kit/*.test.js public/games/*/js/*.test.js sdk/*.test.mjs
-                      #   scripts/*.test.mjs scripts/*/*.test.mjs tests/*.test.js tests/pygram/*.test.mjs
+                      #   scripts/*.test.mjs scripts/*/*.test.mjs tests/*.test.js
 npm run typecheck     # tsc --noEmit on src/ + public/ (checked JSDoc, dev-only)
 
 cd tests && npm install && npm run fixtures   # Playwright E2E, once

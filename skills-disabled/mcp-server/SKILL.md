@@ -312,7 +312,7 @@ Four things about the shape, each of which will look like something to tidy:
    Pinned by a length assertion in `src/platform-tools.test.js`.
 3. **`improvement_areas` carries the settled-negative rule, and it is the
    load-bearing sentence in the family.** Several subsystems here keep a
-   register of experiments already run, measured and rejected — the pygram
+   register of experiments already run, measured and rejected — the sandbox-Python
    skill's §2d ("compiler optimisation is FINISHED here — do not re-survey it")
    is the clearest — written down precisely so nobody spends another session on
    them. An improvement answer that reads one of those back as an opportunity is
@@ -339,7 +339,7 @@ smallest model the surface routes to: the orientation block measures **32,715
 chars** against the deployed snapshot, `MAX_READ_TOTAL_CHARS` is **60,000**, and
 six retrieved chunks add ~8,400, so ~28,700 tokens arrive before the system
 prompts and before any room to answer, against Mistral Small's ~32k.
-`improvement_areas` on pygram survived only because its reads were small; "how
+`improvement_areas` on the sandbox Python survived only because its reads were small; "how
 does the gap check phase work" sends the loop at `src/pipeline.js`, **157,166
 chars**, which exhausts the whole budget in one file.
 

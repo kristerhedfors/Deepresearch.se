@@ -23,7 +23,7 @@ the untested surface from growing back.
 `npm test` runs nine globs: `src/*.test.js`, `public/js/*.test.js`,
 `public/app-kit/*.test.js`, `public/games/*/js/*.test.js`, `sdk/*.test.mjs`,
 `scripts/*.test.mjs`, `scripts/*/*.test.mjs`, `tests/*.test.js` and
-`tests/pygram/*.test.mjs`, `tests/mopy/*.test.mjs`. The first four are the
+and `tests/*.test.js`. The first four are the
 Worker and the client,
 described below; the last five are the tooling suites, in their own section at
 the end.
@@ -938,8 +938,7 @@ npm test            # from the repo root: node --test src/*.test.js public/js/*.
                     #                     public/games/*/js/*.test.js
                     #                     sdk/*.test.mjs scripts/*.test.mjs
                     #                     scripts/*/*.test.mjs
-                    #                     tests/*.test.js tests/pygram/*.test.mjs
-                    #                     tests/mopy/*.test.mjs
+                    #                     tests/*.test.js
 npm run typecheck   # zero-build-step tsc: src/ (tsconfig.json, Workers types)
                     # + public/ (tsconfig.public.json, DOM lib) — strict,
                     # opt-in per file via // @ts-check; both must stay clean
@@ -947,9 +946,9 @@ npm run typecheck   # zero-build-step tsc: src/ (tsconfig.json, Workers types)
 
 ### The tooling suites (`sdk/`, `scripts/`, `tests/`)
 
-Five more globs in the same `npm test` run — `sdk/*.test.mjs`,
-`scripts/*.test.mjs`, `scripts/*/*.test.mjs`, `tests/*.test.js` and
-`tests/pygram/*.test.mjs`. None of this ships, but the shipped corpora and
+Four more globs in the same `npm test` run — `sdk/*.test.mjs`,
+`scripts/*.test.mjs`, `scripts/*/*.test.mjs` and `tests/*.test.js`. None of
+this ships, but the shipped corpora and
 ledgers are built by it, so a bug here is a bug in the data. They get a
 section because a suite nobody documents is a suite nobody maintains.
 
@@ -992,19 +991,20 @@ cannot pass. The rest:
 `pulse-themes.test.mjs` + `pulse-time.test.mjs` (the commit-analytics tagger
 and rollups), `dup-scan.test.mjs` + `line-scan.test.mjs` (the refactor-pass
 surveys), `merge-markers.test.mjs` and `check-merged-branches.test.mjs` (the
-merge hygiene guards behind the push hook). `capture-core.test.mjs` covers the
+merge hygiene guards behind the push hook). `build-lypning.test.mjs` covers the
+generator behind the `/lypning/` dashboard's backward-looking half: the parser
+that reads what each lypning commit PUBLISHED about itself, anchored on the
+prose rather than on table geometry because that table has been reshaped twice
+and the sentences have not; and — the assertion the page's honesty rests on —
+that a README carrying no measurement yields NO fields rather than zeroed ones,
+because "did not measure" and "measured zero" are different facts. Also that the
+committed dataset carries no wall-clock stamp, which is what lets `--check` tell
+a stale file from a re-run one. `capture-core.test.mjs` covers the
 video pipeline's whole editing model — which spans of a recording are provably
 dead air, what the cut plan does with them, the ffmpeg filter graph and argv,
 and LinkedIn's delivery fences — WITHOUT ffmpeg, because no agent container
 here has it and a plan that can only be checked by encoding is a plan nobody
-checks. One directory deeper — the `scripts/*/*.test.mjs` glob —
-`pygram-capture/harvest.test.mjs` pins the harvester that grows pygram's
-COMMITTED corpus, which is the spec pygram is built against: dedup (one record
-per program however often it was seen), normalization (line endings and
-trailing space do not mint a second record, but indentation does, because
-indentation is Python syntax), idempotency (a re-run over the same inputs
-changes nothing, which is what makes the harvest safe to put in a loop), and
-the privacy contract that nothing credential-shaped reaches the corpus.
+checks.
 
 **`tests/`** — the two eval harnesses' pure helpers, unit-tested so a scoring
 change is a caught diff rather than a silently different ledger:
@@ -1012,24 +1012,18 @@ change is a caught diff rather than a silently different ledger:
 verdict) and `hf-bench-lib.test.js` (`aggregateHfScores`, including that it
 counts leak-tainted runs separately instead of averaging them in), plus
 `bench-sources.test.js`, the source-coverage guard described under "Source
-coverage is a build-time invariant" below. Under `tests/pygram/` — its own
-glob — sit the two pygram gates: `conformance.test.mjs` pins the two
-independent defences that stop the conformance runner feeding the corpus it is
-measuring (`referencePython()` resolves a real CPython ELF rather than the
-capture shim, and `runOne()` spawns with `PYGRAM_CAPTURE=0`), and
-`shims.test.mjs` runs every frozen shim twice in one interpreter — once
-against CPython's stdlib, once against `pygram/lib` — asserting byte-identical
-output, with the MicroPython C modules replaced by stand-ins cut back to the
-surface MicroPython actually ships, so a shim leaning on a CPython convenience
-fails here rather than in the sandbox. Under `tests/mopy/` — also its own glob
-— `routing.test.mjs` covers the MIXTURE OF PYTHONS (`docs/MOPY.md`): the
-classifier's decisions for each tier, the exit-90 refusal contract (one line, on
-stderr, and never on stdout), the commit barrier that makes falling back to
-another interpreter safe, and the dispatcher's stdin and `sys.argv` handling —
-two places where a bug is invisible to per-engine conformance and only the
-end-to-end mixture arm can see it. The scoring half of the runner needs no built
-binary, so it stays covered on a machine where nothing has been compiled; the
-rest skips with a message naming `scripts/mopy-build.sh`. The Playwright specs
+coverage is a build-time invariant" below.
+
+The two interpreter gates that used to sit under `tests/pygram/` and
+`tests/mopy/` left with the interpreter: pygram and mopy became one project,
+[lypning](https://github.com/kristerhedfors/lypning), and its CI builds the real
+i386 artifact, runs the shape gate (static, size, file opens) and diffs every
+corpus entry against CPython. Gating a copy nothing here builds would gate
+nothing. What stays on this side is the SEAM —
+`scripts/build-sandbox-image.sh` installing both engines and skipping loudly
+when they are absent, and the paired probes in `tests/e2e/sandbox-perf.spec.js`
+— plus the dashboard that measures them in a real browser VM
+(`public/js/lypning-core.test.js`). See `docs/LYPNING.md`. The Playwright specs
 in `tests/e2e/` are a different runner entirely; next section.
 
 This adds to the live-verification convention rather than replacing it:
