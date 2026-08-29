@@ -302,7 +302,7 @@ describe("the web-search knob gates Exa only — depth still runs over other sou
     // The agent's own auxSources declaration still outranks the force.
     assert.match(fn, /!forced\.length \|\| !searchPolicyFor\(state\)\.auxSources/);
 
-    const sourceResearch = src.slice(src.indexOf("async function runSourceResearch(ctx)"), src.indexOf("async function runSubquestionFanout"));
+    const sourceResearch = src.slice(src.indexOf("async function runSourceResearch(ctx)"), src.indexOf("export async function runSynthesis"));
     // Run BEFORE the snapshot check, so even the no-snapshot exit has them.
     const auxIdx = sourceResearch.indexOf("await runForcedAuxSearches(ctx)");
     assert.ok(auxIdx >= 0 && auxIdx < sourceResearch.indexOf("if (!snapshot"), "forced aux runs before the snapshot check");

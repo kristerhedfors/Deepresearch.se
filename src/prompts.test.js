@@ -1142,9 +1142,10 @@ describe("orchestrator prompts — the citation gate (feedback #21)", () => {
 // message carries content this pipeline did not write — web search results,
 // the digest built from them, a draft written from that digest — must carry
 // ANTI_INJECTION_NOTE, because the prompt text is public and an injection can
-// therefore be crafted offline against one specific phase. gapPrompt and
-// validatePrompt were the two that did not, which is exactly the pair that
-// reads the source digest and nothing else in the pipeline noticed.
+// therefore be crafted offline against one specific phase. The gap check
+// (since replaced by reflectPrompt) and validatePrompt were the two that did
+// not, which is exactly the pair that reads the source digest and nothing
+// else in the pipeline noticed.
 //
 // Derived, not listed: the guard renders EVERY exported builder and requires
 // the note on all of them, so a new builder cannot be added without it. That

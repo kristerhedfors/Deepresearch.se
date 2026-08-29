@@ -212,17 +212,19 @@ export function planResearch(model, budgetS, jsonModel = model) {
   // Depth scales with the budget tier.
   const queryCap = budgetS >= 240 ? 6 : 4;
   plan.followups = budgetS >= 420 ? 5 : budgetS >= 240 ? 4 : 3;
-  // Gap-round ceiling. The deep tiers (the user deliberately dialled a long
-  // "reason for up to N minutes" budget) get a HIGH ceiling so the loop keeps
-  // taking meaningful action toward that target — the binding constraints
-  // become the time deadline and the gap check's own "coverage complete"
-  // judgment (both enforced in runGapChecks), NOT an artificially low round
-  // count that wraps a rich question in ~60-90s and leaves most of an 8-minute
-  // budget unspent (the reported "gave up too early"). This is a striving
-  // ceiling, never a floor: a genuinely-simple question never reaches these
-  // rounds (applyComplexityToPlan clamps it), and a round that surfaces no new
-  // sources shortcuts the loop — so the extra headroom only cashes in when
-  // there is really more to find. Tiers below extended (<240s) are unchanged.
+  // Follow-up-round ceiling. The deep tiers (the user deliberately dialled a
+  // long "reason for up to N minutes" budget) get a HIGH ceiling so the loop
+  // keeps taking meaningful action toward that target — the binding
+  // constraints become the time deadline and the engine's own coverage
+  // verdict, NOT an artificially low round count that wraps a rich question in
+  // ~60-90s and leaves most of an 8-minute budget unspent (the reported "gave
+  // up too early"). It is a striving ceiling, never a floor.
+  //
+  // The engine reading it decides how much of it to want: the standard graph's
+  // reflectRoundsFor takes it as a BOOLEAN (any headroom at all buys one
+  // reflect round, two only when a planner asks), because the deleted gap
+  // cascade this ceiling was sized for is exactly what a compact topology is
+  // offered as an alternative to. Tiers below extended (<240s) are unchanged.
   const gapRoundCap =
     budgetS >= 420 ? 8 : budgetS >= 300 ? 6 : budgetS >= 240 ? 4 : budgetS >= 60 ? 3 : 2;
 

@@ -1103,7 +1103,7 @@ export async function runDrcResearch({
 
   // The plan's outcome, on the still-running triage step: the completed label
   // plus the sub-questions as expandable detail (Se/rver's "Planned N search
-  // angles" step_done, src/pipeline.js runTriage).
+  // angles" step_done, src/pipeline-standard.js generateQueries).
   const kindTag = triage.complexity && triage.complexity !== "simple" ? ` · ${triage.complexity}` : "";
   onStatus({
     type: "detail",

@@ -93,11 +93,10 @@ export function addSources(state, items) {
     const key = diversityKeyOf(item.url);
     const count = state.domainCounts.get(key) || 0;
     if (count >= DOMAIN_CAP) {
-      // Deduped like the registry itself. Without this a later wave that
-      // re-finds the same capped URLs would look like new ground to
-      // sourceProgress(), and the gap loop's genuine-saturation exit — the
-      // thing that stops it spinning rounds against the same sources — would
-      // never fire.
+      // Deduped like the registry itself, for two reasons that outlive the
+      // gap loop it was written for: a later wave that re-finds the same
+      // capped URLs would look like new ground to sourceProgress(), and
+      // backfillOverflowSources would promote the same page twice.
       if (!state.overflowUrls.has(item.url)) {
         state.overflowUrls.add(item.url);
         state.sourceOverflow.push(item);
@@ -110,18 +109,24 @@ export function addSources(state, items) {
 }
 
 // How much NEW ground a wave found: sources admitted to the registry PLUS the
-// domain-capped ones parked in overflow. The gap loop's saturation exit reads
-// this rather than `sources.length`, and the difference is not academic — a
-// question whose answer lives across many pages of one authoritative domain
-// (a standards body, a government registry, one publisher's DOI prefix) hits
-// DOMAIN_CAP on its third result, so every later find lands in overflow and
-// the registry stops growing. Read as `sources.length` alone, that is
-// indistinguishable from "the web has no more to say", and the run stops
-// researching while it is still finding new pages. Those pages are real:
-// backfillOverflowSources promotes them before synthesis.
+// domain-capped ones parked in overflow.
 //
-// Monotonic while the gap loop runs — its only consumer, the backfill, runs
-// after the loop has finished.
+// NO ENGINE READS IT TODAY, and that is a gap rather than a reason to remove
+// it. Its consumer was the deleted gap cascade's saturation exit — the check
+// that ended a loop still spending rounds against the same sources — and the
+// standard graph's reflect loop has no equivalent (its bounds are the round
+// ceiling, the search cap and the deadline). What the definition costs is one
+// addition; what it encodes was paid for: a question whose answer lives across
+// many pages of one authoritative domain (a standards body, a government
+// registry, one publisher's DOI prefix) hits DOMAIN_CAP on its third result,
+// so every later find lands in overflow and the registry stops growing. Read
+// as `sources.length` alone, that is indistinguishable from "the web has no
+// more to say", and the run stops researching while it is still finding new
+// pages. Those pages are real: backfillOverflowSources promotes them before
+// synthesis. Any future follow-up loop that wants a saturation exit should
+// read THIS, not the registry length.
+//
+// Monotonic while a follow-up loop runs — the backfill runs after it.
 /**
  * @param {SourceRegistryState} state
  * @returns {number}

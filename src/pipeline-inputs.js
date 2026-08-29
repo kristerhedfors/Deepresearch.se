@@ -111,8 +111,8 @@ export function knowledgeGapsSection(gaps) {
 // opposite ("Say where you looked when you found nothing, so a reader can tell
 // a thin record from a thin search"); nothing supplied the information.
 //
-// Deliberately NOT more retrieval: the de-noised benchmark behind
-// budget.js's DEEP_TIER_FEATURES_ENABLED found extra pre-synthesis material
+// Deliberately NOT more retrieval: the de-noised benchmark that eventually
+// got the deep-tier phases deleted found extra pre-synthesis material
 // net-negative (2.65 → 2.43, by context dilution), and the ground-truth
 // battery puts the loss at 14:1 synthesis-over-retrieval. This adds a bounded
 // list of queries already run — no search, no model call, no new sources.
