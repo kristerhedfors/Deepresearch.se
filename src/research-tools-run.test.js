@@ -24,6 +24,7 @@ import { admitToolCall, newToolBudget } from "./tool-admission.js";
 import { ExecSandbox } from "./exec-container.js";
 import { SAMPLES_LAYOUT, parseSamples } from "../public/js/aadr-core.js";
 import { EXEC_CEILING_MS, STEP_BUDGET_MS } from "../public/js/lypning-core.js";
+import { wireTimeoutMs } from "../public/js/lypning-exec-core.js";
 import { SAMPLES_PATH } from "./aadr.js";
 import { fakeLog } from "./test-helpers/env.js";
 import { withFakeFetch } from "./test-helpers/fetch.js";
@@ -499,12 +500,18 @@ describe("run_python over the Se/rver container — the real seam, end to end", 
     assert.match(body.command, /print\(6\*7\)/);
     assert.deepEqual(seen.argv[0], ["true"], "readiness is probed with the cheapest process");
     assert.deepEqual(seen.argv[1].slice(0, 2), ["bash", "-lc"]);
-    // The budget stays inside the VM ceiling twice over: the transport timeout
-    // and the in-command `timeout` both carry the step budget, which pythonCommand
-    // caps below EXEC_CEILING_MS — a command that crosses that ceiling does not
-    // fail, it destroys the VM.
-    assert.equal(body.timeoutMs, STEP_BUDGET_MS);
-    assert.ok(body.timeoutMs < EXEC_CEILING_MS);
+    // The pair of timeouts, in the ORDER that keeps the VM alive: the in-command
+    // `timeout` carries the step budget and must fire FIRST (a clean exit 124
+    // with the streams intact); the transport deadline outlasts it by the
+    // wireTimeoutMs margin and stays at or under the ceiling. The previous
+    // version of this assertion pinned them EQUAL under a comment claiming
+    // safety "twice over" — which pinned the inversion: the guest clock starts
+    // after the probe overhead, so an equal wire deadline fired first, and on
+    // the browser VM the wire's expiry path is resetSandbox, the one that
+    // destroys the VM.
+    assert.equal(body.timeoutMs, wireTimeoutMs(STEP_BUDGET_MS));
+    assert.ok(body.timeoutMs > STEP_BUDGET_MS, "the wire must outlast the guest");
+    assert.ok(body.timeoutMs <= EXEC_CEILING_MS);
     assert.match(body.command, new RegExp(`timeout ${Math.round(STEP_BUDGET_MS / 1000)} `));
 
     // The result the model reads: the marker was parsed into "which engine

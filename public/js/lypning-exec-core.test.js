@@ -20,8 +20,7 @@ import {
   formatPythonResult,
   parseRefusalLine,
   pythonCommand,
-  runPythonLadder,
-} from "./lypning-exec-core.js";
+  runPythonLadder, guestBudgetMs, wireTimeoutMs } from "./lypning-exec-core.js";
 import { EXEC_CEILING_MS } from "./lypning-core.js";
 
 describe("the command the ladder builds", () => {
@@ -184,4 +183,53 @@ describe("runPythonLadder — the fall-onward logic, lifted so the tiers cannot 
     assert.equal(r.isError, true);
     assert.match(r.text, /VM gone/);
   });
+});
+
+test("the wire deadline always outlasts the in-guest timeout", () => {
+  // The two guard different things: the guest `timeout` bounds the PROGRAM and
+  // expires as a clean exit 124; the wire deadline bounds the TRANSPORT and on
+  // the browser VM expires into resetSandbox — the path that destroys the VM.
+  // Shipping them EQUAL made the wire fire first on every program that used its
+  // whole budget, because the guest clock starts after the probe overhead.
+  for (const budget of [undefined, 5_000, 20_000, 28_000, 60_000]) {
+    const guest = guestBudgetMs(budget);
+    const wire = wireTimeoutMs(budget);
+    assert.ok(wire >= guest + 5_000, `budget ${budget}: wire ${wire} does not outlast guest ${guest}`);
+    assert.ok(wire <= EXEC_CEILING_MS, `budget ${budget}: wire ${wire} crosses the ceiling`);
+    // …and the command embeds the guest budget, not the wire one.
+    const seconds = Number(/timeout (\d+)/.exec(pythonCommand("print(1)", { budgetMs: budget }))?.[1]);
+    assert.equal(seconds, Math.max(1, Math.round(guest / 1000)), `budget ${budget}: in-command timeout drifted from guestBudgetMs`);
+  }
+});
+
+test("a program that ITSELF exits 90 is never re-run", async () => {
+  // The contract that makes the CPython retry safe is that a true refusal is
+  // observably a no-op: exit 90 AND the one contract line AND nothing on
+  // stdout. A program can exit 90 on its own — after printing, after writing a
+  // file — and re-running it would repeat its side effects. Exit code alone
+  // was the shipped test; all three halves are the contract.
+  let calls = 0;
+  const fakeExec = async () => {
+    calls++;
+    return {
+      exitCode: 90,
+      stdout: "charged the customer\n",
+      stderr: "drpy-engine:lypning\nsome ordinary stderr chatter",
+    };
+  };
+  const out = await runPythonLadder(fakeExec, "…", {});
+  assert.equal(calls, 1, "a self-exiting 90 with stdout was retried");
+  assert.equal(out.runs.length, 1);
+  assert.equal(out.runs[0].exitCode, 90);
+  assert.match(out.runs[0].stdout, /charged the customer/);
+});
+
+test("…and a 90 with stdout empty but no contract line is also final", async () => {
+  let calls = 0;
+  const fakeExec = async () => {
+    calls++;
+    return { exitCode: 90, stdout: "", stderr: "drpy-engine:lypning\nsegfault-ish noise, not the contract line" };
+  };
+  await runPythonLadder(fakeExec, "…", {});
+  assert.equal(calls, 1, "an unparseable 90 was treated as a refusal");
 });

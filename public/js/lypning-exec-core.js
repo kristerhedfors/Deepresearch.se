@@ -42,6 +42,39 @@ export const REFUSAL_EXIT = 90;
  */
 
 /**
+ * The in-guest budget: what the command's own `timeout` gets.
+ * Clamped under the ceiling with room for the WIRE margin below, so the pair
+ * can never straddle the ceiling however large a budget a caller asks for.
+ * @param {number} [budgetMs]
+ * @returns {number}
+ */
+export function guestBudgetMs(budgetMs) {
+  return Math.min(budgetMs || STEP_BUDGET_MS, EXEC_CEILING_MS - 5_000);
+}
+
+/**
+ * The transport deadline for the SAME run — and it must lose every race.
+ *
+ * The two timeouts guard different things: the in-guest `timeout` bounds the
+ * PROGRAM, and expiring is a clean exit 124 with the streams intact; the wire
+ * deadline bounds the TRANSPORT, and on the browser VM its expiry path is
+ * resetSandbox — the ceiling that does not fail a command but DESTROYS the VM,
+ * taking every later call of the answer with it. So the wire must always
+ * outlast the guest: the guest budget plus a spawn/probe/heredoc margin,
+ * which by guestBudgetMs's clamp lands exactly at the ceiling and never past
+ * it. Sending them EQUAL was the shipped bug — the guest clock starts after
+ * the probe overhead, so the equal wire deadline fired first on every program
+ * that used its whole budget, on the one tier that always carries this tool.
+ * The proof harness knew the rule ("the command's own timeout should always
+ * fire first") and had applied it only to its own fake runner.
+ * @param {number} [budgetMs]
+ * @returns {number}
+ */
+export function wireTimeoutMs(budgetMs) {
+  return guestBudgetMs(budgetMs) + 5_000;
+}
+
+/**
  * The shell program that runs one Python program.
  *
  * Three things it must get right, all of them paid for already:
@@ -63,7 +96,7 @@ export const REFUSAL_EXIT = 90;
  * @returns {string}
  */
 export function pythonCommand(source, opts = {}) {
-  const budgetMs = Math.min(opts.budgetMs || STEP_BUDGET_MS, EXEC_CEILING_MS - 5_000);
+  const budgetMs = guestBudgetMs(opts.budgetMs);
   const seconds = Math.max(1, Math.round(budgetMs / 1000));
   const engines = opts.engine ? [opts.engine] : ENGINE_ORDER;
   // THE PROBE IS A BUILTIN TEST ON ABSOLUTE PATHS, NEVER `command -v`.
@@ -195,7 +228,7 @@ export async function runPythonLadder(exec, source, opts = {}) {
   let engine = "";
   for (let attempt = 0; attempt < 2; attempt++) {
     const command = pythonCommand(source, { engine, stdin, budgetMs: opts.budgetMs });
-    const res = await exec(command, { timeoutMs: opts.budgetMs || STEP_BUDGET_MS }).catch((/** @type {any} */ err) => ({
+    const res = await exec(command, { timeoutMs: wireTimeoutMs(opts.budgetMs) }).catch((/** @type {any} */ err) => ({
       exitCode: 1,
       stdout: "",
       stderr: String(err?.message || err),
@@ -209,7 +242,14 @@ export async function runPythonLadder(exec, source, opts = {}) {
     const used = ran ? ran[1] : "unknown";
     const refusal = res.exitCode === REFUSAL_EXIT ? parseRefusalLine(cleanErr.trim().split("\n")[0] || "") : null;
     runs.push({ engine: used, exitCode: res.exitCode, stdout: String(res.stdout || ""), stderr: cleanErr, refusal });
-    if (res.exitCode !== REFUSAL_EXIT || used === "python3") break;
+    // Fall onward only on the FULL refusal contract, not the exit code alone:
+    // exit 90 AND the parsed one-line refusal AND nothing on stdout. A program
+    // can exit 90 itself — after printing, after writing a file — and re-running
+    // it on CPython would repeat its side effects; the contract's whole point is
+    // that a true refusal is observably a no-op, which is what makes the retry
+    // safe. Anything else at exit 90 is the program's own exit, reported as-is.
+    const trueRefusal = refusal !== null && String(res.stdout || "") === "";
+    if (res.exitCode !== REFUSAL_EXIT || !trueRefusal || used === "python3") break;
     engine = "python3";
   }
   return {
