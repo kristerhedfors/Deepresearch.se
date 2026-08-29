@@ -26,6 +26,35 @@
 import { INTROSPECTION_TOOLS } from "./introspect-tools.js";
 import { BUILD_TOOLS, SDK_TOOLS } from "../public/js/sdk-core.js";
 import { TOOL_CLASSES, capHasTool } from "./agent-spec.js";
+// The research toolbox arrives as SETS, never as names. A tool NAME is a
+// service name here (src/research-tools.js's header: `street_view_look` matches
+// src/extensions.test.js's SERVICE_TOKENS on its own), so this module binds the
+// arrays the registry exports and never writes one down.
+import {
+  CORPUS_TOOLS,
+  EXTENSION_RESEARCH_TOOLS,
+  LITERATURE_TOOLS,
+  PYTHON_TOOLS,
+  RESEARCH_TOOL_CONTEXT,
+  SOURCE_SEARCH_TOOL,
+  WEB_TOOLS,
+} from "./research-tools.js";
+
+/**
+ * The extension tools that belong to one CONTEXT BLOCK, so a class binds one
+ * integration's tools rather than every integration's.
+ *
+ * Keyed on the block id (`CONTEXT_BLOCKS`, agent-spec-core.js) rather than on
+ * the src/extensions.js descriptor id, which is the whole point: a descriptor
+ * id IS the service's name, and writing one here would put it in the binding
+ * table for every reader of this file to copy. The block id is platform
+ * vocabulary, the mapping is data on the registry, and adding an integration
+ * that declares an existing block adds its tools to the right class with no
+ * edit here.
+ * @param {string} block
+ */
+const extensionToolsForBlock = (block) =>
+  EXTENSION_RESEARCH_TOOLS.filter((t) => RESEARCH_TOOL_CONTEXT[t.name] === block);
 
 /** @typedef {import('./agent-spec.js').AgentCapability} AgentCapability */
 
@@ -49,7 +78,47 @@ export const TOOL_BINDINGS = {
   // means something: it is what a spec says to describe an agent that uses the
   // shell, and what validation checks the `sandbox` requirement against.
   "shell": { tools: [] },
+  // ---- the research classes (2026-08-29) -----------------------------------
+  //
+  // `needs` is what makes a declaration honest on a deployment that cannot
+  // serve it: an agent that declares web research on a deploy with no search
+  // provider gets the class DROPPED rather than a tool that refuses every call,
+  // and src/agentic.js reads an empty toolbox as "run the standard graph"
+  // (invariant 2). The per-CALL checks are a different layer entirely and stay
+  // in src/tool-admission.js — this one only decides what the model is shown.
+  "web-research": { tools: WEB_TOOLS, needs: "web" },
+  "source-search": { tools: [SOURCE_SEARCH_TOOL], needs: "auxSources" },
+  "literature": { tools: LITERATURE_TOOLS, needs: "auxSources" },
+  "ancient-samples-query": { tools: CORPUS_TOOLS },
+  // `needs` is the block id itself: the caller resolves the account knob that
+  // consents to this integration and reports it under that key, so this table
+  // never learns which knob, which account field, or which service.
+  "host-intel-tools": { tools: extensionToolsForBlock("host-intel"), needs: "host-intel" },
+  "street-imagery-tools": { tools: extensionToolsForBlock("street-imagery"), needs: "street-imagery" },
+  "python": { tools: PYTHON_TOOLS },
 };
+
+/**
+ * The research classes, in registry order — what a run resolves when NO
+ * capability was resolved at all (the /mcp channel, an unreadable registry).
+ *
+ * It is deliberately the full set rather than a conservative subset: a null
+ * capability is the same "no agent was resolved" case src/search-sources.js
+ * opens the corpus door for, and the ground-truth batteries that measure this
+ * engine address no agent. Every individual call is still admitted against the
+ * account's knobs and the request's policy (src/tool-admission.js), so opening
+ * the box here widens what is OFFERED and nothing about what is REACHED.
+ * @type {string[]}
+ */
+export const RESEARCH_TOOL_CLASSES = [
+  "web-research",
+  "source-search",
+  "literature",
+  "ancient-samples-query",
+  "host-intel-tools",
+  "street-imagery-tools",
+  "python",
+];
 
 /**
  * The tool definitions for a run: the classes the answering agent declared,

@@ -37,6 +37,7 @@ export {
   resolveUntrustedAgent,
   PROMPT_ROLES,
   PROMPT_SETS,
+  RESEARCH_STRATEGIES,
   missingPromptRoles,
   resolvePromptSet,
   TOOL_CLASSES,

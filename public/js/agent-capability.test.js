@@ -326,7 +326,18 @@ test("invariant 6 — a declared gate routes Swedish and English alike", () => {
 
 test("the closed vocabularies stay closed", () => {
   assert.deepEqual(Object.keys(ANSWER_PHASES), ["research", "source-research", "build", "workflow", "feed", "direct"]);
-  assert.deepEqual(Object.keys(TOOL_CLASSES), ["source-read", "sdk-plan", "build-publish", "shell"]);
+  // The seven added on 2026-08-29 are the RESEARCH toolbox — the classes an
+  // agent declares to reach the tools it drives itself on the agentic path.
+  // They are classes rather than tool names for the reason src/tool-sets.js's
+  // header gives: a spec selects a SET, never an individual tool, which is what
+  // keeps the owner-authorized invariant-1 exception bounded to shapes that
+  // were actually authorized. `python` is one class rather than a tool because
+  // the interpreter behind it is a fall-through ladder, not one binary.
+  assert.deepEqual(Object.keys(TOOL_CLASSES), [
+    "source-read", "sdk-plan", "build-publish", "shell",
+    "web-research", "source-search", "literature", "ancient-samples-query",
+    "host-intel-tools", "street-imagery-tools", "python",
+  ]);
   assert.deepEqual(TOOL_FALLBACKS, ["read-loop", "file-blocks", "none"]);
   // The five gates added on 2026-08-13 are the Cyber agent's: the general
   // research agent used to reach these behaviours by keyword alone, from any

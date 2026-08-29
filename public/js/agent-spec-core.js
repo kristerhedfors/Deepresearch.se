@@ -218,6 +218,20 @@ export const TOOL_CLASSES = {
   "sdk-plan": { label: "SDK plan", desc: "sdk_list_modules / sdk_show_module / sdk_plan / sdk_validate over the Platform SDK manifest (SDK_TOOLS)" },
   "build-publish": { label: "Build + publish", desc: "write_file / publish_app (BUILD_TOOLS)", serverOnly: true },
   "shell": { label: "Shell", desc: "the in-browser Linux sandbox's bash-lite loop (bash-core.js)" },
+  // ---- the RESEARCH toolbox (2026-08-29) -----------------------------------
+  // What an agent declares to drive its own research instead of being driven by
+  // the standard graph's nodes. Each names a SET the platform already ships
+  // (src/research-tools.js) and binds through src/tool-sets.js; a class is the
+  // unit precisely so a spec cannot assemble a novel toolbox out of parts, which
+  // is what keeps the amended invariant 1's "the tool set is fixed before the
+  // model runs" a property of the code and not of a review.
+  "web-research": { label: "Web research", desc: "search the open web and read the pages it returns, through whichever provider this deployment is configured with (WEB_TOOLS)" },
+  "source-search": { label: "Specialist source search", desc: "one search against a named entry of the search-source registry, subject to that entry's own per-request cap (SOURCE_SEARCH_TOOL)" },
+  "literature": { label: "Literature tools", desc: "the peer-reviewed corpus tools — search, fetch, similar, corpora (LITERATURE_TOOLS)" },
+  "ancient-samples-query": { label: "Ancient samples query", desc: "structured queries over the committed ancient-DNA individual corpus; contacts nothing (ANCIENT_SAMPLES_TOOL)" },
+  "host-intel-tools": { label: "Host intelligence tools", desc: "the host, population, domain and vulnerability lookups of the configured host-intelligence integration", serverOnly: true },
+  "street-imagery-tools": { label: "Street imagery tools", desc: "the place-resolution and street-level imagery lookups of the configured geospatial integration", serverOnly: true },
+  "python": { label: "Python", desc: "run a short program in the execution environment this request is bound to, and read its output (RUN_PYTHON_TOOL)" },
 };
 
 /** What a model WITHOUT native tool use does instead. A tool-bearing agent must
@@ -269,6 +283,18 @@ export const CONTEXT_BLOCKS = {
  * routing) is enforced by making `planModel` a one-member vocabulary. */
 export const PLAN_MODELS = ["json-default"];
 export const ANSWER_MODELS = ["user", "json-default"];
+
+/**
+ * Which research ENGINE an agent's research turn runs on.
+ *
+ * `auto` is the platform's own choice and the only value a spec inherits, so
+ * adding this field changed no shipped agent. The other two are declarations a
+ * derived agent makes about itself: `agentic` drives its own bounded tool loop
+ * (src/agentic.js), `standard` runs the four-node graph (src/pipeline-standard.js).
+ * A closed vocabulary rather than a free string for the same reason PLAN_MODELS
+ * is one — a spec selects among shipped engines and can never name a new one.
+ */
+export const RESEARCH_STRATEGIES = ["auto", "agentic", "standard"];
 
 /** Deterministic intent gates an agent may declare. Each names a shipped gate;
  * `langs` must carry EN and SV alike (invariant 6). */
@@ -336,7 +362,7 @@ export const CAPABILITY_REQUIREMENTS = {
  * @property {string} toolFallback
  * @property {string[]} context
  * @property {{ web: boolean, auxSources: boolean, maxQueries: number|null }} search
- * @property {{ planModel: string, answerModel: string }} routing
+ * @property {{ planModel: string, answerModel: string, strategy: string }} routing
  * @property {Array<{ id: string, langs?: string[] }>} gates
  * @property {Record<string, number>} bounds
  * @property {string[]} emits
@@ -354,7 +380,7 @@ export const BASE_CAPABILITY = {
   toolFallback: "none",
   context: [],
   search: { web: true, auxSources: true, maxQueries: null },
-  routing: { planModel: "json-default", answerModel: "user" },
+  routing: { planModel: "json-default", answerModel: "user", strategy: "auto" },
   gates: [],
   bounds: {},
   emits: ["step"],
@@ -582,6 +608,9 @@ export function validateCapability(a) {
   }
   if (!ANSWER_MODELS.includes(cap.routing.answerModel)) {
     problems.push(at(`routing.answerModel must be one of ${ANSWER_MODELS.join("/")}`));
+  }
+  if (!RESEARCH_STRATEGIES.includes(cap.routing.strategy)) {
+    problems.push(at(`routing.strategy must be one of ${RESEARCH_STRATEGIES.join("/")}`));
   }
 
   // Search plane
@@ -1361,7 +1390,7 @@ export function renderAgentShow(reg, id) {
     `    tools: ${cap.tools.length ? `${cap.tools.join(", ")} (fallback: ${cap.toolFallback})` : "(none)"}`,
     `    context: ${cap.context.length ? cap.context.join(", ") : "(none)"}`,
     `    search: web ${cap.search.web ? "on" : "off"}, aux sources ${cap.search.auxSources ? "on" : "off"}${cap.search.maxQueries != null ? `, max ${cap.search.maxQueries} queries` : ""}`,
-    `    routing: plan on ${cap.routing.planModel}, answer on ${cap.routing.answerModel}`,
+    `    routing: plan on ${cap.routing.planModel}, answer on ${cap.routing.answerModel}, engine ${cap.routing.strategy}`,
     cap.gates.length ? `    gates: ${cap.gates.map((/** @type {any} */ g) => `${g.id} [${(g.langs || []).join("+")}]`).join(", ")}` : "",
     Object.keys(cap.bounds).length ? `    bounds: ${Object.entries(cap.bounds).map(([k, v]) => `${k}=${v}`).join("  ")}` : "",
     `    emits: ${cap.emits.join(", ")}`,
