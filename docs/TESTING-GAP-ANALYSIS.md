@@ -1,5 +1,9 @@
 # Testing — gap analysis (2026-07-24)
 
+> Dated snapshot. This analysis predates the 2026-08-29 engine overhaul that
+> deleted the five-phase pipeline (B1's "five-phase orchestration" describes
+> the code as it stood); the numbers and findings are left as measured.
+
 A full pass over the test surface: what runs, what runs it, what is
 covered, and what is not. `docs/TESTING.md` stays the per-suite
 enumeration; this file is the review of the surface as a *system* —

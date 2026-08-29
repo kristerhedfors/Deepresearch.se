@@ -31,16 +31,18 @@ Five pages:
 1. **System context & deployment** — clients, Worker modules, external APIs,
    secrets, deploy path
 2. **Request routing & auth** — the decision tree every request goes through
-3. **Research pipeline data flow** — the five phases, budget checks, and the
-   source registry
+3. **Research pipeline data flow** — the original five phases, budget checks,
+   and the source registry
 4. **SSE stream sequence** — the event choreography between client, Worker,
    Berget, and Exa
 
 <!-- NOTE: pages 1–4 of architecture.drawio predate the multi-provider
      registry, the D1 storage layer (chat_logs/feedback/tokemon_saves),
      R2/Vectorize, the enrichments, /mcp, and the games seam — treat them as
-     the original Berget+Exa-only design, not the current system. Page 0 (the
-     board) and the Mermaid diagrams below ARE current. -->
+     the original Berget+Exa-only design, not the current system. Page 3's
+     five-phase cascade was deleted outright on 2026-08-29 (the two-engine
+     split, §4.2). Page 0 (the board) and the Mermaid diagrams below ARE
+     current. -->
 
 Inline [Mermaid](https://mermaid.js.org) versions of the key flows are
 embedded below so GitHub renders them directly.
@@ -160,7 +162,7 @@ rest of the document elaborates.
 | **On-device model** | browser, WebGPU | downloaded weights in OPFS | the browser only | answers with no provider and no server in the path |
 | **Worker** (`src/index.js`) | Cloudflare edge | request state only | the operator | routing, the identity gate, every server capability |
 | **Agent registry** (`src/agent-registry.js`, `sdk/AGENTS.json` served as `public/introspect/agents.json`) | Worker, cached per isolate | the shipped agent specs — no user data at all | anyone; it is a public build artifact | resolving the turn's agent and its **capability**, which decides which corpora, which retrieval blocks and which third-party intelligence the turn may reach. Consulted on every request since 2026-08-13 |
-| **Research pipeline** (`src/pipeline.js`) | Worker | the request while it runs | the operator (`chat_logs` unless incognito) | triage → read linked pages → search → gap → synthesis → validation, deterministic, no function calling |
+| **Research pipeline** (`src/pipeline.js`) | Worker | the request while it runs | the operator (`chat_logs` unless incognito) | two engines behind one dispatch (`engineFor`): the model-driven agentic loop (`src/agentic.js` — a fixed toolbox, admission-checked per call) and the deterministic four-node standard graph (`src/pipeline-standard.js` — JSON-mode/streamed only, every model's fallback); retrieval, synthesis and validation shared by both |
 | **Grants & tokens** (`src/websearch.js`, `src/proxy*.js`, `src/server-token.js`, `src/pool-token.js`) | Worker + D1 | a `jti`, a quota, a counter — **no content** | the operator; the minting account | lending a Se/cure session bounded capability without giving it an account |
 | **Knowledge inbox** (`src/knowledge.js`) | Worker + D1 | sealed conclusion envelopes | the workspace admin at import; **the server can decrypt** (agent key in D1) | aggregating findings from many participants into one place |
 | **D1** | Cloudflare | accounts, quotas, config, `chat_logs`, meters, boards, game saves | the operator | identity, quotas, logging, every metered surface |
@@ -506,48 +508,92 @@ A thin shell around the pipeline:
   cache (§4.6). All accounting is fail-soft: it never breaks a served
   answer.
 
-### 4.2 Pipeline (`src/pipeline.js`)
+### 4.2 The research flow: two engines behind one dispatch (`src/pipeline.js`, `src/agentic.js`, `src/pipeline-standard.js`)
 
-The Worker orchestrates every phase directly — **no function calling**.
-Every planning/validation step is a plain JSON-mode completion, so the flow
-is deterministic and works on any JSON-mode model (this design replaced an
-earlier tool-calling loop after Mistral emitted pseudo tool calls as text).
+A research turn runs one of TWO engines. The bespoke five-phase cascade
+(triage → search → gap check → synthesis → validation) was deleted on
+2026-08-29 (owner directive: "don't keep this static pipeline");
+`src/pipeline.test.js` pins its phases deleted so nothing regrows a third
+orchestration beside the two.
 
-**The one authorized exception** (CLAUDE.md invariant 1): when Introspection
-or Agent Studio is on *and* the chosen answer model supports real tool use,
-the ANSWER model drives a native tool loop — `runSourceResearchTools` reads
-the site's own source (`grep_source` / `read_file` / `list_files`, plus a
-real `run_bash` over the Se/cure sandbox), and `runSdkBuildTools` adds the
-`sdk_*` planning tools with `write_file` / `publish_app`. Models without
-tool use fall back to the deterministic loops (the source read loop, the
-fenced `FILE:`-block convention). The JSON planning phases below never use
-tools, on any model.
+`runResearchPhase` settles the per-message gates first — the web-search knob
+(off means "no Exa", never "no research": auxiliary sources and the
+own-source investigation still run), introspection's own-source turn
+(`hasSource` + `externalSourceIntent`), the quiz intent — and hands whatever
+survives to the engine `engineFor` (`src/agentic.js`) resolves: what the
+REQUEST asked for (`research_engine`), else what the answering AGENT declared
+(`capability.routing.strategy`), else the platform's own choice — the
+model-driven loop wherever the model can drive one (`canDriveTools`: a
+configured tool dialect, no image parts) and the run's resolved toolbox is
+non-empty, and the deterministic graph everywhere else. `/mcp` puts
+`standard` in the platform's seat of that order (a caller can still ask for
+the loop), because a model-chosen call order makes `[n]` numbering
+non-reproducible and the ground-truth battery and the published replays
+depend on it.
 
-**Split model routing (invariant):** the JSON planning phases — triage, gap
-check, validation, quiz generation — always run on the fixed reliable
-`DEFAULT_MODEL` on Berget; only synthesis (and direct/search-off replies)
-run on the user's chosen model, whichever provider serves it. Token
-accounting and budgeting are split the same way.
+- The **agentic engine** (`src/agentic.js`, `pipelineId: "agentic/1"`, the
+  default — `AGENTIC_BY_DEFAULT`): the answer model gets the research brief
+  (`public/js/research-brief-core.js`) and a toolbox fixed before it runs
+  (`src/tool-sets.js` over the agent's declared classes, schemas in
+  `src/research-tools.js`), and drives its own bounded gather loop — ≤8
+  rounds, ≤16 tool calls, ≤6 calls to a metered upstream, ≤4 tool errors,
+  and a wall clock that reserves the writer's own estimate
+  (`loopDeadlineAt`). Every call passes `src/tool-admission.js` — eight
+  ordered checks re-asserting the SAME policy the deterministic path
+  enforced (toolbox membership, context-block declaration, extension knob,
+  search policy, source ownership, dedup + caps via `takeSearchBatch`,
+  budget + deadline, argument scrubbing to `MAX_QUERY_CHARS`), and a
+  refusal is a SENTENCE the model reads, never a throw. The loop's own text
+  never streams: it becomes a notes block, and the platform's writer
+  (`runSynthesis` → `runValidation`) writes the report — which is what makes
+  the fail-soft ladder safe: a loop that throws falls through to the
+  standard graph with nothing yet emitted.
+- The **standard engine** (`src/pipeline-standard.js`,
+  `pipelineId: "standard/1"`): the four-node compact graph — generate_queries
+  → web_research → reflect → finalize — every node a plain JSON-mode or
+  streamed call, zero tool calling, so it runs on Berget's whole catalog. It
+  is also the agentic engine's fallback (no tool dialect, empty toolbox, or
+  a loop that throws), which is what keeps the whole catalog working — the
+  amended invariant 1: the deterministic fallback is never optional.
+
+**The other authorized tool loops** (CLAUDE.md invariant 1) are unchanged:
+when Introspection or Agent Studio is on *and* the chosen answer model
+supports real tool use, `runSourceResearchTools` reads the site's own source
+(`grep_source` / `read_file` / `list_files`, plus a real `run_bash` over the
+Se/cure sandbox) and `runSdkBuildTools` adds the `sdk_*` planning tools with
+`write_file` / `publish_app`; models without tool use fall back to the
+deterministic loops (the source read loop, the fenced `FILE:`-block
+convention). The JSON planning phases below never use tools, on any model.
+
+**Split model routing (invariant):** the JSON planning phases — the standard
+graph's query-plan and reflect nodes, validation, quiz generation — always
+run on the fixed reliable `DEFAULT_MODEL` on Berget; synthesis,
+direct/search-off replies, and the agentic loop itself run on the user's
+chosen model, whichever provider serves it. Token accounting and budgeting
+are split the same way (`state.jsonTotals` vs `state.totals`; the loop's
+usage is billed to the user model even when the loop fails and the standard
+graph runs on top of it).
 
 ```mermaid
 flowchart TD
     IN([POST /api/chat]) --> EN["Enrichments (opt-in, fail-soft)<br/>core + registered extensions<br/>labeled context blocks appended"]
-    EN --> WS{web_search on?}
-    WS -- off --> SO["Single completion<br/>(searchOffPrompt)"] --> DONE
-    WS -- on --> QZ{"quiz intent?<br/>(deterministic gate)"}
-    QZ -- yes --> QG["Quiz generation (JSON)<br/>intro streams + one quiz event"] --> DONE
-    QZ -- no --> T["Phase 1 · Triage (JSON)<br/>direct | clarify | research plan<br/>+ complexity · sub-questions · quiz flag"]
-    T -- direct --> DR["Stream direct answer"] --> DONE
-    T -- clarify --> CL["Emit one clarifying question"] --> DONE
-    T -- "research (or triage failed → fallback query)" --> NU["Phase 1.5 · Read linked pages<br/>URLs the message named, fetched<br/>direct from the Worker (named-urls.js)"]
-    NU --> SW["Phase 2 · Search wave<br/>Exa + registry sources (HF Hub)<br/>dedupe · cap · source registry"]
-    SW --> GAP{"Phase 3 · Gap loop<br/>fitsDeadline? searches < cap?"}
-    GAP -- "budget cut / cap" --> SY
-    GAP -- proceed --> GC["Gap check (JSON)<br/>audit coverage vs source digest<br/>+ sub-questions · domain dominance"]
-    GC -- "coverage sufficient" --> SY
-    GC -- "follow-up queries" --> FS["Follow-up searches → registry"] --> GAP
-    SY["Phase 4 · Synthesis (streamed,<br/>user's model via providers.js)<br/>answer ONLY from numbered sources<br/>[n] citations + Sources list"]
-    SY --> V{"Phase 5 · Validation<br/>fits deadline?"}
+    EN --> G{"per-message gates<br/>web knob · own-source turn · quiz"}
+    G -- "nothing external applies" --> SO["Single completion<br/>(runWithoutSearch)"] --> DONE
+    G -- "own-source turn" --> SR["Source investigation<br/>(runSourceResearch)"] --> DONE
+    G -- "quiz intent" --> QG["Quiz research: node 1 + one wave,<br/>then the quiz IS the answer"] --> DONE
+    G -- "research turn" --> EF{"engineFor<br/>request → agent spec → platform default"}
+    EF -- "tool dialect + toolbox" --> AL["AGENTIC LOOP (agentic/1)<br/>research brief + fixed toolbox<br/>≤8 rounds · ≤16 calls · ≤6 spending<br/>every call through tool admission"]
+    EF -- "no dialect / empty toolbox<br/>or asked for standard" --> QP["Node 1 · generate_queries (JSON)<br/>angles + rationale + direct?"]
+    AL -- "loop throws (nothing streamed)" --> QP
+    AL -- "gathered (sources → registry,<br/>notes → writer)" --> SY
+    QP --> NU["Read linked pages<br/>(named-urls.js, before the direct branch)"]
+    NU -- "direct & nothing read" --> DR["Stream direct answer"] --> DONE
+    NU --> SW["Node 2 · web_research<br/>Exa + registry sources, one wave<br/>dedupe · cap · source registry"]
+    SW --> RF{"Node 3 · reflect (JSON)<br/>≤2 rounds · fitsDeadline?"}
+    RF -- "sufficient / budget cut<br/>(stated gap → knowledgeGaps)" --> SY
+    RF -- "follow-up queries" --> FS["Follow-up wave → registry"] --> RF
+    SY["Node 4 / finalize · Synthesis (streamed,<br/>user's model via providers.js)<br/>answer ONLY from numbered sources<br/>[n] citations + Sources list<br/>+ loop notes or stated gaps"]
+    SY --> V{"Validation<br/>fits deadline?"}
     V -- no --> VS["step: Validation skipped"] --> DONE
     V -- yes --> FC["Fact-check draft vs sources (JSON)"]
     FC -- pass --> DONE
@@ -556,14 +602,16 @@ flowchart TD
     DONE([done stats event + DONE])
 ```
 
-Phase details:
+The pieces, in the order a request meets them (0, 3, 5 and 6 are shared by
+both engines; 1 is the agentic path; 2 and 4 are the standard graph's own
+nodes):
 
 0. **Enrichments** (`src/enrichment.js`, pre-pipeline): a registry of
    opt-in context resolvers run once before any model call. Each entry
    follows one contract: silent when the latest message names nothing to look
    up; a visible activity step naming the external service when it does;
    fail-soft in every branch. Results are appended as labeled context blocks so
-   triage, search and synthesis all see them. `enrichment.js` itself names no
+   the planning nodes, the agentic loop, search and synthesis all see them. `enrichment.js` itself names no
    service — the third-party ones arrive from the extension registry
    (§4.2a), and none of the core rows is an integration: the image read,
    introspection's committed snapshot, the OWASP reference, the model catalog,
@@ -592,20 +640,40 @@ Phase details:
    queries from, and method never is (§4.2b strips the method blocks out
    of the planning view; §4.2c reads the same record to know the turn is
    dossier-shaped).
-1. **Triage** (JSON, ≤500 tokens): sees the formatted conversation + latest
-   message; returns `direct` | `clarify` (one question) | `research` with
-   multi-angle queries (count from the budget plan) — plus a `complexity`
-   classification that caps research depth *below* the budget for simple
-   questions (`applyComplexityToPlan`), optional `subquestions` that the
-   gap check and synthesis are held to, and a fail-soft `quiz:true` backup
-   flag for quiz phrasings the deterministic gate missed. If triage fails
-   or returns junk, `normalizeTriage` (`src/triage.js`, the pipeline's
-JSON-hardening layer) falls back: substantial question →
-   research with the raw question as the single query; otherwise answer
-   directly. (Model JSON is hardened by the tiny in-repo validator
-   `src/schema.js` — lenient, never throws, always leaves the existing
-   fail-soft fallbacks as the last-ditch net.)
-2. **Search wave** (`runSearches`): a round's queries are deduped
+1. **The agentic loop** (`runAgenticResearch`): one non-streaming tool loop
+   on the user's chosen model (`src/tool-run.js`, Anthropic and OpenAI
+   dialects). The system prompt is the research brief — on this path the
+   prompt IS the control flow, so it carries the finished report's
+   specification, one worked example, the toolbox, the remaining seconds,
+   and the invariant-6 lead hints (`leadSourceIds` over `gateLastUser`, the
+   same parity-tested EN+SV gates, folded in as hints because the
+   deterministic routing does not run here). The loop's input is the
+   PLANNING view (§4.2b), with method blocks handed back separately and
+   labelled as write-up instructions. Tool errors come back as sentences and
+   are counted (`MAX_TOOL_ERRORS = 4` stops the spend); search-class calls
+   are budgeted and deduped by the wave path's own `takeSearchBatch`, so a
+   model-issued search costs exactly what a planned one did. When the loop
+   ends — answered, round cap, wall clock, or errors, recorded as
+   `state.loopStoppedBy` — its transcript entries that added no sources
+   become the writer's notes block (`researchNotesSection`) and its sources
+   are already in the registry. SSE: a `loop` step plus `tool_<n>` steps (a
+   counter, never a tool name — a name is a service name, invariant 7).
+2. **generate_queries** (standard node 1; JSON, ≤500 tokens, on the fixed
+   JSON model): returns search angles, a user-visible rationale, and a
+   `direct` boolean — the one triage decision a research turn still needs.
+   No clarify branch: this graph has nowhere to put one. Unusable JSON falls
+   to the MODEL-FREE seed (`seedFromConversation`, still in `src/triage.js` —
+   the filename outlived its phase), so a bare back-reference ("undersök
+   saken") never reaches a search engine verbatim; `focusQueriesOnSubject`
+   then drops format-chasing angles (§4.2c). (Model JSON everywhere is
+   hardened by the tiny in-repo validator `src/schema.js` — lenient, never
+   throws, always leaves the fail-soft fallbacks as the last-ditch net.)
+   Before any search, `runNamedUrlReads` fetches the URLs the message named
+   (feedback #67), and the direct branch is gated on what was actually
+   READ — pasting a link and asking about it IS research over that page.
+3. **Search wave** (`runSearches`, shared by both engines — the loop's
+   `web_search` tool and the graph's waves land here): a round's queries are
+   deduped
    case-insensitively, capped at `plan.maxSearches`, then run
    **concurrently** (`Promise.all`) against Exa at a depth that scales with
    the time budget (§4.3b). Auxiliary sources from the
@@ -634,12 +702,20 @@ JSON-hardening layer) falls back: substantial question →
    so `[n]` citations stay stable, capped at `plan.maxSources` overall AND
    at 3 per origin (per-domain; per-*owner* for huggingface.co), keeping
    ≤3 highlights per source.
-3. **Gap check** (JSON, ≤400 tokens, up to `plan.gapIterations` rounds):
-   audits the source digest against the question and the triage
-   sub-questions; single-domain dominance counts as a coverage gap in its
-   own right. Returns follow-up queries or `complete`. Each round first
-   passes a deadline check.
-4. **Synthesis** (streamed, on the user's chosen model via
+4. **reflect** (standard node 3; JSON, ≤500 tokens per round, at most
+   `STANDARD_MAX_REFLECT_ROUNDS = 2` — the shipped quickstart's own bound):
+   audits the source digest against the question; single-domain dominance
+   counts as a coverage gap in its own right. Each round first passes a
+   deadline check (`fitsDeadline`, reserving the writer's estimates). It
+   emits an artefact the deleted gap cascade never did: a STATED knowledge
+   gap, in words, accumulated on `state.knowledgeGaps`, shown in the trail
+   and handed to the writer as an explicit limitation the answer must
+   carry — the cascade's verdict was a saturation boolean, so a run that
+   stopped short left no record of what it had failed to find. No follow-up
+   queries IS sufficiency, whatever the boolean says; a round that throws
+   ends the loop rather than the request.
+5. **Synthesis** (finalize's first half, shared by both engines; streamed,
+   on the user's chosen model via
    `src/providers.js`): system prompt demands an answer built **only** from
    the numbered source digest, with `[n]` citations and a "Sources:" list,
    in Markdown. Image parts of the latest user message ride along so
@@ -649,8 +725,11 @@ JSON-hardening layer) falls back: substantial question →
    ("no source establishes X") to be checked against the numbered list
    first, and to name the angles that came back empty. How much of the
    registry the digest actually carried is logged as
-   `chat.digest_coverage` (§4.3d, §11).
-5. **Post-validation** (JSON, ≤3000 tokens): fact-checks the draft against
+   `chat.digest_coverage` (§4.3d, §11). Per-engine extra context rides in
+   the same user message: the agentic path's notes block (findings from
+   tools that returned no citable source, explicitly NOT to be numbered),
+   or the standard path's stated knowledge gaps.
+6. **Post-validation** (JSON, ≤3000 tokens): fact-checks the draft against
    the same digest. `pass` → done; `revise` → the UI is told to
    **`discard_text`** and the corrected answer is emitted through the same
    delta path; inconclusive → draft kept. Skipped visibly when the budget
@@ -658,31 +737,37 @@ JSON-hardening layer) falls back: substantial question →
    reliably fails).
 
 **Quiz generation** replaces synthesis when the user asked to be quizzed
-(`src/quiz.js`'s deterministic `quizIntent` gate — EN+SV, typo-tolerant —
-or the triage backup flag): one JSON call on the reliable JSON model
+(`src/quiz.js`'s deterministic `quizIntent` gate — EN+SV, typo-tolerant). A
+quiz turn is the one research turn neither engine can finish — the answer is
+a quiz object, not prose — so `runQuizResearch` reuses the standard graph's
+nodes (node 1's angles, the named-URL read, one wave) and stops where reflect
+would begin: one JSON call on the reliable JSON model
 produces the hardened question set; the intro streams as ordinary deltas
 and one `quiz` SSE event carries the questions the client renders
 interactively (`public/js/quiz.js`; free-text answers grade via
 `POST /api/quiz/grade`). Fail-soft: a broken quiz JSON degrades to a
 normal answer. The `/api/chat` channel only — MCP callers get plain text.
 
-**Deep-tier phases, currently disabled:** three further phases exist in
-the code — a per-wave **notes digest** (`src/notes.js`: structured
-`{claim, source_ids, entities, contradicts}` notes), a **full-content
-fetch** of the top sources (Exa `/contents`), and **claim-level
-validation** (per-claim verdicts, revise only what failed). All three are
-gated behind `DEEP_TIER_FEATURES_ENABLED = false` in `src/budget.js`: a
+**The deep-tier phases are gone with the cascade** (2026-08-29). Three
+further phases used to exist disabled — a per-wave notes digest
+(`src/notes.js`), a full-content fetch of the top sources, and claim-level
+validation — behind `DEEP_TIER_FEATURES_ENABLED = false`, because a
 de-noised benchmark (2026-07, `tests/denoise-driver.mjs`) found them
-net-negative at the deep tier, so they are switched off pending an
-intent-gated rework — the default-budget pipeline runs byte-identically
-to the pre-phase behavior either way.
+net-negative at the deep tier. They were deleted with their phases rather
+than left switched off; that measured verdict still stands
+(`docs/DEEP-RESEARCH-TECHNIQUES.md` §7 records it, and what a retry would
+have to look like).
 
-**Fail-soft invariant:** every helper phase (triage, gap check, validation,
-every enrichment) runs through `phase()`, which catches errors, records
+**Fail-soft invariant:** every JSON helper phase (query plan, reflect,
+validation, quiz — through `jsonPhase`, which catches errors, records
 duration into the budget stats, logs `chat.phase` / `chat.phase_failed`,
-and returns `null` — the pipeline degrades (fewer searches, skipped
-iteration, accepted draft, unchanged conversation) but never fails the
-request. Exa failures likewise return error strings, not exceptions.
+and returns `null`) and every enrichment degrades to a lesser run — fewer
+searches, an unreflected wave, accepted draft, unchanged conversation — and
+never fails the request; on the agentic engine the same invariant is an
+explicit ladder (a tool error is a sentence the model reads; a spent error
+budget stops the spend but the report is still written; a loop that throws
+falls through to the standard graph, safe because nothing has streamed).
+Exa failures likewise return error strings, not exceptions.
 The ANSWER phases are deliberately NOT fail-soft: `streamCompletion`
 throws on a missing `finish_reason`, a deterministic 4xx, and context
 overflow, and `chat.js` converts the throw into an emitted error event
@@ -798,16 +883,16 @@ three different jobs with it:
 | View | What it holds | Who reads it |
 |---|---|---|
 | `cleanLastUser` / `cleanConvText`, and `gateLastUser` (the clean message **plus** `state.imageReadText`) | the pre-enrichment message — nothing this pipeline wrote | the deterministic gates: which source legs a request searches at all (§4.3c) |
-| `planLastUser` / `planConvText` | the enriched conversation **minus** the recorded method blocks | the three phases that WRITE web-search queries — triage, the gap check, the sub-question fan-out |
+| `planLastUser` / `planConvText` | the enriched conversation **minus** the recorded method blocks | whatever WRITES web-search queries — the standard graph's plan and reflect nodes, and the agentic loop's input (`buildLoopInput`) |
 | `lastUser` / `convText` | the enriched conversation, every appended block intact | synthesis, and everything else that consumes material rather than planning searches |
 
 The planning view was added 2026-08-07 from feedback #65, an OSINT turn. A
 user answered a disambiguation question with the bare "Tiber style threat
 intel"; `entityResearchIntent` fires on that phrasing alone, with no subject
 required, so 945 words of TIBER-EU and MITRE ATT&CK scaffolding were appended
-to it. Triage read the result as the latest user message and planned against
-the report FORMAT instead of the company — the block's own prose was visible
-in the first query string.
+to it. The triage phase — then the planner — read the result as the latest
+user message and planned against the report FORMAT instead of the company —
+the block's own prose was visible in the first query string.
 
 Neither existing view fits here. The clean pair drops the data enrichments a
 planner legitimately writes queries from, the transcription of the user's own
@@ -832,7 +917,7 @@ is what the answer is meant to follow; stripping it there would delete the
 thing the enrichment exists to apply.
 
 The prompt layer carries the same rule in words. `SUBJECT_VS_FORMAT_RULE`
-(`src/prompts.js`, spliced into `triagePrompt` and `gapPrompt`) says a named
+(`src/prompts.js`, spliced into `queryPlanPrompt` and `reflectPrompt`) says a named
 report format, deliverable or methodology — TIBER-EU, a SWOT, a due-diligence
 memo, a dossier, "rapport", "hotbild", "hotanalys", "bakgrundskoll" — is the
 shape of the answer and never the topic to search for, that every query must
@@ -859,7 +944,7 @@ left to be rediscovered.
 §4.2b took the method block away from the planner. Feedback #65 had a second
 half, and taking the block away did not fix it.
 
-**The measurement.** The same conversation, A/B against the deployed triage
+**The measurement.** The same conversation, A/B against the then-deployed triage
 prompt, on the fixed JSON planner the phase is pinned to (invariant 3 — Mistral
 Small). `Osint revsec` → the clarifying question → `Tiber style threat intel`:
 
@@ -923,14 +1008,17 @@ words are removed nothing is left, so gate 2 fails, the filter disengages, and
 the question searches TIBER-EU. That is correct, and it is the reason the whole
 design is gated rather than unconditional.
 
-**Where it is wired** (`src/pipeline.js`, all three reading `ctx.cleanConvText`
-for the subject):
-
-1. triage's `decision.queries`, before the `plan.queries` slice;
-2. triage's `decision.subquestions` — these steer every later round, so a
-   format sub-question re-seeds the angles the first pass just removed;
-3. the gap round's `followups`, so a later round cannot go back to the standard
-   the first round was steered off.
+**Where it is wired**: the standard graph's query-plan node
+(`src/pipeline-standard.js` `generateQueries`), on the planned angles before
+the plan is announced, reading `ctx.cleanConvText` for the subject — what the
+user asked about is a fact about their words, never about prose an enrichment
+appended. (The cascade wired it in three places — triage's queries, its
+sub-questions, and every gap round's follow-ups; the compact graph has one
+place that writes angles from the conversation, and reflect's follow-ups are
+written against collected sources.) On the agentic path the same defense is
+the planning view plus the brief's explicit labelling of method blocks as
+write-up instructions — the model, not a filter, holds the rule there. That
+is a known difference between the engines, not an oversight.
 
 It logs `chat.query_focus {dropped, kept}` when it drops anything, and says
 nothing at all otherwise, which is what makes a spurious line in the log a
@@ -945,32 +1033,42 @@ The UI slider sends `time_budget_s`; the planner decides how to spend it.
   measured on production runs. Stats live per isolate; every completed
   phase feeds `recordPhase`.
 - **Static allocation** (`planResearch`), before searching begins:
-  - `fixed = triage + synth` — always paid; `avail = budget − fixed`.
+  - `fixed = triage + synth` — always paid; `avail = budget − fixed`. (The
+    `triage`/`gap` keys survive their phases in the arithmetic and in
+    `PRIORS_MS`, deliberately: per-model `priorsMs` overrides are keyed on
+    them, and switching keys would silently drop every slow model's
+    calibration. The bag also carries `queries`/`reflect`/`tool`/`round`
+    rows for what actually runs now.)
   - Floor: if `avail ≤` one search, run 1 query and nothing else.
   - **Validation is the quality gate** — reserved first, unless the budget
     can't hold it plus a minimal two-search plan.
   - ~60% of the remainder buys initial search angles (1–4, up to 6 at
     ≥240 s budgets).
-  - What's left buys gap rounds, each costed at its real price (gap check +
-    a full follow-up wave, not a nominal two): up to 3 rounds at ≥60 s, 4 at
-    ≥240 s, 6 at ≥300 s and 8 at ≥420 s. Bigger budgets also raise
-    follow-ups per round (3; 4 at ≥240 s; 5 at ≥420 s), the search cap (20
-    standard, 26 extended, 34 full), the source registry (18→24, and 28 at
-    the full tier) and the digest size (14K→18K, and 24K at the full tier).
-    The two source caps move **together**: when an auxiliary source's first
-    result reserves registry slots
+  - What's left buys follow-up capacity (`plan.gapIterations`), each round
+    costed at its real price (a JSON check + a full follow-up wave): up to 3
+    rounds at ≥60 s, 4 at ≥240 s, 6 at ≥300 s and 8 at ≥420 s. Bigger
+    budgets also raise follow-ups per round (3; 4 at ≥240 s; 5 at ≥420 s),
+    the search cap (20 standard, 26 extended, 34 full), the source registry
+    (18→24, and 28 at the full tier) and the digest size (14K→18K, and 24K
+    at the full tier). The two source caps move **together**: when an
+    auxiliary source's first result reserves registry slots
     (`absorbAuxResult`), `plan.digestCap` is widened by the same count ×
     `DIGEST_CHARS_PER_SOURCE` (1300) alongside `plan.maxSources`, up to
     `DIGEST_CAP_CEILING` (36,000 chars) — see §4.3d.
-- **Complexity scaling**: after triage classifies the question, a `simple`
-  verdict caps gap rounds at 1 and the search cap at one wave + one
-  follow-up round — only ever scaling *down*; the budget plan stays the
-  ceiling. (Evidence: the de-noised benchmark found over-researching
-  simple questions net-negative.)
-- **Runtime deadline checks** (`fitsDeadline`): between phases the pipeline
-  re-checks that upcoming work plus remaining mandatory phases fits within
-  **budget + 15% grace**. Overruns cut optional work — extra gap rounds
-  first, validation last, with a visible "Validation skipped" step.
+- **Each engine reads the plan its own way.** The standard graph reads
+  `gapIterations` as a BOOLEAN through `reflectRoundsFor` — any headroom
+  buys one reflect round, two only when a planner asks explicitly
+  (`plan.reflectRounds`), and `STANDARD_MAX_REFLECT_ROUNDS = 2` is the
+  ceiling; reading the cascade-sized climb literally would rebuild the
+  cascade. The agentic loop ignores the round budget entirely: its bound is
+  `loopDeadlineAt` (start + budget × 1.15, minus the writer's synth +
+  validate estimates — the report still has to be written after the loop,
+  and the writer is the expensive half) plus its own round/call caps.
+- **Runtime deadline checks** (`fitsDeadline`): between reflect rounds — and
+  inside tool admission, per model-issued call — the flow re-checks that
+  upcoming work plus remaining mandatory phases fits within **budget + 15%
+  grace**. Overruns cut optional work — follow-up rounds first, validation
+  last, with a visible "Validation skipped" step.
 
 ### 4.3a Per-model adaptations (`src/model-profiles.js`)
 
@@ -1026,7 +1124,10 @@ A round 3 battery found two more universal (not per-model) gaps:
   results). First fix resolved one model but not the other; a second,
   more explicit `triagePrompt` rule was needed before both models
   reliably ran the actual research instead of complying. Verified live
-  against both previously-failing models after deploy.
+  against both previously-failing models after deploy. (`triagePrompt`
+  went with its phase in the 2026-08-29 engine split; the
+  `ANTI_INJECTION_NOTE` survives on `queryPlanPrompt`, `reflectPrompt`,
+  `directPrompt`, `synthPrompt` and the rest of the prompt surface.)
 - **Silent mid-stream drops.** The same few models sometimes died *after*
   streaming had already started — a signature the connect-timeout fix
   above cannot catch. A properly completed OpenAI-style stream always
@@ -1116,12 +1217,12 @@ is the canonical fix). Fixed on two levels, deliberately not either/or:
   short — a niche topic with genuinely few distinct domains shouldn't be
   starved. Entries are numbered sequentially as admitted, so citation
   numbers stay stable once synthesis begins.
-- **Prompt-level** (`prompts.js`): `triagePrompt`'s
+- **Prompt-level** (`prompts.js`): `queryPlanPrompt`'s
   `INDEPENDENT_SOURCE_RULE` makes an independent/third-party query
   mandatory whenever the topic centers on a specific entity's own claims;
-  `gapPrompt` treats single-domain dominance as an explicit coverage gap;
-  `synthPrompt` requires the answer to say so plainly when sources remain
-  dominated by one origin.
+  `reflectPrompt` treats single-domain dominance as an explicit coverage
+  gap; `synthPrompt` requires the answer to say so plainly when sources
+  remain dominated by one origin.
 
 Round 8's confirmation battery re-ran the pre-fix baseline queries against
 the deployed fix and verified the domain cap holding in practice (see
@@ -1211,8 +1312,8 @@ Two related fixes landed with it, both visible in the same run:
 
 ### 4.3d The source digest is a shared budget (`src/sources.js`)
 
-The registry holds sources; the **digest** is what synthesis, the gap check
-and validation actually read. It is a character budget, and for a long time it
+The registry holds sources; the **digest** is what synthesis, the reflect
+round and validation actually read. It is a character budget, and for a long time it
 was filled in pure arrival order until the cap ran out.
 
 Feedback #61 (`chat_logs` #1656, 2026-08-05) is what that costs. A 600-second
@@ -1262,7 +1363,7 @@ coverage.
 
 `searchLedgerSection` hands synthesis the queries this request actually sent, so
 "no source says this" can be told apart from "we never looked" and an
-uncorroborated claim can name the angles that came back empty (§4.2 phase 4,
+uncorroborated claim can name the angles that came back empty (§4.2 item 5,
 feedback #61).
 
 Its first cut was built from `state.ranQueries` and told the answer model the
@@ -1301,7 +1402,7 @@ compatibility). The canonical, fully-worked event reference is the
 | Event | Meaning / UI behavior |
 |---|---|
 | `{"choices":[{"delta":{"content":"…"}}]}` | Text chunk — append to the answer |
-| `status: step_start {id, label}` | Pipeline step spinner — `id` names the phase or external service: `plan`/`gapN`/`synth`/`validate`, `geocode`, `shodan`, `maps` |
+| `status: step_start {id, label}` | Pipeline step spinner — `id` names the phase or external service: `plan`/`reflectN`/`synth`/`validate`, the agentic engine's `loop` and `tool_N` (a counter, never a tool name), `geocode`, `shodan`, `maps` |
 | `status: step_done {id, label, details[]}` | Checkmark; `details` renders as an expandable list |
 | `status: search_start {round, query, source, service}` | Search spinner — `source`/`service` name the provider (`"web"`/Exa or a registry source like `"hf"`/Hugging Face Hub) |
 | `status: search_done {round, query, source, service, results, duration_ms, sources[]}` | Resolved bar with counts + expandable source links |
@@ -1771,8 +1872,10 @@ one whose catalog is OPEN, so its model list comes from the live router
 marketplace rather than a list this repo picked — plus ANY other
 OpenAI-compatible endpoint — a hosted service, or a model server on the
 user's own machine), runs the whole research pipeline client-side
-(`public/js/drc-research.js` — the same triage → harvest → gap → synthesis
-→ validation flow, ported, deterministic, no function calling), and stores
+(`public/js/drc-research.js` — its own deterministic triage → harvest → gap
+→ synthesis → validation flow, no function calling; the shape the server's
+deleted cascade had — the server side now runs the two-engine dispatch of
+§4.2), and stores
 the sealed project state — chats AND the user's API keys, sealed in one
 client-encrypted blob under a user-held master secret — in the browser's
 own storage (`public/js/drc-store.js`, over the vault's crypto core). The
