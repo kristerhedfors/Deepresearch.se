@@ -194,11 +194,18 @@ loop: the **feature-maintenance** skill.
    engine every tool refusal is a SENTENCE the model reads next round, never a
    throw. Both Berget calls are time-bounded so a hung
    backend can't defeat that.
-3. **Split model routing.** The three JSON planning phases (triage, gap
-   check, validation) always run on the fixed reliable `DEFAULT_MODEL`
-   (Mistral Small); only synthesis (and direct/search-off replies) run on
-   the user's chosen model — regardless of which PROVIDER serves that model.
-   Token accounting, budgeting, and profiles are all split accordingly.
+3. **Split model routing.** Every JSON/structured phase — the standard
+   graph's `generate_queries` and `reflect` nodes, validation, the quiz gate,
+   the orchestrator plan — runs on the fixed reliable `DEFAULT_MODEL`
+   (Mistral Small), through `jsonPhase` and `ctx.jsonModel`; only synthesis,
+   the AGENTIC tool loop, and direct/search-off replies run on the user's
+   chosen model — regardless of which PROVIDER serves that model. The agentic
+   engine is the deliberate half-exception: its planning IS the loop, so the
+   user's model plans its own tool calls there — but its report is still
+   validated on the planning model, and a model that cannot drive the loop
+   falls back to the standard graph, where the split is total. Token
+   accounting, budgeting, and profiles are split accordingly (`jsonTotals`
+   vs `totals`).
 4. **The privacy split.** Se/cure (`/cure`) is the never-cloud tier: the
    server is in NO data path — browser-direct provider calls (or the user's
    own local server), client-side pipeline, sealed browser-local state. On
