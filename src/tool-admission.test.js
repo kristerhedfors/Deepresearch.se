@@ -405,6 +405,16 @@ describe("Swedish and English are admitted alike (invariant 6)", () => {
   });
 });
 
+test("a state missing its plan or its dedup set still answers in words", () => {
+  // Admission is called from inside a tool loop, so a malformed state has to
+  // degrade like everything else on this path: an unbounded ceiling and a fresh
+  // dedup set, never a TypeError out of a function whose contract is a sentence.
+  const bare = /** @type {any} */ ({ capability: null });
+  const r = admitToolCall("web_search", { queries: ["a question"] }, { state: bare, budget: newToolBudget() });
+  assert.equal(r.ok, true);
+  assert.ok(bare.ranQueries.has("a question"));
+});
+
 test("a refusal is always a sentence, never an exception", () => {
   // The property the tool loop depends on: an exception mid-answer costs the
   // whole turn, a sentence is something the model routes around. Swept over
