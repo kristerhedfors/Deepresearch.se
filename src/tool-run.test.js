@@ -233,3 +233,39 @@ test("the wire carries each provider's own endpoint and token field", () => {
 test("the round cap has a default rather than running unbounded", () => {
   assert.ok(DEFAULT_MAX_ROUNDS > 0 && DEFAULT_MAX_ROUNDS <= 16);
 });
+
+test("the wall clock stops the gathering, and the answer is still written", async (t) => {
+  // A round cap bounds how many times the model may ask for tools; it does not
+  // bound TIME, and the two diverge on exactly the requests that need the bound
+  // most — a slow provider, a tool sitting near its own ceiling, a deep tier
+  // that bought more rounds. Passing the deadline must mean "stop gathering",
+  // never "fail": the caller still gets an answer written from what it has.
+  let clock = 1_000;
+  const fetchMock = fakeFetch([assistant(null, [call("c", "no_args", {})])]);
+  const wrapped = async (url, init) => {
+    const body = JSON.parse(init.body);
+    if (!body.tools) return { ok: true, status: 200, json: async () => assistant("Written from what I had.") };
+    clock += 400; // each round burns time
+    return fetchMock(url, init);
+  };
+  t.mock.method(globalThis, "fetch", wrapped);
+  const out = await openAiToolRun({}, {
+    model: "m", userContent: "q", tools: TOOLS, ...WIRE,
+    execTool: async () => "r",
+    maxRounds: 20,
+    deadlineAt: 2_000,
+    now: () => clock,
+  });
+  assert.equal(out.text, "Written from what I had.");
+  assert.equal(out.stoppedBy, "deadline");
+  assert.ok(out.rounds < 20, "the deadline, not the round cap, ended it");
+});
+
+test("no deadline passed means no wall clock, as before", async (t) => {
+  t.mock.method(globalThis, "fetch", fakeFetch([assistant("straight answer")]));
+  const out = await openAiToolRun({}, {
+    model: "m", userContent: "q", tools: TOOLS, ...WIRE, execTool: async () => "r",
+  });
+  assert.equal(out.text, "straight answer");
+  assert.equal(out.stoppedBy, "answered");
+});

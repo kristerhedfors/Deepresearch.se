@@ -818,9 +818,23 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
             // written from 15 of 35 while the reader was shown all 35 beneath
             // it. Undefined (and dropped) on a turn that never synthesized.
             digest_shown: /** @type {any} */ (state).digestShown,
-            complexity: state.complexity,
-            subquestions: state.subquestions,
-            conflicts: state.conflicts,
+            // WHICH ENGINE ANSWERED. Both write it (src/agentic.js,
+            // src/pipeline-standard.js) and until now nothing read it, which
+            // would have made the one question this overhaul exists to answer —
+            // does the tool loop write better answers than the standard graph —
+            // unanswerable from the log that records every answer. The three
+            // fields it replaces here (complexity, subquestions, conflicts)
+            // were triage's and the gap check's, and are permanently absent now
+            // that neither runs; JSON.stringify drops undefined keys, so this
+            // is a swap rather than a widening.
+            pipeline: /** @type {any} */ (state).pipelineId,
+            // How the loop ENDED, when a loop ran: answered, the round cap, the
+            // wall clock, or too many tool errors. A run that was cut short and
+            // one that finished look identical in the answer text, and telling
+            // them apart is the difference between "the loop is worse" and "the
+            // loop did not get to finish".
+            stopped_by: /** @type {any} */ (state).loopStoppedBy,
+            tool_calls: /** @type {any} */ (state).loopToolCalls,
             // The deterministic citation reconciliation and the phase-5
             // verdict (pipeline.js). Both are undefined on a turn that never
             // synthesized/validated, and JSON.stringify drops undefined keys —

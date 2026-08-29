@@ -110,6 +110,8 @@ export function toOpenAiTools(tools) {
  *   maxTokens?: number,
  *   timeoutMs?: number,
  *   onToolUse?: (info: { round: number, name: string, input: any, result: string }) => void,
+ *   deadlineAt?: number,
+ *   now?: () => number,
  *   chatUrl: string,
  *   headers: Record<string, string>,
  *   maxTokensField?: string,
@@ -118,7 +120,7 @@ export function toOpenAiTools(tools) {
 export async function openAiToolRun(env, {
   model, system, userContent, tools, execTool,
   maxRounds = DEFAULT_MAX_ROUNDS, maxTokens = DEFAULT_MAX_TOKENS, timeoutMs = DEFAULT_TIMEOUT_MS,
-  onToolUse, chatUrl, headers, maxTokensField = "max_tokens",
+  onToolUse, chatUrl, headers, maxTokensField = "max_tokens", deadlineAt = 0, now = Date.now,
 }) {
   /** @type {any[]} */
   const messages = [];
@@ -149,7 +151,25 @@ export async function openAiToolRun(env, {
   /** @param {any} payload */
   const withTokens = (payload) => ({ ...payload, [maxTokensField]: maxTokens });
 
+  let stoppedBy = "round_cap";
+  // The rounds actually RUN, which is not the cap: a loop the deadline stopped
+  // after three of twenty reported twenty, and `rounds` is what the caller
+  // records for the run.
+  let ran = 0;
   for (let round = 1; round <= maxRounds; round++) {
+    // THE WALL CLOCK, checked before the round rather than inside it. A round
+    // cap bounds how many times the model may ask for tools; it does not bound
+    // TIME, and the two diverge badly on exactly the requests that need the
+    // bound most — a slow provider, a tool that sits near its own ceiling, a
+    // deep tier that bought more rounds. The deterministic graph re-checks its
+    // deadline before every wave for this reason; a loop that did not would
+    // spend a request's whole budget gathering and leave nothing to write with.
+    //
+    // Passing it means STOP GATHERING, not fail: the break falls into the same
+    // forced tools-off turn the round cap uses, so the caller still gets an
+    // answer written from what was collected.
+    if (deadlineAt && now() >= deadlineAt) { stoppedBy = "deadline"; break; }
+    ran = round;
     const data = await call(withTokens({ model, messages, tools: wireTools, stream: false }));
     const choice = data.choices?.[0] || {};
     const msg = choice.message || {};
@@ -158,6 +178,7 @@ export async function openAiToolRun(env, {
       return {
         text: typeof msg.content === "string" ? msg.content : textOfParts(msg.content),
         usage, rounds: round, toolCalls, stopReason: choice.finish_reason || null,
+        stoppedBy: "answered",
       };
     }
     // The assistant's tool_calls turn goes back NARROWED TO THE THREE FIELDS
@@ -219,8 +240,9 @@ export async function openAiToolRun(env, {
   const finalMsg = finalData.choices?.[0]?.message || {};
   return {
     text: typeof finalMsg.content === "string" ? finalMsg.content : textOfParts(finalMsg.content),
-    usage, rounds: maxRounds, toolCalls,
+    usage, rounds: ran, toolCalls,
     stopReason: finalData.choices?.[0]?.finish_reason || null,
+    stoppedBy,
   };
 }
 

@@ -314,18 +314,57 @@ export function researchNotesSection(entries, notes) {
 }
 
 /**
- * What the loop is asked. The ENRICHED conversation view (lastUser/convText),
- * the same one runSynthesis reads — every context block an enrichment appended
- * for this turn is in it, so a research turn that was given the site's own
- * source, an OWASP reference or a transcribed photo sees them without this
- * module knowing any of them exist.
+ * What the loop is asked.
+ *
+ * THE VIEW MATTERS HERE MORE THAN ANYWHERE ELSE IN THE PIPELINE, because on
+ * this path one model does both jobs the deterministic flow split between two.
+ * src/pipeline.js builds three views of the conversation and its comment on the
+ * third calls the choice "the fourth instance of a bug class this pipeline
+ * keeps paying for". The loop is the fifth, and it is the worst placed: the
+ * planner it replaced read the PLANNING view, and handing the loop the enriched
+ * one instead means the model writes its search queries out of text that
+ * contains a method scaffold.
+ *
+ * Feedback #65 is what that costs. "Tiber style threat intel" arrives with ~945
+ * words of appended TIBER-EU dossier scaffold; planned against that, the first
+ * query goes after the report FORMAT and carries the scaffold's own words with
+ * it. Neither half of the fix — the stripped planning view, and the
+ * subject-vs-format rule in the planner's prompt — reaches a model that was
+ * simply handed the enriched text.
+ *
+ * So the two are separated and LABELLED, which is what the split gave the
+ * deterministic path for free:
+ *
+ *   · the QUESTION and the conversation come from the planning view
+ *     (`planLastUser` / `planConvText`) — enriched minus method prose, so the
+ *     data enrichments a query legitimately comes from (a transcribed photo
+ *     above all) are all still there;
+ *   · the method blocks come back separately, named as instructions for the
+ *     WRITE-UP and explicitly not as something to search for.
+ *
+ * The fall-back to the enriched view is for callers that build a ctx without
+ * the planning pair (the MCP channel's leaner state); it restores today's
+ * behaviour rather than emptying the question.
+ *
  * @param {PipelineCtx} ctx
  * @returns {string}
  */
 export function buildLoopInput(ctx) {
+  const c = /** @type {any} */ (ctx);
+  const question = c.planLastUser || ctx.lastUser;
+  const convText = c.planConvText || ctx.convText;
+  const method = (/** @type {any} */ (ctx.state).methodBlocks || [])
+    .map((/** @type {any} */ b) => String(b || "").trim())
+    .filter(Boolean)
+    .join("\n\n");
   return (
-    `Question (latest user message):\n${ctx.lastUser}\n\n` +
-    `Conversation context:\n${ctx.convText}\n\n` +
+    `Question (latest user message):\n${question}\n\n` +
+    `Conversation context:\n${convText}\n\n` +
+    (method
+      ? "How the ANSWER should be structured. This is a house method for writing the " +
+        "report, not part of the question: do not search for its words, and do not let it " +
+        "narrow what you research.\n" + method + "\n\n"
+      : "") +
     (ctx.shellBlock ? `${ctx.shellBlock}\n\n` : "") +
     "Research this with your tools, then write the complete answer in the same reply."
   );
@@ -513,6 +552,13 @@ export async function runAgenticResearch(ctx, deps = null) {
       execTool,
       maxRounds,
       maxTokens,
+      // The request's own wall clock. The brief states the remaining seconds as
+      // prose, which tells the model to be brief but cannot stop it — a model
+      // that decides to keep looking will keep looking. This is the bound that
+      // actually holds, and passing it means STOP GATHERING rather than fail:
+      // the loop falls into its forced tools-off turn and the report is written
+      // from what was collected.
+      deadlineAt: plan?.deadlineAt || 0,
       onToolUse: (/** @type {any} */ info) => {
         if (typeof info?.round === "number" && info.round > round) round = info.round;
       },
@@ -533,6 +579,13 @@ export async function runAgenticResearch(ctx, deps = null) {
   // phase it can decide to skip, and a whole loop is not skippable — a round is.
   recordPhase(model, "round", Math.round((Date.now() - loopStartedAt) / rounds));
   state.iterations = rounds;
+  // Recorded on the state so the chat_logs row carries it (src/chat.js). A run
+  // that was cut short and one that finished look identical in the answer text,
+  // and telling them apart is the difference between "the loop writes worse
+  // answers" and "the loop did not get to finish" — which is the first question
+  // anyone comparing the two engines will ask.
+  state.loopStoppedBy = result.stoppedBy || (result.toolCalls ? "answered" : "no_tools_used");
+  state.loopToolCalls = calls;
   log.info("chat.agentic_loop", {
     rounds,
     calls,

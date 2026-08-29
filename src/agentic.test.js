@@ -517,3 +517,52 @@ test("with no execution environment bound, the compute tool is not offered", () 
     names(bound).filter((n) => n !== "run_python"),
   );
 });
+
+describe("the loop is asked from the PLANNING view (feedback #65, fifth instance)", () => {
+  const SCAFFOLD =
+    "Structure the dossier as a TIBER-EU threat-intelligence report: Targeting, " +
+    "Scenarios, Threat Actor Profiles, and a Controls Assessment annex.";
+
+  test("method prose is not in the text the model writes queries from", () => {
+    const h = harness({ lastUser: "Tiber style threat intel on Acme AB" });
+    const state = /** @type {any} */ (h.ctx.state);
+    state.methodBlocks = [SCAFFOLD];
+    const c = /** @type {any} */ (h.ctx);
+    c.planLastUser = "Tiber style threat intel on Acme AB";
+    c.planConvText = "user: Tiber style threat intel on Acme AB";
+    c.lastUser = `Tiber style threat intel on Acme AB\n\n${SCAFFOLD}`;
+    c.convText = `user: Tiber style threat intel on Acme AB\n\n${SCAFFOLD}`;
+
+    const input = buildLoopInput(h.ctx);
+    const question = input.slice(0, input.indexOf("How the ANSWER should be structured"));
+    // The half that decides the searches must be free of it. Planned against
+    // the scaffold, the first query goes after the report FORMAT and carries
+    // the scaffold's own words with it — which is exactly what #65 reported.
+    assert.ok(!/TIBER-EU|Controls Assessment/.test(question), "the scaffold leaked into the question");
+    assert.match(question, /Acme AB/, "the subject survived");
+  });
+
+  test("…and comes back, labelled as a house method rather than as a topic", () => {
+    // Stripping it entirely would be the other bug: the scaffold is a real
+    // instruction about the write-up, and the deterministic path got it for
+    // free because synthesis read the enriched view after triage had planned
+    // from the stripped one. One model does both jobs here, so the separation
+    // has to be said out loud.
+    const h = harness({ lastUser: "Tiber style threat intel on Acme AB" });
+    /** @type {any} */ (h.ctx.state).methodBlocks = [SCAFFOLD];
+    const input = buildLoopInput(h.ctx);
+    assert.match(input, /How the ANSWER should be structured/);
+    assert.match(input, /do not search for its words/);
+    assert.ok(input.includes(SCAFFOLD), "the method itself must still reach the model");
+  });
+
+  test("a ctx with no planning view falls back rather than asking an empty question", () => {
+    // The MCP channel builds a leaner state. Falling back to the enriched view
+    // restores the previous behaviour; emptying the question would not.
+    const h = harness({ lastUser: "how does split routing work?" });
+    const c = /** @type {any} */ (h.ctx);
+    delete c.planLastUser;
+    delete c.planConvText;
+    assert.match(buildLoopInput(h.ctx), /how does split routing work\?/);
+  });
+});
