@@ -194,11 +194,32 @@ test("declared tool sets and fallbacks match the modes that have them", () => {
   // back to the fenced FILE:-block convention.
   assert.deepEqual(cap("agent-builder").tools, ["source-read", "sdk-plan", "build-publish"]);
   assert.equal(cap("agent-builder").toolFallback, "file-blocks");
-  // The modes with no tool loop say so. `cyber` is here in the retired
-  // `research` agent's place (2026-08-13): it reaches the OSINT and host/imagery
-  // context blocks by DECLARATION, not by driving a tool loop, so invariant 1
-  // costs it nothing — it runs identically on a model with no native tool use.
-  for (const id of ["cyber", "scholar", "orchestrator", "outrospection", "models", "secure", "under-construction"]) {
+  // THE RESEARCH AGENTS DRIVE THEIR OWN TOOLS (2026-08-29, the owner directive
+  // that made the model-driven path the main one). Each one's classes are its
+  // declared CONTEXT expressed as tools — a class whose block the agent does
+  // not declare would be refused at admission anyway, so declaring it would
+  // only spend the model's rounds discovering that. Hence cyber holds the two
+  // integration classes and scholar does not, and scholar holds `literature`
+  // and cyber does not.
+  const RESEARCH_TOOLBOXES = {
+    scholar: ["web-research", "source-search", "literature", "python"],
+    cyber: ["web-research", "source-search", "host-intel-tools", "street-imagery-tools", "python"],
+    palaeogenomics: ["web-research", "source-search", "literature", "ancient-samples-query", "python"],
+    models: ["web-research", "source-search", "python"],
+    secure: ["web-research", "python"],
+  };
+  for (const [id, tools] of Object.entries(RESEARCH_TOOLBOXES)) {
+    assert.deepEqual(cap(id).tools, tools, `${id}'s toolbox`);
+    // EVERY tool-declaring research agent falls back to the standard four-node
+    // graph, which is plain JSON-mode and streamed calls. That is what makes
+    // the amended invariant 1 safe to state: a loop only some models can run
+    // could not be the main path of a platform that routes to a whole catalog.
+    assert.equal(cap(id).toolFallback, "pipeline", `${id}'s fallback`);
+  }
+  // The modes with no tool loop still say so. `lypning` is the interesting one:
+  // it answers from a single committed dataset and searches nothing, so a
+  // toolbox would only offer it tools every call would be refused.
+  for (const id of ["lypning", "orchestrator", "outrospection", "under-construction"]) {
     assert.deepEqual(cap(id).tools, [], `${id} runs no tool loop`);
     assert.equal(cap(id).toolFallback, "none");
   }
@@ -340,7 +361,9 @@ test("the closed vocabularies stay closed", () => {
     "web-research", "source-search", "literature", "ancient-samples-query",
     "host-intel-tools", "street-imagery-tools", "python",
   ]);
-  assert.deepEqual(TOOL_FALLBACKS, ["read-loop", "file-blocks", "none"]);
+  // `pipeline` joined on 2026-08-29: the research toolbox's fallback, and the
+  // one that lets the main path be a tool loop at all.
+  assert.deepEqual(TOOL_FALLBACKS, ["read-loop", "file-blocks", "pipeline", "none"]);
   // The five gates added on 2026-08-13 are the Cyber agent's: the general
   // research agent used to reach these behaviours by keyword alone, from any
   // turn. They are a domain's now, so they are declared — `host-intel` and
@@ -374,10 +397,21 @@ test("the closed vocabularies stay closed", () => {
     assert.ok(Object.keys(TOOL_CLASSES).includes(cls), `${cls} is a real tool class`);
     for (const r of needs) assert.ok(Object.keys(CAPABILITY_REQUIREMENTS).includes(r), `${cls} needs a real knob`);
   }
-  // The Linux sandbox is one knob whichever way a program reaches it: `shell`
-  // runs a command, `python` runs a program, both in the environment the
-  // request is bound to and neither with anything to run when it is off.
-  assert.deepEqual(IMPLIED_REQUIREMENTS.tools.python, IMPLIED_REQUIREMENTS.tools.shell);
+  // `python` implies NO knob, and `shell` still implies the sandbox. They look
+  // like twins — both run something in the environment the request is bound to
+  // — and pairing them here was the first instinct. It is wrong, and the reason
+  // is the difference between the two gating mechanisms rather than anything
+  // about Python: `requires` decides whether an AGENT is reachable, and the
+  // terminal row of the defaults table may not carry one (an identity that
+  // cannot satisfy it makes the routing walk skip the row and end at nothing).
+  // So a knob here did not gate computing — it made the DEFAULT agent unable to
+  // declare the class at all. Whether there is anywhere to run is a property of
+  // the deployment, which is `needs: "exec"` on the binding: the class is
+  // dropped and the rest of the toolbox survives.
+  assert.deepEqual(IMPLIED_REQUIREMENTS.tools.python, undefined);
+  assert.deepEqual(IMPLIED_REQUIREMENTS.tools.shell, ["sandbox"]);
+  // The other half of that — that the binding carries `needs: "exec"` instead —
+  // is pinned in src/tool-sets.test.js, which is where the bindings live.
   for (const bad of ["answerPhase", "emits", "context", "requires"]) {
     const over = bad === "answerPhase" ? { answerPhase: "vibes" } : { [bad]: ["vibes"] };
     assert.ok(validateCapability(spec({ capability: over })).length, `${bad} must reject an unknown member`);

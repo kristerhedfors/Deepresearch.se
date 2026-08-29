@@ -94,3 +94,30 @@ test("the tool-driving phases read the binding rather than importing the arrays"
   assert.match(code, /toolsForRun\(ctx\.state\.capability, \["source-read"\]/);
   assert.match(code, /toolsForRun\(ctx\.state\.capability, SDK_BUILD_TOOL_CLASSES/);
 });
+
+test("python is gated per DEPLOYMENT, not per agent", () => {
+  // The correction of 2026-08-29. `python` looked like `shell`'s twin — both
+  // run something in the environment the request is bound to — so it was first
+  // given `shell`'s sandbox knob through IMPLIED_REQUIREMENTS. That is the
+  // wrong mechanism, and the failure is specific: `requires` decides whether an
+  // AGENT is reachable, and the terminal row of the defaults table may not
+  // carry one, because an identity that cannot satisfy it makes the routing
+  // walk skip the row and end at nothing. The knob therefore did not gate
+  // computing; it made the DEFAULT agent unable to declare the class at all.
+  //
+  // `needs` is per-deployment, like `snapshot` and `web` beside it: with no
+  // execution environment bound the class is dropped and the rest of the
+  // toolbox survives. Nothing is widened — with nothing bound there is nowhere
+  // to run, and the runner refuses in a sentence rather than computing.
+  assert.equal(TOOL_BINDINGS.python.needs, "exec");
+  const cap = { tools: ["web-research", "python"] };
+  assert.deepEqual(
+    toolsForRun(cap, [], { web: true, exec: false }).map((t) => t.name),
+    toolsForRun({ tools: ["web-research"] }, [], { web: true }).map((t) => t.name),
+    "an unbound environment drops the class and leaves the rest of the toolbox alone",
+  );
+  assert.ok(
+    toolsForRun(cap, [], { web: true, exec: true }).some((t) => t.name === "run_python"),
+    "a bound environment serves it",
+  );
+});

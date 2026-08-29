@@ -62,7 +62,7 @@ import { recordPhase } from "./budget.js";
 import { RESEARCH_TOOL_CLASSES, toolsForRun } from "./tool-sets.js";
 import { PYTHON_TOOLS, RESEARCH_TOOL_CONTEXT, RESEARCH_TOOL_EXTENSION } from "./research-tools.js";
 import { researchBrief } from "./research-brief.js";
-import { runResearchTool } from "./research-tools-run.js";
+import { execEnvironmentFor, runResearchTool } from "./research-tools-run.js";
 import {
   MAX_SPENDING_CALLS,
   admitToolCall,
@@ -218,7 +218,27 @@ export function researchToolsForRun(ctx) {
     const block = RESEARCH_TOOL_CONTEXT[tool];
     if (block) have[block] = have[block] || extensionSliceOn(state, extension);
   }
+  // Is there anywhere to run a program? Asked of the same function that would
+  // run it, so the toolbox and the runner can never disagree — the failure that
+  // avoids is handing a model a compute tool on a deployment with nothing bound
+  // and letting it spend rounds discovering that. With nothing bound the class
+  // is dropped and the rest of the toolbox is unaffected.
+  have.exec = !!execEnvironmentFor(ctx.env, ctx.log, execCtxOf(ctx));
   return toolsForRun(state.capability, RESEARCH_TOOL_CLASSES, have);
+}
+
+/** The two fields execEnvironmentFor reads, lifted off a pipeline ctx. Kept as
+ * its own function so the toolbox's probe and the runner's real call are built
+ * the same way from the same place.
+ * @param {PipelineCtx} ctx */
+function execCtxOf(ctx) {
+  const state = /** @type {any} */ (ctx.state);
+  return {
+    exec: state.exec,
+    execLabel: state.execLabel,
+    identity: state.identity || null,
+    requestId: state.requestId || "",
+  };
 }
 
 /** The step id for the nth tool call of a run. `tool_<n>` rather than a name,

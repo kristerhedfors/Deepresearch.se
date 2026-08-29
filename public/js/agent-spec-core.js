@@ -236,8 +236,17 @@ export const TOOL_CLASSES = {
 
 /** What a model WITHOUT native tool use does instead. A tool-bearing agent must
  * name one that is not "none" — invariant 1's requirement that every mode works
- * across the whole catalog, not only on tool-capable models. */
-export const TOOL_FALLBACKS = ["read-loop", "file-blocks", "none"];
+ * across the whole catalog, not only on tool-capable models.
+ *
+ * `pipeline` (2026-08-29) is the research toolbox's answer, and it is the one
+ * that makes the amended invariant safe to state: an agent that drives its own
+ * research tools falls back to the STANDARD four-node graph
+ * (src/pipeline-standard.js), which is plain JSON-mode and streamed calls and
+ * therefore runs on every model in the catalog. The fallback is not a
+ * degradation to be apologised for — it is what lets the main path be a tool
+ * loop at all, because a loop that only some models can run could not be the
+ * main path of a platform that routes to a whole catalog. */
+export const TOOL_FALLBACKS = ["read-loop", "file-blocks", "pipeline", "none"];
 
 /** Retrieval blocks the platform can inject into a turn's context. */
 export const CONTEXT_BLOCKS = {
@@ -795,11 +804,16 @@ export const IMPLIED_REQUIREMENTS = {
     // request's search policy and the source registry's own division are all
     // re-checked per call in src/tool-admission.js.
     //
-    // `python` is `shell`'s twin and takes its knob for the same reason: both
-    // run a command in the Linux sandbox this request is bound to, and with the
-    // knob off there is no environment to run in (src/research-tools-run.js
-    // runPython refuses in a sentence rather than computing anything).
-    "python": ["sandbox"],
+    // `python` implies NOTHING, and that is a correction rather than a
+    // relaxation. It was `shell`'s twin here on the reasoning that both run a
+    // command in the Linux sandbox — true, but `requires` gates whether an
+    // AGENT is reachable, and the terminal row of the defaults table may not
+    // carry a requirement (an identity that cannot satisfy it makes the walk
+    // skip the row and end at nothing). So the knob on `python` did not gate
+    // computing; it made the default agent unable to declare it at all. The
+    // gate it needed is per-DEPLOYMENT, and that is `needs: "exec"` on the
+    // binding in src/tool-sets.js: with no execution environment bound the
+    // class is dropped and the rest of the toolbox survives.
   },
   context: {
     "source-snapshot": ["developer_mode"],

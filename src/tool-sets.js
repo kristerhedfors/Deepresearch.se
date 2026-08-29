@@ -95,7 +95,22 @@ export const TOOL_BINDINGS = {
   // never learns which knob, which account field, or which service.
   "host-intel-tools": { tools: extensionToolsForBlock("host-intel"), needs: "host-intel" },
   "street-imagery-tools": { tools: extensionToolsForBlock("street-imagery"), needs: "street-imagery" },
-  "python": { tools: PYTHON_TOOLS },
+  // `needs: "exec"` rather than a `requires` on the AGENT, and the distinction
+  // is load-bearing rather than tidy. A `requires` gates whether a mode is
+  // reachable at all; the terminal fallback in the defaults table is the one
+  // row that may not carry one, because a requirement an identity cannot
+  // satisfy makes the routing walk skip it and end at nothing. Putting the
+  // sandbox knob on `python` therefore meant the DEFAULT agent could never
+  // compute — which is not a policy anybody chose, it is a policy that fell out
+  // of picking the wrong mechanism.
+  //
+  // `needs` is the right one: whether an execution environment is bound is a
+  // property of the deployment and the request, exactly like `snapshot` and
+  // `web` above, so the CLASS is dropped and the rest of the toolbox survives.
+  // Nothing is widened by this — with no environment bound there is nothing to
+  // run in, and src/research-tools-run.js's runPython already refuses in a
+  // sentence rather than computing anything.
+  "python": { tools: PYTHON_TOOLS, needs: "exec" },
 };
 
 /**

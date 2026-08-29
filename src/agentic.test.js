@@ -91,6 +91,11 @@ function harness({
   toolResults = {},
   toolThrows = new Set(),
   planOver = {},
+  // An execution environment bound to the request, as the client tier's browser
+  // VM and the local runner both supply one. Default ON so the `python` class
+  // survives the toolbox's `needs: "exec"` gate — a run with nothing bound gets
+  // a smaller toolbox, which is its own test below rather than the baseline.
+  exec = async () => ({ exitCode: 0, stdout: "", stderr: "" }),
 } = {}) {
   const calls = [];
   const state = {
@@ -105,6 +110,8 @@ function harness({
     webSearch,
     capability,
     ext: {},
+    exec,
+    execLabel: "a test runner",
   };
   const ctx = {
     env,
@@ -488,4 +495,25 @@ test("remainingSeconds never goes negative and answers 0 when there is no target
   assert.equal(remainingSeconds({ plan: { budgetMs: 60_000 }, startedAt: Date.now() - 600_000 }), 0);
   const left = remainingSeconds({ plan: { budgetMs: 60_000 }, startedAt: Date.now() });
   assert.ok(left > 55 && left <= 60, `about a minute left, got ${left}`);
+});
+
+test("with no execution environment bound, the compute tool is not offered", () => {
+  // `needs: "exec"` on the binding rather than a knob on the agent: the class
+  // is dropped and the REST of the toolbox survives. The failure this avoids is
+  // handing a model a compute tool on a deployment with nothing to run in and
+  // letting it spend rounds discovering that the hard way.
+  const bound = harness().ctx;
+  // `null`, not `undefined`: a destructuring default fires on undefined, so
+  // passing that would silently keep the environment and pass the test for the
+  // wrong reason.
+  const unbound = harness({ exec: null }).ctx;
+  const names = (c) => researchToolsForRun(c).map((t) => t.name);
+  assert.ok(names(bound).includes("run_python"), "a bound environment serves it");
+  assert.ok(!names(unbound).includes("run_python"), "an unbound one does not");
+  // …and nothing else changed. A dropped class must not shrink the toolbox
+  // around it, or an unbound sandbox would quietly cost the run its research.
+  assert.deepEqual(
+    names(unbound),
+    names(bound).filter((n) => n !== "run_python"),
+  );
 });
