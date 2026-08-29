@@ -142,7 +142,21 @@ test("resolveResearchArgs falls back to the account's defaults", () => {
     model: "house-model",
     agent: "",
     style: "text",
+    // No engine named: src/agentic.js reads "" as "did not choose" and this
+    // channel's own default (the deterministic graph) applies.
+    pipeline: "",
   });
+});
+
+test("the research engine is carried through as asked, and nothing else is", () => {
+  const config = defaultMcpConfig();
+  assert.equal(resolveResearchArgs(config, { pipeline: "agentic" }).pipeline, "agentic");
+  // Not validated here — src/agentic.js owns the closed vocabulary and ignores
+  // anything outside it — but bounded, and never spread in from the raw args:
+  // a key this function does not list is a key a caller cannot set.
+  assert.equal(resolveResearchArgs(config, { pipeline: 7 }).pipeline, "");
+  assert.equal(resolveResearchArgs(config, { pipeline: "x".repeat(200) }).pipeline.length, 32);
+  assert.equal(/** @type {any} */ (resolveResearchArgs(config, { sourceFirst: true })).sourceFirst, undefined);
 });
 
 test("voice style lowers the DEFAULT budget and nothing else", () => {

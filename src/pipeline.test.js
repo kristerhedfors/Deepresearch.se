@@ -748,10 +748,14 @@ describe("the answer-phase dispatch table", () => {
   const table = src.slice(src.indexOf("const ANSWER_PHASE_RUNNERS"), src.indexOf("function answerPhaseFor"));
 
   test("every executor phase in the vocabulary has a runner", () => {
-    // ANSWER_PHASES also declares `research` and `source-research`, which are
-    // deliberately NOT dispatch targets: which of those two a knob-on turn runs
-    // is a per-message decision the hasSource + externalSourceIntent gate owns.
+    // `research` became a dispatch target with the engine split (2026-08-29):
+    // it routes to whichever engine engineFor picked, after the per-message
+    // gates. `source-research` deliberately did NOT — which of the two a
+    // knob-on turn runs is a per-message decision the hasSource +
+    // externalSourceIntent gate owns, and that gate lives inside the research
+    // phase rather than in the registry.
     for (const [phase, fn] of [
+      ["research", "runResearchPhase"],
       ["build", "runSdkBuild"],
       ["workflow", "runOrchestration"],
       ["feed", "runOutrospection"],
@@ -759,8 +763,26 @@ describe("the answer-phase dispatch table", () => {
     ]) {
       assert.match(table, new RegExp(`\\b${phase}: ${fn},`), `${phase} → ${fn}`);
     }
-    assert.ok(!/\bresearch:/.test(table), "research is not a dispatch target");
-    assert.ok(!/\bsource-research:/.test(table), "source-research is not a dispatch target");
+    assert.ok(!table.includes("source-research:"), "source-research is not a dispatch target");
+    // …and the fall-through calls the SAME function, so an unreadable registry
+    // and the MCP channel (which resolve no phase at all) take the identical
+    // path a dispatched `research` turn takes.
+    assert.match(src, /return runResearchPhase\(ctx\);/);
+  });
+
+  test("the research phase routes to an engine, and never falls out of the router", () => {
+    // The three properties the router has to keep. Read off the source because
+    // running it needs a provider: the engine is chosen by src/agentic.js (not
+    // re-decided here), both names have a branch, and the deterministic flow
+    // below is still reachable — a request must always be answered by
+    // something (invariant 2).
+    const phase = src.slice(src.indexOf("async function runResearchPhase"), src.indexOf("async function runFeedbackCapture"));
+    assert.match(phase, /const engine = engineFor\(ctx\);/);
+    assert.match(phase, /if \(engine === "agentic"\) return runAgenticResearch\(ctx\);/);
+    assert.match(phase, /if \(engine === "standard"\) return runStandardResearch\(ctx\);/);
+    // The quiz keeps the deterministic flow: runQuizGeneration replaces
+    // synthesis outright and neither engine has a seat for it.
+    assert.match(phase, /if \(!quizReq\) \{/);
   });
 
   test("the mode booleans survive as the fail-soft fallback", () => {

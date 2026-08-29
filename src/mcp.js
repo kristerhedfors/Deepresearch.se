@@ -243,6 +243,19 @@ export const DEEP_RESEARCH_TOOL = {
           "use, or one that does not exist, falls back to the default rather " +
           "than failing the call.",
       },
+      pipeline: {
+        type: "string",
+        enum: ["standard", "agentic"],
+        description:
+          "Which research engine runs. `standard` (the default here) is the " +
+          "deterministic graph: the same question plans the same angles and " +
+          "numbers its sources the same way, run after run. `agentic` lets the " +
+          "answer model choose its own tools and their order, which is often " +
+          "better and is never reproducible — the [n] numbering depends on the " +
+          "order the model happened to call things in. Ask for `agentic` when " +
+          "you want the best answer; leave it alone when you are comparing runs.",
+        default: "standard",
+      },
       style: {
         type: "string",
         enum: ["text", "voice"],
@@ -1253,7 +1266,7 @@ async function dispatchToolCall(parsed, env, log, identity, ctx, requestId, conf
  * @param {unknown} id the JSON-RPC request id
  * @param {string} name the tool name, for the log lines
  * @param {{ time_budget_s: number, web_search: boolean, model: string | undefined,
- *   agent: string, style: "text"|"voice", require_agent?: boolean }} args the EFFECTIVE arguments
+ *   agent: string, style: "text"|"voice", require_agent?: boolean, pipeline?: string }} args the EFFECTIVE arguments
  * @param {string} question the question as it will reach the model
  * @param {ProgressSink} [progress]
  * @returns {Promise<Response>}
@@ -1391,7 +1404,7 @@ function errText(err) {
  * @param {Identity} identity
  * @param {string} requestId
  * @param {{ time_budget_s: number, web_search: boolean, model: string | undefined,
- *   agent: string, style: "text"|"voice", require_agent?: boolean }} args
+ *   agent: string, style: "text"|"voice", require_agent?: boolean, pipeline?: string }} args
  *   the EFFECTIVE arguments — the caller's, already reconciled with this
  *   account's defaults and override policy (src/mcp-config.js). `require_agent`
  *   turns the agent's fail-soft miss into a refusal; see the guard below.
@@ -1412,6 +1425,7 @@ async function runDeepResearch(env, log, identity, requestId, args, question, pr
     { adminDefaultModelValid, DEFAULT_MODEL },
     { listChatModels },
     { runPipeline },
+    { normalizeResearchEngine },
     { recordUsage, recordModelUsage },
     { summarizeSpend, exaCost, spendByModel, denseSpend },
     { newRetrievalSpend },
@@ -1421,6 +1435,7 @@ async function runDeepResearch(env, log, identity, requestId, args, question, pr
     import("./berget.js"),
     import("./providers.js"),
     import("./pipeline.js"),
+    import("./agentic.js"),
     import("./quota.js"),
     import("./billing.js"),
     import("./dense-rag.js"),
@@ -1546,6 +1561,26 @@ async function runDeepResearch(env, log, identity, requestId, args, question, pr
   // platform about itself and matches the comparison arm. Same flag shape as the
   // /help escape hatch beside it.
   if (args.require_agent) /** @type {any} */ (state).sourceFirst = true;
+
+  // WHICH ENGINE, and why this channel's default differs from the app's.
+  //
+  // /api/chat defaults to the model-driven loop; this surface pins the
+  // DETERMINISTIC graph unless the caller or the addressed agent asked
+  // otherwise. The reason is reproducibility, and it is specific: the model
+  // chooses its own call order in the loop, the source registry is numbered in
+  // absorption order, so the same question answered twice cites [3] for two
+  // different papers. Two things depend on that not happening — the
+  // ground-truth battery (tests/dr-eval.mjs) scores answers against published
+  // gold ids over exactly this endpoint, and a frozen replay published at
+  // DeepResearch.Se/cure/<slug> is a run someone can come back to. Neither
+  // survives a numbering that moves.
+  //
+  // The order below is engineFor's own, with `standard` in the platform's seat:
+  // the argument, then the agent's declaration, then this channel's default.
+  /** @type {any} */ (state).researchEngine =
+    normalizeResearchEngine(args.pipeline) ||
+    normalizeResearchEngine(agentPick?.capability?.routing?.strategy) ||
+    "standard";
 
   // Collect the pipeline's streamed text deltas (and honor discard_text, the
   // post-validation reset) into one string — the MCP result is non-streaming.

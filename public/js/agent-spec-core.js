@@ -786,6 +786,20 @@ export const IMPLIED_REQUIREMENTS = {
     "sdk-plan": ["developer_mode"],
     "build-publish": ["developer_mode"],
     "shell": ["sandbox"],
+    // The research toolbox implies exactly ONE knob, and the four search
+    // classes deliberately imply none: they are the ordinary research turn the
+    // default agent already runs, reached here by a model choosing the order
+    // instead of a planner choosing it, so requiring a knob for them would put
+    // the platform's own default behind a grant. What the model may actually
+    // REACH through them is unchanged — the account's extension knobs, the
+    // request's search policy and the source registry's own division are all
+    // re-checked per call in src/tool-admission.js.
+    //
+    // `python` is `shell`'s twin and takes its knob for the same reason: both
+    // run a command in the Linux sandbox this request is bound to, and with the
+    // knob off there is no environment to run in (src/research-tools-run.js
+    // runPython refuses in a sentence rather than computing anything).
+    "python": ["sandbox"],
   },
   context: {
     "source-snapshot": ["developer_mode"],

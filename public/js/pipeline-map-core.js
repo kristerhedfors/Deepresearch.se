@@ -92,6 +92,24 @@ export const PIPELINE_NODES = [
   { id: "gap", label: "Gap checks", sub: "until covered", group: "research", kind: "loop", layer: 15, lane: 0,
     note: "Each round asks what is still missing and searches again — the loop that keeps lighting up." },
   { id: "contents", label: "Full pages", sub: "top sources", group: "research", kind: "step", layer: 16, lane: 0 },
+  // ---- the two ENGINES the research phase routes between (2026-08-29) ------
+  // src/pipeline.js runResearchPhase hands the turn to one of these; the nodes
+  // above are the deterministic flow they replaced and stay drawn until it is
+  // retired, so a run on either engine is legible on the same map. Both sit in
+  // the branch column: they are alternatives to the spine, not steps along it.
+  //
+  // Two of the standard graph's four nodes get NO box of their own, and that is
+  // this table's honesty rule rather than an omission. Its generate_queries
+  // node emits the `plan` step id and is the same thing `Triage` already draws
+  // — one JSON call on the fixed model that decides the angles — and its
+  // finalize node IS runSynthesis followed by runValidation, which are the two
+  // boxes below. A duplicate box for either would be a box no signal can ever
+  // light, which reads as "this never happens" (pinned by the "every node can
+  // be lit by some observable signal" test).
+  { id: "loop", label: "Research loop", sub: "the model's own", group: "research", kind: "loop", layer: 13, lane: 1,
+    note: "The answer model picks its own tools and their order, one step per call, until it stops or a bound stops it — then the report is written by the same synthesis step every other run uses." },
+  { id: "reflect", label: "Reflect", sub: "states the gap", group: "research", kind: "loop", layer: 14, lane: 1,
+    note: "The standard graph's loop edge: each round names what is still missing, in words, and searches again for it." },
   // ---- the answer --------------------------------------------------------
   { id: "synth", label: "Synthesis", sub: "streamed answer", group: "answer", kind: "step", layer: 17, lane: 0 },
   { id: "validate", label: "Validation", sub: "fact-check", group: "answer", kind: "step", layer: 18, lane: 0 },
@@ -131,6 +149,18 @@ export const PIPELINE_EDGES = [
   { from: "triage", to: "direct", label: "direct", weak: true },
   { from: "triage", to: "clarify", label: "clarify", weak: true },
   { from: "triage", to: "search", label: "research" },
+  // The engine router. Both edges leave `triage` because both engines run in
+  // its place — the loop instead of a plan, the reflect round instead of a gap
+  // check — and both rejoin at the writer, which neither of them replaces.
+  { from: "triage", to: "loop", label: "model-driven", weak: true },
+  { from: "loop", to: "loop", back: true },
+  { from: "loop", to: "synth", weak: true },
+  { from: "search", to: "reflect", label: "reflect", weak: true },
+  // No label: it is a CROSS-LANE edge, so a label would move to the target
+  // node's tooltip (branchCondition) and read there as a second condition on
+  // reaching the search wave, which it is not — it is the same wave, again. The
+  // round count the node already draws (×N) is the honest version of it.
+  { from: "reflect", to: "search", back: true },
   { from: "search", to: "digest" },
   { from: "digest", to: "fanout" },
   { from: "fanout", to: "gap" },
@@ -181,6 +211,8 @@ export const IMPLIED_UPSTREAM = {
   gap: ["search"],
   contents: ["gap"],
   synth: ["search"],
+  loop: ["mode"],
+  reflect: ["search"],
 };
 
 /**
@@ -215,14 +247,34 @@ export const CLIENT_NODES = ["compose", "payload"];
  */
 export const STREAM_OPEN_NODES = ["post", "route", "checks", "quota", "stream"];
 
-/** Step id → node id. Ids not listed here (or below) are ignored. */
+/**
+ * Step id → node id. Ids matched by a PATTERN (a numbered loop round) are
+ * handled in nodesForStatus; anything neither names falls back generically.
+ *
+ * The ENRICHMENT ids are listed one by one on purpose even though they all
+ * reach the same node: `enrich` is where a run's pre-model context is added,
+ * every entry of src/enrichment.js's registry emits its own descriptor id as a
+ * step id, and the registry is open-ended by design (invariant 7 — adding an
+ * integration touches no core file). Naming them keeps the fallback below a
+ * genuine last resort rather than the enrichment pass's normal route.
+ */
 const STEP_NODES = {
   plan: "triage",
   introspect: "enrich",
   geocode: "enrich",
   shodan: "enrich",
   maps: "enrich",
+  image_read: "enrich",
+  owasp: "enrich",
+  models: "enrich",
+  aadr: "enrich",
+  scholar: "enrich",
+  scholar_profile: "enrich",
+  person_research: "enrich",
+  entity_research: "enrich",
   source: "source",
+  bcont: "source",
+  loop: "loop",
   digest: "digest",
   fanout: "fanout",
   contents: "contents",
@@ -232,6 +284,37 @@ const STEP_NODES = {
   validate: "validate",
   outrospect: "executor",
 };
+
+/**
+ * Step ids that are one ROUND of a loop node, as `<prefix><n>`.
+ * @type {Array<[RegExp, string]>}
+ */
+const LOOP_STEP_PATTERNS = [
+  [/^gap\d+$/, "gap"],
+  [/^reflect\d+$/, "reflect"],
+  // src/agentic.js loopStepId: `tool_<n>`, one pair per tool call. A NUMBER
+  // rather than the tool's name, because a tool name is a service name here
+  // (invariant 7) and the SSE vocabulary must not carry one.
+  [/^tool_\d+$/, "loop"],
+  [/^agent_/, "executor"],
+];
+
+/**
+ * The node an unrecognised STEP id lights.
+ *
+ * The forward-compatibility rule (an unmapped event is ignored) still holds for
+ * the event VOCABULARY — an event type this file does not know changes nothing.
+ * A step id is different, and the difference is what this constant fixes: the
+ * step ids between `mode` and `synth` all belong to whichever engine ran, and
+ * engines are now pluggable. Ignoring an unknown one meant a future engine's
+ * run drew a map that went dark for its entire research phase — which reads as
+ * "nothing happened", the one thing a map built to be honest must not say.
+ *
+ * The research loop is the right generic home for it: it is the node whose
+ * meaning is "the engine is working", it counts rounds, and it is where every
+ * unmapped id actually comes from now that the enrichment ids above are named.
+ */
+const FALLBACK_STEP_NODE = "loop";
 
 /**
  * Triage/route outcome (`route` on the `plan` step_done — src/pipeline.js) →
@@ -269,12 +352,11 @@ export function nodesForStatus(status) {
   if (type === "done") return { enter: ["done"], exit: ["done"] };
   if (type !== "step_start" && type !== "step_done") return none;
   const id = String(status.id || "");
-  const node = /^gap\d+$/.test(id)
-    ? "gap"
-    : /^agent_/.test(id)
-      ? "executor"
-      : /** @type {Record<string,string>} */ (STEP_NODES)[id];
-  if (!node) return none;
+  if (!id) return none;
+  const node =
+    /** @type {Record<string,string>} */ (STEP_NODES)[id] ||
+    LOOP_STEP_PATTERNS.find(([re]) => re.test(id))?.[1] ||
+    FALLBACK_STEP_NODE;
   if (type === "step_start") return { enter: [node], exit: [] };
   // Finishing only LEAVES the node — the matching step_start already counted the
   // visit, and counting it again turned every ordinary start/done pair into two
@@ -384,22 +466,29 @@ export function layoutPipelineMap(nodes = PIPELINE_NODES, edges = PIPELINE_EDGES
     const a = byId.get(e.from);
     const b = byId.get(e.to);
     if (!a || !b) continue;
-    // Three routings, so no edge ever crosses a box:
+    // Four routings, so no edge ever crosses a box:
     //   straight — same lane, next row down: a plain drop, side to side.
+    //   self     — a node that loops on ITSELF (the research loop's own edge):
+    //              out of the right edge and straight back into it, a row's
+    //              third of a bow. Without this case it fell through to the
+    //              branch routing below, which drew it from the middle of the
+    //              box back to its own left edge — a curve through the label.
     //   loop     — same lane, going back UP: leaves and arrives on the RIGHT
     //              edge and bows clear of the spine (routing it to the left edge
     //              sent the gap→search loop diagonally across three boxes).
     //   branch   — across lanes: leaves the near side, arrives at the near side.
-    const straight = a.lane === b.lane && b.y > a.y;
-    const loop = a.lane === b.lane && b.y < a.y;
+    const self = a === b;
+    const straight = !self && a.lane === b.lane && b.y > a.y;
+    const loop = self || (a.lane === b.lane && b.y < a.y);
     routed.push({
       ...e,
       x1: straight ? a.x + NODE_W / 2 : loop ? a.x + NODE_W : a.x + (b.lane > a.lane ? NODE_W : NODE_W / 2),
-      y1: straight ? a.y + NODE_H : a.y + NODE_H / 2,
+      y1: straight ? a.y + NODE_H : self ? a.y + NODE_H / 3 : a.y + NODE_H / 2,
       x2: straight ? b.x + NODE_W / 2 : loop ? b.x + NODE_W : b.x + (b.lane < a.lane ? NODE_W : 0),
-      y2: straight ? b.y : b.y + NODE_H / 2,
+      y2: straight ? b.y : self ? b.y + (NODE_H * 2) / 3 : b.y + NODE_H / 2,
       straight,
       loop,
+      self,
     });
   }
   return { width, height, nodes: placed, edges: routed };

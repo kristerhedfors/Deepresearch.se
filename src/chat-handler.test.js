@@ -234,11 +234,22 @@ describe("handleChat — split model routing (invariant 3)", () => {
   test("the JSON planning phases run on DEFAULT_MODEL even when the answer model differs", async () => {
     const { stub, text } = await runChat({ model: SECOND_MODEL, web_search: true });
     const completions = stub.matching(/chat\/completions/).map((r) => JSON.parse(r.body || "{}"));
-    const planning = completions.filter((b) => b.stream !== true);
+    // THREE call shapes now, not two. "not streamed" stopped meaning "a JSON
+    // planning phase" when the research loop shipped (src/agentic.js): the loop
+    // is a non-streamed call that carries `tools` and runs on the ANSWER model,
+    // because it IS the answer phase — the model doing its own research — and
+    // not a planner. Classifying it by the tool block rather than by the stream
+    // flag is what keeps this test measuring invariant 3 instead of measuring
+    // which engine happened to run.
+    const planning = completions.filter((b) => b.stream !== true && !b.tools);
+    const loop = completions.filter((b) => b.stream !== true && b.tools);
     const streamed = completions.filter((b) => b.stream === true);
     assert.ok(planning.length > 0, "at least one JSON planning call was made");
     for (const p of planning) {
       assert.equal(p.model, DEFAULT_MODEL, "every planning phase pins the fixed reliable model");
+    }
+    for (const l of loop) {
+      assert.equal(l.model, SECOND_MODEL, "the research loop runs on the user's pick, like synthesis");
     }
     assert.ok(streamed.length > 0, "synthesis streamed");
     for (const s of streamed) assert.equal(s.model, SECOND_MODEL, "synthesis uses the user's pick");
@@ -590,6 +601,13 @@ describe("handleChat — the dense-retrieval spend reaches the ledger", () => {
         // Names arXiv, so the source's intent fires and it LEADS the turn.
         messages: [{ role: "user", content: "what do recent arxiv papers say about llm agent planning" }],
         web_search: false,
+        // Pinned to the DETERMINISTIC graph. What is under test is the BILLING
+        // plumbing of a search wave — that a dense leg's reranker and embedder
+        // tokens reach the ledger — and a wave has to actually run for there to
+        // be anything to bill. On the model-driven engine whether a wave runs
+        // is the model's choice, and this file's fake provider issues no tool
+        // call, so the run would be measuring the fake rather than the ledger.
+        research_engine: "standard",
       }),
       env,
       fakeLog(),

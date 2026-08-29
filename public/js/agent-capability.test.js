@@ -35,6 +35,8 @@ import {
   CHAT_MODE_IDS,
   CONTEXT_BLOCKS,
   GATE_IDS,
+  IMPLIED_REQUIREMENTS,
+  RESEARCH_STRATEGIES,
   MODE_THEMES,
   requirementsFor,
   resolveUntrustedAgent,
@@ -361,6 +363,21 @@ test("the closed vocabularies stay closed", () => {
   }
   assert.ok(Object.keys(CAPABILITY_EVENTS).includes("agent_update"));
   assert.ok(Object.keys(CAPABILITY_REQUIREMENTS).includes("developer_mode"));
+  assert.deepEqual(RESEARCH_STRATEGIES, ["auto", "agentic", "standard"]);
+  assert.ok(validateCapability(spec({ capability: { routing: { strategy: "vibes" } } })).length);
+  assert.deepEqual(validateCapability(spec({ capability: { routing: { strategy: "agentic" } } })), []);
+  // Every implied requirement names a class that exists and a knob that exists.
+  // The drift this prevents: a class added to TOOL_CLASSES and bound in
+  // src/tool-sets.js while its knob row keeps the OLD class's name, so an agent
+  // declaring it needs nothing and reaches everything.
+  for (const [cls, needs] of Object.entries(IMPLIED_REQUIREMENTS.tools)) {
+    assert.ok(Object.keys(TOOL_CLASSES).includes(cls), `${cls} is a real tool class`);
+    for (const r of needs) assert.ok(Object.keys(CAPABILITY_REQUIREMENTS).includes(r), `${cls} needs a real knob`);
+  }
+  // The Linux sandbox is one knob whichever way a program reaches it: `shell`
+  // runs a command, `python` runs a program, both in the environment the
+  // request is bound to and neither with anything to run when it is off.
+  assert.deepEqual(IMPLIED_REQUIREMENTS.tools.python, IMPLIED_REQUIREMENTS.tools.shell);
   for (const bad of ["answerPhase", "emits", "context", "requires"]) {
     const over = bad === "answerPhase" ? { answerPhase: "vibes" } : { [bad]: ["vibes"] };
     assert.ok(validateCapability(spec({ capability: over })).length, `${bad} must reject an unknown member`);

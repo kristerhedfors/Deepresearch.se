@@ -137,6 +137,15 @@ import { capBound, capSearch } from "./agent-spec.js";
 import { toolsForRun } from "./tool-sets.js";
 import { runOrchestration } from "./orchestrator.js";
 import { runOutrospection } from "./outrospect.js";
+// The two RESEARCH ENGINES this module routes between. Both import back into
+// this file for the retrieval helpers and the writer, so the imports are
+// circular by design — safe because every binding used across the cycle is an
+// `export function` declaration (hoisted), and nothing here reads one at module
+// scope. A `const` bag of them built at module level would depend on which side
+// the loader entered first, which is why both engines resolve their own
+// collaborators per call instead.
+import { engineFor, runAgenticResearch } from "./agentic.js";
+import { runStandardResearch } from "./pipeline-standard.js";
 import { spaceIntent, sceneById } from "./space.js";
 import { demoIntent } from "./demos.js";
 import { anthropicConfigured, anthropicToolRun, isAnthropicModel } from "./anthropic.js";
@@ -222,6 +231,7 @@ import {
  *   conflicts?: string[],
  *   knowledgeGaps?: string[],
  *   pipelineId?: string,
+ *   researchEngine?: string | null,
  *   notes?: object[],
  *   notesCursor?: number,
  *   fetchedUrls?: Set<string>,
@@ -330,15 +340,24 @@ function demoSurfaces(text, prior = "") {
 //              EN+SV gate and answered from the outward feed of what everyone
 //              ELSE shipped. The retrieval IS its triage; no web search runs.
 //
-// The remaining phases (`research`, `source-research`, `direct`) are NOT here:
-// they are decided per MESSAGE further down, by the hasSource +
-// externalSourceIntent gate and by triage, not per request.
+// `source-research` is still NOT here: whether a knob-on turn reads this site's
+// own source or searches the web is a per-MESSAGE decision the hasSource +
+// externalSourceIntent gate owns, and it lives inside the research phase below.
+//
+// `research` IS here, as of the engine split (2026-08-29) — it is the phase
+// every ordinary agent declares, and it became a row rather than a fall-through
+// because it now ROUTES: runResearchPhase settles the per-message gates and
+// then hands the turn to whichever engine engineFor picked. Dispatching it here
+// changes no behaviour (the fall-through at the end of runPipeline calls the
+// same function, which is what an unreadable registry and the MCP channel
+// still take) and it keeps one statement of what the phase is.
 //
 // Every one is gated in chat.js on the request's chat mode and is fully
 // fail-soft inside — a dead plan degrades to a single-agent workflow, an empty
 // feed answers honestly, a failed publish degrades to the answer text.
 /** @type {Record<string, (ctx: PipelineCtx) => Promise<any>>} */
 const ANSWER_PHASE_RUNNERS = {
+  research: runResearchPhase,
   build: runSdkBuild,
   workflow: runOrchestration,
   feed: runOutrospection,
@@ -590,8 +609,6 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
   // each agent has to opt into (owner directive, 2026-07-26).
   if (feedbackReq) return runFeedbackCapture(ctx);
 
-  let quizReq = state.quizzes ? quizIntent(ctx.cleanLastUser) : null;
-
   // ---- executor answer phases (the registry dispatch) --------------------
   //
   // Three chat modes replace the whole research flow with an executor of their
@@ -609,6 +626,30 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
   if (phase && ANSWER_PHASE_RUNNERS[phase]) {
     return ANSWER_PHASE_RUNNERS[phase](ctx);
   }
+
+  // Nothing was dispatched: the registry could not be read, the channel builds
+  // no capability (the MCP one), or the agent declared `source-research`, whose
+  // per-message gate lives inside the research phase. All three are research
+  // turns until the gates below say otherwise.
+  return runResearchPhase(ctx);
+}
+
+/**
+ * The `research` ANSWER PHASE: settle the per-message gates, then run whichever
+ * engine this request resolved to.
+ *
+ * The gates come first and are not the engines' business. Each of them decides
+ * that this MESSAGE is not a research turn at all — the knob left nothing
+ * external to consult, the site's own source is already in context and the user
+ * did not ask for outside material, the user asked for a quiz — and each is a
+ * per-message decision, which is why they cannot live in the registry beside
+ * the per-request phase. Only what survives them is handed to an engine.
+ *
+ * @param {PipelineCtx} ctx
+ */
+async function runResearchPhase(ctx) {
+  const { state } = ctx;
+  let quizReq = state.quizzes ? quizIntent(ctx.cleanLastUser) : null;
 
   // Web search (Exa) off is the knob's ONLY effect — NOT "no research". Depth
   // still governs how deep we go over whatever sources ARE available (owner
@@ -690,6 +731,31 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
   ) {
     if (quizReq && (await runQuizGeneration(ctx, quizReq))) return;
     return runSourceResearch(ctx);
+  }
+
+  // ---- the ENGINE router --------------------------------------------------
+  //
+  // What survives the gates above is a research turn, and WHICH engine runs it
+  // is src/agentic.js's decision (engineFor): what the request asked for, else
+  // what the answering agent declared, else the platform's own choice — which
+  // is the model-driven loop wherever the model can drive one and the
+  // deterministic graph everywhere else. Nothing has streamed at this point, so
+  // both engines may still degrade into each other; that is exactly what
+  // runAgenticResearch's own fallbacks do.
+  //
+  // A QUIZ turn is the one research turn neither engine can finish, so it keeps
+  // the deterministic flow below. runQuizGeneration REPLACES synthesis and
+  // validation — the answer is a quiz object, not a report — and neither engine
+  // has a seat for that: the loop's contract is that its text never streams and
+  // the writer writes, and the standard graph's finalize node IS runSynthesis.
+  // Routing a "quiz me on X" through either would answer it with an essay.
+  if (!quizReq) {
+    const engine = engineFor(ctx);
+    if (engine === "agentic") return runAgenticResearch(ctx);
+    if (engine === "standard") return runStandardResearch(ctx);
+    // No third name resolves today. If one ever does, the deterministic flow
+    // below is what runs it — a request must never fall out of the router with
+    // nothing having answered it (invariant 2).
   }
 
   const decision = await runTriage(ctx);

@@ -104,19 +104,27 @@ export const MAX_NOTE_CHARS = 1500;
 export const MAX_NOTES_BLOCK_CHARS = 12_000;
 
 /**
- * Is the agentic engine the platform's OWN default yet?
+ * Is the agentic engine the platform's OWN default?
  *
- * `false`, deliberately, and this constant is the whole of the first
- * measurement gate. The engine ships reachable — a request may ask for it, an
- * agent may declare it — but the platform does not choose it for anyone until
- * the ground-truth battery has been run paired against the standard graph on
- * all three published sets, and the loss breakdown says synthesis_miss fell
- * without retrieval_miss rising (docs/DR-EVAL-FINDINGS.md, the
- * ground-truth-eval skill). Flipping this is that finding's commit, and the
- * per-agent flip (`capability.routing.strategy`) comes after it, `scholar` last
- * because it is the terminal fallback for every unrouted request.
+ * `true` — the model-driven path is the MAIN path (owner instruction,
+ * 2026-08-29). It is the platform's choice, not its only one: a request may
+ * still ask for the standard graph (`research_engine`), an agent may still
+ * declare it (`capability.routing.strategy`), and `/mcp` pins it, because a
+ * model-chosen call order makes the [n] numbering non-reproducible and the
+ * ground-truth battery and the published frozen replays both depend on that
+ * reproducibility.
+ *
+ * What makes a default this strong safe is that it is not a floor. engineFor
+ * below falls back to the standard graph for any model that cannot drive tools
+ * and for any run whose resolved toolbox is empty, and those two checks are
+ * what keep every model in the catalog working — invariant 1's requirement,
+ * met by a FALLBACK rather than by a ban. The measurement is still owed: the
+ * ground-truth battery run paired against the standard graph, with the loss
+ * breakdown saying whether synthesis_miss fell without retrieval_miss rising
+ * (docs/DR-EVAL-FINDINGS.md, the ground-truth-eval skill). If it says the
+ * standard graph wins, that is a finding and this constant is where it lands.
  */
-export const AGENTIC_BY_DEFAULT = false;
+export const AGENTIC_BY_DEFAULT = true;
 
 /** The engines a request or a spec may name. Mirrors agent-spec-core.js's
  * RESEARCH_STRATEGIES minus `auto`, which is a declaration to NOT choose. */
@@ -143,15 +151,24 @@ export function normalizeResearchEngine(value) {
  *   1. what the REQUEST asked for (`research_engine`, already normalized onto
  *      the state by the channel that parsed it);
  *   2. what the ANSWERING AGENT declared (`capability.routing.strategy`);
- *   3. the platform's own choice — which is the standard graph until the
- *      measurement gate flips AGENTIC_BY_DEFAULT;
+ *   3. the platform's own choice (AGENTIC_BY_DEFAULT), narrowed by the two
+ *      facts that decide whether this run CAN drive a loop at all: a model with
+ *      a tool dialect, and a non-empty resolved toolbox;
  *   4. the standard graph.
+ *
+ * Steps 3 and 4 together are what keep every model in the catalog working. The
+ * platform's default is the loop, and the answer for a model that cannot drive
+ * one is the deterministic graph — not a refusal, and not a loop the model will
+ * fail silently in. This is the amended invariant 1's `toolFallback` in the
+ * routing layer: the fallback, never a ban, is what makes a tool-driven default
+ * safe across a catalog nobody controls.
  *
  * A request outranking a spec is the same direction every other knob takes
  * here: a declaration narrows what an agent does by default, and the caller
- * still chooses. Neither can widen anything — an "agentic" answer with no tool
- * dialect or an empty toolbox lands on the standard graph inside
- * runAgenticResearch, which is where that fact is actually knowable.
+ * still chooses. Neither can widen anything — an "agentic" answer ASKED for on
+ * a model with no tool dialect, or with an empty toolbox, still lands on the
+ * standard graph inside runAgenticResearch, which re-checks both before it
+ * calls anything.
  *
  * @param {PipelineCtx} ctx
  * @returns {"agentic" | "standard"}
@@ -163,7 +180,10 @@ export function engineFor(ctx) {
   const declared = normalizeResearchEngine(state.capability?.routing?.strategy);
   if (declared) return declared;
   if (!AGENTIC_BY_DEFAULT) return "standard";
-  if (!canDriveTools(ctx.env, ctx.model, { hasImages: ctx.imageParts.length > 0 })) return "standard";
+  // `?.length` rather than `.length`: this runs on the request path and must
+  // answer for any ctx it is handed, including one a channel built without
+  // image parts. A router that throws costs the whole turn (invariant 2).
+  if (!canDriveTools(ctx.env, ctx.model, { hasImages: (ctx.imageParts?.length || 0) > 0 })) return "standard";
   return researchToolsForRun(ctx).length ? "agentic" : "standard";
 }
 
@@ -321,7 +341,7 @@ export async function runAgenticResearch(ctx, deps = null) {
   // any model call and before anything is emitted. This is `toolFallback:
   // "pipeline"` in the amended invariant 1 — the fallback, not the ban, is what
   // keeps every mode working across the whole catalog.
-  if (!canDriveTools(env, model, { hasImages: ctx.imageParts.length > 0 })) {
+  if (!canDriveTools(env, model, { hasImages: (ctx.imageParts?.length || 0) > 0 })) {
     log.info("chat.agentic_fallback", { reason: "no_tool_dialect", model });
     return d.runStandardResearch(ctx);
   }
@@ -395,7 +415,30 @@ export async function runAgenticResearch(ctx, deps = null) {
     ctx.step(id, headline);
     rctx.round = round;
     const startedAt = Date.now();
-    const result = await d.runResearchTool(env, log, name, admission.args, rctx);
+    /** @type {import('./research-tools-run.js').ResearchToolResult} */
+    let result;
+    try {
+      result = await d.runResearchTool(env, log, name, admission.args, rctx);
+    } catch (/** @type {any} */ err) {
+      // The rung BELOW the runner's own catch, which already turns a failed
+      // lookup into a sentence. This one is for the failure that gets past it —
+      // a throw out of the catch, a dep the unit suite swapped in — and it is
+      // not redundant with the loop's wire catching it, because the wire's
+      // catch produces a string and nothing else. Two things have to happen:
+      // the model reads a sentence, AND the error is COUNTED, so four broken
+      // calls stop the run instead of costing it four whole conversation
+      // re-sends on their way to the same failure.
+      log.warn("chat.tool_threw", { tool: name, error: err?.message || String(err) });
+      result = {
+        text:
+          `The ${name} tool failed and returned nothing. This is a fault on this server, not something ` +
+          `your arguments caused. Use a different tool, or write the answer from what you already have and ` +
+          `say what could not be checked.`,
+        isError: true,
+        found: false,
+        sourcesAdded: 0,
+      };
+    }
     // budget.js PRIORS_MS carries a `tool` row for exactly this call; a key it
     // does not carry is dropped by recordPhase in silence, so its model would
     // never warm an EWMA and the planner would budget the loop off a cold prior

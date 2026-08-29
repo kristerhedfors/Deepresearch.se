@@ -156,11 +156,51 @@ test("nodesForStatus maps the pipeline's step ids", () => {
   assert.deepEqual(nodesForStatus({ type: "step_start", id: "agent_2" }), { enter: ["executor"], exit: [] });
 });
 
-test("nodesForStatus ignores what it doesn't know (forward compatibility)", () => {
-  assert.deepEqual(nodesForStatus({ type: "step_start", id: "some_future_phase" }), { enter: [], exit: [] });
+test("an unknown EVENT TYPE is still ignored (forward compatibility)", () => {
+  // The SSE vocabulary's rule, unchanged: an event this file has never heard of
+  // changes nothing about the map.
   assert.deepEqual(nodesForStatus({ type: "future_event" }), { enter: [], exit: [] });
   assert.deepEqual(nodesForStatus({}), { enter: [], exit: [] });
   assert.deepEqual(nodesForStatus(null), { enter: [], exit: [] });
+  assert.deepEqual(nodesForStatus({ type: "step_start" }), { enter: [], exit: [] }, "a step with no id at all");
+});
+
+test("an unknown STEP ID lights the engine node instead of blanking the map", () => {
+  // The rule that is deliberately NOT the same as the one above. Every step id
+  // between the mode dispatch and synthesis belongs to whichever ENGINE ran,
+  // and engines are pluggable now (src/pipeline.js runResearchPhase). Ignoring
+  // an unrecognised one drew a map that went dark for a future engine's entire
+  // research phase, which reads as "nothing happened".
+  assert.deepEqual(nodesForStatus({ type: "step_start", id: "some_future_phase" }), { enter: ["loop"], exit: [] });
+  assert.deepEqual(nodesForStatus({ type: "step_done", id: "some_future_phase" }), { enter: [], exit: ["loop"] });
+});
+
+test("the engine step ids map onto their loop nodes", () => {
+  // The model-driven engine's own step ids: `tool_<n>`, one pair per call
+  // (src/agentic.js loopStepId) — numbered, never named, because a research
+  // tool's NAME is a service's name (invariant 7).
+  assert.deepEqual(nodesForStatus({ type: "step_start", id: "loop" }), { enter: ["loop"], exit: [] });
+  for (const id of ["tool_1", "tool_9", "tool_16"]) {
+    assert.deepEqual(nodesForStatus({ type: "step_start", id }), { enter: ["loop"], exit: [] }, id);
+  }
+  // …and the standard graph's reflect rounds, which count like the gap rounds.
+  assert.deepEqual(nodesForStatus({ type: "step_start", id: "reflect2" }), { enter: ["reflect"], exit: [] });
+});
+
+test("a self-edge is drawn as a loop on the node's own right side", () => {
+  // Without the `self` case it fell through to the cross-lane routing, which
+  // drew the curve from the middle of the box back to its own left edge —
+  // straight through the label.
+  const l = layoutPipelineMap();
+  const e = l.edges.find((x) => x.from === "loop" && x.to === "loop");
+  const n = l.nodes.find((x) => x.id === "loop");
+  assert.ok(e, "the research loop declares its own loop edge");
+  assert.equal(e.self, true);
+  assert.equal(e.loop, true);
+  assert.equal(e.straight, false);
+  assert.equal(e.x1, n.x + NODE_W, "leaves the right edge");
+  assert.equal(e.x2, n.x + NODE_W, "and arrives back on it");
+  assert.ok(e.y2 > e.y1, "the two ends are apart, so the bow is visible");
 });
 
 test("a search event pair is exactly one wave, whatever round it belongs to", () => {
@@ -256,6 +296,8 @@ test("every node can be lit by some observable signal", () => {
     { type: "step_start", id: "fanout" },
     { type: "step_start", id: "gap1" },
     { type: "step_start", id: "contents" },
+    { type: "step_start", id: "tool_1" },
+    { type: "step_start", id: "reflect1" },
     { type: "step_start", id: "synth" },
     { type: "step_start", id: "validate" },
     { type: "done" },
@@ -291,7 +333,9 @@ test("a label is drawn only where there is room for it — never across a lane g
   const svg = pipelineMapSvg();
   const labels = [...svg.matchAll(/class="pmedgelabel"[^>]*>([^<]+)</g)].map((m) => m[1]);
   assert.deepEqual(labels.sort(), ["another wave", "no", "research"]);
-  for (const dropped of ["yes", "agent", "own source", "direct", "clarify"]) {
+  for (const dropped of ["yes", "agent", "own source", "direct", "clarify", "model-driven", "reflect"]) {
+    // "model-driven" and "reflect" are the engine router's two cross-lane
+    // labels; like every other one they move to the target node's tooltip.
     assert.ok(!labels.includes(dropped), `${dropped} must not be drawn`);
     assert.ok(svg.includes(`Reached when: ${dropped}`), `${dropped} must survive in a tooltip`);
   }
@@ -376,7 +420,7 @@ test("a whole introspection run lights the source path and never the research sp
   for (const id of ["compose", "post", "stream", "enrich", "source", "done"]) {
     assert.equal(nodeState(run, id), "passed", id);
   }
-  for (const id of ["triage", "search", "gap", "synth", "validate", "fbreply"]) {
+  for (const id of ["triage", "search", "gap", "loop", "reflect", "synth", "validate", "fbreply"]) {
     assert.equal(nodeState(run, id), "idle", `${id} must stay dark — this run never took it`);
   }
 });

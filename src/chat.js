@@ -27,6 +27,10 @@ import { clampBudget, planResearch } from "./budget.js";
 import { augmentWithLocations } from "./geocode.js";
 import { jsonResponse, sseResponse } from "./http.js";
 import { runPipeline } from "./pipeline.js";
+// The research-ENGINE vocabulary. A closed set with unknown values IGNORED —
+// see normalizeResearchEngine's own note on why a typo in an optimisation field
+// must not be a 400.
+import { normalizeResearchEngine } from "./agentic.js";
 import { DEFAULT_CONFIG, getConfig } from "./config.js";
 import {
   QUOTA_UNAVAILABLE_STATUS,
@@ -156,6 +160,16 @@ import { runMemoryExtraction } from "./memory.js";
  *   needs DERIVED from what it selects rather than from what it claims to
  *   require, so it can narrow its own run and never widen it. A refused spec is
  *   logged and the turn is answered by the agent it would otherwise have got
+ * @property {string} [research_engine] WHICH ENGINE runs the research phase:
+ *   "agentic" (the answer model drives its own bounded tool loop —
+ *   src/agentic.js) or "standard" (the deterministic four-node graph —
+ *   src/pipeline-standard.js). Absent, and the answering agent's own
+ *   `capability.routing.strategy` decides; absent there too, the platform does
+ *   (AGENTIC_BY_DEFAULT). An unknown value is IGNORED rather than refused, like
+ *   `chat_mode`: this is an optimisation, not a permission, and a caller with a
+ *   typo should get the platform's choice instead of a failed request. It can
+ *   never widen a run — a model with no tool dialect, or a run whose toolbox
+ *   resolved empty, takes the standard graph whatever this says
  * @property {any} [imageLocations] attached-photo GPS EXIF coords
  * @property {any} [street_view_pov] the user's current panorama view
  * @property {any} [map_view] the user's current interactive-map view
@@ -188,6 +202,7 @@ import { runMemoryExtraction } from "./memory.js";
  *   agentId?: string | null,
  *   promptSet?: string | null,
  *   capability?: import('./agent-spec.js').AgentCapability | null,
+ *   researchEngine?: string | null,
  *   sdkMode?: boolean,
  *   orchestratorMode?: boolean,
  *   orchestration?: { agents: number, waves: number, failed: number, searches: number, swarm?: { nodes: number, members: number, agreement: number, model: string } },
@@ -293,6 +308,12 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
   // this line can route a search at an unvalidated target; the admin can pin
   // the site-wide choice with search.allow_user_choice = false.
   const searchSource = normalizeSearchSource(body.search_source);
+  // WHICH RESEARCH ENGINE answers, when the caller has an opinion. Normalized
+  // to null here so nothing past this line sees an unvalidated string, and null
+  // means "did not choose" rather than "chose the default" — the agent's own
+  // declaration and the platform's choice both still get their turn
+  // (src/agentic.js engineFor).
+  const researchEngine = normalizeResearchEngine(body.research_engine);
   const enrich = resolveEnrichmentOptions(body, env, identity, catalog, model);
 
   // ---- slash commands (platform baseline, before any mode routing) --------
@@ -575,6 +596,7 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
       agentId,
       promptSet,
       capability,
+      researchEngine,
       buildSlug,
       userId: String(identity.id),
     });
@@ -638,7 +660,15 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
     /** @type {any[]} */
     const trail = [];
     const TRAIL_TYPES = new Set(["step_start", "step_done", "search_start", "search_done"]);
-    const TRAIL_MAX = 400;
+    // 400 was sized for a five-phase run, whose events were bounded by the
+    // phase count. A research LOOP is bounded by its tool calls instead: at the
+    // ceiling (agentic.js MAX_RESEARCH_TOOL_CALLS) it emits sixteen step pairs
+    // plus, for the searching calls among them, up to four search pairs each —
+    // an order of magnitude more rows from the same one answer. Raised rather
+    // than coalesced because replayResearchTrail rebuilds a recovered run by
+    // replaying the pairs in order, and dropping the starts would replay a run
+    // whose steps never began.
+    const TRAIL_MAX = 1200;
 
     /** @param {any} obj one SSE event object */
     const emit = (obj) => {
@@ -1203,7 +1233,7 @@ export function resolveJsonModel(catalog, userModel) {
  * @param {string} jsonModel
  * @param {boolean} webSearch
  * @param {number} budgetS
- * @param {Partial<EnrichmentOptions> & { searchSource?: string, vision?: boolean, introspection?: boolean, sandboxEnabled?: boolean, sdkMode?: boolean, orchestratorMode?: boolean, swarm?: any, orchWorkflow?: any, swarmResults?: any, outrospectionMode?: boolean, modelsMode?: boolean, account?: any, answerPhase?: string | null, agentId?: string | null, promptSet?: string | null, capability?: any, buildSlug?: string | null, userId?: string, shellTranscript?: Array<{ command: string, exitCode: number, stdout: string, stderr: string }> }} [extras]
+ * @param {Partial<EnrichmentOptions> & { searchSource?: string, vision?: boolean, introspection?: boolean, sandboxEnabled?: boolean, sdkMode?: boolean, orchestratorMode?: boolean, swarm?: any, orchWorkflow?: any, swarmResults?: any, outrospectionMode?: boolean, modelsMode?: boolean, account?: any, answerPhase?: string | null, agentId?: string | null, promptSet?: string | null, capability?: any, researchEngine?: string | null, buildSlug?: string | null, userId?: string, shellTranscript?: Array<{ command: string, exitCode: number, stdout: string, stderr: string }> }} [extras]
  * @returns {ChatRequestState}
  */
 function newRequestState(model, jsonModel, webSearch, budgetS, extras = {}) {
@@ -1291,6 +1321,9 @@ function newRequestState(model, jsonModel, webSearch, budgetS, extras = {}) {
     // so every consumer keeps the platform constant as both its default and its
     // ceiling.
     capability: extras.capability || null,
+    // The engine this REQUEST asked for, already validated against the closed
+    // vocabulary, or null for "did not choose". Read once, by engineFor.
+    researchEngine: extras.researchEngine || null,
     buildSlug: extras.buildSlug || null,
     userId: extras.userId || "",
     // This channel renders the interactive inline-quiz event (src/quiz.js;

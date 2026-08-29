@@ -86,6 +86,23 @@ describe("1. the tool has to be in the toolbox", () => {
     assert.equal(r.ok, false);
     assert.match(/** @type {any} */ (r).message, /not part of this run's toolbox/);
   });
+
+  test("an OMITTED toolbox admits nothing — the fail-open default, inverted", () => {
+    // The mistake this pins is invisible at the call site: the check used to be
+    // `if (opts.tools && …)`, so a caller that forgot to pass the run's resolved
+    // list handed the model the WHOLE registry instead of an error. Forgetting
+    // it now costs the run its tools, which shows up in the answer.
+    for (const tools of [undefined, null, []]) {
+      const r = admitToolCall("web_search", { queries: ["a question"] }, {
+        state: state(),
+        budget: newToolBudget(),
+        policy: { web: true, auxSources: true, maxQueries: null },
+        tools,
+      });
+      assert.equal(r.ok, false, String(tools));
+      assert.match(/** @type {any} */ (r).message, /not part of this run's toolbox/);
+    }
+  });
 });
 
 describe("2. the context block the answering agent must declare", () => {
@@ -410,7 +427,7 @@ test("a state missing its plan or its dedup set still answers in words", () => {
   // degrade like everything else on this path: an unbounded ceiling and a fresh
   // dedup set, never a TypeError out of a function whose contract is a sentence.
   const bare = /** @type {any} */ ({ capability: null });
-  const r = admitToolCall("web_search", { queries: ["a question"] }, { state: bare, budget: newToolBudget() });
+  const r = admitToolCall("web_search", { queries: ["a question"] }, { state: bare, budget: newToolBudget(), tools: ALL_TOOLS });
   assert.equal(r.ok, true);
   assert.ok(bare.ranQueries.has("a question"));
 });
@@ -422,7 +439,7 @@ test("a refusal is always a sentence, never an exception", () => {
   const junk = [undefined, null, "", 0, [], { queries: null }, { source: 1 }, { urls: "no" }];
   for (const tool of RESEARCH_TOOLS) {
     for (const args of junk) {
-      const r = admitToolCall(tool.name, args, { state: state({ capability: { context: [], tools: [] } }), budget: newToolBudget() });
+      const r = admitToolCall(tool.name, args, { state: state({ capability: { context: [], tools: [] } }), budget: newToolBudget(), tools: ALL_TOOLS });
       assert.equal(typeof r.ok, "boolean", tool.name);
       if (!r.ok) assert.ok(/** @type {any} */ (r).message.length > 20, `${tool.name} refusal is too terse to act on`);
     }

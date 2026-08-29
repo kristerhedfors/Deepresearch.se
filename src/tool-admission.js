@@ -161,7 +161,8 @@ export function extensionSliceOn(state, id) {
  *   policy?: { web?: boolean, auxSources?: boolean, maxQueries?: number|null },
  *   tools?: Array<{ name: string }> | string[] | null,
  *   now?: number,
- * }} opts
+ * }} opts `tools` is the run's RESOLVED toolbox and is required in effect —
+ *   omitting it admits nothing, never everything (see check 1).
  * @returns {Admission}
  */
 export function admitToolCall(name, args, opts) {
@@ -177,12 +178,19 @@ export function admitToolCall(name, args, opts) {
   // run's resolved list decides whether this agent was handed it. A model that
   // hallucinates a tool gets the first answer; a model repeating a tool from an
   // earlier conversation gets the second.
+  //
+  // An OMITTED `tools` admits NOTHING. It read `if (opts?.tools && …)` first,
+  // which made a forgotten argument open the whole registry to the call — the
+  // one mistake at this layer that cannot be seen at the call site, because a
+  // caller that forgets it gets more reach rather than an error. Defaulting to
+  // an empty set inverts that: forgetting it costs the run its tools, which
+  // fails loudly in the answer and reaches nothing at all.
   if (!RESEARCH_TOOL_NAMES.has(name)) {
     return refuse(
       `There is no tool called "${String(name).slice(0, 60)}" on this server. Use one of the tools you were given, or answer from what you already have.`,
     );
   }
-  if (opts?.tools && !resolvedNames(opts.tools).has(name)) {
+  if (!resolvedNames(opts?.tools).has(name)) {
     return refuse(
       `The ${name} tool exists on this server but is not part of this run's toolbox, so it was not called. Retrying will not change that — use the tools you were given.`,
     );
@@ -517,7 +525,10 @@ function withinDeadline(state, plan, now = Date.now()) {
 }
 
 /**
- * @param {Array<{ name: string }> | string[]} tools
+ * The names in a run's resolved toolbox. Anything that is not an array — an
+ * omitted list included — is the EMPTY set, which is what makes check 1 fail
+ * closed rather than open.
+ * @param {Array<{ name: string }> | string[] | null | undefined} tools
  * @returns {Set<string>}
  */
 function resolvedNames(tools) {
