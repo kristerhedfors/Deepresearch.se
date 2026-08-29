@@ -257,13 +257,10 @@ describe("bilingual hints — invariant 6 under a model-selected toolbox", () =>
 });
 
 describe("the brief names no third-party service (invariant 7)", () => {
-  // The same tokens src/extensions.test.js applies to core modules. A brief
-  // that named the search provider or an imagery service would put that name
-  // into every request on this path — and the tools already describe
-  // themselves through their own schemas, so there is nothing to gain by it.
+  // The same tokens src/extensions.test.js applies to core modules.
   const SERVICE_TOKENS = [/shodan/i, /googlemaps/i, /google[_ -]?maps/i, /street[_ ]?view/i, /maps\.google/i, /exa\b/i, /berget/i];
 
-  test("across the whole option matrix", () => {
+  test("across the whole option matrix, with only generic tools", () => {
     /** @type {string[]} */
     const offenders = [];
     for (const tier of ["brief", "standard", "extended", "full"]) {
@@ -282,6 +279,32 @@ describe("the brief names no third-party service (invariant 7)", () => {
       }
     }
     assert.deepEqual(offenders, [], offenders.join("\n"));
+  });
+
+  test("a service-named TOOL reaches only the tool-list line, never a composed sentence", () => {
+    // The case above passes for an uninteresting reason: its fixture has no
+    // tool whose NAME is a service. The Cyber agent's toolbox does, so the
+    // interesting question is what happens then — and the loose reading of this
+    // invariant ("no service token in the rendered text") is simply false there.
+    //
+    // What must hold instead: the name is PASS-THROUGH from the tool registry,
+    // which the purity guard exempts precisely so tools can be named somewhere,
+    // and the model is handed it in the tool schema whether or not the brief
+    // repeats it. So it may appear in the toolbox line and nowhere else. A
+    // future edit that wove a tool name into prose — "use street_view_look when
+    // the question is about a place" — would put a service into a sentence this
+    // module composed, and that is the regression this test exists to catch.
+    const brief = researchBrief({
+      ...CANONICAL,
+      tools: ["web_search", "street_view_look", "host_intel", "run_python"],
+    });
+    const lines = brief.split("\n");
+    const named = lines.filter((l) => /street[_ ]?view/i.test(l));
+    assert.equal(named.length, 1, `expected exactly one line to carry the tool name, got:\n${named.join("\n")}`);
+    assert.match(named[0], /^Your tools this turn: /, "the tool name escaped the toolbox line");
+    // And the toolbox line is a bare list — no gloss this module wrote about
+    // what that tool is for.
+    assert.match(named[0], /^Your tools this turn: [a-z0-9_, ]+\. Anything not in that list does not exist for this answer\.$/);
   });
 });
 

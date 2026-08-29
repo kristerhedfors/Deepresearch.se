@@ -23,16 +23,27 @@
 // both sides. Under a tool loop it is not: the prompt is the only thing
 // deciding what gets called, so two copies are two different agents.
 //
-// ---- it NAMES NO SERVICE ---------------------------------------------------
+// ---- it NAMES NO SERVICE, and what that precisely means --------------------
 //
-// Invariant 7, and here it is a property of the TEXT rather than of the imports:
-// a brief that said "search the web with <provider>" would put a service name
-// into every request on the path. Tools describe themselves through their own
-// schemas (src/research-tools.js), the search sources describe themselves
-// through `sourceNotes`, and everything this module writes down is generic. The
-// guard is research-brief-core.test.js, which renders the brief across the
-// option matrix and matches it against the same service tokens
-// src/extensions.test.js uses on core modules.
+// Invariant 7. A brief that said "search the web with <provider>" would put a
+// service name into every request on this path, so nothing this module WRITES
+// names one: the tools describe themselves through their own schemas
+// (src/research-tools.js) and the search sources through `sourceNotes`.
+//
+// It is worth being exact about the one place a service name CAN appear in the
+// rendered text, because the loose version of this claim is false and was
+// briefly asserted here. The brief lists the run's toolbox — "Your tools this
+// turn: …" — and a toolbox carrying an imagery or host-intelligence tool puts
+// that tool's NAME in that line. That is correct and not a violation: the name
+// is pass-through from the tool registry, which is exempt from the purity guard
+// for exactly this reason, and the model is handed the same name in the tool
+// schema whether or not the brief repeats it. Hiding it would only make the
+// brief disagree with the tools.
+//
+// So the property that actually holds, and the one the guard in
+// research-brief-core.test.js asserts: across the whole option matrix, a
+// service token appears in the rendered brief ONLY inside the tool-list line,
+// and never in a sentence this module composed.
 
 /** The closing rule every report tier shares. Not decoration: validation parses
  * the "Sources:" list and both clients render from it, so a tier that drifted
