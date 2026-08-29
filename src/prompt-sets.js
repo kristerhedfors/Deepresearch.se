@@ -24,6 +24,8 @@ import {
   directPrompt,
   orchAgentPrompt,
   orchSynthPrompt,
+  queryPlanPrompt,
+  reflectPrompt,
   sdkBuildPrompt,
   sdkBuildToolPrompt,
   searchOffPrompt,
@@ -44,6 +46,12 @@ import { DEFAULT_PROMPT_SET, PROMPT_SETS } from "./agent-spec.js";
  */
 export const PROMPT_BUILDERS = {
   "research": {
+    // The standard topology's two JSON nodes (src/pipeline-standard.js). The
+    // five-phase flow fills neither — its triage and gap prompts are shared
+    // across every agent and are not selectable — so binding them here is what
+    // lets an agent be voiced through either engine without a second set.
+    "plan": queryPlanPrompt,
+    "reflect": reflectPrompt,
     "answer": synthPrompt,
     "answer-direct": directPrompt,
     "answer-search-off": searchOffPrompt,

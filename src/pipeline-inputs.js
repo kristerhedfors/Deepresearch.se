@@ -123,6 +123,29 @@ export function subquestionsSection(subquestions) {
   return `Sub-questions the answer must address:\n${list.map((s, i) => `${i + 1}. ${s}`).join("\n")}\n\n`;
 }
 
+// The STATED knowledge gaps the standard pipeline's reflect node produced
+// (src/pipeline-standard.js). The gap check this replaces emitted only a
+// saturation verdict — a boolean nobody can read — so a run that stopped
+// short left no trace of WHAT it never found, and the report had no way to
+// say so. A reflect round names the gap in one sentence, and the answer is
+// told to carry it as a limitation rather than to paper over it.
+//
+// Empty (and thus absent) whenever no round stated a gap, which is every run
+// of the five-phase flow — so that flow's synthesis message is unchanged.
+/**
+ * @param {string[] | undefined} gaps
+ * @returns {string}
+ */
+export function knowledgeGapsSection(gaps) {
+  const list = Array.isArray(gaps) ? gaps.map((g) => String(g || "").trim()).filter(Boolean) : [];
+  if (!list.length) return "";
+  return (
+    "Knowledge gaps the research identified and could not close (state each as an explicit " +
+    "limitation of this answer — never fill one in from general knowledge as if it were sourced):\n" +
+    list.map((g) => `- ${g}`).join("\n") + "\n\n"
+  );
+}
+
 /**
  * @param {string[] | undefined} conflicts
  * @returns {string}

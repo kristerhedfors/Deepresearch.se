@@ -34,6 +34,8 @@ import {
   directPrompt,
   orchAgentPrompt,
   orchSynthPrompt,
+  queryPlanPrompt,
+  reflectPrompt,
   sdkBuildPrompt,
   sdkBuildToolPrompt,
   searchOffPrompt,
@@ -65,6 +67,8 @@ test("the binding covers the declared vocabulary exactly", () => {
 
 test("each bound builder is the shipped prompt for that role", () => {
   // Identity checks, not behaviour checks: this is the anti-drift assertion.
+  assert.equal(PROMPT_BUILDERS.research.plan, queryPlanPrompt);
+  assert.equal(PROMPT_BUILDERS.research.reflect, reflectPrompt);
   assert.equal(PROMPT_BUILDERS.research.answer, synthPrompt);
   assert.equal(PROMPT_BUILDERS.research["answer-direct"], directPrompt);
   assert.equal(PROMPT_BUILDERS.research["answer-search-off"], searchOffPrompt);

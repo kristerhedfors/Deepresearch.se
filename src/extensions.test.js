@@ -303,6 +303,7 @@ describe("capabilities seam", () => {
 const CORE_MODULES = [
   "src/chat.js",
   "src/pipeline.js",
+  "src/pipeline-standard.js",
   "src/pipeline-inputs.js",
   "src/enrichment.js",
   "src/validation.js",

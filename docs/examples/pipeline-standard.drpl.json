@@ -1,0 +1,52 @@
+{
+  "drpl": 1,
+  "id": "deepresearch.se/deep-research/standard",
+  "title": "The standard compact deep-research topology (src/pipeline-standard.js)",
+  "meta": {
+    "spec": "docs/PIPELINE-LANGUAGE.md",
+    "node": "https://deepresearch.se",
+    "notes": "The four-node LangGraph/Gemini shape — generate_queries → web_research → reflect → finalize — offered as an ENGINE option beside the five-phase pair. A THIRD document on purpose: the committed pair (pipeline-server / pipeline-secure) is pinned to the same spine shape as each other, because the headline structural claim is that the two TIERS run the same research in different places. This document is a different TOPOLOGY, not a different tier, so it must not be folded into that pair. Every node is a direct JSON-mode or streamed call (invariant 1); both planning nodes are pinned to the reliable JSON model (invariant 3); the loop edge is optional work that degrades to the wave already collected (invariant 2). Retrieval and the writer are the same code the server pipeline runs — this document describes which nodes exist, not a second implementation of them."
+  },
+  "phases": [
+    {
+      "id": "generate-queries",
+      "kind": "triage",
+      "title": "One planning call: search angles, a rationale, and whether any source is needed",
+      "needs": [],
+      "exec": { "at": "server" },
+      "calls": [{ "party": "model-provider", "carries": ["question", "conversation-context"] }],
+      "model": { "route": "planning", "mode": "json", "tools": false },
+      "failure": { "policy": "soft", "degradesTo": "model-free angles seeded from the conversation (seedFromConversation)" }
+    },
+    {
+      "id": "web-research",
+      "kind": "search",
+      "title": "Search waves through the existing engine — named pages first, then the planned angles",
+      "needs": ["generate-queries"],
+      "exec": { "at": "server" },
+      "calls": [{ "party": "search-provider", "carries": ["search-queries"] }],
+      "failure": { "policy": "soft", "degradesTo": "fewer or zero sources; the answer still streams" }
+    },
+    {
+      "id": "reflect",
+      "kind": "gap-check",
+      "title": "The one loop edge: is the evidence enough, and what gap remains stated?",
+      "needs": ["web-research"],
+      "repeats": { "max": 2 },
+      "exec": { "at": "server" },
+      "calls": [{ "party": "model-provider", "carries": ["question", "source-digest"] }],
+      "model": { "route": "planning", "mode": "json", "tools": false },
+      "failure": { "policy": "soft", "degradesTo": "current coverage accepted, no follow-up wave" }
+    },
+    {
+      "id": "finalize",
+      "kind": "synthesis",
+      "title": "Streamed answer on the user's chosen model, carrying the stated gaps as limitations",
+      "needs": ["reflect"],
+      "exec": { "at": "server" },
+      "calls": [{ "party": "model-provider", "carries": ["conversation", "source-digest"] }],
+      "model": { "route": "answer", "mode": "stream", "tools": false },
+      "failure": { "policy": "hard", "retry": { "failover": true }, "degradesTo": "reliable-model failover before erroring" }
+    }
+  ]
+}

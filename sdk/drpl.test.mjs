@@ -28,6 +28,7 @@ const REPO = join(dirname(fileURLToPath(import.meta.url)), "..");
 const load = (p) => JSON.parse(readFileSync(join(REPO, p), "utf8"));
 const SERVER = "docs/examples/pipeline-server.drpl.json";
 const SECURE = "docs/examples/pipeline-secure.drpl.json";
+const STANDARD = "docs/examples/pipeline-standard.drpl.json";
 
 /** A minimal valid document to mutate in rejection tests. */
 function doc() {
@@ -57,10 +58,11 @@ function doc() {
   };
 }
 
-test("validateDrpl: the minimal document and both committed examples validate", () => {
+test("validateDrpl: the minimal document and every committed example validate", () => {
   assert.deepEqual(validateDrpl(doc()), []);
   assert.deepEqual(validateDrpl(load(SERVER)), []);
   assert.deepEqual(validateDrpl(load(SECURE)), []);
+  assert.deepEqual(validateDrpl(load(STANDARD)), []);
 });
 
 test("validateDrpl: rejections name the problem", () => {
@@ -162,6 +164,32 @@ test("fingerprint levels: shape is placement-blind; placement sees exec/calls/mo
 test("canonicalForm: level label distinguishes spine projections", () => {
   assert.equal(canonicalForm(doc(), "shape").level, "shape");
   assert.equal(canonicalForm(doc(), "shape", { spine: true }).level, "spine-shape");
+});
+
+test("the standard topology is a THIRD document, not an edit of the pair", () => {
+  // The pair's spine-shape equality below is this project's headline
+  // structural claim — the two TIERS run the same research in different
+  // places. The standard topology is a different ENGINE, not a different
+  // tier, so it must differ from both in shape and must never be folded in.
+  // Written as a test because the cheap mistake is to "tidy" three documents
+  // into two, and nothing else would notice.
+  const standard = load(STANDARD);
+  const server = load(SERVER);
+  assert.notEqual(fingerprint(standard, "shape", { spine: true }), fingerprint(server, "shape", { spine: true }));
+  assert.deepEqual(topoOrder(standard.phases), ["generate-queries", "web-research", "reflect", "finalize"]);
+  // Four nodes, one loop edge, and no tool calling anywhere (invariant 1).
+  assert.equal(standard.phases.length, 4);
+  assert.deepEqual(standard.phases.filter((p) => p.repeats).map((p) => p.id), ["reflect"]);
+  for (const p of standard.phases) {
+    if (p.model) assert.equal(p.model.tools, false, `${p.id} declares no tool use`);
+  }
+  // Both planning nodes on the reliable JSON route, the answer on the user's
+  // model (invariant 3), and only the answer may fail hard (invariant 2).
+  assert.deepEqual(
+    standard.phases.filter((p) => p.model).map((p) => [p.id, p.model.route]),
+    [["generate-queries", "planning"], ["reflect", "planning"], ["finalize", "answer"]],
+  );
+  assert.deepEqual(standard.phases.filter((p) => p.failure.policy === "hard").map((p) => p.id), ["finalize"]);
 });
 
 test("the committed examples: the two tiers are the SAME research at spine-shape, different placement", () => {

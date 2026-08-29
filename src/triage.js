@@ -151,12 +151,19 @@ export function looksLikeClarifyTurn(text) {
  * The model-free triage fallback: seed a search from the conversation without
  * asking anything. Used both when triage's JSON is unusable and when a second
  * clarification in a row has to be escaped (see normalizeTriage).
+ *
+ * Exported because the standard pipeline's query-plan node
+ * (src/pipeline-standard.js normalizeQueryPlan) needs the SAME fallback: its
+ * planner is one JSON call on the same model, so it fails the same way, and a
+ * second hand-written seeder would drift from this one — the rule that a bare
+ * back-reference ("undersök saken", "det då?") must never reach a search
+ * engine verbatim is the one this function exists to hold, in both languages.
  * @param {string} lastUser
  * @param {string} priorUser
  * @param {{ forceResearch?: boolean }} [opts]
  * @returns {TriageDecision}
  */
-function seedFromConversation(lastUser, priorUser, { forceResearch = false } = {}) {
+export function seedFromConversation(lastUser, priorUser, { forceResearch = false } = {}) {
   // A SHORT latest message in an ongoing conversation is almost always a
   // pure back-reference ("undersök saken", "det då?") with no searchable
   // content of its own, so seed the search from the prior question (the

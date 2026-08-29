@@ -18,6 +18,21 @@
 // return unparseable JSON, the pipeline degrades (single search, skip
 // iteration, accept draft) rather than failing the request.
 //
+// Several phase helpers are EXPORTED rather than module-private — jsonPhase,
+// runNamedUrlReads, runSearches, runDirectReply, runSynthesis, runValidation,
+// and the registry/digest widening `widenPlanCapacity` (with labelWebItems,
+// which already was). They are the retrieval engine and the writer, and both
+// alternative engines run on exactly these, unchanged:
+// src/pipeline-standard.js (the four-node standard topology, offered as an
+// OPTION beside this flow) and the model-issued legs in
+// src/research-tools-run.js, whose web and page-read tools must commit the
+// SAME bookkeeping a planned wave commits. Exporting them is what stops a second
+// pipeline re-implementing per-source caps, cross-wave dedup, the
+// deterministic absorption order and the search_start/search_done cards —
+// every one of which is retrieval's, not this flow's, and every one of which a
+// re-implementation would silently get subtly wrong. Nothing outside this
+// module may reorder the phases here; they are call targets, not a public API.
+//
 // Status events emitted to the UI are documented in src/types.d.ts
 // (SseEvent) and the sse-protocol skill. Each phase below is its own
 // function, all sharing one `ctx` object built once in runPipeline() —
@@ -205,6 +220,8 @@ import {
  *   subquestions?: string[],
  *   decomposition?: string | null,
  *   conflicts?: string[],
+ *   knowledgeGaps?: string[],
+ *   pipelineId?: string,
  *   notes?: object[],
  *   notesCursor?: number,
  *   fetchedUrls?: Set<string>,
@@ -986,7 +1003,7 @@ async function runQuizGeneration(ctx, quizReq) {
  *   produced for this turn, when the caller has one (runSourceResearch). ""
  *   for every other caller, which keeps their message array byte-identical.
  */
-async function runDirectReply(ctx, auxBlock = "") {
+export async function runDirectReply(ctx, auxBlock = "") {
   await streamCompletion(ctx, [
     // webSearchOn: this branch produced no sources, and without the knob's
     // actual value the model has been observed explaining that away by
@@ -2105,9 +2122,16 @@ async function maybeFullContentDigest(ctx) {
 // Phase 4: writes the source-grounded draft answer. Returns the full text.
 /**
  * @param {PipelineCtx} ctx
+ * @param {string} [extraContext] One more labelled block for the synthesis
+ *   user message, spliced in beside the sub-questions and the conflict list.
+ *   Empty for every caller in this module, so their message is byte-identical
+ *   to before the parameter existed; src/pipeline-standard.js passes its
+ *   STATED knowledge gaps, the one artefact the reflect node produces that the
+ *   gap check never did (a gap a reader can see, rather than a saturation
+ *   heuristic nobody can).
  * @returns {Promise<string>}
  */
-async function runSynthesis(ctx) {
+export async function runSynthesis(ctx, extraContext = "") {
   const { state, lastUser, convText, imageParts } = ctx;
   const plan = state.plan;
   backfillOverflowSources(state);
@@ -2134,6 +2158,8 @@ async function runSynthesis(ctx) {
     // disagreeing sources; see subquestionsSection/conflictsSection).
     subquestionsSection(state.subquestions) +
     conflictsSection(state.conflicts) +
+    // The caller's own labelled block, when it has one (see extraContext).
+    (extraContext || "") +
     // What was actually searched, so "no source establishes this" can be told
     // apart from "we never looked" — and so an uncorroborated claim can name
     // the angles that came back empty (feedback #61; PERSON-RESEARCH.md §6).
@@ -2200,7 +2226,7 @@ async function runSynthesis(ctx) {
  * @param {PipelineCtx} ctx
  * @param {string} draft
  */
-async function runValidation(ctx, draft) {
+export async function runValidation(ctx, draft) {
   const { log, state, jsonProfile } = ctx;
   const plan = state.plan;
   const est = plan.estimates;
@@ -2465,14 +2491,18 @@ async function verifyClaim(ctx, claim) {
 // `quiz` is deliberately NOT here. It runs through the same helper, but an
 // identical quiz for identical sources is a worse quiz, not a more
 // reproducible one.
-const GREEDY_JSON_PHASES = new Set(["triage", "gap", "validate", "claim", "digest"]);
+//
+// `queries` and `reflect` are the standard pipeline's two planning phases
+// (src/pipeline-standard.js) — the same kind of call as triage and the gap
+// check, on the same fixed JSON model, so they take the same temperature 0.
+const GREEDY_JSON_PHASES = new Set(["triage", "gap", "validate", "claim", "digest", "queries", "reflect"]);
 
 /**
  * @param {PipelineCtx} ctx
  * @param {{ label: string, statKey: string, messages: Conversation, maxTokens: number, recordStat?: boolean }} phase
  * @returns {Promise<any>} The parsed JSON value, or null on any failure.
  */
-async function jsonPhase(ctx, { label, statKey, messages, maxTokens, recordStat = false }) {
+export async function jsonPhase(ctx, { label, statKey, messages, maxTokens, recordStat = false }) {
   const startedAt = Date.now();
   try {
     const overrides = /** @type {Record<string, number> | null} */ (ctx.jsonProfile.maxTokensOverride);
@@ -2524,7 +2554,7 @@ async function jsonPhase(ctx, { label, statKey, messages, maxTokens, recordStat 
  * @param {string[]} urls the URLs the caller already extracted (it needs them
  *   before triage's branch, so they are not re-derived here)
  */
-async function runNamedUrlReads(ctx, urls) {
+export async function runNamedUrlReads(ctx, urls) {
   const { env, log, emit, state } = ctx;
   if (!urls?.length) return;
 
@@ -2577,7 +2607,7 @@ async function runNamedUrlReads(ctx, urls) {
  * @param {string[]} queries
  * @param {number} round 1 for the initial wave, then one per gap round.
  */
-async function runSearches(ctx, queries, round) {
+export async function runSearches(ctx, queries, round) {
   const { log, state } = ctx;
   const policy = searchPolicyFor(state);
   const batch = takeSearchBatch(state, queries, policy.maxQueries ?? Infinity);
@@ -2794,7 +2824,7 @@ const DIGEST_CAP_CEILING = 36_000;
  * @param {PipelineState['plan']} plan
  * @param {number} n
  */
-function widenPlanCapacity(plan, n) {
+export function widenPlanCapacity(plan, n) {
   plan.maxSources += n;
   plan.digestCap = Math.min(plan.digestCap + n * DIGEST_CHARS_PER_SOURCE, DIGEST_CAP_CEILING);
 }

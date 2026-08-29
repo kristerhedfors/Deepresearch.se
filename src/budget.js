@@ -70,6 +70,25 @@ const PRIORS_MS = {
   digest: 4000,
   fetch: 2500,
   claim: 3500,
+  // The STANDARD topology's phases (src/pipeline-standard.js) and the agentic
+  // answer phase's loop. Every one of these is a key recordPhase() is actually
+  // called with, and a key that is not in this table is DROPPED SILENTLY
+  // (recordPhase's first line) — no log, no throw, no failing test. A runner
+  // whose row is missing therefore records nothing forever, so its model never
+  // warms an EWMA and the planner budgets it off the cold prior for as long as
+  // the omission lasts. That is the whole reason these rows land in the same
+  // commit as the phases that record them.
+  //
+  // `queries` and `reflect` are the standard pipeline's two JSON nodes, seeded
+  // at their five-phase counterparts' priors: the query plan does triage's job
+  // (one planning call on the fixed JSON model) and reflect does the gap
+  // check's, on the same model, so those are the measured numbers to start
+  // from. `round` and `tool` are the agentic answer phase's — one model round
+  // that may call tools, and one tool execution.
+  queries: 6000,
+  reflect: 4500,
+  round: 9000,
+  tool: 1500,
 };
 const ALPHA = 0.3;
 export const MIN_BUDGET_S = 15;

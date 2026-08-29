@@ -128,6 +128,7 @@ export const BACKDROP_KINDS = ["none", "terminal", "graph"];
  * (and orchestrator-core / outrospect-core for the two pure ones). */
 export const PROMPT_ROLES = [
   "plan", // the phase's own JSON planning prompt (not the shared triage/gap/validate)
+  "reflect", // the loop edge: is the evidence enough, and what is still missing?
   "worker", // one bounded sub-run inside the phase (an orchestrated node)
   "answer", // the deterministic answer/synthesis prompt
   "answer-tools", // the variant for a model driving native tools
@@ -142,8 +143,13 @@ export const PROMPT_ROLES = [
 export const ANSWER_PHASES = {
   "research": {
     label: "Deep research",
-    desc: "triage → search → gap → synthesis → validation (pipeline.js)",
-    promptRoles: ["answer", "answer-direct", "answer-search-off"],
+    desc: "triage → search → gap → synthesis → validation (pipeline.js), or the four-node standard topology (pipeline-standard.js)",
+    // `plan` and `reflect` are the standard topology's two JSON nodes. They
+    // are listed on the PHASE rather than on a phase of their own because the
+    // choice between the two flows is an ENGINE option over one answer phase —
+    // same retrieval, same writer, same validation — so a set that can voice
+    // the research phase must be able to voice either flow.
+    promptRoles: ["plan", "reflect", "answer", "answer-direct", "answer-search-off"],
   },
   "source-research": {
     label: "Source research",
@@ -185,7 +191,7 @@ export const ANSWER_PHASES = {
  * answer phase become INDEPENDENT choices — an agent can run the research phase
  * in the source-research voice, which was not expressible before. */
 export const PROMPT_SETS = {
-  "research": { label: "Research", desc: "the deep-research synthesis voice: cited, hedged, report-tiered", roles: ["answer", "answer-direct", "answer-search-off"] },
+  "research": { label: "Research", desc: "the deep-research synthesis voice: cited, hedged, report-tiered", roles: ["plan", "reflect", "answer", "answer-direct", "answer-search-off"] },
   "source-research": { label: "Source research", desc: "answers about this platform from its own source, with the read loop's planner", roles: ["plan", "answer", "answer-tools"] },
   "build": { label: "Build", desc: "the Agent Studio build voice: ship the app this turn, state the privacy posture", roles: ["answer", "answer-tools"] },
   "workflow": { label: "Workflow", desc: "the sub-agent team: a plan prompt, one node's persona, and the merge", roles: ["plan", "worker", "answer"] },
