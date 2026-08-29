@@ -128,6 +128,13 @@ export function isPublicAsset(url, method) {
     // this server at all, which is why the page is useful signed out.
     url.pathname === "/lypning" ||
     url.pathname.startsWith("/lypning/") ||
+    // …and the two modules that page imports. /js/ is allowlisted file by file,
+    // not by prefix, so a page whose script is not named here loads its HTML
+    // and then 401s on its own module — which is how /cure once broke (see the
+    // sandbox.js arm below). The rest of the graph it pulls in (sandbox.js and
+    // friends) is already public for the /cure tier.
+    url.pathname === "/js/lypning-core.js" ||
+    url.pathname === "/js/lypning-page.js" ||
     // The space-animations showcase (/space/): an archive of playable
     // wireframe animations answering common space questions. Public like
     // /pulse/ — a promotional/educational surface with nothing user-specific;
