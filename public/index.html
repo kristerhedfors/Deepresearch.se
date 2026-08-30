@@ -34,7 +34,8 @@
      `sdk-mode` (green — Agent Studio, which distills this site into a new
      flavour), `orch-mode` (violet — Orchestrator, the sub-agent workflow
      mode), `outro-mode` (newsprint — Outrospection, the outward feed),
-     `models-mode` (amber — the Models agent), `sci-mode` (parchment — the
+     `models-mode` (amber — the Models agent), `lypning-mode` (green — the
+     lypning stats agent), `sci-mode` (parchment — the
      Deep Science agent), `cyber-mode` (crimson — the Cyber agent; the two
      dark-field modes are Science and this one) or `dev-mode` (titanium —
      introspection). There is no branch for a general mode any more: `normal`
@@ -62,7 +63,7 @@
      readable only as the absence of the others.
      If this script changes, recompute its CSP hash (THEME_BOOT_HASH in
      src/security-headers.js). */
-try{var m=localStorage.getItem("dr_chat_mode");var c="sci-mode";var t="#e8d9a8";if(m==="sdk"){c="sdk-mode";t="#66cc92";}else if(m==="orchestrator"){c="orch-mode";t="#c3aaf2";}else if(m==="outrospection"){c="outro-mode";t="#e5ddcb";}else if(m==="models"){c="models-mode";t="#ffd21e";}else if(m==="cyber"){c="cyber-mode";t="#ff7a86";}else if(m==="science"){c="sci-mode";t="#e8d9a8";}else if(m==="introspection"){c="dev-mode";t="#ccd2d8";}document.documentElement.classList.add(c);var mc=document.querySelector('meta[name="theme-color"]');if(mc){mc.setAttribute("content",t);}}catch(e){}</script>
+try{var m=localStorage.getItem("dr_chat_mode");var c="sci-mode";var t="#e8d9a8";if(m==="sdk"){c="sdk-mode";t="#66cc92";}else if(m==="orchestrator"){c="orch-mode";t="#c3aaf2";}else if(m==="outrospection"){c="outro-mode";t="#e5ddcb";}else if(m==="models"){c="models-mode";t="#ffd21e";}else if(m==="cyber"){c="cyber-mode";t="#ff7a86";}else if(m==="science"){c="sci-mode";t="#e8d9a8";}else if(m==="lypning"){c="lypning-mode";t="#23b483";}else if(m==="introspection"){c="dev-mode";t="#ccd2d8";}document.documentElement.classList.add(c);var mc=document.querySelector('meta[name="theme-color"]');if(mc){mc.setAttribute("content",t);}}catch(e){}</script>
 </head>
 <body>
   <header>
@@ -180,7 +181,7 @@ try{var m=localStorage.getItem("dr_chat_mode");var c="sci-mode";var t="#e8d9a8";
                  chat-mode-core.js CHAT_MODES and the labels are
                  mode-theme.js MODE_THEMES[mode].label — both pinned by
                  public/js/account-views.test.js, which reads this markup. -->
-            <select id="modesel" title="Chat mode — Deep Science (parchment: answers only from the peer-reviewed record — no open-web search, no preprints), Cyber (crimson: cybersecurity and OSINT — host intelligence, street-level imagery read as open sources, what is exposed about a person or an organisation, and the appsec reference), Introspection (titanium: the site answers from its own source), Agent Studio (green: distil this site into a new agent and get a live link), Orchestrator (violet: a planned team of sub-agents works your request in the background), Outrospection (newsprint: answers from the outward feed of what everyone else shipped), or Models (amber: the model lifecycle — explore every provider, see what each costs, verify it against the established checks, enable it for every mode)" aria-label="Chat mode">
+            <select id="modesel" title="Chat mode — Deep Science (parchment: answers only from the peer-reviewed record — no open-web search, no preprints), Cyber (crimson: cybersecurity and OSINT — host intelligence, street-level imagery read as open sources, what is exposed about a person or an organisation, and the appsec reference), Introspection (titanium: the site answers from its own source), Agent Studio (green: distil this site into a new agent and get a live link), Orchestrator (violet: a planned team of sub-agents works your request in the background), Outrospection (newsprint: answers from the outward feed of what everyone else shipped), Models (amber: the model lifecycle — explore every provider, see what each costs, verify it against the established checks, enable it for every mode), or lypning (green: the measurements of the mixture-of-Pythons the sandbox runs — your own machine's numbers and the project's own, never mistaken for each other)" aria-label="Chat mode">
               <option value="science">Deep Science</option>
               <option value="cyber">Cyber</option>
               <option value="introspection">Introspection</option>
@@ -188,6 +189,7 @@ try{var m=localStorage.getItem("dr_chat_mode");var c="sci-mode";var t="#e8d9a8";
               <option value="orchestrator">Orchestrator</option>
               <option value="outrospection">Outrospection</option>
               <option value="models">Models</option>
+              <option value="lypning">lypning</option>
             </select>
             <!-- Models-mode only: the lifecycle board. Opens every provider's
                  catalog with prices and verification state; enabling a model

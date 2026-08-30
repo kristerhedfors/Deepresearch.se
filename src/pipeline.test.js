@@ -1,369 +1,15 @@
 // (no @ts-check: node:test / node:assert have no type declarations in this
 // repo — tsconfig's types is workers-only and @types/node would be a new
 // dependency.)
-// Covers the pipeline's pure exports: normalizeTriage (the triage-failure
-// fallback incl. decomposition/quiz fields — src/triage.js), collectConflicts
-// (src/pipeline.js), and isTransientConnectStatus (src/answer-stream.js).
+// Covers the pipeline's pure exports and the source-read pins that keep the
+// phase flow honest: the answer-phase dispatch table and its engine router,
+// which view each planning phase reads, and isTransientConnectStatus
+// (src/answer-stream.js).
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { isTransientConnectStatus, contextOverflowMessage } from "./answer-stream.js";
-import { collectConflicts } from "./pipeline-inputs.js";
-import { labelWebItems, searchPolicyFor, subquestionsAreIndependent } from "./pipeline.js";
-import { looksLikeClarifyTurn, normalizeTriage } from "./triage.js";
-import { lastAssistantText } from "./conversation.js";
-
-describe("looksLikeClarifyTurn", () => {
-  // What the pipeline actually emitted on the reported conversation
-  // (feedback #47): runClarify streams the question alone, nothing else.
-  test("recognises the clarifying questions this pipeline emits", () => {
-    for (const turn of [
-      "What is the street address you'd like me to research?",
-      "What kind of news are you looking for in Andalucia? (e.g., latest events, sports, politics, weather)",
-      'Could you clarify what you mean by "Happy mews"? For example:\n\n1. A place or business\n2. Positive news\n3. Something else',
-    ]) {
-      assert.equal(looksLikeClarifyTurn(turn), true, turn.slice(0, 40));
-    }
-  });
-
-  // Swedish parity by construction, not by phrase list (CLAUDE.md invariant 6):
-  // the gate keys on punctuation and markdown structure, never on English
-  // wording, so it must behave identically on the Swedish forms.
-  test("holds for Swedish exactly as for English", () => {
-    assert.equal(looksLikeClarifyTurn("Vilken gatuadress vill du att jag undersöker?"), true);
-    assert.equal(looksLikeClarifyTurn("Vilken typ av nyheter är du ute efter i Andalusien?"), true);
-    assert.equal(
-      looksLikeClarifyTurn("## Nyheter i Andalusien\n\nDe senaste rapporterna visar [1] att läget är lugnt. Vill du veta mer?"),
-      false,
-    );
-  });
-
-  test("an answer is not a clarification, however it ends", () => {
-    // A synthesized answer: headings and numbered citations, and it may well
-    // end by offering to dig further — that offer is not a question to the
-    // pipeline, and treating it as one would suppress a legitimate clarify.
-    assert.equal(
-      looksLikeClarifyTurn("## The launch\n\nThe rocket lifted off at dawn [1]. Want me to research the next one?"),
-      false,
-    );
-    assert.equal(looksLikeClarifyTurn("The bezel measures 38.9mm [4]. Shall I look for more?"), false);
-    assert.equal(looksLikeClarifyTurn("A".repeat(800) + "?"), false); // too long to be a question alone
-    assert.equal(looksLikeClarifyTurn("Here is the answer."), false); // asks nothing
-    assert.equal(looksLikeClarifyTurn(""), false);
-    assert.equal(looksLikeClarifyTurn(undefined), false);
-  });
-
-  test("the unanswered-send marker is not read as a clarification", () => {
-    // The marker a failed send leaves behind (feedback #45's fix): it states
-    // something, it does not ask.
-    assert.equal(
-      looksLikeClarifyTurn("[The question above went unanswered — it was stopped before any answer arrived.]"),
-      false,
-    );
-  });
-
-  test("lastAssistantText reads the turn being replied to", () => {
-    const conversation = [
-      { role: "user", content: "news in andalucia" },
-      { role: "assistant", content: "What kind of news?" },
-      { role: "user", content: "Search web!" },
-    ];
-    assert.equal(lastAssistantText(conversation), "What kind of news?");
-    assert.equal(looksLikeClarifyTurn(lastAssistantText(conversation)), true);
-    assert.equal(lastAssistantText([{ role: "user", content: "first message" }]), "");
-  });
-});
-
-describe("normalizeTriage", () => {
-  test("clarify with a real question is preserved and trimmed", () => {
-    const result = normalizeTriage({ action: "clarify", question: "  which region?  " }, "some question");
-    assert.deepEqual(result, { action: "clarify", question: "which region?" });
-  });
-
-  // Feedback #47: three clarifying turns in a row, web search explicitly on,
-  // not one query run. One question is help; the second is a loop.
-  test("a second clarification in a row becomes a search instead", () => {
-    const clarify = { action: "clarify", question: "What kind of news are you looking for?" };
-    // First time through, the question stands.
-    assert.deepEqual(normalizeTriage(clarify, "news in andalucia", "", { priorWasClarify: false }), {
-      action: "clarify",
-      question: "What kind of news are you looking for?",
-    });
-    // Asked once already: search rather than ask again.
-    const escaped = normalizeTriage(clarify, "news in andalucia", "", { priorWasClarify: true });
-    assert.equal(escaped.action, "research");
-    assert.deepEqual(escaped.queries, ["news in andalucia"]);
-  });
-
-  test("the escaped clarification seeds from the prior turn for a bare follow-up", () => {
-    // "Search web!" carries no topic of its own — the established one does.
-    const escaped = normalizeTriage(
-      { action: "clarify", question: "What would you like me to search for?" },
-      "Search web!",
-      "news in andalucia",
-      { priorWasClarify: true },
-    );
-    assert.deepEqual(escaped, { action: "research", queries: ["news in andalucia"] });
-  });
-
-  test("the escaped clarification never answers directly with nothing to say", () => {
-    // Too short to search and no prior turn: the normal fallback would answer
-    // directly, but the user has already been asked once, so search anyway.
-    const escaped = normalizeTriage({ action: "clarify", question: "Which one?" }, "reddit", "", {
-      priorWasClarify: true,
-    });
-    assert.deepEqual(escaped, { action: "research", queries: ["reddit"] });
-  });
-
-  test("a mounted demo surface answers instead of asking what was meant", () => {
-    // Feedback #58: "Lets see a starship launch" mounted the Starship
-    // animation and the reply was "Do you want to see a live launch or a past
-    // one?" — asked over the launch already playing above it. Once a demo is
-    // on screen the ambiguity is answered, so the turn replies directly and
-    // the answer prompt (capabilitiesTail's spaceScene clause) names it.
-    const clarify = { action: "clarify", question: "Live or past?" };
-    assert.deepEqual(
-      normalizeTriage(clarify, "Lets see a starship launch", "", { demoMounted: true }),
-      { action: "direct" },
-    );
-    // Without one, the clarification still stands — this narrows nothing else.
-    assert.deepEqual(normalizeTriage(clarify, "Lets see a starship launch", "", {}), {
-      action: "clarify",
-      question: "Live or past?",
-    });
-    // The two-in-a-row escape still wins: it searches rather than answering
-    // from nothing, and a demo does not change that (feedback #47).
-    assert.equal(
-      normalizeTriage(clarify, "news in andalucia", "", { demoMounted: true, priorWasClarify: true })
-        .action,
-      "research",
-    );
-  });
-
-  test("clarify with a blank question falls through to the fallback logic", () => {
-    const result = normalizeTriage({ action: "clarify", question: "   " }, "a long enough question here");
-    assert.equal(result.action, "research");
-  });
-
-  test("research action filters out non-string and blank queries", () => {
-    const result = normalizeTriage({ action: "research", queries: ["real query", "", null, 42, "  "] }, "x");
-    assert.deepEqual(result, { action: "research", queries: ["real query"] });
-  });
-
-  test("research action with no usable queries falls back", () => {
-    const result = normalizeTriage({ action: "research", queries: [] }, "a long enough fallback question");
-    assert.equal(result.action, "research");
-    assert.deepEqual(result.queries, ["a long enough fallback question"]);
-  });
-
-  test("direct action passes through", () => {
-    assert.deepEqual(normalizeTriage({ action: "direct" }, "hi"), { action: "direct" });
-  });
-
-  test("the optional quiz flag rides along on direct and research, strict-boolean only", () => {
-    assert.deepEqual(normalizeTriage({ action: "direct", quiz: true }, "wuiz me"), { action: "direct", quiz: true });
-    const research = normalizeTriage({ action: "research", queries: ["glider handbook"], quiz: true }, "x");
-    assert.equal(research.quiz, true);
-    // Anything but literal true is dropped — never a truthy-string surprise.
-    assert.deepEqual(normalizeTriage({ action: "direct", quiz: "yes" }, "hi"), { action: "direct" });
-    assert.equal(normalizeTriage({ action: "research", queries: ["q"], quiz: 1 }, "x").quiz, undefined);
-    // And clarify never carries it.
-    assert.deepEqual(
-      normalizeTriage({ action: "clarify", question: "which?", quiz: true }, "x"),
-      { action: "clarify", question: "which?" },
-    );
-  });
-
-  test("unparseable triage falls back to research when the user message is long enough (>=12 chars)", () => {
-    const result = normalizeTriage(null, "this is a decently long question");
-    assert.equal(result.action, "research");
-    assert.deepEqual(result.queries, ["this is a decently long question"]);
-  });
-
-  test("unparseable triage falls back to direct when the user message is short (<12 chars)", () => {
-    const result = normalizeTriage(undefined, "hi there");
-    assert.equal(result.action, "direct");
-  });
-
-  test("fallback research query is truncated to 300 chars", () => {
-    const long = "x".repeat(400);
-    const result = normalizeTriage({}, long);
-    assert.equal(result.queries[0].length, 300);
-  });
-
-  test("on triage failure, a short follow-up seeds the search from the prior question, not the referential phrase", () => {
-    // "undersök saken" ("investigate the matter") is meaningless as a literal
-    // search; with a prior turn present the fallback searches that topic.
-    const result = normalizeTriage(null, "undersök saken", "Vad hände med Northvolt konkursen?");
-    assert.equal(result.action, "research");
-    assert.deepEqual(result.queries, ["Vad hände med Northvolt konkursen?"]);
-  });
-
-  test("with no prior turn there is nothing to resolve against, so a short standalone message is researched as-is (pre-existing behavior, unchanged)", () => {
-    // A bare "undersök saken" as the FIRST message has no context to seed
-    // from and is indistinguishable from a legit short query like
-    // "Northvolt konkurs 2026"; the follow-up seeding only applies when a
-    // prior user turn exists. This documents that the prior-less path keeps
-    // the original >=12-char research fallback.
-    const result = normalizeTriage(null, "undersök saken");
-    assert.equal(result.action, "research");
-    assert.deepEqual(result.queries, ["undersök saken"]);
-  });
-
-  test("on triage failure, a substantial standalone message is still researched as-is even with prior context", () => {
-    const msg = "What is the current market share of electric vehicles in Norway in 2026?";
-    const result = normalizeTriage(null, msg, "earlier unrelated question about batteries");
-    assert.equal(result.action, "research");
-    assert.deepEqual(result.queries, [msg]);
-  });
-});
-
-describe("normalizeTriage — decomposition fields (complexity, subquestions)", () => {
-  test("carries a valid complexity and trimmed sub-questions through the research path", () => {
-    const result = normalizeTriage(
-      {
-        action: "research",
-        queries: ["q1"],
-        complexity: "multihop",
-        subquestions: ["  Who owns X? ", "What did the owner announce?"],
-      },
-      "x",
-    );
-    assert.equal(result.complexity, "multihop");
-    assert.deepEqual(result.subquestions, ["Who owns X?", "What did the owner announce?"]);
-  });
-
-  test("omits both fields when absent — the pre-decomposition shape exactly", () => {
-    const result = normalizeTriage({ action: "research", queries: ["real query"] }, "x");
-    assert.deepEqual(result, { action: "research", queries: ["real query"] });
-  });
-
-  test("carries a valid decomposition value", () => {
-    for (const shape of ["independent", "sequential"]) {
-      const result = normalizeTriage(
-        { action: "research", queries: ["q"], decomposition: shape },
-        "x",
-      );
-      assert.equal(result.decomposition, shape, shape);
-    }
-  });
-
-  test("drops an unknown decomposition value instead of carrying junk", () => {
-    const result = normalizeTriage(
-      { action: "research", queries: ["q"], decomposition: "parallel-ish" },
-      "x",
-    );
-    assert.equal("decomposition" in result, false);
-  });
-
-  test("a Swedish research turn carries the shape fields the same way", () => {
-    // Invariant 6 in spirit: the classifier is a model field rather than a
-    // regex gate, but a Swedish request must reach the fan-out gate with the
-    // same shape as an English one — no language-dependent drop-out.
-    const result = normalizeTriage(
-      {
-        action: "research",
-        queries: ["jämför elbilar"],
-        complexity: "comparison",
-        subquestions: ["Vad kostar en Volvo EX30?", "Vad kostar en Tesla Model 3?"],
-        decomposition: "independent",
-      },
-      "jämför elbilar",
-    );
-    assert.equal(result.decomposition, "independent");
-    assert.equal(subquestionsAreIndependent(result), true);
-  });
-});
-
-describe("subquestionsAreIndependent — the fan-out shape gate", () => {
-  test("the classifier decides when it spoke", () => {
-    assert.equal(subquestionsAreIndependent({ decomposition: "independent" }), true);
-    assert.equal(subquestionsAreIndependent({ decomposition: "sequential" }), false);
-  });
-
-  test("a sequential verdict overrides a fan-out-friendly complexity", () => {
-    // The whole point of asking directly: a survey whose angles build on each
-    // other used to fan out purely because "survey" was the proxy.
-    assert.equal(
-      subquestionsAreIndependent({ complexity: "survey", decomposition: "sequential" }),
-      false,
-    );
-  });
-
-  test("multihop is refused even when the classifier claims independence", () => {
-    // Hop 2 cannot be searched until hop 1 surfaces the bridging fact, so a
-    // concurrent audit of it audits an unanswerable question.
-    assert.equal(
-      subquestionsAreIndependent({ complexity: "multihop", decomposition: "independent" }),
-      false,
-    );
-  });
-
-  test("falls back to the complexity proxy when the field is absent", () => {
-    assert.equal(subquestionsAreIndependent({ complexity: "comparison" }), true);
-    assert.equal(subquestionsAreIndependent({ complexity: "survey" }), true);
-    assert.equal(subquestionsAreIndependent({ complexity: "multihop" }), false);
-    assert.equal(subquestionsAreIndependent({ complexity: "simple" }), false);
-    assert.equal(subquestionsAreIndependent({}), false);
-  });
-
-  test("drops an unknown complexity value instead of carrying junk", () => {
-    const result = normalizeTriage(
-      { action: "research", queries: ["q"], complexity: "extreme" },
-      "x",
-    );
-    assert.equal("complexity" in result, false);
-  });
-
-  test("filters non-string/blank sub-questions and caps at 5", () => {
-    const result = normalizeTriage(
-      {
-        action: "research",
-        queries: ["q"],
-        subquestions: ["a", "", null, 42, "b", "c", "d", "e", "f"],
-      },
-      "x",
-    );
-    assert.deepEqual(result.subquestions, ["a", "b", "c", "d", "e"]);
-  });
-
-  test("an empty subquestions array is omitted, not attached", () => {
-    const result = normalizeTriage(
-      { action: "research", queries: ["q"], subquestions: [] },
-      "x",
-    );
-    assert.equal("subquestions" in result, false);
-  });
-});
-
-describe("collectConflicts", () => {
-  test("accumulates trimmed conflicts across gap rounds, deduped", () => {
-    const state = {};
-    collectConflicts(state, { conflicts: [" A says 5, B says 7 ", "dates differ"] });
-    collectConflicts(state, { conflicts: ["dates differ", "C disputes the attribution"] });
-    assert.deepEqual(state.conflicts, [
-      "A says 5, B says 7",
-      "dates differ",
-      "C disputes the attribution",
-    ]);
-  });
-
-  test("missing/malformed conflicts fields are simply no conflicts", () => {
-    const state = {};
-    collectConflicts(state, null);
-    collectConflicts(state, {});
-    collectConflicts(state, { conflicts: "not an array" });
-    collectConflicts(state, { conflicts: [null, "", 42] });
-    assert.deepEqual(state.conflicts, []);
-  });
-
-  test("caps the accumulated list at 6", () => {
-    const state = {};
-    collectConflicts(state, { conflicts: ["1", "2", "3", "4"] });
-    collectConflicts(state, { conflicts: ["5", "6", "7", "8"] });
-    assert.equal(state.conflicts.length, 6);
-  });
-});
+import { labelWebItems, searchPolicyFor } from "./pipeline.js";
 
 describe("isTransientConnectStatus", () => {
   test("provider-side statuses are retryable", () => {
@@ -434,49 +80,35 @@ describe("quiz gate reads the clean (pre-enrichment) user message", () => {
     assert.doesNotMatch(src, /quizIntent\(ctx\.lastUser\)/);
   });
 
-  test("the triage-backup question count uses cleanLastUser", () => {
-    assert.match(src, /quizQuestionCount\(ctx\.cleanLastUser\)/);
-    assert.doesNotMatch(src, /quizQuestionCount\(ctx\.lastUser\)/);
+  // The triage phase carried a model-side `quiz` backup for typos the regexes
+  // miss ("Bygg en wuiz…"). It went with the phase, so quizIntent is now the
+  // ONLY gate — which is why the argument it reads is the whole of the pin.
+  test("no second quiz gate reads the enriched message instead", () => {
+    assert.doesNotMatch(src, /quizIntent\(ctx\.lastUser\)/);
+    assert.doesNotMatch(src, /decision\.quiz === true/);
   });
 });
 
-// Regression pin (feedback: "gave up too early" / "strive toward the depth
-// target, shortcut if there isn't more to explore"): the deep-tier gap loop
-// now runs a HIGH round ceiling (budget.js), so it needs a diminishing-returns
-// stop — a follow-up wave that adds NO new sources ends the loop instead of
-// spinning further rounds against the same registry. This is the meaningful-
-// action guarantee that keeps the raised ceiling honest.
-describe("gap loop stops when a follow-up wave surfaces no new sources", () => {
-  const src = readFileSync(new URL("./pipeline.js", import.meta.url), "utf8");
+// The follow-up loop moved to src/pipeline-standard.js's reflect node when the
+// gap cascade was deleted, and its bounds moved with it (round ceiling, search
+// cap, deadline — pinned in that module's own suite). What stayed HERE is the
+// registry accounting the loop spends against, so this is the pin that the
+// deleted loop's saturation signal did not take with it: `sourceProgress`
+// counts the domain-capped finds too, and reading `sources.length` alone made
+// a wave whose every result hit DOMAIN_CAP — a question whose answer lives
+// across many pages of one authoritative origin — look identical to a wave
+// that found nothing.
+describe("the source registry's progress signal counts overflow", () => {
+  const src = readFileSync(new URL("./sources.js", import.meta.url), "utf8");
 
-  test("runGapChecks captures progress before the wave and breaks on no gain", () => {
-    assert.match(src, /const foundBefore = sourceProgress\(state\)/);
-    assert.match(src, /const gained = sourceProgress\(state\) - foundBefore/);
-    assert.match(src, /if \(gained === 0\)[\s\S]*?break/);
-    // The break lives AFTER the searches run (it measures their yield), not before.
-    assert.match(src, /await runSearches\(ctx, followups[\s\S]*?gained === 0/);
+  test("sourceProgress adds the overflow to the admitted registry", () => {
+    assert.match(src, /export function sourceProgress\(state\) \{\s*return state\.sources\.length \+ \(state\.sourceOverflow\?\.length \|\| 0\);/);
   });
 
-  // The signal must count the domain-capped finds too. Reading
-  // `state.sources.length` alone made a wave whose every result hit
-  // DOMAIN_CAP — a question whose answer lives across many pages of one
-  // authoritative origin — look identical to a wave that found nothing, and
-  // the loop stopped researching while it was still finding new pages.
-  // sourceProgress's own behaviour is pinned in src/sources.test.js.
-  test("the signal counts overflow, not just admitted sources", () => {
-    assert.doesNotMatch(
-      src,
-      /if \(state\.sources\.length === sourcesBefore\)/,
-      "the old admitted-only signal must not come back",
-    );
-    assert.match(src, /import \{[\s\S]*?sourceProgress[\s\S]*?\} from "\.\/sources\.js"/);
-  });
-
-  // Backlog #4 (docs/DEEP-RESEARCH-TECHNIQUES.md): whether rounds past the
-  // second contribute anything was unmeasurable — only the saturation break
-  // was logged, and it carried no source counts.
-  test("each round logs what it gained, so the loop's contribution is measurable", () => {
-    assert.match(src, /log\.info\("chat\.gap_round", \{[\s\S]*?gained,[\s\S]*?admitted:[\s\S]*?capped:/);
+  // Deduped like the registry itself, or a later wave re-finding the same
+  // capped URLs would read as new ground.
+  test("a re-found capped URL does not count twice", () => {
+    assert.match(src, /if \(!state\.overflowUrls\.has\(item\.url\)\)/);
   });
 });
 
@@ -670,7 +302,7 @@ describe("the web-search knob gates Exa only — depth still runs over other sou
     // The agent's own auxSources declaration still outranks the force.
     assert.match(fn, /!forced\.length \|\| !searchPolicyFor\(state\)\.auxSources/);
 
-    const sourceResearch = src.slice(src.indexOf("async function runSourceResearch(ctx)"), src.indexOf("async function runSubquestionFanout"));
+    const sourceResearch = src.slice(src.indexOf("async function runSourceResearch(ctx)"), src.indexOf("export async function runSynthesis"));
     // Run BEFORE the snapshot check, so even the no-snapshot exit has them.
     const auxIdx = sourceResearch.indexOf("await runForcedAuxSearches(ctx)");
     assert.ok(auxIdx >= 0 && auxIdx < sourceResearch.indexOf("if (!snapshot"), "forced aux runs before the snapshot check");
@@ -748,10 +380,14 @@ describe("the answer-phase dispatch table", () => {
   const table = src.slice(src.indexOf("const ANSWER_PHASE_RUNNERS"), src.indexOf("function answerPhaseFor"));
 
   test("every executor phase in the vocabulary has a runner", () => {
-    // ANSWER_PHASES also declares `research` and `source-research`, which are
-    // deliberately NOT dispatch targets: which of those two a knob-on turn runs
-    // is a per-message decision the hasSource + externalSourceIntent gate owns.
+    // `research` became a dispatch target with the engine split (2026-08-29):
+    // it routes to whichever engine engineFor picked, after the per-message
+    // gates. `source-research` deliberately did NOT — which of the two a
+    // knob-on turn runs is a per-message decision the hasSource +
+    // externalSourceIntent gate owns, and that gate lives inside the research
+    // phase rather than in the registry.
     for (const [phase, fn] of [
+      ["research", "runResearchPhase"],
       ["build", "runSdkBuild"],
       ["workflow", "runOrchestration"],
       ["feed", "runOutrospection"],
@@ -759,8 +395,61 @@ describe("the answer-phase dispatch table", () => {
     ]) {
       assert.match(table, new RegExp(`\\b${phase}: ${fn},`), `${phase} → ${fn}`);
     }
-    assert.ok(!/\bresearch:/.test(table), "research is not a dispatch target");
-    assert.ok(!/\bsource-research:/.test(table), "source-research is not a dispatch target");
+    assert.ok(!table.includes("source-research:"), "source-research is not a dispatch target");
+    // …and the fall-through calls the SAME function, so an unreadable registry
+    // and the MCP channel (which resolve no phase at all) take the identical
+    // path a dispatched `research` turn takes.
+    assert.match(src, /return runResearchPhase\(ctx\);/);
+  });
+
+  test("the research phase routes to an engine, and never falls out of the router", () => {
+    // The properties the router has to keep. Read off the source because
+    // running it needs a provider: the engine is chosen by src/agentic.js (not
+    // re-decided here), the standard graph has its own branch, and every other
+    // name — including one a future spec resolves that this build does not
+    // know — reaches the loop, which degrades into the standard graph itself.
+    // A request must always be answered by something (invariant 2), and after
+    // the bespoke phases were deleted there is no fall-through left to catch
+    // an unrouted turn, so the router's LAST statement has to be a call.
+    const phase = src.slice(src.indexOf("async function runResearchPhase"), src.indexOf("async function runQuizResearch"));
+    assert.match(phase, /const engine = engineFor\(ctx\);/);
+    assert.match(phase, /if \(engine === "standard"\) return runStandardResearch\(ctx\);/);
+    assert.match(phase, /return runAgenticResearch\(ctx\);\n\}/);
+    // The quiz is the one research turn neither engine can finish, so it gets
+    // its own short flow: runQuizGeneration replaces the report outright.
+    assert.match(phase, /if \(quizReq\) return runQuizResearch\(ctx, quizReq\);/);
+  });
+
+  test("the quiz flow reuses the standard graph's nodes rather than a planner of its own", () => {
+    // The deleted triage phase used to plan the quiz turn's angles. Nothing
+    // replaced it with a second planner: node 1 does that job, and the flow
+    // stops before the reflect loop because a quiz is written from what is
+    // already in front of it.
+    const quiz = src.slice(src.indexOf("async function runQuizResearch"), src.indexOf("// ---- phases ---"));
+    assert.match(quiz, /await generateQueries\(ctx\)/);
+    assert.match(quiz, /await runNamedUrlReads\(ctx, extractNamedUrls\(ctx\.cleanLastUser\)\)/);
+    assert.match(quiz, /await runSearches\(ctx, queryPlan\.queries, 1\)/);
+    assert.ok(!/reflect\(/.test(quiz), "no reflect round on a quiz turn");
+    // Fail-soft: a quiz that cannot be built still produces an answer.
+    assert.match(quiz, /await runSynthesis\(ctx\)/);
+    assert.match(quiz, /await runValidation\(ctx, draft\)/);
+  });
+
+  // The deletion's own guard. These six were the bespoke five-phase cascade
+  // and the dead deep tier hanging off it; nothing routes to them any more,
+  // and re-introducing one would put a second orchestration beside the two
+  // engines without anything failing.
+  test("the deleted phases stay deleted", () => {
+    for (const gone of [
+      "async function runTriage",
+      "async function runGapChecks",
+      "async function maybeDigest",
+      "async function maybeFullContentDigest",
+      "async function runSubquestionFanout",
+      "async function runClaimValidation",
+    ]) {
+      assert.ok(!src.includes(gone), `${gone} must not come back`);
+    }
   });
 
   test("the mode booleans survive as the fail-soft fallback", () => {
@@ -960,22 +649,42 @@ describe("the query-writing phases plan from the method-block-free view", () => 
     assert.doesNotMatch(withoutAliases, /\bconvText\b/, "the raw enriched convText must not come back");
   };
 
-  test("runTriage plans from planLastUser/planConvText", () => {
+  // The two query-writing phases moved to src/pipeline-standard.js when the
+  // triage/gap cascade was deleted, so the pin follows them there. It stays
+  // per-phase and sliced to each function body for the same reason: a
+  // whole-file /planLastUser/ match would pass with one of the two regressed.
+  const std = readFileSync(new URL("./pipeline-standard.js", import.meta.url), "utf8");
+  const stdDestructureOf = (from, to) => {
+    const start = std.indexOf(from);
+    const end = std.indexOf(to);
+    assert.ok(start !== -1, `slice start not found: ${from}`);
+    assert.ok(end > start, `slice end not found after start: ${to}`);
+    const line = std.slice(start, end).match(/^\s*const \{[^}]*\} = ctx;/m);
+    assert.ok(line, `no ctx destructure in ${from}`);
+    return line[0];
+  };
+
+  test("generateQueries plans from planLastUser/planConvText", () => {
     assertPlansFromCleanView(
-      destructureOf("async function runTriage", "async function runQuizGeneration"),
+      stdDestructureOf("export async function generateQueries", "export async function reflect"),
     );
   });
 
-  test("runSubquestionFanout plans from planLastUser/planConvText", () => {
+  test("reflect plans from planLastUser/planConvText", () => {
     assertPlansFromCleanView(
-      destructureOf("async function runSubquestionFanout", "async function runGapChecks"),
+      stdDestructureOf("export async function reflect", "export async function runStandardResearch"),
     );
   });
 
-  test("runGapChecks plans from planLastUser/planConvText", () => {
-    assertPlansFromCleanView(
-      destructureOf("async function runGapChecks", "async function maybeDigest"),
-    );
+  // The deterministic half of feedback #65 travelled with the node. Without it
+  // the prompt rule is alone on the fixed JSON planner, which is exactly the
+  // configuration the reported bug happened in.
+  test("generateQueries still drops format-chasing angles deterministically", () => {
+    assert.match(std, /import \{ focusQueriesOnSubject \} from "\.\/query-focus\.js"/);
+    assert.match(std, /focusQueriesOnSubject\(plan\.queries, \{ cleanText: ctx\.cleanConvText, methodApplied \}\)/);
+    // Read off the CLEAN conversation: what the user asked about is a fact
+    // about their words, never about prose an enrichment appended to them.
+    assert.doesNotMatch(std, /focusQueriesOnSubject\([^)]*ctx\.convText/);
   });
 
   // Without this the three pins above are satisfiable by a plan view that is

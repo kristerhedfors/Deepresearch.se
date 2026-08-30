@@ -10,10 +10,17 @@ on-demand skills under `skills-disabled/`; load what the task needs.
 A Cloudflare Worker that serves a static chat UI (`public/`) and a streaming
 `/api/chat` endpoint. Deployed via `npx wrangler deploy` (config in
 `wrangler.toml`), git-connected to Cloudflare. The site is a *deep research*
-assistant, matching its name: `/api/chat` runs a Worker-orchestrated pipeline
-(triage → search → gap check → synthesis → validation) with **no function
-calling** — every phase is a direct JSON-mode or streamed call, so it is
-deterministic and works on any model in the catalog. The primary LLM provider
+assistant, matching its name: a research turn on `/api/chat` runs one of TWO
+engines (the bespoke five-phase cascade was deleted 2026-08-29 — owner
+directive, "don't keep this static pipeline"). The **agentic** engine
+(`src/agentic.js`) hands the answer model a research brief and a toolbox and
+lets it choose its own calls; the **standard** engine
+(`src/pipeline-standard.js`) is the four-node compact graph
+(generate_queries → web_research → reflect → finalize), every node a direct
+JSON-mode or streamed call. `engineFor` picks: what the request asked for,
+else what the agent declared, else the loop wherever the model can drive one —
+and the standard graph everywhere else, which is the FALLBACK that keeps the
+whole catalog working. The primary LLM provider
 is **Berget.ai** (OpenAI-compatible); **Anthropic (Claude)** and **OpenAI
 (GPT)** are secondary, key-gated providers for answer/synthesis models
 (claude-* opus/sonnet/haiku — `src/anthropic.js`; bare gpt-* —
@@ -161,31 +168,44 @@ loop: the **feature-maintenance** skill.
 
 ## Load-bearing invariants
 
-1. **Deterministic orchestration — NO function calling.** Every pipeline
-   phase is a direct JSON-mode or streamed call, so the whole thing works
-   across Berget's entire catalog, including models with unreliable
-   tool-calling. Don't introduce function/tool-calling into the pipeline.
-   ONE authorized exception (owner directive, 2026-07-12; extended to SDK
-   mode 2026-07-18): DEVELOPER MODE's source investigation and SDK MODE's
-   build flow — when the mode is on AND the answer model supports real tool
-   use, the ANSWER model drives `grep_source` / `read_file` / `list_files`
-   over the site's own source (Se/cure adds a real `run_bash` over the
-   sandbox), and in SDK mode additionally the `sdk_*` planning tools +
-   `write_file`/`publish_app`. This is DELIBERATE and must not be "fixed"
-   back; models without tool use fall back to the deterministic source read
-   loop (introspection) / the fenced `FILE:`-block convention (SDK mode),
-   and the JSON planning phases (invariant 3) never use tools. See the
+1. **Deterministic orchestration — the FALLBACK is never optional.** The
+   platform must work across Berget's entire catalog, including models with
+   unreliable tool-calling, so every deterministic phase stays a direct
+   JSON-mode or streamed call and nothing may depend on tool use being
+   available. Authorized exceptions (owner directive, 2026-07-12; extended to
+   SDK mode 2026-07-18, and to RESEARCH 2026-08-29): DEVELOPER MODE's source
+   investigation, SDK MODE's build flow, and the AGENTIC research engine —
+   when the answer model supports real tool use, IT drives the calls
+   (`grep_source` / `read_file` / `list_files` over the site's own source,
+   Se/cure adding a real `run_bash`; in SDK mode the `sdk_*` planning tools +
+   `write_file`/`publish_app`; on the research path the toolbox in
+   `src/research-tools.js`). Each one is DELIBERATE and must not be "fixed"
+   back, and each one is paired with a fallback that carries the same request
+   without tools: the deterministic source read loop (introspection), the
+   fenced `FILE:`-block convention (SDK mode), and the four-node standard
+   graph `src/pipeline-standard.js` (research — `engineFor` routes there for
+   any model with no tool dialect and any run whose toolbox resolves empty).
+   The JSON planning phases (invariant 3) never use tools. See the
    **introspection** and **sdk-mode** skills.
-2. **Helper phases fail soft, never break the request.** Search, gap check,
-   validation, and every enrichment (geocode + every extension) degrade to a lesser
-   result (fewer searches, accepted draft, conversation unchanged) rather
-   than erroring the chat. Both Berget calls are time-bounded so a hung
+2. **Helper phases fail soft, never break the request.** Search, the reflect
+   round, validation, and every enrichment (geocode + every extension) degrade
+   to a lesser result (fewer searches, an unreflected wave, accepted draft,
+   conversation unchanged) rather than erroring the chat — and on the agentic
+   engine every tool refusal is a SENTENCE the model reads next round, never a
+   throw. Both Berget calls are time-bounded so a hung
    backend can't defeat that.
-3. **Split model routing.** The three JSON planning phases (triage, gap
-   check, validation) always run on the fixed reliable `DEFAULT_MODEL`
-   (Mistral Small); only synthesis (and direct/search-off replies) run on
-   the user's chosen model — regardless of which PROVIDER serves that model.
-   Token accounting, budgeting, and profiles are all split accordingly.
+3. **Split model routing.** Every JSON/structured phase — the standard
+   graph's `generate_queries` and `reflect` nodes, validation, the quiz gate,
+   the orchestrator plan — runs on the fixed reliable `DEFAULT_MODEL`
+   (Mistral Small), through `jsonPhase` and `ctx.jsonModel`; only synthesis,
+   the AGENTIC tool loop, and direct/search-off replies run on the user's
+   chosen model — regardless of which PROVIDER serves that model. The agentic
+   engine is the deliberate half-exception: its planning IS the loop, so the
+   user's model plans its own tool calls there — but its report is still
+   validated on the planning model, and a model that cannot drive the loop
+   falls back to the standard graph, where the split is total. Token
+   accounting, budgeting, and profiles are split accordingly (`jsonTotals`
+   vs `totals`).
 4. **The privacy split.** Se/cure (`/cure`) is the never-cloud tier: the
    server is in NO data path — browser-direct provider calls (or the user's
    own local server), client-side pipeline, sealed browser-local state. On
@@ -306,8 +326,7 @@ skill's drift greps target it).
 npm install         # once: the suite needs the root devDependencies (see below)
 npm test            # unit: node --test src/*.test.js public/js/*.test.js public/app-kit/*.test.js
                     #                  public/games/*/js/*.test.js sdk/*.test.mjs scripts/*.test.mjs
-                    #                  scripts/*/*.test.mjs tests/*.test.js tests/pygram/*.test.mjs
-                    #                  tests/mopy/*.test.mjs
+                    #                  scripts/*/*.test.mjs tests/*.test.js
 npm run typecheck   # zero-build-step tsc, strict, opt-in per file via // @ts-check
 cd tests && npm install && npm run fixtures   # e2e setup (once)
 npm run test:local                            # Playwright vs a Worker on this machine — free, no creds; what CI runs
@@ -329,38 +348,46 @@ miss, and a no-search control arm that measures the memorised share instead of
 assuming it; append-only ledgers, don't deploy mid-battery):
 **`docs/TESTING.md`**.
 
-## Python in the sandbox — write it in pygram's subset
+## Python in the sandbox — it is lypning, and it lives elsewhere now
 
-The in-browser sandbox runs **pygram**, a Python SUBSET (`docs/PYGRAM.md`), not
-CPython — because `python3 --version` alone costs **8573 ms cold** in there and
-can cross the 30 s ceiling that destroys the VM, while pygram opens zero files.
-When it meets something outside the subset it exits **90** with one line naming
-it — `pygram: unsupported: module: subprocess` — which is a fork, not a wall:
-retry the line with real `python3` (always correct), or rewrite it (usually two
-or three tokens, and then it runs at a fraction of the cost).
+The interpreter the sandbox runs is **[lypning](https://github.com/kristerhedfors/lypning)**,
+a MIXTURE OF PYTHONS: a Rust subset, a MicroPython variant with a frozen shim
+stdlib, and real CPython, with a classifier that picks per program. It used to
+live here as `pygram/` + `mopy/`; it was broken out on 2026-08-29 and **this
+repository now depends on it rather than carrying it** (`docs/LYPNING.md`).
 
-The rewrites worth knowing before you type the line:
+Why a subset at all: `python3 --version` alone costs **8573 ms cold** in the
+browser VM and can cross the 30 s ceiling that destroys it, while a frozen
+subset opens **zero** files. In the image `scripts/build-sandbox-image.sh`
+builds, a plain `python3 -c 'print(1+1)'` has been measured NEVER COMPLETING —
+so this is not a preference between interpreters, it is the difference between
+the sandbox having Python and not having it.
 
-| instead of | write |
-|---|---|
-| `subprocess.run([...], capture_output=True)` | run it in the bash block and pipe: `cmd \| pygram s.py` + `sys.stdin.read()` |
-| `os.system(cmd)` / `input()` | same hoist; `sys.stdin.readline()` |
-| `match x: case 1: ...` | `if` / `elif` — the 3.10 statement is not in this parser |
-| `{**a, **b}` | `m = dict(a); m.update(b)` — `f(**kw)` is fine, the LITERAL is not |
-| `def f(a, /, b)` · `except* E` · `with (a as f,):` | drop the `/` · plain `except` · one unparenthesized `with` |
-| `zip(xs, ys, strict=True)` · `round(x, ndigits=2)` · `s.split(" ", maxsplit=1)` | pass them POSITIONALLY — the C builtins take the value, just not the name |
-| `import itertools, functools, string, operator, bisect, copy, decimal` | inline it; a comprehension or a loop is the same length |
-| `@dataclass` · `enum.Enum` | a plain class — annotations are parsed and DISCARDED here, and there is no metaclass |
-| `str.removeprefix` · `str.casefold` · `math.prod` · `heapq.nsmallest` | slice on `startswith` · `.lower()` · a loop · `sorted()[:n]` |
-| `json.load(f)` then `json.dumps(d)` on a big file | never hold both — heap exhaustion now exits 90, but the answer is to work on the text |
+When a tier meets something outside its subset it refuses the same way every
+tier does — exit **90**, one `<engine>: unsupported: <kind>: <detail>` line on
+stderr, nothing on stdout — and the dispatcher falls onward to the next tier.
+**That is why you do not have to write to a subset**: the mixture answers
+everything, and a wrong route costs one wasted process spawn rather than a wrong
+answer. Write ordinary Python; the router pays for the parts it cannot take.
 
-**The full page is `docs/PYGRAM-COOKBOOK.md`, and every recipe on it is
-EXECUTED** by `tests/pygram/cookbook.test.mjs` against a real build: the before
-must still exit 90, the after must match CPython byte for byte, and the two must
-compute the same thing. A recipe whose gap gets closed fails the suite as
-obsolete, so the page cannot drift into telling you to work around something
-that works. Add recipes from the conformance run's UNSUPPORTED list, never from
-memory.
+What is still THIS repository's to get right is the SEAM, and all of it can fail
+quietly:
+
+- `scripts/build-sandbox-image.sh` installs both engines and must **skip
+  loudly** when they are absent or not i386 — an image built without them is the
+  failure that looks like success. CheerpX is 32-bit x86 only.
+- `tests/e2e/sandbox-perf.spec.js` pairs both engines against the three CPython
+  probes, using a builtin `[ -x … ]` test and never `command -v`: a PATH walk
+  for a missing tool once consumed the whole 30 s exec ceiling and destroyed
+  the VM, taking every later probe with it.
+- `/lypning/` measures them in a real browser VM and plots the project's own
+  history (`npm run lypning`, `npm run lypning:check`). Its one editorial rule
+  is lypning's own third invariant: **never present a remembered number as a
+  measurement.** A figure is either measured here or labelled as a quote.
+
+The engine's own gates — the build shape, and the CPython conformance run where
+MISMATCH is fatal and UNSUPPORTED is just the build order — run in lypning's CI,
+against an artifact this repository does not build.
 
 ## The SDKs and interchange standards
 
@@ -511,19 +538,7 @@ Debugging & live verification:
 - **on-device-trace** — remote-debugging device-only bugs (iOS PWA) via build stamp + copyable on-device event trace.
 - **sandbox-debug** — the sandbox boot-hang playbook: debug switches, the `boot_stage` timeline, the stall watchdog.
 - **sandbox-perf-eval** — measuring how long sandbox commands take: the cold/warm battery + agent-turn trace, and the two traps (cross-origin auth kills the boot; the 30 s ceiling destroys the VM).
-- **pygram** — the minimal Python-subset runtime for the sandbox (`docs/PYGRAM.md`): why `python3` costs 8573 ms cold there and pygram opens zero files, the two gates (build shape + CPython conformance, where MISMATCH is fatal and UNSUPPORTED is just the build order), the capture harness that grows the corpus from real invocations by itself, the musl-i386 build, and the six traps already paid for — a bare `lib/` in .gitignore that swallowed the whole frozen stdlib, tracebacks on stdout poisoning pipelines, and a strace parser whose bug inverted into a perfect score. ALSO why the COMPILER lane is now closed (2026-08-15): `-O2` costs 24.7% of the binary for 0.6%, PGO is 11% SLOWER on anything its profile missed, and `llvm-bolt` has no i386 target — because 96% of an invocation is the OS spawning a process, so the wins are algorithmic (16x on `re.sub` by not re-slicing a string). Plus the cost model's missing constant, the 131,072 B CheerpX device block that makes cold cost a step function, and `pygram-corpus-time.mjs`, the instrument a speed change is accepted on. ALSO the CONTRACT-HOLE class found 2026-08-19 — the ways pygram exited 1 for something that was not the program's fault (heap exhaustion, syntax CPython accepts, a keyword a C builtin does not take) and the one that answered WRONG at exit 0 (`str()` on a native subclass skipping its `__repr__`, which shipped in `collections.defaultdict` and `Counter`) — plus `pygram/variant/pygram_compat.h`, where a correction goes when the right behaviour is known and cheap rather than worth a 90, and `docs/PYGRAM-COOKBOOK.md`, the executed rewrite page.
-- **mopy** — the MIXTURE OF PYTHONS (`docs/MOPY.md`): a second, from-scratch
-  Python subset written in Rust and sized to the BOTTOM of the corpus, plus the
-  classifier that picks between mopy, pygram and CPython per one-liner and the
-  dispatcher that recovers when the pick was wrong. Measured over 472 harvested
-  programs: mopy answers 68.6% and is the fastest engine on what it accepts
-  (0.102x CPython), and the mixture answers 100% at 0.266x. Covers the three
-  refusals that keep a subset honest (i64 ints, set iteration order, repr of
-  non-ASCII), the COMMIT BARRIER that makes falling back safe, the asymmetric
-  routing score (UNSAFE vs WASTED vs LATE), and the traps paid for — static musl
-  is a precondition not a preference (5 file opens vs 0), `Command::output()`
-  nulls stdin and silently breaks every stdin one-liner, and an engine's
-  `MemoryError` is never the program's answer.
+- **lypning** — the Python the sandbox runs, which is now a SEPARATE PROJECT (`docs/LYPNING.md`, github.com/kristerhedfors/lypning): a mixture of three interpreters — a Rust subset, a MicroPython variant with a frozen shim stdlib, and CPython — with a classifier that picks per program and one refusal contract (exit 90, one line on stderr, nothing on stdout) that makes a wrong pick cost one wasted spawn instead of a wrong answer. What is left HERE is the seam and it can fail quietly: the image installer that must skip loudly rather than ship an image with no fast Python, the paired e2e probes that use a builtin `[ -x … ]` and never `command -v` (a PATH walk for a missing tool once ate the whole 30 s exec ceiling and destroyed the VM), the `/lypning/` dashboard that measures both engines in a real browser VM, and `scripts/build-lypning.mjs`, which walks a lypning clone's history into the committed dataset the dashboard plots. Its one editorial rule is lypning's own third invariant — never present a remembered number as a measurement — which the page enforces by labelling every figure MEASURED HERE or QUOTED and by rendering a commit that published no table as a GAP rather than a zero. Why any of this exists: `python3 --version` costs 8573 ms cold in that VM and a plain `python3 -c 'print(1+1)'` has been measured never completing, while a frozen subset opens zero files. The engine's own gates — build shape, and the CPython conformance run where MISMATCH is fatal and UNSUPPORTED is just the build order — run in lypning's CI against an artifact this repository does not build.
 
 Feedback, boards & testing loops:
 

@@ -11,7 +11,6 @@
 // byte-identical to the pre-feature pipeline. Do not change that without
 // re-checking the pipeline's model-input snapshots.
 
-import { notesDigest } from "./notes.js";
 import { replyLinksTo } from "./build-pub.js";
 
 /** @typedef {import('./types.js').Message} Message */
@@ -76,62 +75,29 @@ export function auxReplyMessages(auxBlock) {
   ];
 }
 
-// Distilled-notes preamble for the gap/synth inputs — only present when the
-// budget-gated digest phase actually produced notes (never at default budget,
-// so the input string is byte-identical there).
+// The STATED knowledge gaps the standard pipeline's reflect node produced
+// (src/pipeline-standard.js). The gap check this replaces emitted only a
+// saturation verdict — a boolean nobody can read — so a run that stopped
+// short left no trace of WHAT it never found, and the report had no way to
+// say so. A reflect round names the gap in one sentence, and the answer is
+// told to carry it as a limitation rather than to paper over it.
+//
+// Empty (and thus absent) whenever no round stated a gap — which is every run
+// of the model-driven loop, whose report is written from the same builder.
 /**
- * @param {object[] | undefined} notes
+ * @param {string[] | undefined} gaps
  * @returns {string}
  */
-export function notesSection(notes) {
-  const block = notesDigest(notes, 6000);
-  return block ? `Distilled research notes so far:\n${block}\n\n` : "";
-}
-
-// Accumulates the gap check's reported source disagreements onto the request
-// state (deduped, capped) so synthesis can be told to address them explicitly
-// instead of silently picking a side. Pure state bookkeeping. Lenient by
-// design: a missing/malformed conflicts field is simply no conflicts.
-/**
- * @param {{ conflicts?: string[] }} state The request state (only `conflicts` is touched).
- * @param {any} gap Raw gap-check JSON.
- * @returns {string[]} The accumulated conflict list.
- */
-export function collectConflicts(state, gap) {
-  const list = Array.isArray(gap?.conflicts) ? gap.conflicts : [];
-  state.conflicts ||= [];
-  for (const raw of list) {
-    const c = typeof raw === "string" ? raw.trim() : "";
-    if (!c || state.conflicts.includes(c)) continue;
-    state.conflicts.push(c);
-    if (state.conflicts.length >= 6) break;
-  }
-  return state.conflicts;
-}
-
-// The sub-question and source-conflict preambles for the synthesis input —
-// both empty (and thus absent, keeping the input byte-identical to the
-// pre-decomposition pipeline) unless triage decomposed the question or a gap
-// round reported disagreeing sources.
-/**
- * @param {string[] | undefined} subquestions
- * @returns {string}
- */
-export function subquestionsSection(subquestions) {
-  const list = Array.isArray(subquestions) ? subquestions.filter(Boolean) : [];
+export function knowledgeGapsSection(gaps) {
+  const list = Array.isArray(gaps) ? gaps.map((g) => String(g || "").trim()).filter(Boolean) : [];
   if (!list.length) return "";
-  return `Sub-questions the answer must address:\n${list.map((s, i) => `${i + 1}. ${s}`).join("\n")}\n\n`;
+  return (
+    "Knowledge gaps the research identified and could not close (state each as an explicit " +
+    "limitation of this answer — never fill one in from general knowledge as if it were sourced):\n" +
+    list.map((g) => `- ${g}`).join("\n") + "\n\n"
+  );
 }
 
-/**
- * @param {string[] | undefined} conflicts
- * @returns {string}
- */
-export function conflictsSection(conflicts) {
-  const list = Array.isArray(conflicts) ? conflicts.filter(Boolean) : [];
-  if (!list.length) return "";
-  return `Source conflicts detected during research (address each explicitly — cite both sides, never silently pick one):\n${list.map((c) => `- ${c}`).join("\n")}\n\n`;
-}
 
 // What was actually SEARCHED, handed to synthesis so a report can say where it
 // looked instead of asserting bare absence.
@@ -145,8 +111,8 @@ export function conflictsSection(conflicts) {
 // opposite ("Say where you looked when you found nothing, so a reader can tell
 // a thin record from a thin search"); nothing supplied the information.
 //
-// Deliberately NOT more retrieval: the de-noised benchmark behind
-// budget.js's DEEP_TIER_FEATURES_ENABLED found extra pre-synthesis material
+// Deliberately NOT more retrieval: the de-noised benchmark that eventually
+// got the deep-tier phases deleted found extra pre-synthesis material
 // net-negative (2.65 → 2.43, by context dilution), and the ground-truth
 // battery puts the loss at 14:1 synthesis-over-retrieval. This adds a bounded
 // list of queries already run — no search, no model call, no new sources.
@@ -186,31 +152,6 @@ export function searchLedgerSection(issuedQueries) {
   );
 }
 
-/** @typedef {{ claim: string, source_ids: number[] }} Claim */
-
-// Pure, lenient parse of the claim-extraction JSON ({claims:[{claim,
-// source_ids}]} or a bare array) — drops junk, caps at 12, never throws.
-/**
- * @param {any} value Raw claim-extraction JSON.
- * @returns {Claim[]}
- */
-export function extractClaims(value) {
-  const list = value && Array.isArray(value.claims) ? value.claims : Array.isArray(value) ? value : [];
-  /** @type {Claim[]} */
-  const out = [];
-  for (const c of list) {
-    if (!c || typeof c !== "object") continue;
-    const claim = typeof c.claim === "string" ? c.claim.trim() : "";
-    if (!claim) continue;
-    const source_ids = (Array.isArray(c.source_ids) ? c.source_ids : [])
-      .map((/** @type {any} */ n) => (typeof n === "number" ? Math.trunc(n) : Number.isFinite(Number(n)) ? Math.trunc(Number(n)) : NaN))
-      .filter((/** @type {number} */ n) => Number.isFinite(n) && n >= 1);
-    out.push({ claim, source_ids });
-    if (out.length >= 12) break;
-  }
-  return out;
-}
-
 // The round's runnable slice of the planned queries: trimmed, deduped
 // against every query already run this request (state.ranQueries — marked
 // as run here), and cut off at plan.maxSearches. Filtering happens BEFORE
@@ -240,41 +181,6 @@ export function takeSearchBatch(state, queries, cap = Infinity) {
     batch.push(query);
   }
   return batch;
-}
-
-// Sub-question fan-out merge (pipeline.js runSubquestionFanout): interleave
-// the per-sub-question audit query lists round-robin in sub-question order —
-// every sub-question gets its first pick before any gets a second, so one
-// verbose audit can't starve the others out of the wave — deduped
-// case-insensitively within the wave and capped. Deduping against queries
-// already run (and the maxSearches cap) stays takeSearchBatch's job when the
-// wave fires. Pure so the ordering rule that keeps the fan-out wave's source
-// numbering deterministic is unit-pinned independent of the flag gating the
-// phase.
-/**
- * @param {(string[] | null | undefined)[]} queryLists Per-sub-question query lists, in sub-question order.
- * @param {number} cap Max queries in the merged wave.
- * @returns {string[]}
- */
-export function mergeFanoutQueries(queryLists, cap) {
-  const lists = queryLists.map((list) =>
-    Array.isArray(list) ? list.filter((q) => typeof q === "string" && q.trim()).map((q) => q.trim()) : [],
-  );
-  const merged = [];
-  const seen = new Set();
-  const deepest = lists.reduce((max, list) => Math.max(max, list.length), 0);
-  for (let depth = 0; depth < deepest && merged.length < cap; depth++) {
-    for (const list of lists) {
-      if (merged.length >= cap) break;
-      const query = list[depth];
-      if (!query) continue;
-      const key = query.toLowerCase();
-      if (seen.has(key)) continue;
-      seen.add(key);
-      merged.push(query);
-    }
-  }
-  return merged;
 }
 
 // The canned iteration question every build turn ends on (feedback #13 asked

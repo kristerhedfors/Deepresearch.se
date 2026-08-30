@@ -54,7 +54,7 @@ describe("isPublicAsset", () => {
     // point is needing no account. `/corpora` and `/space` were written with
     // both forms and six older entries were not; this pins every one of them
     // so the next public surface cannot regress to half of itself.
-    for (const dir of ["/welcome", "/help", "/build", "/story", "/architecture", "/connect", "/pulse", "/corpora", "/space"]) {
+    for (const dir of ["/welcome", "/help", "/build", "/story", "/architecture", "/connect", "/pulse", "/corpora", "/space", "/lypning"]) {
       assert.equal(isPublicAsset(u(dir), "GET"), true, `${dir} (bare) should be public`);
       assert.equal(isPublicAsset(u(`${dir}/`), "GET"), true, `${dir}/ should be public`);
     }

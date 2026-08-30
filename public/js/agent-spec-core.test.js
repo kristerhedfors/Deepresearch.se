@@ -135,20 +135,22 @@ test("sdk/AGENTS.json is a valid registry", () => {
   assert.deepEqual(validateAgentRegistry(reg), []);
 });
 
-test("the ten shipped agents are present with the expected identities", () => {
+test("the eleven shipped agents are present with the expected identities", () => {
   const reg = realRegistry();
   const ids = reg.agents.map((a) => a.id).sort();
-  // Seven DEFAULT agents — one per Se/rver chat mode — plus the two client-tier
+  // Eight DEFAULT agents — one per Se/rver chat mode — plus the two client-tier
   // entries (the Se/cure archetype and the template you copy) and one DERIVED
   // agent: palaeogenomics is bound to no chat mode and is reached by id alone.
   //
-  // `research` is NOT here, and the count held at ten because `cyber` replaced
-  // it. That is the owner directive of 2026-08-13 in one line: the roster is
+  // `research` is NOT here, and the count held at ten through 2026-08-13 because
+  // `cyber` replaced it. That is the owner directive in one line: the roster is
   // specific, so the general agent — the catch-all named Deep Research, defined
   // by what it did not specialise in — has no seat, and the terminal fallback is
-  // `scholar` instead.
+  // `scholar` instead. `lypning` made it eleven on 2026-08-29 by the same rule:
+  // it is as specific as an agent gets, answering about ONE external project's
+  // measurements and refusing to search for anything.
   assert.deepEqual(ids, [
-    "agent-builder", "cyber", "introspection", "models", "orchestrator", "outrospection", "palaeogenomics", "scholar", "secure", "under-construction",
+    "agent-builder", "cyber", "introspection", "lypning", "models", "orchestrator", "outrospection", "palaeogenomics", "scholar", "secure", "under-construction",
   ]);
   assert.equal(ids.includes("research"), false, "the general agent is retired");
   // Palaeogenomics stays out of the mode table: no `defaults` row addresses it,

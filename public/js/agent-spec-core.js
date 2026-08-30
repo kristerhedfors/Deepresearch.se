@@ -128,11 +128,13 @@ export const BACKDROP_KINDS = ["none", "terminal", "graph"];
  * (and orchestrator-core / outrospect-core for the two pure ones). */
 export const PROMPT_ROLES = [
   "plan", // the phase's own JSON planning prompt (not the shared triage/gap/validate)
+  "reflect", // the loop edge: is the evidence enough, and what is still missing?
   "worker", // one bounded sub-run inside the phase (an orchestrated node)
   "answer", // the deterministic answer/synthesis prompt
   "answer-tools", // the variant for a model driving native tools
   "answer-direct", // the answer when triage decided no sources are needed
   "answer-search-off", // the answer when there is nothing external to consult
+  "brief", // the whole task described to a model that chooses its own tools
 ];
 
 /** Which function takes the answer phase. One member per shipped answer path.
@@ -142,8 +144,13 @@ export const PROMPT_ROLES = [
 export const ANSWER_PHASES = {
   "research": {
     label: "Deep research",
-    desc: "triage → search → gap → synthesis → validation (pipeline.js)",
-    promptRoles: ["answer", "answer-direct", "answer-search-off"],
+    desc: "triage → search → gap → synthesis → validation (pipeline.js), or the four-node standard topology (pipeline-standard.js)",
+    // `plan` and `reflect` are the standard topology's two JSON nodes. They
+    // are listed on the PHASE rather than on a phase of their own because the
+    // choice between the two flows is an ENGINE option over one answer phase —
+    // same retrieval, same writer, same validation — so a set that can voice
+    // the research phase must be able to voice either flow.
+    promptRoles: ["plan", "reflect", "answer", "answer-direct", "answer-search-off"],
   },
   "source-research": {
     label: "Source research",
@@ -185,7 +192,7 @@ export const ANSWER_PHASES = {
  * answer phase become INDEPENDENT choices — an agent can run the research phase
  * in the source-research voice, which was not expressible before. */
 export const PROMPT_SETS = {
-  "research": { label: "Research", desc: "the deep-research synthesis voice: cited, hedged, report-tiered", roles: ["answer", "answer-direct", "answer-search-off"] },
+  "research": { label: "Research", desc: "the deep-research synthesis voice: cited, hedged, report-tiered", roles: ["plan", "reflect", "answer", "answer-direct", "answer-search-off", "brief", "answer-tools"] },
   "source-research": { label: "Source research", desc: "answers about this platform from its own source, with the read loop's planner", roles: ["plan", "answer", "answer-tools"] },
   "build": { label: "Build", desc: "the Agent Studio build voice: ship the app this turn, state the privacy posture", roles: ["answer", "answer-tools"] },
   "workflow": { label: "Workflow", desc: "the sub-agent team: a plan prompt, one node's persona, and the merge", roles: ["plan", "worker", "answer"] },
@@ -211,12 +218,35 @@ export const TOOL_CLASSES = {
   "sdk-plan": { label: "SDK plan", desc: "sdk_list_modules / sdk_show_module / sdk_plan / sdk_validate over the Platform SDK manifest (SDK_TOOLS)" },
   "build-publish": { label: "Build + publish", desc: "write_file / publish_app (BUILD_TOOLS)", serverOnly: true },
   "shell": { label: "Shell", desc: "the in-browser Linux sandbox's bash-lite loop (bash-core.js)" },
+  // ---- the RESEARCH toolbox (2026-08-29) -----------------------------------
+  // What an agent declares to drive its own research instead of being driven by
+  // the standard graph's nodes. Each names a SET the platform already ships
+  // (src/research-tools.js) and binds through src/tool-sets.js; a class is the
+  // unit precisely so a spec cannot assemble a novel toolbox out of parts, which
+  // is what keeps the amended invariant 1's "the tool set is fixed before the
+  // model runs" a property of the code and not of a review.
+  "web-research": { label: "Web research", desc: "search the open web and read the pages it returns, through whichever provider this deployment is configured with (WEB_TOOLS)" },
+  "source-search": { label: "Specialist source search", desc: "one search against a named entry of the search-source registry, subject to that entry's own per-request cap (SOURCE_SEARCH_TOOL)" },
+  "literature": { label: "Literature tools", desc: "the peer-reviewed corpus tools — search, fetch, similar, corpora (LITERATURE_TOOLS)" },
+  "ancient-samples-query": { label: "Ancient samples query", desc: "structured queries over the committed ancient-DNA individual corpus; contacts nothing (ANCIENT_SAMPLES_TOOL)" },
+  "host-intel-tools": { label: "Host intelligence tools", desc: "the host, population, domain and vulnerability lookups of the configured host-intelligence integration", serverOnly: true },
+  "street-imagery-tools": { label: "Street imagery tools", desc: "the place-resolution and street-level imagery lookups of the configured geospatial integration", serverOnly: true },
+  "python": { label: "Python", desc: "run a short program in the execution environment this request is bound to, and read its output (RUN_PYTHON_TOOL)" },
 };
 
 /** What a model WITHOUT native tool use does instead. A tool-bearing agent must
  * name one that is not "none" — invariant 1's requirement that every mode works
- * across the whole catalog, not only on tool-capable models. */
-export const TOOL_FALLBACKS = ["read-loop", "file-blocks", "none"];
+ * across the whole catalog, not only on tool-capable models.
+ *
+ * `pipeline` (2026-08-29) is the research toolbox's answer, and it is the one
+ * that makes the amended invariant safe to state: an agent that drives its own
+ * research tools falls back to the STANDARD four-node graph
+ * (src/pipeline-standard.js), which is plain JSON-mode and streamed calls and
+ * therefore runs on every model in the catalog. The fallback is not a
+ * degradation to be apologised for — it is what lets the main path be a tool
+ * loop at all, because a loop that only some models can run could not be the
+ * main path of a platform that routes to a whole catalog. */
+export const TOOL_FALLBACKS = ["read-loop", "file-blocks", "pipeline", "none"];
 
 /** Retrieval blocks the platform can inject into a turn's context. */
 export const CONTEXT_BLOCKS = {
@@ -246,6 +276,14 @@ export const CONTEXT_BLOCKS = {
   "literature-peer-reviewed": { label: "Peer-reviewed literature", desc: "the merged peer-reviewed search — OpenAlex, Europe PMC's reviewed slice, Semantic Scholar, the hosted PubMed index and, where licensed, Google Scholar's own ranking (src/scholar.js)", serverOnly: true },
   "model-catalog": { label: "Model catalog", desc: "the live cross-provider model catalog — priced and annotated with verification state — folded in for a model ask (src/model-catalog.js catalogBlock)", serverOnly: true },
   "ancient-samples": { label: "Ancient samples", desc: "a structured query over the committed ancient-DNA sample corpus — geography, date window, haplogroup prefix, coverage floor — folded in as exact rows and counts (src/aadr.js)", serverOnly: true },
+  // ---- the lypning measurements (2026-08-29) -------------------------------
+  // The stats agent's whole subject, and the reason it is a DECLARED block
+  // rather than a knob: the figures must be the ones the /lypning/ dashboard is
+  // rendering, including whatever the reader's own browser VM measured a moment
+  // ago. An agent that recomputed them a second way would eventually disagree
+  // with the chart on screen, which is the one failure a stats agent cannot
+  // afford.
+  "lypning-stats": { label: "lypning measurements", desc: "the committed history of the lypning project's published and counted metrics, plus whatever the reader's own browser Linux VM measured this session (src/lypning-stats.js)", serverOnly: true },
   "scholar-metrics": { label: "Scholar metrics", desc: "Google Scholar's robots-allowed surfaces — an author profile fetched live from citations?user=, and the committed venue h5-index table — folded in as attributed metrics, and the switch restricting the turn to the peer-reviewed source (src/scholar-metrics.js)", serverOnly: true },
 };
 
@@ -254,6 +292,18 @@ export const CONTEXT_BLOCKS = {
  * routing) is enforced by making `planModel` a one-member vocabulary. */
 export const PLAN_MODELS = ["json-default"];
 export const ANSWER_MODELS = ["user", "json-default"];
+
+/**
+ * Which research ENGINE an agent's research turn runs on.
+ *
+ * `auto` is the platform's own choice and the only value a spec inherits, so
+ * adding this field changed no shipped agent. The other two are declarations a
+ * derived agent makes about itself: `agentic` drives its own bounded tool loop
+ * (src/agentic.js), `standard` runs the four-node graph (src/pipeline-standard.js).
+ * A closed vocabulary rather than a free string for the same reason PLAN_MODELS
+ * is one — a spec selects among shipped engines and can never name a new one.
+ */
+export const RESEARCH_STRATEGIES = ["auto", "agentic", "standard"];
 
 /** Deterministic intent gates an agent may declare. Each names a shipped gate;
  * `langs` must carry EN and SV alike (invariant 6). */
@@ -267,6 +317,7 @@ export const GATE_IDS = {
   "security-assessment": { label: "Security assessment", desc: "is this ask for a security assessment, audit, posture review or threat model? — the one that reaches for the OWASP reference (public/js/introspect-core.js securityAssessmentIntent)" },
   "entity-research": { label: "Entity OSINT", desc: "is this ask shaped like a dossier on an organisation — OSINT, threat intel, due diligence, bakgrundskoll? (public/js/entity-research-core.js entityResearchIntent)" },
   "person-research": { label: "Person OSINT", desc: "is this ask research about a named individual, rather than about a topic? (public/js/person-research-core.js personResearchIntent)" },
+  "lypning-series": { label: "lypning series", desc: "which measurement is this ask about, and is it asking for the battery to be RUN? — the dashboard's own EN+SV gate, which moves the chart as it answers (public/js/lypning-core.js matchSeries / wantsRun)" },
   // The last two name no module, deliberately. Their gates live downstream of
   // the extension registry (invariant 7), and the vocabulary a spec selects
   // from must stay readable as if no particular third party existed.
@@ -320,7 +371,7 @@ export const CAPABILITY_REQUIREMENTS = {
  * @property {string} toolFallback
  * @property {string[]} context
  * @property {{ web: boolean, auxSources: boolean, maxQueries: number|null }} search
- * @property {{ planModel: string, answerModel: string }} routing
+ * @property {{ planModel: string, answerModel: string, strategy: string }} routing
  * @property {Array<{ id: string, langs?: string[] }>} gates
  * @property {Record<string, number>} bounds
  * @property {string[]} emits
@@ -338,7 +389,7 @@ export const BASE_CAPABILITY = {
   toolFallback: "none",
   context: [],
   search: { web: true, auxSources: true, maxQueries: null },
-  routing: { planModel: "json-default", answerModel: "user" },
+  routing: { planModel: "json-default", answerModel: "user", strategy: "auto" },
   gates: [],
   bounds: {},
   emits: ["step"],
@@ -567,6 +618,9 @@ export function validateCapability(a) {
   if (!ANSWER_MODELS.includes(cap.routing.answerModel)) {
     problems.push(at(`routing.answerModel must be one of ${ANSWER_MODELS.join("/")}`));
   }
+  if (!RESEARCH_STRATEGIES.includes(cap.routing.strategy)) {
+    problems.push(at(`routing.strategy must be one of ${RESEARCH_STRATEGIES.join("/")}`));
+  }
 
   // Search plane
   if (typeof cap.search.web !== "boolean") problems.push(at("search.web must be a boolean"));
@@ -741,6 +795,25 @@ export const IMPLIED_REQUIREMENTS = {
     "sdk-plan": ["developer_mode"],
     "build-publish": ["developer_mode"],
     "shell": ["sandbox"],
+    // The research toolbox implies exactly ONE knob, and the four search
+    // classes deliberately imply none: they are the ordinary research turn the
+    // default agent already runs, reached here by a model choosing the order
+    // instead of a planner choosing it, so requiring a knob for them would put
+    // the platform's own default behind a grant. What the model may actually
+    // REACH through them is unchanged — the account's extension knobs, the
+    // request's search policy and the source registry's own division are all
+    // re-checked per call in src/tool-admission.js.
+    //
+    // `python` implies NOTHING, and that is a correction rather than a
+    // relaxation. It was `shell`'s twin here on the reasoning that both run a
+    // command in the Linux sandbox — true, but `requires` gates whether an
+    // AGENT is reachable, and the terminal row of the defaults table may not
+    // carry a requirement (an identity that cannot satisfy it makes the walk
+    // skip the row and end at nothing). So the knob on `python` did not gate
+    // computing; it made the default agent unable to declare it at all. The
+    // gate it needed is per-DEPLOYMENT, and that is `needs: "exec"` on the
+    // binding in src/tool-sets.js: with no execution environment bound the
+    // class is dropped and the rest of the toolbox survives.
   },
   context: {
     "source-snapshot": ["developer_mode"],
@@ -1345,7 +1418,7 @@ export function renderAgentShow(reg, id) {
     `    tools: ${cap.tools.length ? `${cap.tools.join(", ")} (fallback: ${cap.toolFallback})` : "(none)"}`,
     `    context: ${cap.context.length ? cap.context.join(", ") : "(none)"}`,
     `    search: web ${cap.search.web ? "on" : "off"}, aux sources ${cap.search.auxSources ? "on" : "off"}${cap.search.maxQueries != null ? `, max ${cap.search.maxQueries} queries` : ""}`,
-    `    routing: plan on ${cap.routing.planModel}, answer on ${cap.routing.answerModel}`,
+    `    routing: plan on ${cap.routing.planModel}, answer on ${cap.routing.answerModel}, engine ${cap.routing.strategy}`,
     cap.gates.length ? `    gates: ${cap.gates.map((/** @type {any} */ g) => `${g.id} [${(g.langs || []).join("+")}]`).join(", ")}` : "",
     Object.keys(cap.bounds).length ? `    bounds: ${Object.entries(cap.bounds).map(([k, v]) => `${k}=${v}`).join("  ")}` : "",
     `    emits: ${cap.emits.join(", ")}`,

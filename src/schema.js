@@ -9,7 +9,7 @@
 // reporting `ok:false` with a list of `{path, message}` errors otherwise.
 //
 // It is used BEHIND the pipeline's existing fail-soft fallbacks
-// (normalizeTriage etc. remain the last-ditch net): a schema miss must let the
+// (seedFromConversation etc. remain the last-ditch net): a schema miss must let the
 // caller degrade exactly as it does today, never break the request. So the
 // integration pattern is `ok ? value : original` — on a clean shape you get a
 // normalized object, on a miss you get the raw value back untouched.

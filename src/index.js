@@ -286,8 +286,15 @@ async function route(request, env, url, log, ctx, requestId) {
     // real asset from /icons/ rather than 404ing — see ROOT_ICON_ALIASES for
     // why a miss here ends as a generated letter tile in someone's client.
     const iconAlias = rootIconAlias(url.pathname);
+    // The lypning dashboard boots the CheerpX Linux VM to measure the
+    // interpreters in the visitor's own tab, and SharedArrayBuffer needs the
+    // document to be cross-origin isolated — so its DOCUMENT is served with
+    // COEP, exactly as the /cure shell is. Only the document: its data file
+    // and the module scripts take the normal cached path (the worker-script
+    // exception in serveAsset already covers what else needs isolating).
+    const coep = url.pathname === "/lypning" || url.pathname === "/lypning/";
     return {
-      response: await serveAsset(request, env, iconAlias ? url.origin + iconAlias : null),
+      response: await serveAsset(request, env, iconAlias ? url.origin + iconAlias : null, { coep }),
     };
   }
 

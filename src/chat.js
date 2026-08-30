@@ -27,6 +27,10 @@ import { clampBudget, planResearch } from "./budget.js";
 import { augmentWithLocations } from "./geocode.js";
 import { jsonResponse, sseResponse } from "./http.js";
 import { runPipeline } from "./pipeline.js";
+// The research-ENGINE vocabulary. A closed set with unknown values IGNORED —
+// see normalizeResearchEngine's own note on why a typo in an optimisation field
+// must not be a 400.
+import { normalizeResearchEngine } from "./agentic.js";
 import { DEFAULT_CONFIG, getConfig } from "./config.js";
 import {
   QUOTA_UNAVAILABLE_STATUS,
@@ -156,6 +160,16 @@ import { runMemoryExtraction } from "./memory.js";
  *   needs DERIVED from what it selects rather than from what it claims to
  *   require, so it can narrow its own run and never widen it. A refused spec is
  *   logged and the turn is answered by the agent it would otherwise have got
+ * @property {string} [research_engine] WHICH ENGINE runs the research phase:
+ *   "agentic" (the answer model drives its own bounded tool loop —
+ *   src/agentic.js) or "standard" (the deterministic four-node graph —
+ *   src/pipeline-standard.js). Absent, and the answering agent's own
+ *   `capability.routing.strategy` decides; absent there too, the platform does
+ *   (AGENTIC_BY_DEFAULT). An unknown value is IGNORED rather than refused, like
+ *   `chat_mode`: this is an optimisation, not a permission, and a caller with a
+ *   typo should get the platform's choice instead of a failed request. It can
+ *   never widen a run — a model with no tool dialect, or a run whose toolbox
+ *   resolved empty, takes the standard graph whatever this says
  * @property {any} [imageLocations] attached-photo GPS EXIF coords
  * @property {any} [street_view_pov] the user's current panorama view
  * @property {any} [map_view] the user's current interactive-map view
@@ -178,8 +192,6 @@ import { runMemoryExtraction } from "./memory.js";
  *   subquestions: any[],
  *   conflicts: any[],
  *   aux: Record<string, { count: number, ran: Set<string> }>,
- *   notes: any[],
- *   notesCursor: number,
  *   fetchedUrls: Set<string>,
  *   failoverModel?: string,
  *   shellTranscript?: Array<{ command: string, exitCode: number, stdout: string, stderr: string }>,
@@ -188,6 +200,7 @@ import { runMemoryExtraction } from "./memory.js";
  *   agentId?: string | null,
  *   promptSet?: string | null,
  *   capability?: import('./agent-spec.js').AgentCapability | null,
+ *   researchEngine?: string | null,
  *   sdkMode?: boolean,
  *   orchestratorMode?: boolean,
  *   orchestration?: { agents: number, waves: number, failed: number, searches: number, swarm?: { nodes: number, members: number, agreement: number, model: string } },
@@ -293,6 +306,12 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
   // this line can route a search at an unvalidated target; the admin can pin
   // the site-wide choice with search.allow_user_choice = false.
   const searchSource = normalizeSearchSource(body.search_source);
+  // WHICH RESEARCH ENGINE answers, when the caller has an opinion. Normalized
+  // to null here so nothing past this line sees an unvalidated string, and null
+  // means "did not choose" rather than "chose the default" — the agent's own
+  // declaration and the platform's choice both still get their turn
+  // (src/agentic.js engineFor).
+  const researchEngine = normalizeResearchEngine(body.research_engine);
   const enrich = resolveEnrichmentOptions(body, env, identity, catalog, model);
 
   // ---- slash commands (platform baseline, before any mode routing) --------
@@ -575,6 +594,7 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
       agentId,
       promptSet,
       capability,
+      researchEngine,
       buildSlug,
       userId: String(identity.id),
     });
@@ -596,7 +616,7 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
     // researching" apart from "nothing will ever come".
     await markAnswerRunning(env, log, requestId, identity.id);
 
-    // The JSON helper phases (triage/gap/validation) emit nothing for
+    // The JSON helper phases (query plan / reflect / validation) emit nothing for
     // tens of seconds; idle HTTP connections get dropped by proxies on
     // the way to the client. SSE comment lines (":" prefix) keep bytes
     // flowing — every SSE client ignores them. Started before geocoding
@@ -638,7 +658,15 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
     /** @type {any[]} */
     const trail = [];
     const TRAIL_TYPES = new Set(["step_start", "step_done", "search_start", "search_done"]);
-    const TRAIL_MAX = 400;
+    // 400 was sized for a five-phase run, whose events were bounded by the
+    // phase count. A research LOOP is bounded by its tool calls instead: at the
+    // ceiling (agentic.js MAX_RESEARCH_TOOL_CALLS) it emits sixteen step pairs
+    // plus, for the searching calls among them, up to four search pairs each —
+    // an order of magnitude more rows from the same one answer. Raised rather
+    // than coalesced because replayResearchTrail rebuilds a recovered run by
+    // replaying the pairs in order, and dropping the starts would replay a run
+    // whose steps never began.
+    const TRAIL_MAX = 1200;
 
     /** @param {any} obj one SSE event object */
     const emit = (obj) => {
@@ -790,9 +818,23 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
             // written from 15 of 35 while the reader was shown all 35 beneath
             // it. Undefined (and dropped) on a turn that never synthesized.
             digest_shown: /** @type {any} */ (state).digestShown,
-            complexity: state.complexity,
-            subquestions: state.subquestions,
-            conflicts: state.conflicts,
+            // WHICH ENGINE ANSWERED. Both write it (src/agentic.js,
+            // src/pipeline-standard.js) and until now nothing read it, which
+            // would have made the one question this overhaul exists to answer —
+            // does the tool loop write better answers than the standard graph —
+            // unanswerable from the log that records every answer. The three
+            // fields it replaces here (complexity, subquestions, conflicts)
+            // were triage's and the gap check's, and are permanently absent now
+            // that neither runs; JSON.stringify drops undefined keys, so this
+            // is a swap rather than a widening.
+            pipeline: /** @type {any} */ (state).pipelineId,
+            // How the loop ENDED, when a loop ran: answered, the round cap, the
+            // wall clock, or too many tool errors. A run that was cut short and
+            // one that finished look identical in the answer text, and telling
+            // them apart is the difference between "the loop is worse" and "the
+            // loop did not get to finish".
+            stopped_by: /** @type {any} */ (state).loopStoppedBy,
+            tool_calls: /** @type {any} */ (state).loopToolCalls,
             // The deterministic citation reconciliation and the phase-5
             // verdict (pipeline.js). Both are undefined on a turn that never
             // synthesized/validated, and JSON.stringify drops undefined keys —
@@ -1203,7 +1245,7 @@ export function resolveJsonModel(catalog, userModel) {
  * @param {string} jsonModel
  * @param {boolean} webSearch
  * @param {number} budgetS
- * @param {Partial<EnrichmentOptions> & { searchSource?: string, vision?: boolean, introspection?: boolean, sandboxEnabled?: boolean, sdkMode?: boolean, orchestratorMode?: boolean, swarm?: any, orchWorkflow?: any, swarmResults?: any, outrospectionMode?: boolean, modelsMode?: boolean, account?: any, answerPhase?: string | null, agentId?: string | null, promptSet?: string | null, capability?: any, buildSlug?: string | null, userId?: string, shellTranscript?: Array<{ command: string, exitCode: number, stdout: string, stderr: string }> }} [extras]
+ * @param {Partial<EnrichmentOptions> & { searchSource?: string, vision?: boolean, introspection?: boolean, sandboxEnabled?: boolean, sdkMode?: boolean, orchestratorMode?: boolean, swarm?: any, orchWorkflow?: any, swarmResults?: any, outrospectionMode?: boolean, modelsMode?: boolean, account?: any, answerPhase?: string | null, agentId?: string | null, promptSet?: string | null, capability?: any, researchEngine?: string | null, buildSlug?: string | null, userId?: string, shellTranscript?: Array<{ command: string, exitCode: number, stdout: string, stderr: string }> }} [extras]
  * @returns {ChatRequestState}
  */
 function newRequestState(model, jsonModel, webSearch, budgetS, extras = {}) {
@@ -1291,6 +1333,9 @@ function newRequestState(model, jsonModel, webSearch, budgetS, extras = {}) {
     // so every consumer keeps the platform constant as both its default and its
     // ceiling.
     capability: extras.capability || null,
+    // The engine this REQUEST asked for, already validated against the closed
+    // vocabulary, or null for "did not choose". Read once, by engineFor.
+    researchEngine: extras.researchEngine || null,
     buildSlug: extras.buildSlug || null,
     userId: extras.userId || "",
     // This channel renders the interactive inline-quiz event (src/quiz.js;
@@ -1300,11 +1345,12 @@ function newRequestState(model, jsonModel, webSearch, budgetS, extras = {}) {
     quiz: null, // the delivered quiz (normalized), when this request became one
 
     plan: planResearch(model, budgetS, jsonModel),
-    // Triage decomposition (pipeline.js runTriage): the classified question
-    // complexity (caps research depth for "simple" — budget.js
-    // applyComplexityToPlan), its sub-questions (the gap check audits
-    // coverage against each; synthesis must address each), and the source
-    // disagreements gap rounds reported (synthesis addresses them explicitly).
+    // The deleted triage phase's decomposition fields. Nothing writes them any
+    // more — the phase that classified a question's complexity, split it into
+    // sub-questions and collected the gap rounds' reported source conflicts is
+    // gone — but both chat-log rows (here and src/mcp.js) still persist them,
+    // so the D1 meta column keeps ONE shape across the cutover and a query
+    // written against older rows does not have to special-case a missing key.
     complexity: null,
     subquestions: [],
     conflicts: [],
@@ -1315,7 +1361,7 @@ function newRequestState(model, jsonModel, webSearch, budgetS, extras = {}) {
     searchCount: 0,
     cachedSearchCount: 0, // searches served from the Exa result cache (not billed)
     namedUrlCount: 0, // pages read directly because the message named their URL
-    iterations: 1, // search waves (initial + gap rounds that ran)
+    iterations: 1, // search waves (the initial one, plus each follow-up round)
     ranQueries: new Set(),
     // Queries actually DISPATCHED, as opposed to ranQueries' planned set. The
     // two diverge whenever a wave's web leg stands down (knob off, or an aux
@@ -1323,13 +1369,12 @@ function newRequestState(model, jsonModel, webSearch, budgetS, extras = {}) {
     issuedQueries: new Set(),
     sources: [], // numbered registry, deduped by URL
     byUrl: new Map(),
-    // Budget-gated notes digest (src/pipeline.js maybeDigest, mid/high tiers):
-    // structured research notes distilled from each search wave, plus a cursor
-    // marking how far into the source registry has been digested. Empty at the
-    // default budget (the digest phase never runs there).
-    notes: [],
-    notesCursor: 0,
-    fetchedUrls: new Set(), // top-source URLs already full-content fetched (>=240s tier)
+    // Pages pulled through the search provider's /contents endpoint this
+    // request (src/research-tools-run.js read_pages). Billed separately from a
+    // search — src/billing.js prices the set with budget.js's
+    // CONTENTS_COST_MULTIPLIER — so an empty set is a request that paid for no
+    // page extraction, not an unbilled one.
+    fetchedUrls: new Set(),
     // Synthesis/direct token usage (the user's model) and JSON-phase token
     // usage (jsonModel) are tracked separately so each is billed at its own
     // model's price — the JSON phases on cheap Mistral shouldn't be charged at

@@ -114,8 +114,8 @@ test("a same-lane downward edge leaves the bottom and arrives at the top", () =>
 test("a same-lane loop edge leaves and arrives on the RIGHT, clear of the spine", () => {
   // Routed to the left edge it cut diagonally across three boxes.
   const l = layoutPipelineMap();
-  const e = l.edges.find((x) => x.from === "gap" && x.to === "search");
-  const a = l.nodes.find((n) => n.id === "gap");
+  const e = l.edges.find((x) => x.from === "reflect" && x.to === "search");
+  const a = l.nodes.find((n) => n.id === "reflect");
   const b = l.nodes.find((n) => n.id === "search");
   assert.equal(e.loop, true);
   assert.equal(e.straight, false);
@@ -126,7 +126,7 @@ test("a same-lane loop edge leaves and arrives on the RIGHT, clear of the spine"
 
 test("the terminal-to-done edges are declared but not drawn", () => {
   const ends = PIPELINE_EDGES.filter((e) => e.ends);
-  assert.equal(ends.length, 5);
+  assert.equal(ends.length, 4);
   for (const e of ends) assert.equal(e.to, "done");
   const svg = pipelineMapSvg();
   // Five near-parallel 12-row curves through the branch column cost more than
@@ -148,19 +148,63 @@ test("a cross-lane edge leaves from the side so it never crosses a box", () => {
 // ---- event mapping ---------------------------------------------------------
 
 test("nodesForStatus maps the pipeline's step ids", () => {
-  assert.deepEqual(nodesForStatus({ type: "step_start", id: "plan" }), { enter: ["triage"], exit: [] });
+  assert.deepEqual(nodesForStatus({ type: "step_start", id: "plan" }), { enter: ["plan"], exit: [] });
   assert.deepEqual(nodesForStatus({ type: "step_start", id: "synth" }), { enter: ["synth"], exit: [] });
   assert.deepEqual(nodesForStatus({ type: "step_start", id: "introspect" }), { enter: ["enrich"], exit: [] });
-  assert.deepEqual(nodesForStatus({ type: "step_start", id: "digest" }), { enter: ["digest"], exit: [] });
-  assert.deepEqual(nodesForStatus({ type: "step_start", id: "gap3" }), { enter: ["gap"], exit: [] });
+  assert.deepEqual(nodesForStatus({ type: "step_start", id: "reflect2" }), { enter: ["reflect"], exit: [] });
+  assert.deepEqual(nodesForStatus({ type: "step_start", id: "tool_3" }), { enter: ["loop"], exit: [] });
   assert.deepEqual(nodesForStatus({ type: "step_start", id: "agent_2" }), { enter: ["executor"], exit: [] });
+  // A replayed run from before the gap cascade was deleted: its step ids name
+  // a box that is not drawn any more, so they fall to the engine node rather
+  // than to nothing (and never to a node the layout does not contain).
+  assert.deepEqual(nodesForStatus({ type: "step_start", id: "gap3" }), { enter: ["loop"], exit: [] });
 });
 
-test("nodesForStatus ignores what it doesn't know (forward compatibility)", () => {
-  assert.deepEqual(nodesForStatus({ type: "step_start", id: "some_future_phase" }), { enter: [], exit: [] });
+test("an unknown EVENT TYPE is still ignored (forward compatibility)", () => {
+  // The SSE vocabulary's rule, unchanged: an event this file has never heard of
+  // changes nothing about the map.
   assert.deepEqual(nodesForStatus({ type: "future_event" }), { enter: [], exit: [] });
   assert.deepEqual(nodesForStatus({}), { enter: [], exit: [] });
   assert.deepEqual(nodesForStatus(null), { enter: [], exit: [] });
+  assert.deepEqual(nodesForStatus({ type: "step_start" }), { enter: [], exit: [] }, "a step with no id at all");
+});
+
+test("an unknown STEP ID lights the engine node instead of blanking the map", () => {
+  // The rule that is deliberately NOT the same as the one above. Every step id
+  // between the mode dispatch and synthesis belongs to whichever ENGINE ran,
+  // and engines are pluggable now (src/pipeline.js runResearchPhase). Ignoring
+  // an unrecognised one drew a map that went dark for a future engine's entire
+  // research phase, which reads as "nothing happened".
+  assert.deepEqual(nodesForStatus({ type: "step_start", id: "some_future_phase" }), { enter: ["loop"], exit: [] });
+  assert.deepEqual(nodesForStatus({ type: "step_done", id: "some_future_phase" }), { enter: [], exit: ["loop"] });
+});
+
+test("the engine step ids map onto their loop nodes", () => {
+  // The model-driven engine's own step ids: `tool_<n>`, one pair per call
+  // (src/agentic.js loopStepId) — numbered, never named, because a research
+  // tool's NAME is a service's name (invariant 7).
+  assert.deepEqual(nodesForStatus({ type: "step_start", id: "loop" }), { enter: ["loop"], exit: [] });
+  for (const id of ["tool_1", "tool_9", "tool_16"]) {
+    assert.deepEqual(nodesForStatus({ type: "step_start", id }), { enter: ["loop"], exit: [] }, id);
+  }
+  // …and the standard graph's reflect rounds, which count like the gap rounds.
+  assert.deepEqual(nodesForStatus({ type: "step_start", id: "reflect2" }), { enter: ["reflect"], exit: [] });
+});
+
+test("a self-edge is drawn as a loop on the node's own right side", () => {
+  // Without the `self` case it fell through to the cross-lane routing, which
+  // drew the curve from the middle of the box back to its own left edge —
+  // straight through the label.
+  const l = layoutPipelineMap();
+  const e = l.edges.find((x) => x.from === "loop" && x.to === "loop");
+  const n = l.nodes.find((x) => x.id === "loop");
+  assert.ok(e, "the research loop declares its own loop edge");
+  assert.equal(e.self, true);
+  assert.equal(e.loop, true);
+  assert.equal(e.straight, false);
+  assert.equal(e.x1, n.x + NODE_W, "leaves the right edge");
+  assert.equal(e.x2, n.x + NODE_W, "and arrives back on it");
+  assert.ok(e.y2 > e.y1, "the two ends are apart, so the bow is visible");
 });
 
 test("a search event pair is exactly one wave, whatever round it belongs to", () => {
@@ -183,21 +227,27 @@ test("finishing a step leaves it without counting a second visit", () => {
 
 test("a step_done with no matching start still lights its node", () => {
   const run = emptyPipelineRun();
-  applyPipelineStatus(run, { type: "step_done", id: "contents" });
-  assert.equal(nodeState(run, "contents"), "passed");
+  applyPipelineStatus(run, { type: "step_done", id: "validate" });
+  assert.equal(nodeState(run, "validate"), "passed");
 });
 
 test("the plan step's route field decides the branch — no label sniffing", () => {
   // src/pipeline.js emits `route` on the finished `plan` step. English labels
   // could be reworded at any time; this contract can't drift silently.
-  for (const [route, node] of [["feedback", "fbreply"], ["direct", "direct"], ["clarify", "clarify"], ["search_off", "direct"]]) {
+  for (const [route, node] of [["feedback", "fbreply"], ["direct", "direct"], ["search_off", "direct"]]) {
     const moves = nodesForStatus({ type: "step_done", id: "plan", label: "anything at all", route });
-    assert.deepEqual(moves, { enter: [node], exit: ["triage"] }, route);
+    assert.deepEqual(moves, { enter: [node], exit: ["plan"] }, route);
   }
   // "research" has no terminal of its own — the search wave follows.
   assert.deepEqual(nodesForStatus({ type: "step_done", id: "plan", route: "research" }), {
     enter: [],
-    exit: ["triage"],
+    exit: ["plan"],
+  });
+  // `clarify` went with the triage phase that emitted it. A replayed old run
+  // carrying that route lights nothing, rather than a box that is not drawn.
+  assert.deepEqual(nodesForStatus({ type: "step_done", id: "plan", route: "clarify" }), {
+    enter: [],
+    exit: ["plan"],
   });
 });
 
@@ -215,7 +265,7 @@ test("IMPLIED_UPSTREAM names only declared nodes and has no cycles", () => {
 });
 
 test("impliedUpstream resolves transitively", () => {
-  assert.deepEqual(impliedUpstream("triage").sort(), ["enrich", "feedback", "mode"]);
+  assert.deepEqual(impliedUpstream("plan").sort(), ["enrich", "feedback", "mode"]);
   assert.deepEqual(impliedUpstream("compose"), [], "the first node implies nothing");
 });
 
@@ -247,15 +297,12 @@ test("every node can be lit by some observable signal", () => {
     { type: "step_start", id: "plan" },
     { type: "step_done", id: "plan", route: "feedback" },
     { type: "step_done", id: "plan", route: "direct" },
-    { type: "step_done", id: "plan", route: "clarify" },
     { type: "step_start", id: "introspect" },
     { type: "step_start", id: "source" },
     { type: "step_start", id: "agent_1" },
     { type: "search_start", round: 1 },
-    { type: "step_start", id: "digest" },
-    { type: "step_start", id: "fanout" },
-    { type: "step_start", id: "gap1" },
-    { type: "step_start", id: "contents" },
+    { type: "step_start", id: "tool_1" },
+    { type: "step_start", id: "reflect1" },
     { type: "step_start", id: "synth" },
     { type: "step_start", id: "validate" },
     { type: "done" },
@@ -290,8 +337,12 @@ test("a label is drawn only where there is room for it — never across a lane g
   // at, so they move to the tooltip.
   const svg = pipelineMapSvg();
   const labels = [...svg.matchAll(/class="pmedgelabel"[^>]*>([^<]+)</g)].map((m) => m[1]);
-  assert.deepEqual(labels.sort(), ["another wave", "no", "research"]);
-  for (const dropped of ["yes", "agent", "own source", "direct", "clarify"]) {
+  assert.deepEqual(labels.sort(), ["no", "reflect", "research"]);
+  for (const dropped of ["yes", "agent", "own source", "direct", "model-driven"]) {
+    // "model-driven" is the engine router's cross-lane label; like every other
+    // one it moves to the target node's tooltip. "reflect" is drawn, because
+    // the standard graph's loop edge now runs down the spine rather than
+    // across the lane gap.
     assert.ok(!labels.includes(dropped), `${dropped} must not be drawn`);
     assert.ok(svg.includes(`Reached when: ${dropped}`), `${dropped} must survive in a tooltip`);
   }
@@ -307,12 +358,12 @@ test("a fresh run has nothing lit", () => {
 
 test("entering makes a node active, leaving makes it passed and it stays lit", () => {
   const run = emptyPipelineRun();
-  notePipelineMoves(run, { enter: ["triage"] });
-  assert.equal(nodeState(run, "triage"), "active");
-  notePipelineMoves(run, { exit: ["triage"] });
-  assert.equal(nodeState(run, "triage"), "passed");
+  notePipelineMoves(run, { enter: ["plan"] });
+  assert.equal(nodeState(run, "plan"), "active");
+  notePipelineMoves(run, { exit: ["plan"] });
+  assert.equal(nodeState(run, "plan"), "passed");
   notePipelineMoves(run, { enter: ["synth"] });
-  assert.equal(nodeState(run, "triage"), "passed", "an earlier step stays lit");
+  assert.equal(nodeState(run, "plan"), "passed", "an earlier step stays lit");
 });
 
 test("notePipelineMoves ignores unknown ids and only ticks on a real change", () => {
@@ -337,7 +388,7 @@ test("a looping agent keeps re-lighting the same node and counts its rounds", ()
   assert.match(pipelineRunSummary(run), /looped: Source loop ×3/);
 });
 
-test("the gap loop counts its rounds, and each round's wave counts once", () => {
+test("the reflect loop counts its rounds, and each round's wave counts once", () => {
   const run = emptyPipelineRun();
   const wave = (round) => {
     applyPipelineStatus(run, { type: "search_start", round });
@@ -345,12 +396,12 @@ test("the gap loop counts its rounds, and each round's wave counts once", () => 
   };
   wave(1);
   for (const it of [1, 2]) {
-    applyPipelineStatus(run, { type: "step_start", id: `gap${it}` });
+    applyPipelineStatus(run, { type: "step_start", id: `reflect${it}` });
     wave(it + 1);
-    applyPipelineStatus(run, { type: "step_done", id: `gap${it}` });
+    applyPipelineStatus(run, { type: "step_done", id: `reflect${it}` });
   }
   assert.equal(run.visits.search, 3, "three waves ran");
-  assert.equal(run.visits.gap, 2, "two gap rounds ordered them — not four");
+  assert.equal(run.visits.reflect, 2, "two reflect rounds ordered them — not four");
 });
 
 test("done closes everything still running, so nothing blinks forever", () => {
@@ -376,30 +427,30 @@ test("a whole introspection run lights the source path and never the research sp
   for (const id of ["compose", "post", "stream", "enrich", "source", "done"]) {
     assert.equal(nodeState(run, id), "passed", id);
   }
-  for (const id of ["triage", "search", "gap", "synth", "validate", "fbreply"]) {
+  for (const id of ["plan", "search", "loop", "reflect", "synth", "validate", "fbreply"]) {
     assert.equal(nodeState(run, id), "idle", `${id} must stay dark — this run never took it`);
   }
 });
 
 test("the summary names the running step and reports an interrupted run honestly", () => {
   const run = emptyPipelineRun();
-  applyPipelineStatus(run, { type: "step_start", id: "gap1" });
-  assert.match(pipelineRunSummary(run), /^Running: Gap checks/);
-  notePipelineMoves(run, { exit: ["gap"] });
-  assert.match(pipelineRunSummary(run), /^Paused after Gap checks/);
+  applyPipelineStatus(run, { type: "step_start", id: "reflect1" });
+  assert.match(pipelineRunSummary(run), /^Running: Reflect/);
+  notePipelineMoves(run, { exit: ["reflect"] });
+  assert.match(pipelineRunSummary(run), /^Paused after Reflect/);
 });
 
 // ---- SVG -------------------------------------------------------------------
 
 test("pipelineMapSvg draws every node with its state class", () => {
   const run = emptyPipelineRun();
-  notePipelineMoves(run, { enter: ["triage"], exit: ["triage"] });
+  notePipelineMoves(run, { enter: ["plan"], exit: ["plan"] });
   notePipelineMoves(run, { enter: ["search"] });
   const svg = pipelineMapSvg(run);
   assert.ok(svg.startsWith("<svg"));
   assert.ok(svg.endsWith("</svg>"));
   for (const n of PIPELINE_NODES) assert.ok(svg.includes(`data-node="${n.id}"`), n.id);
-  assert.match(svg, /data-node="triage"[\s\S]{0,10}/);
+  assert.match(svg, /data-node="plan"[\s\S]{0,10}/);
   assert.ok(svg.includes("pm-passed"));
   assert.ok(svg.includes("pm-active"));
   assert.ok(svg.includes("pm-idle"));
@@ -407,9 +458,9 @@ test("pipelineMapSvg draws every node with its state class", () => {
 
 test("pipelineMapSvg shows a loop count only past the first visit", () => {
   const run = emptyPipelineRun();
-  notePipelineMoves(run, { enter: ["gap"] });
+  notePipelineMoves(run, { enter: ["reflect"] });
   assert.ok(!pipelineMapSvg(run).includes("×2"));
-  notePipelineMoves(run, { enter: ["gap"] });
+  notePipelineMoves(run, { enter: ["reflect"] });
   const svg = pipelineMapSvg(run);
   assert.ok(svg.includes("×2"));
   assert.ok(svg.includes("2 rounds this chat"));
@@ -454,5 +505,5 @@ test("pipeline-map.js is a no-op without a document", async () => {
   m.endPipelineRun();
   // The run state still tracks — only the drawing needs a DOM.
   assert.equal(nodeState(m.pipelineRun(), "compose"), "passed");
-  assert.equal(nodeState(m.pipelineRun(), "triage"), "passed", "endPipelineRun closed it");
+  assert.equal(nodeState(m.pipelineRun(), "plan"), "passed", "endPipelineRun closed it");
 });

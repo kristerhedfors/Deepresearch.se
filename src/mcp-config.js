@@ -303,7 +303,7 @@ export function filterMcpTools(config, tools) {
  * result is what src/mcp.js reads instead of the raw arguments.
  * @param {McpConfig} config
  * @param {any} args the tool-call arguments as sent
- * @returns {{ time_budget_s: number, web_search: boolean, model: string | undefined, agent: string, style: "text"|"voice" }}
+ * @returns {{ time_budget_s: number, web_search: boolean, model: string | undefined, agent: string, style: "text"|"voice", pipeline: string }}
  */
 export function resolveResearchArgs(config, args) {
   const given = args && typeof args === "object" ? args : {};
@@ -337,7 +337,15 @@ export function resolveResearchArgs(config, args) {
   // use it, which src/mcp.js decides against the same grant chat.js uses), and a
   // style only shapes the text that comes back.
   const agent = typeof given.agent === "string" ? given.agent.trim().slice(0, 64) : "";
-  return { time_budget_s, web_search, model, agent, style: normalizeStyle(given.style) };
+  // `pipeline` is carried through for the same reason and with the same limit:
+  // no account policy, and it can widen nothing — src/agentic.js validates it
+  // against a closed two-name vocabulary and ignores anything else, and a run
+  // that names an engine it cannot drive still lands on the deterministic one.
+  // Carried EXPLICITLY rather than by spreading `given`, because this function's
+  // whole contract is that src/mcp.js reads its result instead of the raw
+  // arguments: a key that is not listed here is a key a caller cannot set.
+  const pipeline = typeof given.pipeline === "string" ? given.pipeline.trim().slice(0, 32) : "";
+  return { time_budget_s, web_search, model, agent, style: normalizeStyle(given.style), pipeline };
 }
 
 /**

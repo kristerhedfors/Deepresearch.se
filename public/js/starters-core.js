@@ -86,6 +86,7 @@ export const MODE_AGENTS = {
   orchestrator: "orchestrator",
   outrospection: "outrospection",
   models: "models",
+  lypning: "lypning",
 };
 
 /**

@@ -1133,6 +1133,9 @@ test("toolStepHeadline: tool + its key argument, per tool", () => {
   assert.equal(toolStepHeadline("list_files", { filter: "src/" }), "list_files  'src/'");
   assert.equal(toolStepHeadline("list_files", {}), "list_files  (all)");
   assert.equal(toolStepHeadline("run_bash", { command: "grep -rn X /src" }), "run_bash  $ grep -rn X /src");
+  // run_python: the program's first non-blank line, so the activity row says
+  // WHAT is being computed rather than a bare tool name.
+  assert.equal(toolStepHeadline("run_python", { source: "\nimport math\nprint(math.pi)\n" }), "run_python  import math");
 });
 
 test("toolResultLines: first lines of the result for the expandable details", () => {

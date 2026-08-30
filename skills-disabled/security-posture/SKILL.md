@@ -110,21 +110,23 @@ most dangerous credentials in these containers do not:
 | `BASIC_AUTH_PASS` | 19 | arbitrary |
 
 No regex separates those from a hash, an id, or a base64 fixture, and one tuned
-to try would fail every build on ordinary data. **So do not try.** Both the
-scanner and the pygram harvester now also match the LITERAL VALUES of
-credential-named environment variables, because they run inside the container
-that holds them and do not have to guess. Exact match, so it cannot false-positive
-on anything but the secret itself, and it is the only defence that covers a
-credential with no shape at all.
+to try would fail every build on ordinary data. **So do not try.** The scanner
+matches the LITERAL VALUES of credential-named environment variables instead,
+because it runs inside the container that holds them and does not have to guess.
+Exact match, so it cannot false-positive on anything but the secret itself, and
+it is the only defence that covers a credential with no shape at all.
 
 - `scripts/scan-secrets` — reports `LIVE VALUE OF $NAME`, never the value. Built
   as a `grep -F` pattern FILE so no secret reaches a command line or a process
   listing. One bulk pass; the per-secret loop runs only on a hit.
-- `scripts/pygram-capture/harvest.mjs` — `envSecretValues()` +
-  `redactSecrets()`, replacing with `[REDACTED env <NAME> <n> chars]` BEFORE the
-  program is hashed, so the id stays a function of what is written.
+  The same pair — `envSecretValues()` + a `redactSecrets()` that replaces with
+  `[REDACTED env <NAME> <n> chars]` BEFORE a program is hashed, so its id stays a
+  function of what was written — lived in the interpreter-corpus harvester until
+  that moved out to the lypning project (`docs/LYPNING.md`). It is recorded here
+  because a corpus grown from real agent sessions is the highest-risk place a
+  credential can land, and whoever rebuilds one anywhere must rebuild that too.
 
-Selection rule, kept identical in both: name matches
+Selection rule: name matches
 `key|token|secret|password|passwd|credential|auth|_pat$|dsn|webhook`, value
 ≥ 12 chars, not a path (`/…`) and not a bare number (those are `…_FILE` paths and
 file descriptors, not credentials). Longest value first, so a secret containing

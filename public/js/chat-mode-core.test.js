@@ -71,7 +71,11 @@ test("modeCarriesSource: a mode carries the source because it is NAMED, not beca
   for (const m of SOURCE_CARRYING_MODES) {
     assert.equal(modeCarriesSource(m), true, `${m} should carry source`);
   }
-  for (const m of ["science", "cyber"]) {
+  // lypning is the third domain mode and is absent for the same reason as the
+  // other two: it answers about an EXTERNAL project's measurements, so this
+  // repository's source is not its subject and loading it would be a
+  // multi-megabyte no-op every turn.
+  for (const m of ["science", "cyber", "lypning"]) {
     assert.equal(modeCarriesSource(m), false, `${m} should NOT carry source`);
   }
   // Every declared carrier is a real mode, and the two lists together account
@@ -79,7 +83,7 @@ test("modeCarriesSource: a mode carries the source because it is NAMED, not beca
   for (const m of SOURCE_CARRYING_MODES) assert.ok(CHAT_MODES.includes(m), `${m} is not a chat mode`);
   assert.deepEqual(
     CHAT_MODES.filter((m) => !SOURCE_CARRYING_MODES.includes(m)).sort(),
-    ["cyber", "science"],
+    ["cyber", "lypning", "science"],
   );
   // Unknown values normalize to the default, which is not a carrier — so they
   // never turn the enrichment on.

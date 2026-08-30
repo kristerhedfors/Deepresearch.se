@@ -412,7 +412,7 @@ export function hfTermKey(query) {
   return hfTerms(query).join(" ");
 }
 
-// Planner vocabulary (spliced into the triage/gap prompts via the
+// Planner vocabulary (spliced into the query-plan/reflect prompts via the
 // search-source registry, src/search-sources.js). A production screenshot
 // (2026-07-08) showed "Latest on cybersecurity on hf" triaging to CLARIFY
 // ("Could you clarify what 'hf' refers to…") — the planning model doesn't

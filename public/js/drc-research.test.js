@@ -28,6 +28,7 @@ import {
   runDrcResearch,
 } from "./drc-research.js";
 import { budgetTier } from "./timescale.js";
+import { formatPythonResult } from "./lypning-exec-core.js";
 
 // ---- normalizers ------------------------------------------------------------------
 
@@ -1055,7 +1056,180 @@ describe("DRC developer-mode tool loop", () => {
     });
     const toolNames = requests[0].tools.map((t) => t.function.name);
     assert.ok(!toolNames.includes("run_bash"));
+    // run_python rides run_bash's gate exactly — knob off means neither.
+    assert.ok(!toolNames.includes("run_python"));
     assert.deepEqual(toolNames.sort(), ["grep_source", "list_files", "read_file"]);
+  });
+});
+
+// ---- run_python in the Se/cure client loop -----------------------------------
+//
+// The secure agent has declared the `python` tool class since sdk/AGENTS.json
+// first carried capability blocks, and until this describe existed nothing in
+// the tier implemented it — the declaration was a promise the loop broke. The
+// implementation is deliberately thin: the shared lypning ladder
+// (public/js/lypning-exec-core.js, the same core the Se/rver toolbox
+// re-exports) does the probe / refusal / CPython retry, and this loop only
+// binds it to the runner the user selected — which for this tier is the
+// in-browser VM or their own local runner, never a server (invariant 4).
+describe("DRC run_python tool", () => {
+  const SNAP = {
+    v: 1,
+    digest: "abc123def4567890",
+    count: 1,
+    bytes: 0,
+    files: [{ p: "src/index.js", s: 30, t: "// entry\nexport default {};\n" }],
+  };
+  const requests = [];
+  // Each test sets `rounds` — an array of response bodies the mock provider
+  // returns in order.
+  let rounds = [];
+  let round = 0;
+  const toolCallRound = (name, args) => ({
+    choices: [
+      {
+        message: {
+          role: "assistant",
+          content: null,
+          tool_calls: [{ id: "c1", type: "function", function: { name, arguments: JSON.stringify(args) } }],
+        },
+      },
+    ],
+  });
+  const answerRound = (text) => ({ choices: [{ message: { content: text } }] });
+  const server = http.createServer((req, res) => {
+    let raw = "";
+    req.on("data", (d) => (raw += d));
+    req.on("end", () => {
+      requests.push(JSON.parse(raw));
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify(rounds[Math.min(round++, rounds.length - 1)]));
+    });
+  });
+  let baseUrl;
+  before(async () => {
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    baseUrl = `http://127.0.0.1:${server.address().port}/v1`;
+  });
+  after(() => server.close());
+  const reset = (r) => {
+    requests.length = 0;
+    round = 0;
+    rounds = r;
+  };
+  const run = (sandbox, extra = {}) =>
+    runDrcResearch({
+      providerId: "openai",
+      apiKey: "sk-user",
+      model: "gpt-5.6-terra",
+      messages: [{ role: "user", content: "compute something about the site" }],
+      snapshot: SNAP,
+      bash: true,
+      sandbox,
+      onDelta: () => {},
+      baseUrl,
+      ...extra,
+    });
+
+  test("run_python is offered exactly when run_bash is", async () => {
+    reset([answerRound("done")]);
+    await run({ supported: () => true, boot: async () => true, exec: async () => ({ exitCode: 0, stdout: "", stderr: "" }) });
+    const names = requests[0].tools.map((t) => t.function.name);
+    assert.ok(names.includes("run_bash"));
+    assert.ok(names.includes("run_python"));
+
+    // …and when the sandbox cannot run here, neither is offered — same gate.
+    reset([answerRound("done")]);
+    await run({ supported: () => false, boot: async () => true, exec: async () => ({ exitCode: 0, stdout: "", stderr: "" }) });
+    const none = requests[0].tools.map((t) => t.function.name);
+    assert.ok(!none.includes("run_bash"));
+    assert.ok(!none.includes("run_python"));
+  });
+
+  test("the ladder runs through the selected runner's exec and the tool reads the core's text", async () => {
+    reset([toolCallRound("run_python", { source: "print(6*7)" }), answerRound("**42.**")]);
+    const execCalls = [];
+    const result = await run({
+      supported: () => true,
+      boot: async () => true,
+      exec: async (cmd, opts) => {
+        execCalls.push({ cmd, opts });
+        return { exitCode: 0, stdout: "42\n", stderr: "drpy-engine:lypning\n" };
+      },
+    });
+    assert.equal(result.action, "source");
+    assert.equal(execCalls.length, 1);
+    // The command is the shared ladder's: builtin [ -x ] probes on absolute
+    // paths (never `command -v` — the PATH-walk trap that once destroyed the
+    // VM), the heredoc'd program, and a `timeout` wrapper.
+    assert.match(execCalls[0].cmd, /\[ -x \/usr\/local\/bin\/lypning \]/);
+    assert.match(execCalls[0].cmd, /print\(6\*7\)/);
+    assert.match(execCalls[0].cmd, /\btimeout \d+ /);
+    assert.ok(!execCalls[0].cmd.includes("command -v"));
+    // The per-call timeout stays inside the VM's 30 s exec ceiling — crossing
+    // it does not fail a command, it destroys the VM.
+    assert.ok(execCalls[0].opts.timeoutMs > 0 && execCalls[0].opts.timeoutMs < 30_000);
+    // The tool result the model reads is EXACTLY what the shared core
+    // formatted — no local rewording that could drift from the Se/rver tier.
+    const toolMsg = requests[1].messages.find((m) => m.role === "tool");
+    assert.equal(
+      toolMsg.content,
+      formatPythonResult(
+        [{ engine: "lypning", exitCode: 0, stdout: "42\n", stderr: "", refusal: null }],
+        "the in-browser sandbox",
+      ),
+    );
+  });
+
+  test("a lypning refusal is retried on CPython through the same runner", async () => {
+    reset([toolCallRound("run_python", { source: "import re\nprint(1)" }), answerRound("ok")]);
+    const cmds = [];
+    await run({
+      supported: () => true,
+      boot: async () => true,
+      exec: async (cmd) => {
+        cmds.push(cmd);
+        return cmds.length === 1
+          ? { exitCode: 90, stdout: "", stderr: "drpy-engine:lypning\nlypning: unsupported: import: module re\n" }
+          : { exitCode: 0, stdout: "1\n", stderr: "drpy-engine:python3\n" };
+      },
+    });
+    assert.equal(cmds.length, 2);
+    // The retry is PINNED to CPython — the second command never re-probes the
+    // engine that just refused.
+    assert.ok(!cmds[1].includes("/usr/local/bin/lypning "));
+    assert.match(cmds[1], /\[ -x \/usr\/bin\/python3 \]/);
+    const toolMsg = requests[1].messages.find((m) => m.role === "tool");
+    assert.match(toolMsg.content, /lypning refused this program \(import: module re\) and ran nothing/);
+    assert.match(toolMsg.content, /Ran on python3 in the in-browser sandbox\. Exit code 0\./);
+    assert.match(toolMsg.content, /STDOUT:\n1/);
+  });
+
+  test("a sandbox that fails to boot answers in a sentence, never a throw", async () => {
+    reset([toolCallRound("run_python", { source: "print(1)" }), answerRound("answered without it")]);
+    const result = await run({
+      supported: () => true,
+      boot: async () => false,
+      exec: async () => {
+        throw new Error("must not be called");
+      },
+    });
+    const toolMsg = requests[1].messages.find((m) => m.role === "tool");
+    assert.equal(toolMsg.content, "Sandbox unavailable; answer without running the program.");
+    assert.equal(result.answer, "answered without it");
+  });
+
+  test("an empty program is refused in a sentence, without booting the VM", async () => {
+    reset([toolCallRound("run_python", { source: "   " }), answerRound("ok")]);
+    let booted = false;
+    await run({
+      supported: () => true,
+      boot: async () => ((booted = true), true),
+      exec: async () => ({ exitCode: 0, stdout: "", stderr: "" }),
+    });
+    const toolMsg = requests[1].messages.find((m) => m.role === "tool");
+    assert.equal(toolMsg.content, "run_python needs a non-empty 'source' program.");
+    assert.equal(booted, false);
   });
 });
 

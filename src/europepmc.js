@@ -533,7 +533,7 @@ export function europepmcNamedIntent(text) {
   return NAMED.test(s);
 }
 
-/** The planner-vocabulary sentence spliced into the triage and gap prompts.
+/** The planner-vocabulary sentence spliced into the query-plan and reflect prompts.
  *
  * The English-only instruction is EVIDENCE, not caution: probed live
  * (2026-07-29), "mammutens arvsmassa" returns 0 results down the whole ladder

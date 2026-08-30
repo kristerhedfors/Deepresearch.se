@@ -129,7 +129,7 @@ export function appendToLast(message, block) {
 }
 
 // The conversation with METHOD blocks removed — the view the QUERY-PLANNING
-// phases read (triage, the gap check, the sub-question fan-out).
+// phases read (the query-plan node, the reflect node).
 //
 // Enrichments append two KINDS of block to the user's message, and the
 // difference only matters here. Most append DATA the planner legitimately
@@ -223,7 +223,7 @@ export function previousUserText(conversation) {
 
 // Text of the most recent assistant message — the reply the latest user
 // message is answering. Triage reads it to notice that it has already asked a
-// clarifying question (src/triage.js looksLikeClarifyTurn): the request the
+// clarifying question: the request the
 // client sends carries only roles and content, so the previous turn's ROUTE is
 // not in it, and the reply itself is the only trace of it.
 /**
@@ -288,7 +288,7 @@ export function withImageNudge(conversation) {
 // front (public/js/starters.js), so a reviewer's later "feedback …" note is
 // tied to the exact starter by the first message of the conversation — the
 // same trick the try-it list plays with `#UC-34`. The tag is for the humans
-// and the records; it must never reach a model, because triage would plan
+// and the records; it must never reach a model, because the planner would plan
 // against it and the search queries would carry it, and then the thing being
 // evaluated is no longer the starter.
 //

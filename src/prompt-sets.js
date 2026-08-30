@@ -20,10 +20,13 @@
 // declares the set its phase already used, which is asserted, so the resolved
 // builder is byte-identical to the one the call site imported before.
 
+import { researchBrief } from "./research-brief.js";
 import {
   directPrompt,
   orchAgentPrompt,
   orchSynthPrompt,
+  queryPlanPrompt,
+  reflectPrompt,
   sdkBuildPrompt,
   sdkBuildToolPrompt,
   searchOffPrompt,
@@ -44,9 +47,23 @@ import { DEFAULT_PROMPT_SET, PROMPT_SETS } from "./agent-spec.js";
  */
 export const PROMPT_BUILDERS = {
   "research": {
+    // The standard topology's two JSON nodes (src/pipeline-standard.js).
+    // Binding them here is what lets an agent be voiced through either engine
+    // without a second set.
+    "plan": queryPlanPrompt,
+    "reflect": reflectPrompt,
     "answer": synthPrompt,
     "answer-direct": directPrompt,
     "answer-search-off": searchOffPrompt,
+    // The tool-driven research path (invariant 1's authorized exception,
+    // extended to research 2026-08-29). ONE builder fills both roles because
+    // there is only one instruction: `answer-tools` is the system prompt the
+    // tool loop runs on, and `brief` is the same text addressed as an artifact
+    // — the standard topology hands it to a node, the loop hands it to a model,
+    // and a second copy for either would be the drift this whole module exists
+    // to make impossible.
+    "brief": researchBrief,
+    "answer-tools": researchBrief,
   },
   "source-research": {
     "plan": sourceAgentPrompt,

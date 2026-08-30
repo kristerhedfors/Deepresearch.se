@@ -125,10 +125,11 @@ const PROBES = [
   { id: "python-version", group: "interp", cmd: "python3 --version 2>&1", note: "CPython startup — large ELF + many .so", timeoutMs: 30_000 },
   { id: "python-hello", group: "interp", cmd: "python3 -c 'print(1+1)'", note: "startup dominates; the work is free", timeoutMs: 30_000 },
   { id: "python-import-json", group: "interp", cmd: "python3 -c 'import json;print(json.dumps({\"a\":1}))'", note: "stdlib import adds file reads", timeoutMs: 30_000 },
-  // pygram (docs/PYGRAM.md) — the same three probes as CPython above, so the
-  // pair IS the acceptance metric: §2 accepts on a cold pygram one-liner under
-  // 500 ms against CPython's measured 8573 ms. Until an image ships pygram
-  // these report "(pygram absent)" in a few ms and cost the battery nothing.
+  // The lypning engines (https://github.com/kristerhedfors/lypning) — the same
+  // three probes as CPython above, so the pair IS the acceptance metric: a cold
+  // subset one-liner under 500 ms against CPython's measured 8573 ms. Until an
+  // image ships them (scripts/build-sandbox-image.sh installs both) these
+  // report "(<engine> absent)" in a few ms and cost the battery nothing.
   //
   // The absence check is a shell BUILTIN test on one absolute path, never
   // `command -v`. docs/SANDBOX-LOCAL-IMAGE.md records that a `command -v` for a
@@ -136,16 +137,18 @@ const PROBES = [
   // calls resetSandbox and destroys the VM — taking every later probe with it.
   // A missing tool is exactly the case here, so the PATH walk is the one thing
   // this probe must not do. Builtin `[ -x … ]` is ~0.1 ms (§3).
-  ...[
-    { id: "pygram-version", cmd: "pygram --version 2>&1", note: "pygram startup — one static ELF, no .so, frozen stdlib" },
-    { id: "pygram-hello", cmd: "pygram -c 'print(1+1)'", note: "paired with python-hello" },
-    { id: "pygram-import-json", cmd: "pygram -c 'import json;print(json.dumps({\"a\":1}))'", note: "paired with python-import-json — frozen import, no file reads" },
-  ].map((p) => ({
-    ...p,
-    group: "interp",
-    cmd: `[ -x /usr/local/bin/pygram ] && ${p.cmd} || echo '(pygram absent)'`,
-    timeoutMs: 30_000,
-  })),
+  ...["lypning", "lypning-mp"].flatMap((engine) =>
+    [
+      { id: `${engine}-version`, cmd: `${engine} --version 2>&1`, note: `${engine} startup — one static ELF, no .so, frozen stdlib` },
+      { id: `${engine}-hello`, cmd: `${engine} -c 'print(1+1)'`, note: "paired with python-hello" },
+      { id: `${engine}-import-json`, cmd: `${engine} -c 'import json;print(json.dumps({"a":1}))'`, note: "paired with python-import-json — frozen import, no file reads" },
+    ].map((p) => ({
+      ...p,
+      group: "interp",
+      cmd: `[ -x /usr/local/bin/${engine} ] && ${p.cmd} || echo '(${engine} absent)'`,
+      timeoutMs: 30_000,
+    })),
+  ),
 
   { id: "perl-version", group: "interp", cmd: "perl -e 'print 42' 2>&1", note: "perl startup", timeoutMs: 30_000 },
   { id: "awk-hello", group: "interp", cmd: "awk 'BEGIN{print 1+1}'", note: "small interpreter" },

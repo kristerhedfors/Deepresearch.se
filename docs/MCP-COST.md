@@ -104,7 +104,7 @@ answer model over at most six investigation rounds** — comfortably inside
 are gone.
 
 **MEASURED once, against production (2026-08-16, `chat_logs` #1752).** One
-`improvement_areas` call — "where does the pygram Python replacement have
+`improvement_areas` call — "where does the sandbox Python replacement have
 improvement potential?", default model, default voice budget:
 
 | | |

@@ -1045,7 +1045,7 @@ export function arxivTermKey(query) {
   return arxivSelectTerms(arxivRankedTerms(query), MAX_TERMS).join(" ");
 }
 
-// Planner vocabulary (spliced into the triage/gap prompts via the
+// Planner vocabulary (spliced into the query-plan/reflect prompts via the
 // search-source registry, src/search-sources.js). Two rules, both traced to
 // the reported failure this module fixes:
 //  - "arxiv" must never be clarified — it is a clear referent on a research

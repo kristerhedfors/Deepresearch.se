@@ -31,10 +31,11 @@ function stubStorage() {
 }
 
 test("normalizeChatMode clamps junk to the fallback", () => {
-  assert.deepEqual(CHAT_MODES, ["science", "cyber", "introspection", "sdk", "orchestrator", "outrospection", "models"]);
+  assert.deepEqual(CHAT_MODES, ["science", "cyber", "introspection", "sdk", "orchestrator", "outrospection", "models", "lypning"]);
   assert.equal(normalizeChatMode("science"), "science");
   assert.equal(normalizeChatMode("cyber"), "cyber");
   assert.equal(normalizeChatMode("models"), "models");
+  assert.equal(normalizeChatMode("lypning"), "lypning");
   assert.equal(normalizeChatMode("orchestrator"), "orchestrator");
   assert.equal(normalizeChatMode("outrospection"), "outrospection");
   assert.equal(normalizeChatMode("sdk"), "sdk");

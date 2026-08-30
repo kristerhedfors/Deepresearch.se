@@ -35,6 +35,8 @@ import {
   CHAT_MODE_IDS,
   CONTEXT_BLOCKS,
   GATE_IDS,
+  IMPLIED_REQUIREMENTS,
+  RESEARCH_STRATEGIES,
   MODE_THEMES,
   requirementsFor,
   resolveUntrustedAgent,
@@ -100,7 +102,7 @@ test("every mode-select offers only real chat modes", () => {
 
 test("the defaults table covers every chat mode, in chat.js precedence order", () => {
   const reg = realRegistry();
-  assert.deepEqual(reg.defaults.map((r) => r.mode), ["sdk", "orchestrator", "outrospection", "models", "introspection", "cyber", "science"]);
+  assert.deepEqual(reg.defaults.map((r) => r.mode), ["sdk", "orchestrator", "outrospection", "models", "introspection", "cyber", "lypning", "science"]);
   // EVERY row names a request flag now — there is no `flag: null` row any more.
   // Until 2026-08-13 the last row was `normal` → the general research agent,
   // reachable by no flag at all, which is what "terminal fallback" meant: the
@@ -114,7 +116,7 @@ test("the defaults table covers every chat mode, in chat.js precedence order", (
   // made it the derived leftover of the developer_mode knob.
   assert.deepEqual(
     reg.defaults.map((r) => r.flag),
-    ["sdk_mode", "orchestrator_mode", "outrospection_mode", "models_mode", "introspection_mode", "cyber_mode", "science_mode"],
+    ["sdk_mode", "orchestrator_mode", "outrospection_mode", "models_mode", "introspection_mode", "cyber_mode", "lypning_mode", "science_mode"],
   );
   assert.equal(reg.defaults.some((r) => !r.flag), false, "no row is reachable without being asked for by name");
   assert.equal(reg.defaults.at(-1).mode, DEFAULT_CHAT_MODE, "the last row is the default mode's — the terminal one");
@@ -192,11 +194,32 @@ test("declared tool sets and fallbacks match the modes that have them", () => {
   // back to the fenced FILE:-block convention.
   assert.deepEqual(cap("agent-builder").tools, ["source-read", "sdk-plan", "build-publish"]);
   assert.equal(cap("agent-builder").toolFallback, "file-blocks");
-  // The modes with no tool loop say so. `cyber` is here in the retired
-  // `research` agent's place (2026-08-13): it reaches the OSINT and host/imagery
-  // context blocks by DECLARATION, not by driving a tool loop, so invariant 1
-  // costs it nothing — it runs identically on a model with no native tool use.
-  for (const id of ["cyber", "scholar", "orchestrator", "outrospection", "models", "secure", "under-construction"]) {
+  // THE RESEARCH AGENTS DRIVE THEIR OWN TOOLS (2026-08-29, the owner directive
+  // that made the model-driven path the main one). Each one's classes are its
+  // declared CONTEXT expressed as tools — a class whose block the agent does
+  // not declare would be refused at admission anyway, so declaring it would
+  // only spend the model's rounds discovering that. Hence cyber holds the two
+  // integration classes and scholar does not, and scholar holds `literature`
+  // and cyber does not.
+  const RESEARCH_TOOLBOXES = {
+    scholar: ["web-research", "source-search", "literature", "python"],
+    cyber: ["web-research", "source-search", "host-intel-tools", "street-imagery-tools", "python"],
+    palaeogenomics: ["web-research", "source-search", "literature", "ancient-samples-query", "python"],
+    models: ["web-research", "source-search", "python"],
+    secure: ["web-research", "python"],
+  };
+  for (const [id, tools] of Object.entries(RESEARCH_TOOLBOXES)) {
+    assert.deepEqual(cap(id).tools, tools, `${id}'s toolbox`);
+    // EVERY tool-declaring research agent falls back to the standard four-node
+    // graph, which is plain JSON-mode and streamed calls. That is what makes
+    // the amended invariant 1 safe to state: a loop only some models can run
+    // could not be the main path of a platform that routes to a whole catalog.
+    assert.equal(cap(id).toolFallback, "pipeline", `${id}'s fallback`);
+  }
+  // The modes with no tool loop still say so. `lypning` is the interesting one:
+  // it answers from a single committed dataset and searches nothing, so a
+  // toolbox would only offer it tools every call would be refused.
+  for (const id of ["lypning", "orchestrator", "outrospection", "under-construction"]) {
     assert.deepEqual(cap(id).tools, [], `${id} runs no tool loop`);
     assert.equal(cap(id).toolFallback, "none");
   }
@@ -227,6 +250,12 @@ test("declared answer phases are one per shipped answer path", () => {
     // context blocks and gates. A domain is a SELECTION, so retiring the
     // catch-all and adding a domain agent moved no code into the executor table.
     cyber: "research",
+    // And lypning, the fourth: it is the research phase with the web leg turned
+    // OFF and one context block — the dashboard's own dataset — in its place.
+    // A stats agent for an external project needed no executor either, which is
+    // the strongest version of the same point: even a mode whose subject is not
+    // research at all is a SELECTION over shipped behaviour.
+    lypning: "research",
   });
   // The retired mode cannot be asked for by name here: the defaults table is
   // keyed on live chat modes, and `normal` resolves only through
@@ -320,8 +349,21 @@ test("invariant 6 — a declared gate routes Swedish and English alike", () => {
 
 test("the closed vocabularies stay closed", () => {
   assert.deepEqual(Object.keys(ANSWER_PHASES), ["research", "source-research", "build", "workflow", "feed", "direct"]);
-  assert.deepEqual(Object.keys(TOOL_CLASSES), ["source-read", "sdk-plan", "build-publish", "shell"]);
-  assert.deepEqual(TOOL_FALLBACKS, ["read-loop", "file-blocks", "none"]);
+  // The seven added on 2026-08-29 are the RESEARCH toolbox — the classes an
+  // agent declares to reach the tools it drives itself on the agentic path.
+  // They are classes rather than tool names for the reason src/tool-sets.js's
+  // header gives: a spec selects a SET, never an individual tool, which is what
+  // keeps the owner-authorized invariant-1 exception bounded to shapes that
+  // were actually authorized. `python` is one class rather than a tool because
+  // the interpreter behind it is a fall-through ladder, not one binary.
+  assert.deepEqual(Object.keys(TOOL_CLASSES), [
+    "source-read", "sdk-plan", "build-publish", "shell",
+    "web-research", "source-search", "literature", "ancient-samples-query",
+    "host-intel-tools", "street-imagery-tools", "python",
+  ]);
+  // `pipeline` joined on 2026-08-29: the research toolbox's fallback, and the
+  // one that lets the main path be a tool loop at all.
+  assert.deepEqual(TOOL_FALLBACKS, ["read-loop", "file-blocks", "pipeline", "none"]);
   // The five gates added on 2026-08-13 are the Cyber agent's: the general
   // research agent used to reach these behaviours by keyword alone, from any
   // turn. They are a domain's now, so they are declared — `host-intel` and
@@ -329,12 +371,13 @@ test("the closed vocabularies stay closed", () => {
   // downstream of the extension registry (invariant 7).
   assert.deepEqual(Object.keys(GATE_IDS), [
     "external-source", "lens", "quiz", "model-lifecycle", "ancient-sample", "scholar-venue",
-    "security-assessment", "entity-research", "person-research", "host-intel", "place-lookup",
-    "feedback",
+    "security-assessment", "entity-research", "person-research", "lypning-series", "host-intel",
+    "place-lookup", "feedback",
   ]);
   assert.ok(Object.keys(CONTEXT_BLOCKS).includes("source-snapshot"));
   assert.ok(Object.keys(CONTEXT_BLOCKS).includes("ancient-samples"));
   assert.ok(Object.keys(CONTEXT_BLOCKS).includes("scholar-metrics"));
+  assert.ok(Object.keys(CONTEXT_BLOCKS).includes("lypning-stats"));
   // The blocks the two new domain rosters select — Cyber's four and the
   // literature legs Deep Science and Palaeogenomics declare.
   for (const b of ["owasp", "entity-method", "person-method", "host-intel", "street-imagery",
@@ -343,6 +386,32 @@ test("the closed vocabularies stay closed", () => {
   }
   assert.ok(Object.keys(CAPABILITY_EVENTS).includes("agent_update"));
   assert.ok(Object.keys(CAPABILITY_REQUIREMENTS).includes("developer_mode"));
+  assert.deepEqual(RESEARCH_STRATEGIES, ["auto", "agentic", "standard"]);
+  assert.ok(validateCapability(spec({ capability: { routing: { strategy: "vibes" } } })).length);
+  assert.deepEqual(validateCapability(spec({ capability: { routing: { strategy: "agentic" } } })), []);
+  // Every implied requirement names a class that exists and a knob that exists.
+  // The drift this prevents: a class added to TOOL_CLASSES and bound in
+  // src/tool-sets.js while its knob row keeps the OLD class's name, so an agent
+  // declaring it needs nothing and reaches everything.
+  for (const [cls, needs] of Object.entries(IMPLIED_REQUIREMENTS.tools)) {
+    assert.ok(Object.keys(TOOL_CLASSES).includes(cls), `${cls} is a real tool class`);
+    for (const r of needs) assert.ok(Object.keys(CAPABILITY_REQUIREMENTS).includes(r), `${cls} needs a real knob`);
+  }
+  // `python` implies NO knob, and `shell` still implies the sandbox. They look
+  // like twins — both run something in the environment the request is bound to
+  // — and pairing them here was the first instinct. It is wrong, and the reason
+  // is the difference between the two gating mechanisms rather than anything
+  // about Python: `requires` decides whether an AGENT is reachable, and the
+  // terminal row of the defaults table may not carry one (an identity that
+  // cannot satisfy it makes the routing walk skip the row and end at nothing).
+  // So a knob here did not gate computing — it made the DEFAULT agent unable to
+  // declare the class at all. Whether there is anywhere to run is a property of
+  // the deployment, which is `needs: "exec"` on the binding: the class is
+  // dropped and the rest of the toolbox survives.
+  assert.deepEqual(IMPLIED_REQUIREMENTS.tools.python, undefined);
+  assert.deepEqual(IMPLIED_REQUIREMENTS.tools.shell, ["sandbox"]);
+  // The other half of that — that the binding carries `needs: "exec"` instead —
+  // is pinned in src/tool-sets.test.js, which is where the bindings live.
   for (const bad of ["answerPhase", "emits", "context", "requires"]) {
     const over = bad === "answerPhase" ? { answerPhase: "vibes" } : { [bad]: ["vibes"] };
     assert.ok(validateCapability(spec({ capability: over })).length, `${bad} must reject an unknown member`);

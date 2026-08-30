@@ -123,6 +123,13 @@ export const ASPECTS = {
     "open-weights", "sandbox-tech", "eval-benchmarks", "local-inference", "sv-privacy",
     "feed-state", "strategy", "sv-architecture", "tooling", "gap-check",
   ],
+  lypning: [
+    "provenance", "corpus-growth", "cost-ratio", "cold-start", "correctness",
+    "routing", "binary-size", "sv-measure", "sv-provenance", "sandbox-why",
+    "your-machine", "refusal-contract", "sv-speed", "subset-scope", "commit-history",
+    "regression", "sv-correctness", "measure-method", "engines", "what-not-measured",
+    "sv-sandbox",
+  ],
   models: [
     "pick-a-model", "cost-compare", "vision-model", "sv-language", "context-window",
     "licence", "open-weights", "sv-cost", "benchmark-claims", "self-host",
@@ -398,6 +405,65 @@ export const STARTERS = {
     // length — because a constraint is what makes the catalog ranking do
     // something visible.
     // =====================================================================
+    // lypning — THE STATS AGENT FOR AN EXTERNAL PROJECT.
+    //
+    // Every other queue opens a subject. This one opens a DISTINCTION: which
+    // numbers are yours and which are somebody else's. The agent's whole reason
+    // to exist is that lypning's own third invariant — never quote a remembered
+    // corpus size as a measurement — is exactly the rule an eager assistant
+    // breaks first, so more than half of these ask about provenance rather than
+    // about a value, and several ask the agent to say what it does NOT know.
+    //
+    // The rest are shaped for the dashboard they sit on: naming a metric opens
+    // its chart, and asking for a measurement starts the battery in the
+    // reader's own browser VM. So they are written as things worth watching
+    // happen, not as background reading. Synthetic, like every queue here —
+    // none of these was lifted from a chat log.
+    // =====================================================================
+    lypning: [
+      { id: "lyp-whose-numbers", xp: 284, lang: "en", aspect: "provenance",
+        text: "Which of the numbers on this page did my own machine produce, and which came from someone else's run? Be explicit about every one." },
+      { id: "lyp-corpus", xp: 285, lang: "en", aspect: "corpus-growth",
+        text: "How did the corpus grow over the project's history, and does a bigger corpus make the published speed numbers better or just different?" },
+      { id: "lyp-ratio", xp: 286, lang: "en", aspect: "cost-ratio",
+        text: "The mixture's cost against CPython fell across the history. Walk me through when it moved and what each commit says it changed." },
+      { id: "lyp-cold", xp: 287, lang: "en", aspect: "cold-start",
+        text: "Why is cold start the number that matters in a browser VM rather than how fast the interpreter runs once it is warm?" },
+      { id: "lyp-sv-varfor", xp: 304, lang: "sv", aspect: "sv-sandbox",
+        text: "Varför behöver sandlådan en egen Python? Förklara vad som händer när en vanlig CPython-enradare körs där inne." },
+      { id: "lyp-mismatch", xp: 288, lang: "en", aspect: "correctness",
+        text: "Are there MISMATCHes — cases where an engine silently disagrees with CPython — and if so, whose are they and are they getting worse?" },
+      { id: "lyp-sv-vems", xp: 289, lang: "sv", aspect: "sv-provenance",
+        text: "Vilka siffror här har min egen dator mätt, och vilka är citerade från någon annans körning? Säg det rakt ut för varje." },
+      { id: "lyp-routing", xp: 290, lang: "en", aspect: "routing",
+        text: "How does the classifier decide which of the three interpreters runs a program, and what does it cost when it guesses wrong?" },
+      { id: "lyp-binary", xp: 291, lang: "en", aspect: "binary-size",
+        text: "How has the binary size moved, and why would anyone care about a megabyte when the machine has gigabytes?" },
+      { id: "lyp-sv-mata", xp: 292, lang: "sv", aspect: "sv-measure",
+        text: "Kör batteriet i min webbläsares Linux-VM och berätta vad det faktiskt mäter — och vad det inte kan mäta." },
+      { id: "lyp-why-sandbox", xp: 293, lang: "en", aspect: "sandbox-why",
+        text: "Why does the sandbox need a special Python at all? Explain what happens when a normal CPython one-liner runs in there." },
+      { id: "lyp-my-machine", xp: 294, lang: "en", aspect: "your-machine",
+        text: "Run the battery, then tell me how my machine compares to the numbers the project published — and how much of the difference is my machine rather than the code." },
+      { id: "lyp-refusal", xp: 295, lang: "en", aspect: "refusal-contract",
+        text: "What does exit 90 mean, and why is a refusal that costs a wasted process spawn better than an answer that might be wrong?" },
+      { id: "lyp-sv-snabbare", xp: 296, lang: "sv", aspect: "sv-speed",
+        text: "Hur mycket snabbare är blandningen än CPython, och på vems maskin mättes det? Jag vill veta hur mycket jag kan lita på den siffran." },
+      { id: "lyp-subset", xp: 297, lang: "en", aspect: "subset-scope",
+        text: "The subset is sized to the one-liners a coding agent types rather than to Python. What does that actually exclude, and how often does it matter?" },
+      { id: "lyp-history", xp: 298, lang: "en", aspect: "commit-history",
+        text: "Which commit changed the most, measured rather than claimed? Show me the series and say what the commit message says it did." },
+      { id: "lyp-regression", xp: 299, lang: "en", aspect: "regression",
+        text: "Has any metric here got WORSE over the history? Do not soften it — show me the ones going the wrong way and say whether anyone tracked them." },
+      { id: "lyp-sv-korrekt", xp: 300, lang: "sv", aspect: "sv-correctness",
+        text: "Vad är skillnaden mellan MISMATCH och UNSUPPORTED, och varför är bara den ena ett fel?" },
+      { id: "lyp-method", xp: 301, lang: "en", aspect: "measure-method",
+        text: "Why does the battery take the minimum of N runs rather than the average, and why is every row floor-subtracted?" },
+      { id: "lyp-engines", xp: 302, lang: "en", aspect: "engines",
+        text: "Which of the three engines does my VM actually have, and what happens to the numbers for the ones it does not?" },
+      { id: "lyp-sv-vet-inte", xp: 303, lang: "sv", aspect: "what-not-measured",
+        text: "Vad kan du INTE svara på om det här projektet utifrån det du har? Räkna upp det." },
+    ],
     models: [
       { id: "mdl-cheapest-vision", xp: 113, lang: "en", aspect: "vision-model",
         text: "Which is the cheapest model I can run here that reads images, and what would one research turn cost me?" },

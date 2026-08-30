@@ -119,6 +119,22 @@ export function isPublicAsset(url, method) {
     // state, nothing a paper's own arXiv or PubMed listing does not say.
     url.pathname === "/corpora" ||
     url.pathname.startsWith("/corpora/") ||
+    // The lypning stats dashboard (/lypning/): the page, its committed commit
+    // history (lypning/history.json), and the pure core that reads them.
+    // Public for the same reason as /pulse/ and /corpora/ — it is reachable
+    // from BOTH tiers and describes an external open-source project's public
+    // git history, so serving it unauthenticated exposes nothing. Its live
+    // half runs entirely in the visitor's own browser VM and never reaches
+    // this server at all, which is why the page is useful signed out.
+    url.pathname === "/lypning" ||
+    url.pathname.startsWith("/lypning/") ||
+    // …and the two modules that page imports. /js/ is allowlisted file by file,
+    // not by prefix, so a page whose script is not named here loads its HTML
+    // and then 401s on its own module — which is how /cure once broke (see the
+    // sandbox.js arm below). The rest of the graph it pulls in (sandbox.js and
+    // friends) is already public for the /cure tier.
+    url.pathname === "/js/lypning-core.js" ||
+    url.pathname === "/js/lypning-page.js" ||
     // The space-animations showcase (/space/): an archive of playable
     // wireframe animations answering common space questions. Public like
     // /pulse/ — a promotional/educational surface with nothing user-specific;
@@ -227,6 +243,15 @@ export function isPublicAsset(url, method) {
     // the public graph under the same rule as the line above. (Its DRS-side
     // glue, /js/exec-env.js, is NOT here: only the signed-in app imports that.)
     url.pathname === "/js/exec-backends-core.js" ||
+    // The lypning exec LADDER (run a Python program over a DREE/1 runner:
+    // probe by builtin `[ -x … ]`, refusal contract, CPython retry) — the
+    // shared pure core src/research-tools-run.js re-exports, and the module
+    // Se/cure's browser research loop imports so its run_python executes in
+    // the VM the reader already has (invariant 4: never relayed through this
+    // server). Same public-graph rule as exec-backends-core.js above; its own
+    // import, /js/lypning-core.js, is already allowlisted with the /lypning/
+    // dashboard entries.
+    url.pathname === "/js/lypning-exec-core.js" ||
     // The search-SOURCE preference behind the "Exa web search" settings knob —
     // /cure/drc.js statically imports it (the same public-graph rule).
     url.pathname === "/js/search-source.js" ||

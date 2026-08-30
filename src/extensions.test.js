@@ -303,6 +303,14 @@ describe("capabilities seam", () => {
 const CORE_MODULES = [
   "src/chat.js",
   "src/pipeline.js",
+  "src/pipeline-standard.js",
+  // The model-driven engine. It is here for a specific trap: a research tool's
+  // NAME is a service's name — the imagery tool matches SERVICE_TOKENS'
+  // /street[_ ]?view/i all by itself — so an engine that enumerated its toolbox
+  // would name integrations in the one place that decides what a run may reach.
+  // It reaches tool names only through the tool registry, which is deliberately
+  // NOT in this list (asserted from the other side, in that registry's suite).
+  "src/agentic.js",
   "src/pipeline-inputs.js",
   "src/enrichment.js",
   "src/validation.js",

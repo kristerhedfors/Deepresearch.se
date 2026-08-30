@@ -271,18 +271,25 @@ is still the best retrieval bet available.
 
 Facts from `src/pipeline.js`, `src/budget.js`, `src/sources.js`, `src/prompts.js`.
 
+> **Updated 2026-08-29 for the engine split.** The five-phase cascade this
+> section was written against was deleted that day (owner directive); a
+> research turn now runs the model-driven agentic loop (`src/agentic.js`) or
+> the four-node standard graph (`src/pipeline-standard.js`), sharing the
+> writer and validator. Rows below carry a dated note where the split changed
+> the status; every measurement and verdict stands as recorded.
+
 | Technique | Evidence | Status here |
 |---|---|---|
-| Iterative gap-driven re-search | measured | **present** — `runGapChecks`, up to `plan.gapIterations` rounds |
-| Query decomposition | measured (small) | **present** but used as answer skeleton, *not* as retrieval queries |
+| Iterative gap-driven re-search | measured | **present, reshaped 2026-08-29** — the standard graph's reflect loop (≤2 rounds, `src/pipeline-standard.js`), or the agentic loop's own follow-up searching; `runGapChecks` and its cascade are deleted |
+| Query decomposition | measured (small) | **removed 2026-08-29** — the triage phase that decomposed is gone; the loop is trusted to decompose itself, the standard graph carries none (the multi-hop evidence below is the first place to look if either regresses) |
 | Reranking before synthesis | measured (citation F1 −19.7 without) | **present for arXiv/PubMed**, absent for web sources |
 | Relevance floor / abstention | measured | **present** (`RERANK_FLOOR`), corpus paths only |
-| Per-chunk summarization + relevance score (RCS) | **measured, largest single lever** | **code exists, disabled** (`maybeDigest`, `DEEP_TIER_FEATURES_ENABLED = false`) |
-| Claim-level entailment vs cited source | measured | **code exists, disabled** (`runClaimValidation`) |
+| Per-chunk summarization + relevance score (RCS) | **measured, largest single lever** | **deleted 2026-08-29** with the deep tier (was: code existed, disabled behind `DEEP_TIER_FEATURES_ENABLED = false`); a retry is now a fresh build |
+| Claim-level entailment vs cited source | measured | **deleted 2026-08-29** (was: `runClaimValidation`, disabled) |
 | Full text rather than snippets | measured (faithfulness 0.446 → 0.581, 400 → 1500 chars/source) | **absent** — only Exa highlights (3/source) reach synthesis; corpus paths are abstract-only |
 | Workspace reconstruction / report-as-state | measured, training-free | **absent** |
 | Parallel trajectories + report-level synthesis | measured | **absent in the research flow** (orchestrator mode has the machinery) |
-| Strategy-gap feedback rather than content-gap | measured (+15.4 vs +2.4) | **absent** — `gapPrompt` asks what is missing from the text |
+| Strategy-gap feedback rather than content-gap | measured (+15.4 vs +2.4) | **absent** — `reflectPrompt` asks what is missing from the evidence, not which research strategy was missed |
 | Section-scoped revision | measured (full rewrite loses 46–73% of citations) | **absent — and actively inverted**: validation emits a whole `revised_answer` |
 | Contradiction detection | suggestive | **shallow** — `gap.conflicts` strings, no cross-source claim alignment |
 | Retraction / preprint flags | measured gap in every competitor | **absent** |
@@ -290,12 +297,14 @@ Facts from `src/pipeline.js`, `src/budget.js`, `src/sources.js`, `src/prompts.js
 | Absence claims checked against the retrieved list, and against what was searched | local defect, feedback #61 | **present** since 2026-08-05 — `searchLedgerSection` (over the queries actually issued, after a first cut that listed the planned ones) + `synthPrompt`'s absence clause |
 | Evidence grading from metadata | speculative | **absent** |
 
-### The disabled-features question
+### The disabled-features question (now the deleted-features question)
 
-Three of the highest-value techniques already exist in our code and are off,
-behind `DEEP_TIER_FEATURES_ENABLED = false` (`src/budget.js:417`), because a
+Three of the highest-value techniques existed in our code and were off,
+behind `DEEP_TIER_FEATURES_ENABLED = false` in `src/budget.js`, because a
 de-noised bench measured them as a **regression**: batch overall 2.65 → 2.43,
-with no real multi-hop gain. That verdict stands and must not be waved away.
+with no real multi-hop gain. That verdict stands and must not be waved away —
+and as of 2026-08-29 the code is deleted with the cascade rather than
+disabled, so a retry means building the mechanism again, not flipping a flag.
 
 But the bench note itself records *why*: **"multi-hop needs sub-question
 decomposition, not more source material."** The disabled notes digest **added**
@@ -314,8 +323,10 @@ specificity rather than overall score alone.
 ### Three defects, and two things that only look like defects
 
 **The first defect, still open: validation emits a whole `revised_answer`.**
-`src/prompts.js:621` asks for "the complete corrected answer";
-`src/pipeline.js:1939` discards the draft and re-emits it.
+`validatePrompt` (`src/prompts.js`) asks for "the complete corrected answer";
+`runValidation` (`src/pipeline.js`) discards the draft and re-emits it — and
+both engines finish through that same validator, so the engine split changed
+nothing here.
 Full-rewrite revision is measured to retain only
 **27–54% of citations** ([arXiv:2606.09748](https://arxiv.org/html/2606.09748)),
 which makes our repair path the documented failure mode: the phase that exists
@@ -375,26 +386,30 @@ assertion** — the same claim in an answer is what feedback #61 reported.
 built from completed harvest entries, so the correct implementation was already
 in the repo, in the other tier.
 
-**Not a defect: `verifyClaim` returning `supported` when the check fails**
-(`src/pipeline.js:2028`). The comment states the intent — a failed check must
-never *fabricate* an "unsupported" verdict — and in effect the claim is simply
-never added to `issues` (line 1979), so it is unflagged rather than
+**Not a defect: `verifyClaim` returning `supported` when the check fails.**
+(Deleted 2026-08-29 with claim-level validation — the analysis is kept for
+the day it is rebuilt.) The comment stated the intent — a failed check must
+never *fabricate* an "unsupported" verdict — and in effect the claim was
+simply never added to `issues`, so it was unflagged rather than
 asserted-good. The real cost is narrower than it first appears: "verified
-supported" and "not checked" are the same value, so the moment we compute a
-faithfulness *metric* from these verdicts it will be inflated by every failed
-check. Worth a distinct third state before it feeds a rubric (§9), not before.
+supported" and "not checked" are the same value, so the moment a
+faithfulness *metric* is computed from such verdicts it is inflated by every
+failed check. Worth a distinct third state before it feeds a rubric (§9),
+not before.
 
 **Not a defect: `gapIterations` reaching 8.** The external evidence does say two
 steps capture ~95% of the agentic-retrieval gain and step 3+ is indistinguishable
 from step 5 (±0.0 EM, [arXiv:2606.21553](https://arxiv.org/html/2606.21553)).
-But `src/budget.js:198-205` records the ceiling as a deliberate response to a
-reported "gave up too early", and it is a *striving* ceiling: time, the
-coverage-complete judgment, and the saturation shortcut all bind before the
-round count does, and `applyComplexityToPlan` clamps simple questions anyway.
-An external multi-hop-QA benchmark is not evidence about our users' questions.
-The honest action is to **measure** whether rounds past the second contribute
-sources that survive into citations — not to lower the ceiling on the strength
-of someone else's benchmark.
+`src/budget.js` records the ceiling as a deliberate response to a reported
+"gave up too early", and it is a *striving* ceiling. The 2026-08-29 split
+resolved the tension the external evidence pointed at without lowering it:
+the planner still computes the climb (per-model priors are keyed on it), but
+the standard graph reads it as a boolean through `reflectRoundsFor` — one
+reflect round when the budget affords any follow-up work, two at most, the
+quickstart's own bound — and the agentic loop is bound by the wall clock and
+its own round/call caps instead. The honest action recorded here still
+applies to the loop: **measure** whether its later rounds contribute sources
+that survive into citations.
 
 ## 8. Ranked backlog
 
@@ -408,17 +423,21 @@ Ordered by measured evidence ÷ cost, respecting §6.
    churn proxy), so this can be ranked on our own evidence before it is built.
 2. **Retraction + preprint flags at retrieval time.** measured competitor gap;
    zero LLM calls.
-3. **Strategy-gap prompt in the gap check** (what research strategy was missed:
-   breadth vs depth) rather than what is missing from the text. measured, +15.4
-   vs +2.4; zero extra calls — a prompt change.
-4. ~~**Instrument the gap loop**~~ — HALF DONE 2026-08-05. Each round now logs
-   `chat.gap_round` with `gained` / `admitted` / `capped` / `sources`, so what a
-   round contributes is visible. The other half — whether those sources survive
-   into citations — needs a round stamp on each registry entry and is still
-   open. The same change fixed a defect the instrumentation exposed: the loop's
-   saturation exit read `sources.length`, which the domain cap holds flat, so a
-   wave whose every find was capped read as exhaustion and the run stopped
-   researching while it was still finding new pages.
+3. **Strategy-gap prompt in the reflect node** (what research strategy was
+   missed: breadth vs depth) rather than what is missing from the evidence.
+   measured, +15.4 vs +2.4; zero extra calls — a prompt change (the target
+   was the gap check when this was written; the reflect node inherits it).
+4. ~~**Instrument the gap loop**~~ — HALF DONE 2026-08-05, then the loop it
+   instrumented was deleted (2026-08-29). `chat.gap_round` went with
+   `runGapChecks`; the engines record their own shape now (`chat.query_plan`,
+   `chat.agentic_loop`, `pipeline` / `stopped_by` / `tool_calls` in the
+   chat-log row). The other half — whether a later round's sources survive
+   into citations — is still open and now applies to both engines. The
+   lesson the instrumentation bought stays paid for: the cascade's
+   saturation exit read `sources.length`, which the domain cap holds flat,
+   so a wave whose every find was capped read as exhaustion and the run
+   stopped researching while it was still finding new pages — a class to
+   check for in any future stop condition.
 5. **Split "verified supported" from "not checked"** in `verifyClaim` before any
    faithfulness metric is computed from it. Zero cost; prevents a silently
    inflated number later.
@@ -442,7 +461,8 @@ Ordered by measured evidence ÷ cost, respecting §6.
    day the first half landed, which is the same finding from the other end.
 7. **RCS as a replacement digest, behind an A/B.** measured, largest single
    lever, but contradicts a local bench — so it ships as an experiment with a
-   pre-registered metric, not as a default.
+   pre-registered metric, not as a default. (Since 2026-08-29 this is a
+   fresh build, not a re-enable: the disabled code went with the cascade.)
 8. **Contextual embeddings at ingest for arXiv/PubMed.** the only retrieval
    idea that targets our measured bottleneck; offline cost, zero query-time
    cost; unreplicated.

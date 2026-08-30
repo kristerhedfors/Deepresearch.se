@@ -57,6 +57,13 @@ import { AI_MODEL_NOT_A_PACKAGE_NOTE, AI_MODEL_RESEARCH_NOTE, aiModelIntent } fr
 import { splitUserContent } from "./message-content.js";
 import { ensureSandboxBooted, execInSandbox, sandboxSupported } from "./sandbox.js";
 import { resolveExecBackend, selectRunner } from "./exec-backends-core.js";
+// The shared lypning exec ladder (the one implementation of run_python — the
+// same core src/research-tools-run.js re-exports for the Se/rver toolbox).
+// Importing it is what keeps invariant 4 free here: the ladder runs over
+// whatever exec seam it is handed, and this module only ever hands it the
+// runner pickRunner resolved for the SECURE tier — the in-browser VM or the
+// user's own local DREE/1 runner, never a server relay.
+import { runPythonLadder } from "./lypning-exec-core.js";
 import {
   INTROSPECTION_TOOLS,
   MAX_READ_TOTAL_CHARS,
@@ -408,7 +415,7 @@ export const drcSourceToolPrompt = ({ bash = false } = {}) =>
   `You are the research assistant for DeepResearch.Se/cure, Deepresearch.se's client-side mode, answering a question about THIS SITE'S OWN implementation by investigating its ACTUAL source code. Today's date: ${today()}.\n` +
   "You have TOOLS to read the real code: grep_source (search the whole codebase like `grep -rn`, with optional context lines like `grep -C`), read_file (read files whole like `cat`, or a line range via offset/limit like `sed -n`), and list_files (see what exists, with byte sizes)" +
   (bash
-    ? ", plus run_bash (run any command in a real in-browser Linux sandbox with the source tree mounted at /src). "
+    ? ", plus run_bash (run any command in a real in-browser Linux sandbox with the source tree mounted at /src) and run_python (run a short Python program in the same sandbox — compute rather than guess). "
     : ". ") +
   "USE the tools — do not answer from memory or from any excerpt already in the context. A typical investigation: grep_source for the relevant term, then read_file the implementation files it points to, following references until you have really seen how it works.\n" +
   `TOOL ECONOMY — plan around the read budget: all read_file output in this investigation shares ONE fixed budget of ${MAX_READ_TOTAL_CHARS} characters (each result reports what is used so far); once spent, read_file returns nothing more. grep_source and list_files are free. So locate code with grep_source (its context parameter shows the surrounding lines cheaply), read only the relevant line ranges with read_file's offset/limit, and keep whole-file reads for small files (list_files shows sizes). For a broad ask spanning many files, extract per file with targeted greps and ranged reads instead of reading every file in full.\n` +
@@ -711,6 +718,33 @@ const RUN_BASH_TOOL = {
   },
 };
 
+// run_python beside run_bash, offered under the SAME conditions (the bash knob
+// on and a runner available): the secure agent's declared `python` tool class,
+// implemented here at last. The description carries the server tool's economy
+// notes (src/research-tools.js RUN_PYTHON_TOOL) plus the one fact that is this
+// tier's own — invariant 4: the program, its stdin and its output stay in the
+// user's browser VM or their own local runner, never relayed through a server.
+const RUN_PYTHON_TOOL = {
+  name: "run_python",
+  description:
+    "Run a short Python program and get its stdout, stderr and exit code back. Use it to COMPUTE " +
+    "rather than to guess: do the arithmetic behind a claim, parse a blob, reduce a table. The program " +
+    "runs in the same offline Linux sandbox as run_bash — in this browser (or on the user's own " +
+    "machine), never on a server — with no network. Keep it under a few seconds — a program that runs " +
+    "too long is killed and you get nothing. The interpreter may be a SUBSET of Python: if it refuses " +
+    "(exit 90, one `<engine>: unsupported: <kind>: <detail>` line), the same program is retried " +
+    "automatically on full CPython and you are told which engine answered. A refusal is information, " +
+    "not a failure.",
+  input_schema: {
+    type: "object",
+    properties: {
+      source: { type: "string", description: "The complete program. Print what you want to see." },
+      stdin: { type: "string", description: "Optional text on stdin." },
+    },
+    required: ["source"],
+  },
+};
+
 /**
  * Developer-mode native tool investigation — the client-side twin of the
  * server's runSourceResearchTools (src/pipeline.js). The user's OWN tool-capable
@@ -741,23 +775,29 @@ export async function runDrcSourceTools({
   const sitemap = buildSourceSitemap(snapshot);
   const sb = sandbox || pickRunner(execCfg);
   const bashOn = bash === true && !!sb.supported();
-  const tools = bashOn ? [...INTROSPECTION_TOOLS, RUN_BASH_TOOL] : [...INTROSPECTION_TOOLS];
+  // run_python rides run_bash's gate exactly: the same knob, the same runner —
+  // the two are one capability (a shell that can also run a program), so there
+  // is no state where the model is offered one and refused the other.
+  const tools = bashOn ? [...INTROSPECTION_TOOLS, RUN_BASH_TOOL, RUN_PYTHON_TOOL] : [...INTROSPECTION_TOOLS];
 
   /** @type {any} */
-  let sbReady = null; // lazy boot on first run_bash
+  let sbReady = null; // lazy boot on the first run_bash / run_python call
+  const ensureSb = async () => {
+    if (sbReady === null) {
+      onStatus({ type: "phase", phase: "sandbox" });
+      // Rotating boot quips ride the sandbox phase line while Linux comes up.
+      sbReady = await sb.boot(fileProvider, (/** @type {string} */ msg) =>
+        onStatus({ type: "phase", phase: "sandbox", label: msg }),
+      );
+    }
+    return !!sbReady;
+  };
   const execTool = async (/** @type {string} */ name, /** @type {any} */ input) => {
     if (name === "run_bash") {
       if (!bashOn) return "run_bash is unavailable here; use grep_source/read_file instead.";
       const cmd = String(input?.command || "").slice(0, 2000);
       if (!cmd) return "run_bash needs a non-empty 'command'.";
-      if (sbReady === null) {
-        onStatus({ type: "phase", phase: "sandbox" });
-        // Rotating boot quips ride the sandbox phase line while Linux comes up.
-        sbReady = await sb.boot(fileProvider, (/** @type {string} */ msg) =>
-          onStatus({ type: "phase", phase: "sandbox", label: msg }),
-        );
-      }
-      if (!sbReady) return "Sandbox unavailable; use grep_source/read_file instead.";
+      if (!(await ensureSb())) return "Sandbox unavailable; use grep_source/read_file instead.";
       let r;
       try {
         r = await sb.exec(cmd, { maxStdoutBytes: GUEST_STDOUT_CAP_BYTES });
@@ -765,6 +805,32 @@ export async function runDrcSourceTools({
         r = { exitCode: 1, stdout: "", stderr: String(/** @type {any} */ (err)?.message || err) };
       }
       return formatShellResult(normalizeExecResult(cmd, r));
+    }
+    if (name === "run_python") {
+      // Every refusal here is a SENTENCE the model reads next round (invariant
+      // 2) — the loop falls onward, it never throws a chat away over a tool.
+      if (!bashOn) return "run_python is unavailable here; answer from grep_source/read_file instead.";
+      const source = String(input?.source || "");
+      if (!source.trim()) return "run_python needs a non-empty 'source' program.";
+      if (!(await ensureSb())) return "Sandbox unavailable; answer without running the program.";
+      // The shared ladder owns everything from here: the builtin `[ -x … ]`
+      // engine probe (never `command -v` — a PATH walk once ate the whole
+      // 30 s exec ceiling and destroyed the VM), the lypning refusal →
+      // CPython retry, and the `timeout` wrapper whose budget pythonCommand
+      // clamps under EXEC_CEILING_MS — so no program this tool runs can cross
+      // the ceiling that destroys the VM. `sb` is the runner this SECURE tier
+      // resolved (invariant 4): the in-browser VM or the user's own local
+      // runner — the program, its stdin and its output never touch a server.
+      const res = await runPythonLadder(
+        (/** @type {string} */ cmd, /** @type {any} */ opts) =>
+          sb.exec(cmd, { ...opts, maxStdoutBytes: GUEST_STDOUT_CAP_BYTES }),
+        source,
+        {
+          stdin: String(input?.stdin || ""),
+          where: pickRunnerBackend(execCfg) === "local" ? "the local runner on the user's machine" : "the in-browser sandbox",
+        },
+      );
+      return res.text;
     }
     return runIntrospectionTool(snapshot, name, input, budget);
   };
@@ -1103,7 +1169,7 @@ export async function runDrcResearch({
 
   // The plan's outcome, on the still-running triage step: the completed label
   // plus the sub-questions as expandable detail (Se/rver's "Planned N search
-  // angles" step_done, src/pipeline.js runTriage).
+  // angles" step_done, src/pipeline-standard.js generateQueries).
   const kindTag = triage.complexity && triage.complexity !== "simple" ? ` · ${triage.complexity}` : "";
   onStatus({
     type: "detail",

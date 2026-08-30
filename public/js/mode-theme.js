@@ -73,7 +73,7 @@
 
 /** The Se/rver-app chat modes, dropdown order. Mirrors chat-mode.js CHAT_MODES;
  * kept here too so the registry is self-describing. */
-export const CHAT_MODE_IDS = ["science", "cyber", "introspection", "sdk", "orchestrator", "outrospection", "models"];
+export const CHAT_MODE_IDS = ["science", "cyber", "introspection", "sdk", "orchestrator", "outrospection", "models", "lypning"];
 
 /** The mode descriptors, keyed by id.
  *
@@ -257,6 +257,29 @@ export const MODE_THEMES = {
     depthSlider: true, // it researches the landscape like any other subject — the slider applies
     symbol: "the bench",
     blurb: "examined — every model weighed, priced and checked before anyone leans on it",
+  },
+  lypning: {
+    id: "lypning",
+    label: "lypning",
+    rootClass: "lypning-mode",
+    tag: "lypning",
+    // Green — the colour the dashboard already uses for MEASURED HERE, and the
+    // whole point of this mode is which numbers are yours. It is the one mode
+    // whose accent means something outside the theme.
+    accent: "#1baf7a",
+    bar: "#23b483",
+    check: "#1baf7a",
+    checkVar: "--check-green",
+    spinner: "balloon",
+    character: "balloon",
+    panel: "history",
+    backdrop: "terminal",
+    // NO depth slider. Depth buys more searching, and this mode searches
+    // nothing: it answers from a fixed dataset and from whatever the reader's
+    // own VM measured. A slider here would promise a knob that does nothing.
+    depthSlider: false,
+    symbol: "the stopwatch",
+    blurb: "measured — your machine's numbers and the project's own, never mistaken for each other",
   },
 };
 

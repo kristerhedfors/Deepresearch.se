@@ -1,65 +1,20 @@
 // (no @ts-check: node:test / node:assert have no type declarations in this
 // repo — tsconfig's types is workers-only and @types/node would be a new
 // dependency.)
-// Covers budget.js: clampBudget, planResearch's tier scaling (incl. the
-// split json-model estimates), the deep-tier gates, fitsDeadline's grace
-// math, and applyComplexityToPlan's scale-down-only rule.
+// Covers budget.js: clampBudget, planResearch's tier scaling (incl. the split
+// json-model estimates) and fitsDeadline's grace math.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import {
-  applyComplexityToPlan,
   clampBudget,
   fitsDeadline,
   planResearch,
   recordPhase,
   reportTierFor,
-  wantsNotes,
-  wantsFullContent,
-  wantsClaimValidation,
-  wantsGapStrive,
-  wantsSubqFanout,
-  GAP_STRIVE_MAX,
   MIN_BUDGET_S,
   MAX_BUDGET_S,
   DEFAULT_BUDGET_S,
 } from "./budget.js";
-
-// The gap-strive gate (feedback #16, chat_logs #609: a 600s budget wrapped in
-// 123s because the gap check's first "complete" verdict ended the loop).
-describe("wantsGapStrive", () => {
-  const planAt = (budgetS) => planResearch("test-model", budgetS);
-
-  test("deep tiers challenge an early 'sufficient' verdict while most budget is unspent", () => {
-    // 600s budget, 123s elapsed — the reported case.
-    assert.equal(wantsGapStrive(planAt(600), 123_000, 0), true);
-    // Extended tier too.
-    assert.equal(wantsGapStrive(planAt(300), 60_000, 0), true);
-  });
-
-  test("standard/brief tiers never strive (default behavior byte-identical)", () => {
-    assert.equal(wantsGapStrive(planAt(60), 10_000, 0), false);
-    assert.equal(wantsGapStrive(planAt(15), 1_000, 0), false);
-  });
-
-  test("half the budget spent → settle for the verdict", () => {
-    assert.equal(wantsGapStrive(planAt(600), 300_000, 0), false);
-    assert.equal(wantsGapStrive(planAt(600), 299_000, 0), true);
-  });
-
-  test("the push budget is bounded by GAP_STRIVE_MAX", () => {
-    assert.equal(wantsGapStrive(planAt(600), 60_000, GAP_STRIVE_MAX - 1), true);
-    assert.equal(wantsGapStrive(planAt(600), 60_000, GAP_STRIVE_MAX), false);
-  });
-
-  test("a simple-clamped plan (tier dropped to standard) never strives", () => {
-    const plan = applyComplexityToPlan(planAt(600), "simple");
-    assert.equal(wantsGapStrive(plan, 60_000, 0), false);
-  });
-
-  test("null plan is safe", () => {
-    assert.equal(wantsGapStrive(null, 0, 0), false);
-  });
-});
 
 describe("clampBudget", () => {
   test("clamps below the floor", () => {
@@ -252,73 +207,33 @@ describe("report-comprehensiveness tiers — the slider buys output depth too", 
   });
 });
 
-describe("planResearch — estimates carry the budget-gated phases", () => {
+describe("planResearch — the estimate keys the arithmetic reads", () => {
   const MODEL = "test/estimates-model-" + Math.random();
-  test("every plan's estimates include digest/fetch/claim so the deadline checks can budget them", () => {
+  // The trap PRIORS_MS's own comment names, from the other side: planResearch
+  // subtracts t.triage and costs a round at t.gap, and phaseEstimates only
+  // yields keys PRIORS_MS declares. Drop a row and every one of those terms
+  // becomes NaN — no throw, no log, a plan of NaNs. This is the test that
+  // fails when a key is removed with its phase.
+  test("every key planResearch's arithmetic reads is a number", () => {
     const plan = planResearch(MODEL, 300);
-    for (const k of ["triage", "gap", "validate", "synth", "search", "digest", "fetch", "claim"]) {
+    for (const k of ["triage", "gap", "validate", "synth", "search"]) {
       assert.equal(typeof plan.estimates[k], "number", `estimate ${k} present`);
     }
+    for (const k of ["queries", "gapIterations", "followups", "maxSearches", "maxSources"]) {
+      assert.ok(Number.isFinite(plan[k]), `${k} is a real number, not NaN`);
+    }
   });
-  test("adding the new phases does not change the planned search/gap allocation", () => {
-    // Regression guard: the digest/fetch/claim estimates must NOT be subtracted
-    // from avail, so queries/gapIterations/maxSearches stay what they were.
+  test("the standard engine's two node keys are carried, not just recorded", () => {
+    // recordPhase warms `queries` and `reflect` on every research turn. If the
+    // estimate bag drops them, those measurements are written every request
+    // and read by nothing, and the reflect loop budgets its rounds off the
+    // deleted gap phase's prior forever.
     const plan = planResearch(MODEL, 300);
-    assert.ok(plan.queries >= 1 && plan.maxSearches >= plan.queries);
-    // A default-budget plan still validates and is unaffected.
+    assert.equal(typeof plan.estimates.queries, "number");
+    assert.equal(typeof plan.estimates.reflect, "number");
+  });
+  test("a default-budget plan still validates", () => {
     assert.equal(planResearch(MODEL, 60).validate, true);
-  });
-});
-
-describe("budget-tier gates for the deep-research phases", () => {
-  const plan = (s) => planResearch("test/gate-model-" + Math.random(), s);
-
-  test("notes/full-content/claim-validation are ALL off at the 15-60s default tier", () => {
-    for (const s of [15, 30, 60]) {
-      assert.equal(wantsNotes(plan(s)), false, `notes off at ${s}s`);
-      assert.equal(wantsFullContent(plan(s)), false, `full-content off at ${s}s`);
-      assert.equal(wantsClaimValidation(plan(s)), false, `claim-validation off at ${s}s`);
-    }
-  });
-
-  // DISABLED (2026-07): the deep-tier phases are gated off by the
-  // DEEP_TIER_FEATURES_ENABLED flag in budget.js after a de-noised benchmark
-  // found them net-negative (see the flag's comment). While off, every gate
-  // returns false at every tier — so the mid/long tiers behave like the
-  // default. The tier boundaries (120s / 240s) are preserved in the gate
-  // bodies for the future intent-gated re-enable.
-  test("deep-tier phases stay off even at the mid tier (>=120s) while disabled", () => {
-    const p = plan(120);
-    assert.equal(wantsNotes(p), false);
-    assert.equal(wantsFullContent(p), false);
-    assert.equal(wantsClaimValidation(p), false);
-  });
-
-  test("deep-tier phases stay off even at the long tier (>=240s) while disabled", () => {
-    const p = plan(300);
-    assert.equal(wantsNotes(p), false);
-    assert.equal(wantsFullContent(p), false);
-    assert.equal(wantsClaimValidation(p), false);
-  });
-
-  test("the gates tolerate a missing/garbage plan without throwing", () => {
-    assert.equal(wantsNotes(null), false);
-    assert.equal(wantsFullContent(undefined), false);
-    assert.equal(wantsClaimValidation({}), false);
-  });
-
-  // Sub-question fan-out is gated by its OWN flag (SUBQ_FANOUT_ENABLED in
-  // budget.js — separate from the net-negative deep-tier features: this one
-  // is unmeasured, not disproven). While off it returns false at every tier;
-  // the ≥240s boundary is preserved in the gate body for the bench-gated
-  // enable (tests/bench-gate.mjs is the required evidence — see the flag's
-  // comment for the paired Cloudflare Workflows condition).
-  test("sub-question fan-out stays off at every tier while its flag is disabled", () => {
-    for (const s of [15, 60, 120, 240, 300, 600]) {
-      assert.equal(wantsSubqFanout(plan(s)), false, `fan-out off at ${s}s`);
-    }
-    assert.equal(wantsSubqFanout(null), false);
-    assert.equal(wantsSubqFanout({}), false);
   });
 });
 
@@ -339,64 +254,5 @@ describe("fitsDeadline", () => {
     assert.equal(fitsDeadline(startedAt, budgetMs, 12_000), true);
     // 100s elapsed + 20s upcoming = 120s, over even the grace ceiling.
     assert.equal(fitsDeadline(startedAt, budgetMs, 20_000), false);
-  });
-});
-
-describe("applyComplexityToPlan — complexity-scaled effort", () => {
-  const MODEL = "test/no-history-model-complexity";
-
-  test("'simple' caps gap rounds at 1 and searches at one wave + one follow-up round", () => {
-    const plan = planResearch(MODEL, 300);
-    assert.ok(plan.gapIterations > 1, "premise: a 300s plan buys >1 gap rounds");
-    const out = applyComplexityToPlan(plan, "simple");
-    assert.equal(out, plan); // mutates and returns the same plan object
-    assert.equal(plan.gapIterations, 1);
-    assert.equal(plan.maxSearches, plan.queries + plan.followups);
-  });
-
-  test("only ever scales DOWN — a floor plan is not raised", () => {
-    const plan = planResearch(MODEL, 15);
-    const before = { ...plan };
-    applyComplexityToPlan(plan, "simple");
-    assert.ok(plan.gapIterations <= before.gapIterations);
-    assert.ok(plan.maxSearches <= before.maxSearches);
-  });
-
-  test("'simple' also caps the report tier at standard (2026-07-15 seam-battery evidence)", () => {
-    // The paired 179/180s A/B: structured-report tiers helped broad kinds
-    // but went 0 wins / 7 losses on focused-lookup kinds — a simple question
-    // must keep the focused answer shape even when the slider bought more.
-    const ext = applyComplexityToPlan(planResearch(MODEL, 300), "simple");
-    assert.equal(ext.reportTier, "standard");
-    assert.equal(ext.synthMaxTokens, 4096);
-    assert.equal(ext.validateMaxTokens, 3000);
-    const full = applyComplexityToPlan(planResearch(MODEL, 600), "simple");
-    assert.equal(full.reportTier, "standard");
-    assert.equal(full.synthMaxTokens, 4096);
-    // Never scales UP: brief stays brief, standard stays standard.
-    assert.equal(applyComplexityToPlan(planResearch(MODEL, 15), "simple").reportTier, "brief");
-    assert.equal(applyComplexityToPlan(planResearch(MODEL, 60), "simple").reportTier, "standard");
-  });
-
-  test("non-simple complexities leave the plan untouched (budget stays the ceiling)", () => {
-    for (const complexity of ["multihop", "comparison", "survey"]) {
-      const plan = planResearch(MODEL, 300);
-      const before = JSON.stringify(plan);
-      applyComplexityToPlan(plan, complexity);
-      assert.equal(JSON.stringify(plan), before, complexity);
-    }
-  });
-
-  test("absent/unknown complexity (schema miss, older model output) is a no-op", () => {
-    for (const complexity of [null, undefined, "extreme", 42]) {
-      const plan = planResearch(MODEL, 300);
-      const before = JSON.stringify(plan);
-      applyComplexityToPlan(plan, complexity);
-      assert.equal(JSON.stringify(plan), before, String(complexity));
-    }
-  });
-
-  test("a missing plan is tolerated", () => {
-    assert.equal(applyComplexityToPlan(null, "simple"), null);
   });
 });

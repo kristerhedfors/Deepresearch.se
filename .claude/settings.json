@@ -21,18 +21,7 @@
           },
           {
             "type": "command",
-            "command": "sh \"$CLAUDE_PROJECT_DIR/scripts/pygram-capture/install\""
-          }
-        ]
-      }
-    ],
-    "PreToolUse": [
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "sh \"$CLAUDE_PROJECT_DIR/.claude/hooks/pygram-capture.sh\""
+            "command": "sh \"$CLAUDE_PROJECT_DIR/.claude/hooks/lypning.sh\""
           }
         ]
       }
@@ -43,16 +32,6 @@
           {
             "type": "command",
             "command": "sh \"$CLAUDE_PROJECT_DIR/.claude/hooks/merge-barrier.sh\""
-          }
-        ]
-      }
-    ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "sh \"$CLAUDE_PROJECT_DIR/.claude/hooks/pygram-harvest.sh\""
           }
         ]
       }

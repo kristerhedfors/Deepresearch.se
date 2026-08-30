@@ -155,10 +155,12 @@ async function runPlatformMap(env, log, area) {
     );
   } else {
     parts.push(
-      "This is a deep research platform running as a single Cloudflare Worker. It orchestrates " +
-        "a fixed research pipeline — triage, search, gap check, synthesis, validation — with no " +
-        "function calling, so the same pipeline runs on any model. It has two tiers: one where " +
-        "the server is never in the data path, and one that is account-scoped and cloud-first.",
+      "This is a deep research platform running as a single Cloudflare Worker. A research turn " +
+        "runs one of two engines: a model-driven tool loop that chooses its own calls, and a " +
+        "compact four-node graph — plan queries, search, reflect on the gaps, write and validate " +
+        "— that every model without tool use falls back to, so the platform works on any model. " +
+        "It has two tiers: one where the server is never in the data path, and one that is " +
+        "account-scoped and cloud-first.",
     );
     const sizeLine = describeSize(snapshot, await docsCount(env, log));
     if (sizeLine) parts.push(sizeLine);
@@ -326,8 +328,9 @@ function describeCodeAreas(snapshot) {
 /**
  * The documented areas matching a caller's word, best first.
  *
- * A name hit outranks a summary hit, because someone who says "pygram" means
- * the pygram playbook and not the four others that mention it in passing. Below
+ * A name hit outranks a summary hit, because someone who says "cache-helper"
+ * means the caching playbook and not the four others that mention it in
+ * passing. Below
  * that, order is the catalog's own, which is alphabetical — there is no
  * relevance signal here worth inventing one for.
  *
@@ -416,10 +419,10 @@ function spokenName(name) {
  * and it was invisible until the output was read aloud. A SKILL.md
  * `description` is not a description of the subsystem — it is an instruction to
  * an agent about WHEN TO READ THE FILE, so nearly every one begins "Load when
- * working on X" or "Use this skill when …". Spoken, the map said "pygram, which
- * covers load when working on pygram", which is not merely clumsy: it is not
- * about pygram at all. The substance is what follows the trigger, so the trigger
- * is cut and the substance kept.
+ * working on X" or "Use this skill when …". Spoken, the map said "cache-helper,
+ * which covers load when working on cache-helper", which is not merely clumsy:
+ * it is not about caching at all. The substance is what follows the trigger, so
+ * the trigger is cut and the substance kept.
  */
 const TRIGGER_OPENER =
   /^(?:load|use|read|reach for)\s+(?:it\s+|this\s+skill\s+)?(?:when|whenever|if|before)\s+(?:you\s+(?:are\s+)?)?/i;
@@ -472,8 +475,8 @@ function spokenSummary(raw, name) {
   const detail = dash > 0 ? stripped.slice(dash).replace(/^\s*[—–]\s*/, "") : "";
 
   // The head is preferred unless it says only what the NAME already said, which
-  // is the shape of every playbook named after its subject ("working on pygram —
-  // the minimal Python-subset runtime…"): there the detail is the description.
+  // is the shape of every playbook named after its subject ("working on
+  // cache-helper — every cache layer…"): there the detail is the description.
   const preferDetail = isJustTheName(head, name) && detail;
   const first = preferDetail ? detail : head;
   const firstKind = /** @type {"trigger" | "detail"} */ (preferDetail ? "detail" : "trigger");
@@ -609,7 +612,7 @@ function isSubstantive(text) {
 /**
  * Whether a description's opening clause says nothing the playbook's NAME did
  * not already say. Compared on words rather than the whole string so
- * "working on the pygram runtime" still counts as substantive.
+ * "working on the cache-helper playbook" still counts as substantive.
  * @param {string} head
  * @param {string} name
  * @returns {boolean}
@@ -629,7 +632,7 @@ const FILLER = new Set(["the", "a", "an", "and", "or", "of", "for", "on", "in", 
 
 /** The META verbs a trigger opens with — they say "when you work on it", not what
  * it IS, so a head made only of one plus the skill's own name is still just the
- * name ("working on pygram"). */
+ * name ("working on cache-helper"). */
 const TRIGGER_VERBS = new Set(["working", "touching", "editing", "modifying", "changing", "using", "reading"]);
 
 /**

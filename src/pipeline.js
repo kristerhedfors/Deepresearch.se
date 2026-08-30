@@ -1,22 +1,44 @@
 // @ts-check
-// The deep-research pipeline. The Worker orchestrates every phase directly
-// (no function calling), so the flow is deterministic and works on any
-// JSON-mode model:
+// The deep-research pipeline. This module owns the request's PHASE FLOW: the
+// gates that decide what kind of turn this is, the dispatch that picks the
+// answer phase, and the retrieval/writing machinery every engine runs on.
 //
-//   1. Triage (JSON): direct reply | one clarifying question | research plan
-//      with multi-angle queries (count set by the time-budget planner).
-//   2. Search wave: run the planned queries via Exa (deduped, capped).
-//   3. Gap check (JSON, rounds set by the planner): audit coverage; run
-//      follow-up queries for the most important gaps.
-//   4. Synthesis: stream a source-grounded answer with [n] citations and a
-//      Sources list, built ONLY from the numbered source registry.
-//   5. Post-validation (JSON): fact-check the draft against the sources; on
-//      "revise", tell the UI to discard the draft (discard_text) and emit
-//      the corrected answer.
+// It does NOT own the research turn's own orchestration any more. There are two
+// engines and they live elsewhere:
 //
-// Helper phases fail soft: if triage / gap check / validation error or
-// return unparseable JSON, the pipeline degrades (single search, skip
-// iteration, accept draft) rather than failing the request.
+//   * src/agentic.js — the model-driven loop. The answer model is handed the
+//     research brief and a toolbox and chooses its own calls (invariant 1's
+//     authorized exception, extended to research 2026-08-29).
+//   * src/pipeline-standard.js — the four-node standard topology
+//     (generate_queries → web_research → reflect → finalize). It is an OPTION a
+//     request or an agent spec can name, and it is also the loop's FALLBACK:
+//     every model without a tool dialect, and every run whose resolved toolbox
+//     is empty, lands here. That fallback is what keeps invariant 1's promise
+//     that the platform works on the whole catalog.
+//
+// The deterministic five-phase cascade this file used to run — triage, wave,
+// gap rounds, synthesis, validation, with a notes digest, a full-content fetch,
+// a sub-question fan-out and a claim ladder hanging off it — is GONE (owner
+// directive, 2026-08-29: "don't keep this static pipeline"). What survived it
+// is everything below that was never the cascade: the retrieval engine, the
+// writer, the validator and the JSON-phase runner.
+//
+// Helper phases fail soft: a JSON phase that errors or returns unparseable
+// JSON degrades (a seeded search, an unreflected wave, an accepted draft)
+// rather than failing the request (invariant 2).
+//
+// Several phase helpers are EXPORTED rather than module-private — jsonPhase,
+// runNamedUrlReads, runSearches, runDirectReply, runSynthesis, runValidation,
+// and the registry/digest widening `widenPlanCapacity` (with labelWebItems,
+// which already was). They are the retrieval engine and the writer, and both
+// engines run on exactly these, unchanged — as do the model-issued legs in
+// src/research-tools-run.js, whose web and page-read tools must commit the
+// SAME bookkeeping a planned wave commits. Exporting them is what stops a
+// second engine re-implementing per-source caps, cross-wave dedup, the
+// deterministic absorption order and the search_start/search_done cards —
+// every one of which is retrieval's, not any engine's, and every one of which
+// a re-implementation would silently get subtly wrong. Nothing outside this
+// module may reorder the phases here; they are call targets, not a public API.
 //
 // Status events emitted to the UI are documented in src/types.d.ts
 // (SseEvent) and the sse-protocol skill. Each phase below is its own
@@ -27,33 +49,22 @@
 // ctx plus whatever's specific to that call, instead of a long parameter
 // list.
 //
-// This module owns the phase FLOW only. The pieces with lives of their
-// own are split out: the source registry (dedup, domain-diversity cap,
-// digest) in sources.js, the auxiliary search-source registry (HF Hub &
-// co, iterated by runAuxSearches below) in search-sources.js, the
-// opt-in pre-pipeline context enrichments in enrichment.js (whose
-// third-party integrations are registered — and named — only in
-// extensions.js), the JSON-phase schemas + triage normalization/fallback
-// in triage.js, and the answer-streaming internals (retry loop, model
-// failover, chunked emit) in answer-stream.js.
+// The pieces with lives of their own are split out: the source registry
+// (dedup, domain-diversity cap, digest) in sources.js, the auxiliary
+// search-source registry (HF Hub & co, iterated by runAuxSearches below) in
+// search-sources.js, the opt-in pre-pipeline context enrichments in
+// enrichment.js (whose third-party integrations are registered — and named —
+// only in extensions.js), the JSON-phase schema + the model-free query seed in
+// triage.js, and the answer-streaming internals (retry loop, model failover,
+// chunked emit) in answer-stream.js.
 
 import { emitChunked, streamCompletion } from "./answer-stream.js";
 import { buildShellTranscript } from "./bash-agent.js";
 import { completeJson } from "./providers.js";
-import {
-  applyComplexityToPlan,
-  fitsDeadline,
-  recordPhase,
-  wantsClaimValidation,
-  wantsFullContent,
-  wantsGapStrive,
-  wantsNotes,
-  wantsSubqFanout,
-} from "./budget.js";
+import { fitsDeadline, recordPhase } from "./budget.js";
 import {
   formatConversation,
   imagePartsOf,
-  lastAssistantText,
   lastUserMessage,
   previousUserText,
   starterRefOf,
@@ -64,8 +75,7 @@ import {
   withoutStarterTags,
 } from "./conversation.js";
 import { runEnrichments } from "./enrichment.js";
-import { focusQueriesOnSubject } from "./query-focus.js";
-import { fetchContents, webSearch } from "./exa.js";
+import { webSearch } from "./exa.js";
 import { extractNamedUrls, readNamedUrls } from "./named-urls.js";
 import { SEARCH_SOURCES, capabilityAllowsSource, leadSourceIds } from "./search-sources.js";
 // Folds a source's reported dense-retrieval spend into the request's tally —
@@ -79,49 +89,32 @@ import {
   backfillOverflowSources,
   digestShownCount,
   sourceDigest,
-  sourceProgress,
 } from "./sources.js";
-import { extractNotes, mergeNotes, notesEntities } from "./notes.js";
 import {
   auxReplyMessages,
   buildContinuationTurns,
-  collectConflicts,
-  conflictsSection,
-  extractClaims,
-  mergeFanoutQueries,
-  notesSection,
   searchLedgerSection,
   sdkCutOffNote,
   sdkReplyTail,
   shellReplyMessages,
-  subquestionsSection,
   takeSearchBatch,
 } from "./pipeline-inputs.js";
-import {
-  CLAIM_VERIFY_SCHEMA,
-  GAP_SCHEMA,
-  REVISE_SCHEMA,
-  TRIAGE_SCHEMA,
-  VALIDATE_SCHEMA,
-  hardenJson,
-  looksLikeClarifyTurn,
-  normalizeTriage,
-} from "./triage.js";
-import {
-  claimExtractionPrompt,
-  claimVerifyPrompt,
-  gapPrompt,
-  notesPrompt,
-  quizPrompt,
-  revisePrompt,
-  triagePrompt,
-  validatePrompt,
-} from "./prompts.js";
+import { VALIDATE_SCHEMA, hardenJson } from "./triage.js";
+import { quizPrompt, validatePrompt } from "./prompts.js";
 import { phasePrompt } from "./prompt-sets.js";
 import { capBound, capSearch } from "./agent-spec.js";
 import { toolsForRun } from "./tool-sets.js";
 import { runOrchestration } from "./orchestrator.js";
 import { runOutrospection } from "./outrospect.js";
+// The two RESEARCH ENGINES this module routes between. Both import back into
+// this file for the retrieval helpers and the writer, so the imports are
+// circular by design — safe because every binding used across the cycle is an
+// `export function` declaration (hoisted), and nothing here reads one at module
+// scope. A `const` bag of them built at module level would depend on which side
+// the loader entered first, which is why both engines resolve their own
+// collaborators per call instead.
+import { engineFor, runAgenticResearch } from "./agentic.js";
+import { generateQueries, runStandardResearch } from "./pipeline-standard.js";
 import { spaceIntent, sceneById } from "./space.js";
 import { demoIntent } from "./demos.js";
 import { anthropicConfigured, anthropicToolRun, isAnthropicModel } from "./anthropic.js";
@@ -152,7 +145,7 @@ import { agentsFromSnapshot, buildAgentSdkDigest } from "../public/js/agent-spec
 import { feedbackRequested, feedbackComment, buildFeedbackContext, cannedFeedbackAck, feedbackImagesFromParts, feedbackScope } from "./feedback.js";
 import { parseUseCaseRef } from "./testpoints.js";
 import { loadSourceSnapshot } from "./introspect.js";
-import { DEFAULT_QUIZ_QUESTIONS, normalizeQuiz, quizIntent, quizQuestionCount } from "./quiz.js";
+import { normalizeQuiz, quizIntent } from "./quiz.js";
 import {
   MAX_FILES_PER_ROUND,
   MAX_SOURCE_READ_ROUNDS,
@@ -170,7 +163,6 @@ import {
 
 // ---- shared shapes -------------------------------------------------------
 
-/** @typedef {import('./pipeline-inputs.js').Claim} Claim */
 /** @typedef {import('./types.js').Env} Env */
 /** @typedef {import('./types.js').Logger} Logger */
 /** @typedef {import('./types.js').Conversation} Conversation */
@@ -205,8 +197,10 @@ import {
  *   subquestions?: string[],
  *   decomposition?: string | null,
  *   conflicts?: string[],
- *   notes?: object[],
- *   notesCursor?: number,
+ *   knowledgeGaps?: string[],
+ *   methodBlocks?: string[],
+ *   pipelineId?: string,
+ *   researchEngine?: string | null,
  *   fetchedUrls?: Set<string>,
  *   aux?: Record<string, AuxSourceState>,
  *   auxLeadReleased?: boolean,
@@ -291,12 +285,6 @@ function demoSurfaces(text, prior = "") {
  * }} PipelineCtx
  */
 
-/**
- * The triage verdict shape (normalizeTriage's output) — declared alongside
- * the JSON-phase schemas and the normalization/fallback logic in triage.js.
- * @typedef {import('./triage.js').TriageDecision} TriageDecision
- */
-
 // The EXECUTOR answer phases — the AgentSpec `capability.answerPhase` members
 // that take over the whole answer instead of running the research flow. One row
 // per shipped executor; the vocabulary is closed in agent-spec-core.js
@@ -313,15 +301,24 @@ function demoSurfaces(text, prior = "") {
 //              EN+SV gate and answered from the outward feed of what everyone
 //              ELSE shipped. The retrieval IS its triage; no web search runs.
 //
-// The remaining phases (`research`, `source-research`, `direct`) are NOT here:
-// they are decided per MESSAGE further down, by the hasSource +
-// externalSourceIntent gate and by triage, not per request.
+// `source-research` is still NOT here: whether a knob-on turn reads this site's
+// own source or searches the web is a per-MESSAGE decision the hasSource +
+// externalSourceIntent gate owns, and it lives inside the research phase below.
+//
+// `research` IS here, as of the engine split (2026-08-29) — it is the phase
+// every ordinary agent declares, and it became a row rather than a fall-through
+// because it now ROUTES: runResearchPhase settles the per-message gates and
+// then hands the turn to whichever engine engineFor picked. Dispatching it here
+// changes no behaviour (the fall-through at the end of runPipeline calls the
+// same function, which is what an unreadable registry and the MCP channel
+// still take) and it keeps one statement of what the phase is.
 //
 // Every one is gated in chat.js on the request's chat mode and is fully
 // fail-soft inside — a dead plan degrades to a single-agent workflow, an empty
 // feed answers honestly, a failed publish degrades to the answer text.
 /** @type {Record<string, (ctx: PipelineCtx) => Promise<any>>} */
 const ANSWER_PHASE_RUNNERS = {
+  research: runResearchPhase,
   build: runSdkBuild,
   workflow: runOrchestration,
   feed: runOutrospection,
@@ -573,8 +570,6 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
   // each agent has to opt into (owner directive, 2026-07-26).
   if (feedbackReq) return runFeedbackCapture(ctx);
 
-  let quizReq = state.quizzes ? quizIntent(ctx.cleanLastUser) : null;
-
   // ---- executor answer phases (the registry dispatch) --------------------
   //
   // Three chat modes replace the whole research flow with an executor of their
@@ -592,6 +587,30 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
   if (phase && ANSWER_PHASE_RUNNERS[phase]) {
     return ANSWER_PHASE_RUNNERS[phase](ctx);
   }
+
+  // Nothing was dispatched: the registry could not be read, the channel builds
+  // no capability (the MCP one), or the agent declared `source-research`, whose
+  // per-message gate lives inside the research phase. All three are research
+  // turns until the gates below say otherwise.
+  return runResearchPhase(ctx);
+}
+
+/**
+ * The `research` ANSWER PHASE: settle the per-message gates, then run whichever
+ * engine this request resolved to.
+ *
+ * The gates come first and are not the engines' business. Each of them decides
+ * that this MESSAGE is not a research turn at all — the knob left nothing
+ * external to consult, the site's own source is already in context and the user
+ * did not ask for outside material, the user asked for a quiz — and each is a
+ * per-message decision, which is why they cannot live in the registry beside
+ * the per-request phase. Only what survives them is handed to an engine.
+ *
+ * @param {PipelineCtx} ctx
+ */
+async function runResearchPhase(ctx) {
+  const { state } = ctx;
+  let quizReq = state.quizzes ? quizIntent(ctx.cleanLastUser) : null;
 
   // Web search (Exa) off is the knob's ONLY effect — NOT "no research". Depth
   // still governs how deep we go over whatever sources ARE available (owner
@@ -643,8 +662,8 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
   // not the excerpt-appended lastUser: the introspection block folded into
   // lastUser carries the CLAUDE.md orientation, whose prose trips
   // externalSourceIntent (e.g. a bare "vs") and would spuriously route every
-  // dev-mode ask to the web-search wave / a triage direct reply instead of the
-  // source read loop.
+  // dev-mode ask to the web-search wave, or to a sourceless direct reply,
+  // instead of to the source read loop.
   //
   // TWO cases IGNORE externalSourceIntent, and both are callers who already said
   // what they want.
@@ -658,9 +677,10 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
   // `sourceFirst` is /mcp's platform tools (src/mcp-config.js
   // resolveIntrospectArgs), and there the gate is not merely unhelpful but
   // actively broken: those tools force `web_search: false`, so a turn handed
-  // back here has NO search wave to be handed back TO. It falls to triage and
-  // answers from the pre-loaded excerpt block alone — the doc-recap failure
-  // runSourceResearch exists to prevent — while the tool's own description
+  // back here has NO search wave to be handed back TO. It falls to an engine
+  // with nothing to retrieve and answers from the pre-loaded excerpt block
+  // alone — the doc-recap failure runSourceResearch exists to prevent — while
+  // the tool's own description
   // promises it investigates the source. The caller's phrasing is what trips it:
   // "how does your sandbox compare to Docker" and "what's new in the research
   // pipeline" both match, and both are ordinary things to ask a platform about
@@ -675,72 +695,69 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
     return runSourceResearch(ctx);
   }
 
-  const decision = await runTriage(ctx);
-  // Triage's fail-soft quiz backup: the deterministic gate missed (typo /
-  // paraphrase — the first production request arrived as "Bygg en wuiz…")
-  // but the triage model recognized a quiz request. The message still
-  // decides the question count.
-  if (state.quizzes && !quizReq && decision.quiz === true) {
-    // cleanLastUser for the same reason as the primary gate above: the count
-    // must come from the user's own words, not an enrichment block's prose.
-    quizReq = { questions: quizQuestionCount(ctx.cleanLastUser) || DEFAULT_QUIZ_QUESTIONS };
-  }
-  // Clarify first, and it is deliberately NOT overridden below: it asks the
-  // user a question rather than answering, so it cannot produce the failure
-  // the direct branch does, and no page needs reading to serve it.
-  if (decision.action === "clarify") return runClarify(ctx, decision.question);
+  // ---- the ENGINE router --------------------------------------------------
+  //
+  // What survives the gates above is a research turn, and WHICH engine runs it
+  // is src/agentic.js's decision (engineFor): what the request asked for, else
+  // what the answering agent declared, else the platform's own choice — which
+  // is the model-driven loop wherever the model can drive one and the
+  // deterministic graph everywhere else. Nothing has streamed at this point, so
+  // both engines may still degrade into each other; that is exactly what
+  // runAgenticResearch's own fallbacks do.
+  //
+  // A QUIZ turn is the one research turn neither engine can finish, so it gets
+  // its own short flow below. runQuizGeneration REPLACES the report — the
+  // answer is a quiz object, not prose — and neither engine has a seat for
+  // that: the loop's contract is that its text never streams and the writer
+  // writes, and the standard graph's finalize node IS runSynthesis. Routing a
+  // "quiz me on X" through either would answer it with an essay.
+  if (quizReq) return runQuizResearch(ctx, quizReq);
 
-  // ---- Phase 1.5: read the pages the user NAMED --------------------------
-  // Before searching for sources, read the ones we were handed. See
-  // runNamedUrlReads / src/named-urls.js — feedback #67 was a question whose
-  // five pasted URLs the run then spent fifteen search angles failing to
-  // rediscover.
-  //
-  // ABOVE the direct branch, because what it reads decides that branch.
+  const engine = engineFor(ctx);
+  if (engine === "standard") return runStandardResearch(ctx);
+  // Every other name — "agentic", and anything a future spec resolves that
+  // this build does not know — runs the model-driven loop, which re-checks the
+  // two facts that decide whether it CAN run (a tool dialect, a non-empty
+  // toolbox) and hands the turn to the standard graph itself when either
+  // fails. A request must never fall out of the router with nothing having
+  // answered it (invariant 2), and that guarantee now lives in ONE place
+  // instead of in a fall-through nobody routes to.
+  return runAgenticResearch(ctx);
+}
+
+// The quiz turn's own research flow: gather material the standard way, then
+// let the quiz BE the answer.
+//
+// It reuses the standard graph's nodes rather than carrying a planner of its
+// own — node 1 for the angles, the named-URL read, one search wave — and stops
+// where that graph's reflect loop would begin, because a quiz is written from
+// the material in front of it and a second wave only buys questions about
+// sources the quiz will not use. If the quiz cannot be built from what came
+// back, the run falls through to the ordinary report over the same sources
+// (invariant 2: a quiz request degrades to an answer, never to an error).
+/**
+ * @param {PipelineCtx} ctx
+ * @param {{ questions: number }} quizReq
+ */
+async function runQuizResearch(ctx, quizReq) {
+  const { state } = ctx;
+  const queryPlan = await generateQueries(ctx);
+
+  // Phase 1.5, unchanged and for the unchanged reason: read the pages the user
+  // NAMED before searching for others, and ABOVE the direct branch, because
+  // what came back decides that branch (feedback #67).
   await runNamedUrlReads(ctx, extractNamedUrls(ctx.cleanLastUser));
-  // Pages we actually READ override a `direct` decision. Pasting a link and
-  // asking about it IS a research request over that page, and a direct reply
-  // cannot serve it: the answer model has no browser, so triage routing this
-  // turn to a direct completion produces the one answer that is both useless
-  // and wrong — "I can't browse arbitrary URLs" — for a question whose whole
-  // content is a URL we are perfectly able to read. Found by probing the
-  // deployed site, not by a test: this phase used to sit BELOW the branch, so
-  // it never ran on exactly the messages it was written for (verbatim probe,
-  // chat_logs #1743 — `named_urls: 0`, no queries, no sources).
-  //
-  // Gated on what came BACK, not on what was linked: if nothing could be
-  // read, the direct reply is still the better answer, and synthesis over an
-  // empty source set would be a worse one.
-  if (decision.action === "direct" && !state.namedUrlCount) {
-    // Quiz from the material already in front of us (conversation, attached
-    // documents, project materials) — triage decided no web sources needed.
-    if (quizReq && (await runQuizGeneration(ctx, quizReq))) return;
+
+  if (queryPlan.direct && !state.namedUrlCount) {
+    // Quiz from the material already in front of us — the conversation,
+    // attached documents, project materials. No sources were needed.
+    if (await runQuizGeneration(ctx, quizReq)) return;
     return runDirectReply(ctx);
   }
 
-  // ---- Phase 2: initial search wave -------------------------------------
-  // An overridden direct decision planned no angles, and that is the right
-  // outcome rather than a hole to paper over: "what does this page say?" is
-  // answered by the page, so the run goes straight to synthesis over what was
-  // read instead of inventing keyword angles for a URL we already have.
-  await runSearches(ctx, decision.action === "research" ? decision.queries : [], 1);
-  // Quiz from web research: one search wave gathers the material, then the
-  // quiz IS the answer — gap rounds, synthesis, and validation don't apply
-  // (nothing streams that could be fact-checked; the quiz's own prompt pins
-  // every question to the collected sources). On failure, fall through and
-  // the searches feed the normal research answer instead.
-  if (quizReq && (await runQuizGeneration(ctx, quizReq))) return;
-  // ---- Phase 2.5: notes digest (budget-gated, mid/high tiers) ------------
-  await maybeDigest(ctx);
-  // ---- Phase 2.75: sub-question fan-out (flag-gated, long tiers) ---------
-  await runSubquestionFanout(ctx);
-  // ---- Phase 3: gap-check iterations (budgeted) -------------------------
-  await runGapChecks(ctx);
-  // ---- Phase 3.5: full-content fetch of top sources (budget-gated, ≥240s)
-  await maybeFullContentDigest(ctx);
-  // ---- Phase 4: synthesis (streamed draft) -------------------------------
+  await runSearches(ctx, queryPlan.queries, 1);
+  if (await runQuizGeneration(ctx, quizReq)) return;
   const draft = await runSynthesis(ctx);
-  // ---- Phase 5: post-validation (budgeted; claim-level at high tiers) ----
   await runValidation(ctx, draft);
 }
 
@@ -826,109 +843,6 @@ async function runWithoutSearch(ctx) {
   ]);
 }
 
-// Phase 1: decide direct reply | clarifying question | research plan, and
-// Whether a METHOD enrichment appended anything on this turn — the first of the
-// two conditions the query focus is gated on (feedback #65). Reads the same
-// record the planning view is built from, so the two cannot drift apart.
-/** @param {any} state @returns {boolean} */
-function methodBlocksApplied(state) {
-  return Array.isArray(state?.methodBlocks) && state.methodBlocks.length > 0;
-}
-
-// announce the decision via the "plan" step. For "research" the returned
-// queries are already capped to the budget plan's angle count.
-/**
- * @param {PipelineCtx} ctx
- * @returns {Promise<TriageDecision>}
- */
-async function runTriage(ctx) {
-  // planLastUser/planConvText, NOT lastUser/convText: this phase WRITES the
-  // web-search queries, and an appended method block is the one thing that can
-  // never be a search target (feedback #65 — see the ctx note).
-  const { state, planLastUser: lastUser, planConvText: convText, step, stepDone } = ctx;
-  step("plan", "Analyzing request…");
-  const triage = await jsonPhase(ctx, {
-    label: "triage",
-    statKey: "triage",
-    recordStat: true,
-    maxTokens: 500,
-    messages: [
-      // `capability` reaches the prompt so its composed source notes cover the
-      // sources this agent may actually consult (search-sources.js
-      // sourcePromptNotes, capability-aware since 2026-08-13): a triage prompt
-      // must not teach the planner the vocabulary of a corpus the answering
-      // agent is not allowed to search, or the plan promises a leg that will
-      // never run. Null (the MCP channel) composes every note, as before.
-      { role: "system", content: triagePrompt(Math.max(4, state.plan.queries), { reinforceJsonOnly: ctx.reinforceJsonOnly, capability: /** @type {any} */ (state).capability || null }) },
-      { role: "user", content: `Conversation:\n${convText}\n\nLatest user message:\n${lastUser}` },
-    ],
-  });
-  const decision = normalizeTriage(
-    hardenJson(TRIAGE_SCHEMA, triage),
-    lastUser,
-    previousUserText(ctx.conversation),
-    {
-      // Whether the turn being answered was itself a clarifying question — the
-      // guard against asking twice in a row instead of searching (feedback #47).
-      priorWasClarify: looksLikeClarifyTurn(lastAssistantText(ctx.conversation)),
-      // Whether the client mounted a demo surface for this turn. Asking the
-      // user to narrow what they meant is wrong once the thing they asked for
-      // is already playing above the reply (feedback #58).
-      demoMounted: !!(ctx.spaceScene || ctx.demoSurface),
-    },
-  );
-
-  if (decision.action === "direct") {
-    stepDone("plan", "Direct reply (no research needed)", [], { route: "direct" });
-    return decision;
-  }
-  if (decision.action === "clarify") {
-    stepDone("plan", "Need to narrow the scope first", [], { route: "clarify" });
-    return decision;
-  }
-  // The deterministic half of the subject-vs-format split (feedback #65). The
-  // prompt rule alone does not hold on the fixed JSON planner this phase runs
-  // on (invariant 3), so the angles that came back about the report FORMAT are
-  // dropped here. Disengages entirely when no method block applied or the
-  // conversation resolves no subject — a question genuinely about a framework
-  // still searches that framework. See public/js/query-focus-core.js.
-  const focused = focusQueriesOnSubject(decision.queries, {
-    cleanText: ctx.cleanConvText,
-    methodApplied: methodBlocksApplied(state),
-  });
-  if (focused.dropped.length) {
-    ctx.log.info("chat.query_focus", { dropped: focused.dropped.length, kept: focused.queries.length });
-  }
-  const queries = focused.queries.slice(0, state.plan.queries);
-  // The sub-questions steer every later round, so a format sub-question
-  // ("What is the TIBER-EU framework?") re-seeds the same angles the gap check
-  // would otherwise chase all over again.
-  decision.subquestions = focusQueriesOnSubject(decision.subquestions || [], {
-    cleanText: ctx.cleanConvText,
-    methodApplied: methodBlocksApplied(state),
-  }).queries;
-  // Thread the triage decomposition into the request state: the gap check
-  // audits coverage against each sub-question and synthesis must address
-  // them (see gapPrompt/synthPrompt); complexity caps research depth below
-  // the time budget for simple questions (budget.js applyComplexityToPlan).
-  state.complexity = decision.complexity || null;
-  state.subquestions = decision.subquestions || [];
-  // Task SHAPE, which decides whether splitting the work helps at all
-  // (docs/AGENTIC-GRAPHS.md §5.2). Null when the model omitted it — the
-  // fan-out gate then infers it from `complexity`, exactly as before.
-  state.decomposition = decision.decomposition || null;
-  applyComplexityToPlan(state.plan, state.complexity);
-  const kindTag =
-    state.complexity && state.complexity !== "simple" ? ` · ${state.complexity}` : "";
-  stepDone(
-    "plan",
-    `Planned ${queries.length} search angle${queries.length === 1 ? "" : "s"}${kindTag} · target ${state.plan.budgetS}s`,
-    [...queries, ...state.subquestions.map((s) => `Sub-question: ${s}`)],
-    { route: "research" },
-  );
-  return { ...decision, queries };
-}
-
 // The quiz answer phase (see the quizReq gate in runPipeline). One JSON call
 // on the reliable JSON model — like the planning phases, because a broken
 // quiz JSON means no quiz at all, so JSON reliability outranks the user's
@@ -986,7 +900,7 @@ async function runQuizGeneration(ctx, quizReq) {
  *   produced for this turn, when the caller has one (runSourceResearch). ""
  *   for every other caller, which keeps their message array byte-identical.
  */
-async function runDirectReply(ctx, auxBlock = "") {
+export async function runDirectReply(ctx, auxBlock = "") {
   await streamCompletion(ctx, [
     // webSearchOn: this branch produced no sources, and without the knob's
     // actual value the model has been observed explaining that away by
@@ -998,14 +912,6 @@ async function runDirectReply(ctx, auxBlock = "") {
     ...shellReplyMessages(ctx.shellBlock),
     ...withImageNudge(ctx.conversation),
   ]);
-}
-
-/**
- * @param {PipelineCtx} ctx
- * @param {string} question
- */
-async function runClarify(ctx, question) {
-  emitChunked(ctx, question);
 }
 
 // Introspection-first research: the developer-mode answer path that does REAL
@@ -1736,378 +1642,19 @@ async function runSourceResearch(ctx) {
   ctx.stepDone("synth", "Report drafted");
 }
 
-// Phase 2.75 — sub-question fan-out (roadmap §5.5's full form; OFF behind
-// budget.js's SUBQ_FANOUT_ENABLED pending bench-gate evidence). For
-// comparison/survey questions at the long tiers, the sub-questions stand
-// alone, so their coverage audits don't need the serial gap cascade: one
-// bounded JSON audit per sub-question runs CONCURRENTLY (each auditing ONLY
-// its own sub-question against the shared registry), then ONE merged
-// follow-up wave. multihop is deliberately excluded — its sub-questions are
-// dependency-ordered (hop 2's query needs a bridging fact surfaced by hop
-// 1's sources), which is exactly what runGapChecks's serial rounds exist
-// for; those still run after this phase and catch integration gaps. The
-// wave stays deterministic: queries merge round-robin in sub-question order
-// (mergeFanoutQueries), and runSearches processes results in query order,
-// so source numbering is stable regardless of fetch completion order.
-// Fail-soft like every helper phase: a failed audit contributes no queries,
-// and no queries means the phase quietly did nothing.
-const MAX_FANOUT_SUBQUESTIONS = 4;
-const FANOUT_QUERIES_PER_SUBQUESTION = 2;
-
-/**
- * May this request's sub-questions be audited CONCURRENTLY? Task shape decides,
- * not difficulty (docs/AGENTIC-GRAPHS.md §3): parallelising decomposable work
- * pays, and parallelising dependency-ordered work costs — so the wrong answer
- * here is expensive in both directions.
- *
- * Triage now answers it directly via `decomposition`, which is why this
- * function exists. When that field is absent (older model output, a schema
- * miss, or a lenient-extraction path that dropped it) it falls back to
- * inferring shape from `complexity` — the comparison/survey proxy the phase
- * used before the field existed, so behaviour degrades to exactly what it was.
- *
- * `multihop` is refused on BOTH paths regardless of what the classifier said:
- * hop 2's query needs a bridging fact from hop 1's sources, so a concurrent
- * audit of hop 2 is auditing a question that cannot be searched yet. That is
- * runGapChecks's serial rounds' job, and a classifier that says otherwise is
- * wrong rather than permissive.
- * @param {{complexity?: string | null, decomposition?: string | null}} state
- * @returns {boolean}
- */
-export function subquestionsAreIndependent(state) {
-  if (state.complexity === "multihop") return false;
-  if (state.decomposition === "independent") return true;
-  if (state.decomposition === "sequential") return false;
-  return state.complexity === "comparison" || state.complexity === "survey";
-}
-/** @param {PipelineCtx} ctx */
-async function runSubquestionFanout(ctx) {
-  // The planning view — this phase writes follow-up queries (feedback #65).
-  const { log, state, reinforceJsonOnly, planLastUser: lastUser, planConvText: convText } = ctx;
-  const plan = state.plan;
-  if (!wantsSubqFanout(plan)) return;
-  if (!subquestionsAreIndependent(state)) return;
-  const subqs = (state.subquestions || []).slice(0, MAX_FANOUT_SUBQUESTIONS);
-  if (subqs.length < 2) return;
-  if (state.searchCount >= plan.maxSearches) return;
-  const est = plan.estimates;
-  // Wall-clock cost of the whole fan-out is ONE audit + ONE wave (audits run
-  // in parallel), so the deadline math matches a single gap round.
-  const upcoming = est.gap + 2 * est.search + est.synth + (plan.validate ? est.validate : 0);
-  if (!fitsDeadline(state.startedAt, plan.budgetMs, upcoming)) {
-    log.info("chat.budget_cut", { cut: "subq_fanout" });
-    return;
-  }
-  ctx.step("fanout", `Checking coverage per sub-question (${subqs.length} in parallel)…`);
-  const audits = await Promise.all(
-    subqs.map((sq) =>
-      jsonPhase(ctx, {
-        label: "subq_fanout",
-        statKey: "gap",
-        maxTokens: 300,
-        messages: [
-          {
-            role: "system",
-            content: gapPrompt([...state.ranQueries], FANOUT_QUERIES_PER_SUBQUESTION, {
-              subquestions: [sq],
-              reinforceJsonOnly,
-              // Same reason as the triage call site: the follow-up queries are
-              // written HERE, so the vocabulary this prompt teaches must be the
-              // vocabulary of the sources this agent may consult.
-              capability: /** @type {any} */ (state).capability || null,
-            }),
-          },
-          {
-            role: "user",
-            content:
-              `Research question (latest user message):\n${lastUser}\n\nConversation context:\n${convText}\n\n` +
-              `Audit coverage of THIS sub-question only:\n${sq}\n\n` +
-              notesSection(state.notes) +
-              `Sources collected so far:\n${sourceDigest(state.sources, plan.digestCap) || "(none)"}`,
-          },
-        ],
-      }),
-    ),
-  );
-  const queryLists = audits.map((raw) => {
-    const gap = hardenJson(GAP_SCHEMA, raw);
-    collectConflicts(state, gap);
-    if (!gap || gap.complete || !Array.isArray(gap.queries)) return [];
-    return gap.queries.slice(0, FANOUT_QUERIES_PER_SUBQUESTION);
-  });
-  const followups = mergeFanoutQueries(queryLists, Math.max(0, plan.maxSearches - state.searchCount));
-  if (!followups.length) {
-    ctx.stepDone("fanout", "Sub-question coverage sufficient");
-    return;
-  }
-  ctx.stepDone(
-    "fanout",
-    `Digging deeper: ${followups.length} sub-question search${followups.length === 1 ? "" : "es"}`,
-    followups,
-  );
-  state.iterations++;
-  await runSearches(ctx, followups, state.iterations);
-  await maybeDigest(ctx);
-}
-
-// Phase 3: audits source coverage and runs follow-up searches for the most
-// important gaps, up to plan.gapIterations rounds or until the time budget
-// won't allow another round.
-/** @param {PipelineCtx} ctx */
-async function runGapChecks(ctx) {
-  // The planning view — this phase writes follow-up queries (feedback #65).
-  const { log, state, reinforceJsonOnly, planLastUser: lastUser, planConvText: convText } = ctx;
-  const plan = state.plan;
-  const est = plan.estimates;
-
-  // Gap-strive (budget.js wantsGapStrive, feedback #16): at a deep tier with
-  // most of the budget unspent, a "coverage sufficient" verdict is challenged —
-  // the NEXT round's gap prompt gets the wider-aperture strive block instead of
-  // the loop stopping. Bounded by GAP_STRIVE_MAX, the round ceiling, the
-  // deadline check below, and the no-new-sources saturation exit.
-  let strive = false;
-  let strives = 0;
-  for (let it = 1; it <= plan.gapIterations; it++) {
-    if (state.searchCount >= plan.maxSearches) break;
-    // Skip further digging if this round plus the remaining mandatory
-    // phases would blow the time target.
-    const upcoming = est.gap + 2 * est.search + est.synth + (plan.validate ? est.validate : 0);
-    if (!fitsDeadline(state.startedAt, plan.budgetMs, upcoming)) {
-      log.info("chat.budget_cut", { cut: "gap_iteration", round: it });
-      break;
-    }
-    const stepId = `gap${it}`;
-    ctx.step(stepId, strive ? `Checking coverage (round ${it}, digging deeper)…` : `Checking coverage (round ${it})…`);
-
-    const gapRaw = await jsonPhase(ctx, {
-      label: `gap_check_${it}`,
-      statKey: "gap",
-      recordStat: true,
-      maxTokens: 400,
-      messages: [
-        // `capability` for the same reason as the triage call site above — the
-        // gap round is where the follow-up queries are written, so it is the
-        // second place a planner could be taught a corpus it cannot reach.
-        { role: "system", content: gapPrompt([...state.ranQueries], plan.followups, { subquestions: state.subquestions || [], reinforceJsonOnly, strive, capability: /** @type {any} */ (state).capability || null }) },
-        {
-          role: "user",
-          // convText rides along so a bare follow-up ("what's the latest")
-          // is audited against the original question's breadth, not just
-          // the sub-topic the collected sources already cluster on.
-          content:
-            `Research question (latest user message):\n${lastUser}\n\nConversation context:\n${convText}\n\n` +
-            // Distilled notes ride along when the digest phase ran (mid/high
-            // tiers only) so coverage is audited against claims, not just raw
-            // highlights. Empty (and thus absent) at the default budget.
-            notesSection(state.notes) +
-            `Sources collected so far:\n${sourceDigest(state.sources, plan.digestCap) || "(none)"}`,
-        },
-      ],
-    });
-    const gap = hardenJson(GAP_SCHEMA, gapRaw);
-    collectConflicts(state, gap);
-
-    const followups = (!gap || gap.complete || !Array.isArray(gap.queries))
-      ? []
-      // Same focus as triage's (feedback #65): a later round must not go back
-      // to searching the report standard the first round was steered off.
-      : focusQueriesOnSubject(
-          gap.queries.filter((/** @type {any} */ q) => typeof q === "string" && q.trim()),
-          { cleanText: ctx.cleanConvText, methodApplied: methodBlocksApplied(state) },
-        ).queries.slice(0, plan.followups);
-
-    if (followups.length === 0) {
-      // Deep budget, mostly unspent, first "sufficient" verdict(s): challenge
-      // the judgment with the strive prompt on the next round instead of
-      // settling (feedback #16). A strive round that ALSO comes back empty
-      // falls through here with the push budget spent and ends the loop.
-      if (wantsGapStrive(plan, Date.now() - state.startedAt, strives)) {
-        strives++;
-        strive = true;
-        ctx.stepDone(stepId, "Coverage looks sufficient — deep budget, challenging that");
-        log.info("chat.gap_strive", { round: it, strives });
-        continue;
-      }
-      ctx.stepDone(stepId, "Coverage sufficient");
-      break;
-    }
-    strive = false;
-    ctx.stepDone(
-      stepId,
-      `Digging deeper: ${followups.length} follow-up search${followups.length === 1 ? "" : "es"}`,
-      followups,
-    );
-    state.iterations++;
-    const foundBefore = sourceProgress(state);
-    const admittedBefore = state.sources.length;
-    await runSearches(ctx, followups, state.iterations);
-    await maybeDigest(ctx);
-    // Meaningful-action guarantee: the raised deep-tier round ceiling is only
-    // worth spending while each round still finds NEW ground. If a whole
-    // follow-up wave surfaced nothing at all — every URL already known,
-    // whether admitted or capped, or the registry full — we've reached "there
-    // isn't more to explore" — stop rather than spin further rounds against
-    // the same sources. Below the deep tiers the round cap is small enough
-    // that this rarely fires; it's the safety valve that keeps the long
-    // budgets honest.
-    //
-    // The signal is sourceProgress(), NOT sources.length. A wave whose finds
-    // were all domain-capped leaves the registry unchanged while having found
-    // genuinely new pages, and reading that as exhaustion stopped the research
-    // early on exactly the questions that need it most: the ones whose answer
-    // lives across many pages of one authoritative origin.
-    const gained = sourceProgress(state) - foundBefore;
-    log.info("chat.gap_round", {
-      round: it,
-      searches: state.searchCount,
-      gained,
-      admitted: state.sources.length - admittedBefore,
-      capped: sourceProgress(state) - state.sources.length,
-      sources: state.sources.length,
-    });
-    if (gained === 0) {
-      log.info("chat.gap_saturated", { round: it, searches: state.searchCount });
-      break;
-    }
-  }
-}
-
-// Phase 2.5 — notes digest. After a search wave, compress the NEW sources
-// (those added since the last digest) into structured research notes so
-// gap-check and synthesis reason over claims, not raw highlights. Runs on the
-// cheap JSON model, ONLY at mid/high budget tiers (wantsNotes), and is dropped
-// first under deadline pressure. Fully fail-soft: any failure advances the
-// cursor and proceeds on the raw registry exactly as at the default budget.
-/** @param {PipelineCtx} ctx */
-async function maybeDigest(ctx) {
-  const { state } = ctx;
-  const plan = state.plan;
-  if (!wantsNotes(plan)) return;
-  state.notes ||= [];
-  const start = state.notesCursor || 0;
-  const fresh = state.sources.slice(start);
-  if (!fresh.length) return;
-
-  // Optional work: skip (dropped first) if this digest plus the remaining
-  // mandatory phases would blow the deadline.
-  const est = plan.estimates;
-  const upcoming = (est.digest || 0) + est.synth + (plan.validate ? est.validate : 0);
-  if (!fitsDeadline(state.startedAt, plan.budgetMs, upcoming)) {
-    ctx.log.info("chat.budget_cut", { cut: "digest" });
-    return;
-  }
-  // Advance the cursor up front so a failed digest doesn't retry the same
-  // sources on the next wave (fail-soft: those sources just stay un-noted).
-  state.notesCursor = state.sources.length;
-
-  const freshDigest = sourceDigest(fresh, plan.digestCap);
-  if (!freshDigest) return;
-  // The one research phase that used to run silently, while `fanout` and
-  // `contents` beside it both reported. That gap was invisible in the activity
-  // trace and made introspection's pipeline map (public/js/pipeline-map.js)
-  // draw a step that could never light, so the digest now announces itself the
-  // same way every other phase does. Emitted only once the phase is definitely
-  // running — every skip above returns before this point.
-  ctx.step("digest", `Digesting ${fresh.length} new source${fresh.length === 1 ? "" : "s"} into notes…`);
-  const priorEntities = notesEntities(state.notes).slice(0, 40);
-  const result = await jsonPhase(ctx, {
-    label: "digest",
-    statKey: "digest",
-    recordStat: true,
-    maxTokens: 1500,
-    messages: [
-      { role: "system", content: notesPrompt(priorEntities, { reinforceJsonOnly: ctx.reinforceJsonOnly }) },
-      { role: "user", content: `New numbered sources:\n${freshDigest}` },
-    ],
-  });
-  const incoming = extractNotes(result);
-  if (incoming.length) state.notes = mergeNotes(state.notes, incoming);
-  // Fail-soft like every other helper phase: an empty digest still closes its
-  // step, so the trace never leaves a spinner running (invariant 2).
-  ctx.stepDone(
-    "digest",
-    incoming.length
-      ? `Noted ${incoming.length} claim${incoming.length === 1 ? "" : "s"} from the new sources`
-      : "Nothing new worth noting from those sources",
-  );
-}
-
-// Phase 3.5 — full-content fetch of the top sources (budget-gated, ≥240s
-// tier). After the gap rounds, pull the FULL page text for the top few
-// registry sources (Exa /contents) and digest each into notes — search
-// highlights are short excerpts; a long budget can afford to read the whole
-// page. Emits a visible step naming the fetch. Fully fail-soft: no key, a
-// timeout, an error, or an empty result all degrade to the highlights already
-// held. Dropped first under deadline pressure, before synthesis/validation.
-/** @param {PipelineCtx} ctx */
-async function maybeFullContentDigest(ctx) {
-  const { env, log, state } = ctx;
-  const plan = state.plan;
-  if (!wantsFullContent(plan) || !state.sources.length) return;
-  state.notes ||= [];
-  const fetchedUrls = (state.fetchedUrls ||= new Set());
-
-  const est = plan.estimates;
-  const upcoming = (est.fetch || 0) + (est.digest || 0) + est.synth + (plan.validate ? est.validate : 0);
-  if (!fitsDeadline(state.startedAt, plan.budgetMs, upcoming)) {
-    log.info("chat.budget_cut", { cut: "full_content" });
-    return;
-  }
-
-  // The top 2-4 registry sources we haven't already fetched.
-  const urls = state.sources.slice(0, 4).map((s) => s.url).filter((u) => u && !fetchedUrls.has(u));
-  if (!urls.length) return;
-
-  ctx.step("contents", "Reading top sources in full…");
-  let fetched = null;
-  try {
-    fetched = await fetchContents(env, urls, log);
-  } catch (/** @type {any} */ err) {
-    log.warn("chat.contents_failed", { error: err?.message || String(err) });
-  }
-  recordPhase(ctx.model, "fetch", fetched?.durationMs || 0);
-  const results = fetched?.results || [];
-  if (!results.length) {
-    ctx.stepDone("contents", "Full text unavailable — using highlights");
-    return;
-  }
-  for (const r of results) fetchedUrls.add(r.url);
-  ctx.stepDone(
-    "contents",
-    `Read ${results.length} source${results.length === 1 ? "" : "s"} in full`,
-    results.map((r) => r.title || r.url),
-  );
-
-  // Digest the full text into notes, mapping each URL back to its [n] number
-  // so the notes' source_ids stay consistent with the registry.
-  const blocks = results
-    .map((r) => {
-      const n = state.byUrl.get(r.url)?.n;
-      const head = n ? `[${n}] ${r.title}` : r.title;
-      return `${head}\n${r.url}\n${r.text}`;
-    })
-    .join("\n\n");
-  const priorEntities = notesEntities(state.notes).slice(0, 40);
-  const digestRes = await jsonPhase(ctx, {
-    label: "content_digest",
-    statKey: "digest",
-    recordStat: true,
-    maxTokens: 2000,
-    messages: [
-      { role: "system", content: notesPrompt(priorEntities, { reinforceJsonOnly: ctx.reinforceJsonOnly }) },
-      { role: "user", content: `Full text of the top sources (numbered as in the registry):\n${blocks}` },
-    ],
-  });
-  const incoming = extractNotes(digestRes);
-  if (incoming.length) state.notes = mergeNotes(state.notes, incoming);
-}
-
 // Phase 4: writes the source-grounded draft answer. Returns the full text.
 /**
  * @param {PipelineCtx} ctx
+ * @param {string} [extraContext] One more labelled block for the synthesis
+ *   user message, spliced in beside the sub-questions and the conflict list.
+ *   Empty for every caller in this module, so their message is byte-identical
+ *   to before the parameter existed; src/pipeline-standard.js passes its
+ *   STATED knowledge gaps, the one artefact the reflect node produces that the
+ *   gap check never did (a gap a reader can see, rather than a saturation
+ *   heuristic nobody can).
  * @returns {Promise<string>}
  */
-async function runSynthesis(ctx) {
+export async function runSynthesis(ctx, extraContext = "") {
   const { state, lastUser, convText, imageParts } = ctx;
   const plan = state.plan;
   backfillOverflowSources(state);
@@ -2129,18 +1676,12 @@ async function runSynthesis(ctx) {
   /** @type {any} */ (state).digestShown = shown;
   const synthText =
     `Question:\n${lastUser}\n\nConversation context:\n${convText}\n\n` +
-    // Decomposition skeleton + reported source conflicts (both empty — and
-    // absent — unless triage decomposed the question / a gap round flagged
-    // disagreeing sources; see subquestionsSection/conflictsSection).
-    subquestionsSection(state.subquestions) +
-    conflictsSection(state.conflicts) +
+    // The caller's own labelled block, when it has one (see extraContext).
+    (extraContext || "") +
     // What was actually searched, so "no source establishes this" can be told
     // apart from "we never looked" — and so an uncorroborated claim can name
     // the angles that came back empty (feedback #61; PERSON-RESEARCH.md §6).
     searchLedgerSection(/** @type {any} */ (state).issuedQueries) +
-    // Notes preamble is present only when the digest phase ran (mid/high
-    // tiers); byte-identical to before at the default budget.
-    notesSection(state.notes) +
     // The bash-lite sandbox transcript (empty and absent unless the
     // experimental sandbox ran client-side for this request).
     (ctx.shellBlock ? `${ctx.shellBlock}\n\n` : "") +
@@ -2200,7 +1741,7 @@ async function runSynthesis(ctx) {
  * @param {PipelineCtx} ctx
  * @param {string} draft
  */
-async function runValidation(ctx, draft) {
+export async function runValidation(ctx, draft) {
   const { log, state, jsonProfile } = ctx;
   const plan = state.plan;
   const est = plan.estimates;
@@ -2224,23 +1765,12 @@ async function runValidation(ctx, draft) {
 
   ctx.step("validate", "Validating claims against sources…");
   const digest = sourceDigest(state.sources, plan.digestCap);
-
-  // High tiers (wantsClaimValidation): verify the draft claim-by-claim, each
-  // against only the sources it cites, in parallel. Lower tiers keep the cheap
-  // single whole-draft pass. The claim path falls back to the single pass if
-  // it can't even extract claims. Both are fully fail-soft — any failure keeps
-  // the draft unchanged (never a fabricated "unsupported").
-  if (wantsClaimValidation(plan)) {
-    const handled = await runClaimValidation(ctx, draft, digest);
-    if (handled) return;
-  }
   await runSinglePassValidation(ctx, draft, digest);
 }
 
-// The original single whole-draft fact-check: one JSON call that returns a
-// pass/revise verdict. Kept as the tight-budget path AND the fallback when
-// claim extraction can't produce claims. On "revise" the UI discards the draft
-// and gets the corrected answer; any other outcome keeps the draft as-is.
+// The whole-draft fact-check: one JSON call that returns a pass/revise
+// verdict. On "revise" the UI discards the draft and gets the corrected
+// answer; any other outcome keeps the draft as-is.
 /**
  * @param {PipelineCtx} ctx
  * @param {string} draft
@@ -2327,152 +1857,51 @@ function recordValidation(ctx, verdict, issues, draftChars, revisedChars) {
   ctx.state.validation = row;
 }
 
-// Claim-level validation (high tiers): extract the draft's check-worthy claims
-// (JSON), verify each against its cited sources (JSON, in parallel), and only
-// revise if some are flagged. Returns true when it produced a verdict; false
-// only when it couldn't extract claims (caller then runs the single pass).
-// Fully fail-soft: a failed verify counts as SUPPORTED (never fabricates an
-// issue), and a failed revision keeps the draft.
-/**
- * @param {PipelineCtx} ctx
- * @param {string} draft
- * @param {string} digest
- * @returns {Promise<boolean>}
- */
-async function runClaimValidation(ctx, draft, digest) {
-  const { lastUser } = ctx;
-
-  const extractRaw = await jsonPhase(ctx, {
-    label: "claim_extract",
-    statKey: "validate",
-    // recordStat off: don't skew the `validate` EWMA with extract/revise
-    // timings — the single-pass validate remains the canonical measurement.
-    maxTokens: 2000,
-    messages: [
-      { role: "system", content: claimExtractionPrompt({ reinforceJsonOnly: ctx.reinforceJsonOnly }) },
-      { role: "user", content: `Numbered sources:\n${digest || "(none)"}\n\nDraft answer:\n${draft}` },
-    ],
-  });
-  const claims = extractClaims(extractRaw);
-  if (!claims.length) return false; // nothing to check claim-by-claim → fall back
-
-  const verifications = await Promise.all(claims.map((c) => verifyClaim(ctx, c)));
-  const issues = [];
-  for (let i = 0; i < claims.length; i++) {
-    if (verifications[i]?.verdict === "unsupported") {
-      issues.push(verifications[i].issue || `Unsupported claim: ${claims[i].claim}`);
-    }
-  }
-
-  if (!issues.length) {
-    ctx.stepDone(
-      "validate",
-      `All ${claims.length} checked claim${claims.length === 1 ? "" : "s"} verified against sources`,
-    );
-    return true;
-  }
-
-  const issueList = issues.slice(0, 10);
-  const reviseRaw = await jsonPhase(ctx, {
-    label: "claim_revise",
-    statKey: "validate",
-    // Same tier scaling as the single-pass validate: the revised_answer must
-    // hold the complete corrected report.
-    maxTokens: ctx.state.plan.validateMaxTokens || 3000,
-    messages: [
-      { role: "system", content: revisePrompt({ reinforceJsonOnly: ctx.reinforceJsonOnly }) },
-      {
-        role: "user",
-        content:
-          `Research question:\n${lastUser}\n\nNumbered sources:\n${digest || "(none)"}\n\n` +
-          `Draft answer:\n${draft}\n\nFact-check issues to fix:\n${issueList.map((s, i) => `${i + 1}. ${s}`).join("\n")}`,
-      },
-    ],
-  });
-  const revised = hardenJson(REVISE_SCHEMA, reviseRaw);
-  if (revised && typeof revised.revised_answer === "string" && revised.revised_answer.trim()) {
-    ctx.stepDone(
-      "validate",
-      `Fixed ${issueList.length} issue${issueList.length === 1 ? "" : "s"} found in fact-check`,
-      issueList,
-    );
-    ctx.emit({ status: { type: "discard_text" } });
-    emitChunked(ctx, revised.revised_answer.trim());
-    return true;
-  }
-  // Revision didn't produce a usable answer — keep the draft (fail-soft), but
-  // surface the flagged issues so the run is honest about them.
-  ctx.stepDone("validate", "Fact-check flagged issues but the draft was kept as-is", issueList);
-  return true;
-}
-
-// Verifies one claim against ONLY the sources it cites (falls back to the full
-// registry when it cites none). Fail-soft: an unparseable/missing verdict is
-// treated as SUPPORTED, so a failed check never fabricates an "unsupported".
-/**
- * @param {PipelineCtx} ctx
- * @param {Claim} claim
- * @returns {Promise<{ verdict: "supported" | "unsupported", issue?: string }>}
- */
-async function verifyClaim(ctx, claim) {
-  const { state } = ctx;
-  const ids = Array.isArray(claim.source_ids) ? claim.source_ids : [];
-  const cited = state.sources.filter((s) => ids.includes(s.n));
-  const digest = sourceDigest(cited.length ? cited : state.sources, state.plan.digestCap);
-  const raw = await jsonPhase(ctx, {
-    label: "claim_verify",
-    statKey: "claim",
-    maxTokens: 400,
-    messages: [
-      { role: "system", content: claimVerifyPrompt({ reinforceJsonOnly: ctx.reinforceJsonOnly }) },
-      { role: "user", content: `Claim:\n${claim.claim}\n\nCited numbered sources:\n${digest || "(none)"}` },
-    ],
-  });
-  const v = hardenJson(CLAIM_VERIFY_SCHEMA, raw);
-  if (v?.verdict === "unsupported") {
-    return { verdict: "unsupported", issue: typeof v.issue === "string" ? v.issue : "" };
-  }
-  return { verdict: "supported" };
-}
-
 // ---- internals -------------------------------------------------------------
 
-// Runs one JSON planning phase end-to-end: the completeJson request on the
-// fixed JSON model, usage accounting, the parse-mode/finish-reason diagnostic
-// log, duration logging, and the fail-soft catch — every JSON phase (triage,
-// gap check, digest, validation, the claim checks) follows this exact shape,
-// so it's one helper instead of a near-identical block per call site.
-// Returns the parsed value, or null on any failure so the pipeline can
-// degrade instead of breaking. The phase's tokens go to state.jsonTotals so
-// chat.js can bill them at the JSON model's rate.
+// Runs one JSON phase end-to-end: the completeJson request on the fixed JSON
+// model, usage accounting, the parse-mode/finish-reason diagnostic log,
+// duration logging, and the fail-soft catch — every JSON phase (the query
+// plan, reflect, validation, the quiz) follows this exact shape, so it's one
+// helper instead of a near-identical block per call site. Returns the parsed
+// value, or null on any failure so the caller can degrade instead of breaking.
+// The phase's tokens go to state.jsonTotals so chat.js can bill them at the
+// JSON model's rate.
 //
-// `label` is the specific label logged for this call (e.g. "gap_check_N" per
-// round); `statKey` (budget.js's phase bucket: triage/gap/digest/validate/
-// claim) resolves a per-model max_tokens override if model-profiles.js has
-// one for the JSON model; `recordStat` additionally feeds the duration into
-// the per-model rolling stats the budget planner uses — left off the claim
-// extract/verify/revise calls so they don't skew the canonical `validate`
-// (and other) EWMA measurements.
-// The planning phases whose output is a SCHEMA rather than prose. Sampling
-// entropy buys nothing when the answer is hardened against a schema anyway,
-// and it costs plan stability: triage decides WHICH searches run, so its
-// variance propagates into a different evidence base on every run. The bench
-// ledger measures that cost — a candidate SD of 0.63 against the 0.27 that
-// judge noise alone predicts, i.e. the answers vary run-to-run as much as the
+// `label` is the specific label logged for this call (e.g. "reflect_N" per
+// round); `statKey` (budget.js's phase bucket) resolves a per-model max_tokens
+// override if model-profiles.js has one for the JSON model; `recordStat`
+// additionally feeds the duration into the per-model rolling stats the budget
+// planner uses.
+
+// The phases whose output is a SCHEMA rather than prose. Sampling entropy buys
+// nothing when the answer is hardened against a schema anyway, and it costs
+// plan stability: the query plan decides WHICH searches run, so its variance
+// propagates into a different evidence base on every run. The bench ledger
+// measures that cost — a candidate SD of 0.63 against the 0.27 that judge
+// noise alone predicts, i.e. the answers vary run-to-run as much as the
 // scoring does, which is what currently stops the gate attributing a real
 // drift (tests/EVAL-BENCH-FINDINGS.md, 2026-07-31).
 //
 // `quiz` is deliberately NOT here. It runs through the same helper, but an
 // identical quiz for identical sources is a worse quiz, not a more
 // reproducible one.
-const GREEDY_JSON_PHASES = new Set(["triage", "gap", "validate", "claim", "digest"]);
+//
+// `triage` outlived the triage PHASE: it is still the statKey the source-read
+// loop budgets and records under (runSourceResearch below), which is the same
+// kind of call — one planning turn on the fixed JSON model. `gap` is kept
+// beside it because this set is matched against a `statKey` string, so a
+// derived agent or a replayed request carrying the old name must not silently
+// start sampling at temperature; a member nobody emits costs nothing, and the
+// failure it prevents would have no failing test.
+const GREEDY_JSON_PHASES = new Set(["triage", "gap", "validate", "queries", "reflect"]);
 
 /**
  * @param {PipelineCtx} ctx
  * @param {{ label: string, statKey: string, messages: Conversation, maxTokens: number, recordStat?: boolean }} phase
  * @returns {Promise<any>} The parsed JSON value, or null on any failure.
  */
-async function jsonPhase(ctx, { label, statKey, messages, maxTokens, recordStat = false }) {
+export async function jsonPhase(ctx, { label, statKey, messages, maxTokens, recordStat = false }) {
   const startedAt = Date.now();
   try {
     const overrides = /** @type {Record<string, number> | null} */ (ctx.jsonProfile.maxTokensOverride);
@@ -2524,7 +1953,7 @@ async function jsonPhase(ctx, { label, statKey, messages, maxTokens, recordStat 
  * @param {string[]} urls the URLs the caller already extracted (it needs them
  *   before triage's branch, so they are not re-derived here)
  */
-async function runNamedUrlReads(ctx, urls) {
+export async function runNamedUrlReads(ctx, urls) {
   const { env, log, emit, state } = ctx;
   if (!urls?.length) return;
 
@@ -2577,7 +2006,7 @@ async function runNamedUrlReads(ctx, urls) {
  * @param {string[]} queries
  * @param {number} round 1 for the initial wave, then one per gap round.
  */
-async function runSearches(ctx, queries, round) {
+export async function runSearches(ctx, queries, round) {
   const { log, state } = ctx;
   const policy = searchPolicyFor(state);
   const batch = takeSearchBatch(state, queries, policy.maxQueries ?? Infinity);
@@ -2794,7 +2223,7 @@ const DIGEST_CAP_CEILING = 36_000;
  * @param {PipelineState['plan']} plan
  * @param {number} n
  */
-function widenPlanCapacity(plan, n) {
+export function widenPlanCapacity(plan, n) {
   plan.maxSources += n;
   plan.digestCap = Math.min(plan.digestCap + n * DIGEST_CHARS_PER_SOURCE, DIGEST_CAP_CEILING);
 }
