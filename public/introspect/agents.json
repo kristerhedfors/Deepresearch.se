@@ -83,7 +83,7 @@
       "loading": {
         "kind": "pipeline-phases",
         "messages": [
-          "Triaging…",
+          "Planning…",
           "Searching…",
           "Synthesising…"
         ]
@@ -145,7 +145,8 @@
         },
         "routing": {
           "planModel": "json-default",
-          "answerModel": "user"
+          "answerModel": "user",
+          "strategy": "auto"
         },
         "gates": [],
         "bounds": {},

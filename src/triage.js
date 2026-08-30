@@ -18,10 +18,12 @@
 
 import { arrayOf, object, string, validate } from "./schema.js";
 
-/**
- * seedFromConversation's verdict: search these queries, or answer directly.
- * @typedef {{ action: "research", queries: string[] } | { action: "direct" }} SeedDecision
- */
+// The seeder itself moved to the SERVED pure core so Se/cure's client graph
+// can import the same bilingual back-reference rules (one seeder, both tiers
+// — see the core's header). This façade keeps the import path every server
+// caller already uses; the same direction src/research-tools-run.js takes for
+// lypning-exec-core.
+export { seedFromConversation } from "../public/js/query-seed-core.js";
 
 // ---- JSON-phase schemas --------------------------------------------------
 
@@ -54,41 +56,3 @@ export function hardenJson(schema, value) {
   return r.ok ? r.value : value;
 }
 
-/**
- * The model-free planning fallback: seed a search from the conversation
- * without asking anything.
- *
- * The standard pipeline's query-plan node (src/pipeline-standard.js
- * normalizeQueryPlan) is its one caller today, and the reason it is a shared
- * function rather than a branch there is the rule it holds: a bare
- * back-reference ("undersök saken", "det då?") must never reach a search
- * engine verbatim, in either language. A second hand-written seeder would
- * drift from this one.
- * @param {string} lastUser
- * @param {string} priorUser
- * @param {{ forceResearch?: boolean }} [opts]
- * @returns {SeedDecision}
- */
-export function seedFromConversation(lastUser, priorUser, { forceResearch = false } = {}) {
-  // A SHORT latest message in an ongoing conversation is almost always a
-  // pure back-reference ("undersök saken", "det då?") with no searchable
-  // content of its own, so seed the search from the prior question (the
-  // established, self-contained topic) rather than the referential phrase.
-  // A LONGER follow-up is deliberately left as-is: it carries its own
-  // content words (e.g. "…hur det ser ut för sd" — the entity "sd" is right
-  // there), which a fuzzy search can use, so replacing it with the prior
-  // topic would only DROP that focus.
-  const cur = lastUser.trim();
-  const prior = (priorUser || "").trim();
-  const looksLikeFollowup = cur.length < 40 && cur.split(/\s+/).filter(Boolean).length <= 6;
-  if (prior && looksLikeFollowup) {
-    return { action: "research", queries: [prior.slice(0, 300)] };
-  }
-  if (cur.length >= 12) return { action: "research", queries: [cur.slice(0, 300)] };
-  // Too short to search and nothing to resolve against. Normally that means
-  // answer directly; with forceResearch there is no direct answer to give, so
-  // search what there is.
-  if (!forceResearch) return { action: "direct" };
-  const query = cur || prior;
-  return query ? { action: "research", queries: [query.slice(0, 300)] } : { action: "direct" };
-}

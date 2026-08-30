@@ -1872,10 +1872,17 @@ one whose catalog is OPEN, so its model list comes from the live router
 marketplace rather than a list this repo picked — plus ANY other
 OpenAI-compatible endpoint — a hosted service, or a model server on the
 user's own machine), runs the whole research pipeline client-side
-(`public/js/drc-research.js` — its own deterministic triage → harvest → gap
-→ synthesis → validation flow, no function calling; the shape the server's
-deleted cascade had — the server side now runs the two-engine dispatch of
-§4.2), and stores
+(`public/js/drc-research.js` — since 2026-08-30 the same TWO-ENGINE dispatch
+as the server's §4.2, ported: the agentic engine hands the user's own model
+the shared research brief and a browser-resolved toolbox (`web_search` over
+the tier's existing search legs only, the introspection tools, and
+`run_bash`/`run_python` over the browser VM or the user's local runner —
+gather-then-write, nothing streamed from the loop), and the standard
+four-node graph plan → wave → reflect → finalize is the option and the
+FALLBACK for any provider that cannot drive tools, any empty toolbox, and
+any loop that throws before streaming; the tier's bespoke triage → harvest
+→ gap cascade was deleted with the port, as the server's was on
+2026-08-29), and stores
 the sealed project state — chats AND the user's API keys, sealed in one
 client-encrypted blob under a user-held master secret — in the browser's
 own storage (`public/js/drc-store.js`, over the vault's crypto core). The

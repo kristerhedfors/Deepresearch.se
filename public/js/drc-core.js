@@ -140,6 +140,14 @@ export function emptyDrcState() {
     // short-lived interim shape stored a `depth` TIER ID instead; migration
     // maps it onto this time scale.)
     budgetS: 60,
+    // WHICH research engine a turn runs (drc-research.js's two-engine
+    // dispatch): "auto" (default — agentic wherever the provider can drive a
+    // tool loop, the standard four-node graph elsewhere), or "agentic" /
+    // "standard" pinned. Absent (older blobs) or garbage reads as "auto" —
+    // the closed vocabulary is normalized on read AND in migration, so a
+    // hand-edited or workspace-carried state can never pick an engine the
+    // vocabulary does not carry.
+    researchEngine: "auto",
     // Experimental in-browser Linux execution sandbox (the DRC counterpart of
     // the server's bash_lite_mcp knob). Default OFF; an absent field (older
     // blobs) reads as off. Purely client-side here, like everything in DRC.
@@ -240,7 +248,8 @@ export function validateDrcState(s) {
     (s.rag === undefined || (s.rag && typeof s.rag === "object" && Array.isArray(s.rag.docs))) &&
     (s.localBaseUrl === undefined || typeof s.localBaseUrl === "string") &&
     (s.onDevice === undefined || typeof s.onDevice === "boolean") &&
-    (s.budgetS === undefined || typeof s.budgetS === "number")
+    (s.budgetS === undefined || typeof s.budgetS === "number") &&
+    (s.researchEngine === undefined || typeof s.researchEngine === "string")
   );
 }
 
@@ -254,6 +263,10 @@ export function migrateDrcState(s) {
   if (!s.rag || typeof s.rag !== "object" || !Array.isArray(s.rag.docs)) s.rag = { docs: [] };
   if (typeof s.localBaseUrl !== "string") s.localBaseUrl = "";
   if (typeof s.onDevice !== "boolean") s.onDevice = false;
+  // The engine choice is a CLOSED vocabulary: anything but the two engine ids
+  // (older blobs' absent field included) migrates to "auto", so a crafted or
+  // hand-edited state cannot silently pick an engine for a link's recipient.
+  if (s.researchEngine !== "agentic" && s.researchEngine !== "standard") s.researchEngine = "auto";
   if (typeof s.budgetS !== "number" || !Number.isFinite(s.budgetS)) {
     // The interim depth-tier shape (2026-07-16, lived less than a day) stored
     // a tier ID; map it onto the time scale it stood for. Everything older

@@ -479,6 +479,30 @@
         <span id="ws-svc-status" class="muted setting-note"></span>
       </div>
 
+      <!-- Research engine — WHICH of the two client-side engines a research
+           turn runs (drc-research.js). Wired by renderResearchEngine() in
+           drc.js; the choice lives in the sealed project state. -->
+      <div class="settings-item" id="engrow">
+        <div class="settings-row">
+          <span class="settings-label">Research engine
+            <button type="button" class="setting-info" data-pop="engpop" aria-label="More about the research engine">ⓘ</button>
+          </span>
+        </div>
+        <div class="setting-pop" id="engpop" hidden>How a research turn is driven — entirely in this browser either
+          way. <b>Auto</b> lets the model run its own research (choosing its searches and sandbox runs itself) whenever
+          your provider supports tool calling, and falls back to the fixed pipeline everywhere else. <b>Agentic</b> and
+          <b>Standard</b> pin one of the two. The standard pipeline is the four-step
+          plan&nbsp;→&nbsp;search&nbsp;→&nbsp;reflect&nbsp;→&nbsp;write graph — the safe choice for models with
+          unreliable tool calling, and what every run degrades to when the loop cannot start.</div>
+        <label class="setting-note" style="display:block;margin-top:.4rem">Engine
+          <select id="research-engine" style="width:100%;margin-top:.2rem">
+            <option value="auto">Auto — let the model drive when it can (default)</option>
+            <option value="agentic">Agentic — the model runs its own research</option>
+            <option value="standard">Standard — the fixed four-step pipeline</option>
+          </select>
+        </label>
+      </div>
+
       <!-- Secure research space — shown ONLY when this session holds a temporary
            account-connected proxy bundle. States which APIs are connected and
            lets the user turn the whole borrowed space off (back to fully
