@@ -68,6 +68,7 @@ import { resolveExecBackend, selectRunner } from "./exec-backends-core.js";
 // runner pickRunner resolved for the SECURE tier — the in-browser VM or the
 // user's own local DREE/1 runner, never a server relay.
 import { runPythonLadder } from "./lypning-exec-core.js";
+import { STEP_BUDGET_MS } from "./lypning-core.js";
 // The model-free query seeder — the SAME core the server's standard graph
 // uses (src/triage.js is now a façade over it): one set of bilingual
 // back-reference rules, so a planner failing on "undersök saken" seeds from
@@ -486,7 +487,13 @@ export function normalizeDrcQueryPlan(raw, question, { priorUser = "", maxQuerie
   const seen = new Set();
   for (const q of Array.isArray(raw?.queries) ? raw.queries : []) {
     if (typeof q !== "string") continue;
-    const trimmed = q.trim();
+    // Clamped like the agentic path's queries, and for the same invariant-4
+    // reason: on the grant leg an outbound query IS the whole exposure, so an
+    // unclamped one is the mechanism by which a misbehaving planner echoes a
+    // slice of the conversation context into a request this server sees. The
+    // review that added this found the clamp's own comment claiming to be
+    // "the one mechanism" while this second, unclamped one sat beside it.
+    const trimmed = drcClampText(q, DRC_MAX_QUERY_CHARS);
     // Case-folded dedup (toLowerCase is Unicode-aware, so "Vad är
     // kvantdatorer" and "vad är kvantdatorer" are one query — invariant 6's
     // safe direction, unlike an ASCII-only \b).
@@ -527,7 +534,9 @@ export function normalizeDrcReflection(raw, maxFollowups, ran = new Set()) {
   const queries = [];
   for (const q of Array.isArray(raw?.follow_up_queries) ? raw.follow_up_queries : []) {
     if (typeof q !== "string" || !q.trim()) continue;
-    const trimmed = q.trim();
+    // Same clamp as the planner's angles and the loop's queries — a reflect
+    // follow-up is the third spelling of the same outbound argument.
+    const trimmed = drcClampText(q, DRC_MAX_QUERY_CHARS);
     const key = trimmed.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
@@ -879,7 +888,15 @@ export function normalizeDrcResearchEngine(value) {
  * @returns {boolean}
  */
 export function canDrcDriveTools(provider) {
-  return !!provider && !provider.engine && !provider.whole;
+  // `proxied` providers — the secure-research-space bundle and the Se/rver
+  // token relay — are excluded like the pool relay (`whole`) is, and for the
+  // same reason at a different layer: the agentic loop's tool_result turns
+  // carry sandbox stdout, /src excerpts and web page text, and relaying THAT
+  // through the server is a content class the proxy's disclosed exposure
+  // predates. The standard graph serves those providers in full, so the cost
+  // of the exclusion is the loop, never the answer. Widening the disclosure
+  // instead is the owner's call, not a default.
+  return !!provider && !provider.engine && !provider.whole && !provider.proxied;
 }
 
 /** Rounds the agentic loop runs before it is made to answer from what it has
@@ -901,9 +918,13 @@ export const DRC_MAX_SPENDING_CALLS = 6;
  * is lost. */
 export const DRC_MAX_RUN_QUERIES = 12;
 /** A single outbound query's length — invariant 4 at the argument layer
- * (src/tool-admission.js MAX_QUERY_CHARS): the one mechanism that could
- * smuggle conversation text into a grant query is a model pasting it into a
- * "query", and nothing else checks this. */
+ * (src/tool-admission.js MAX_QUERY_CHARS). Applied to EVERY spelling of an
+ * outbound query — the loop's web_search arguments, the planner's angles, the
+ * reflect follow-ups — because on the grant leg the query is the whole
+ * exposure, and any one unclamped spelling is the mechanism by which a model
+ * pastes conversation text into a request this server sees. An earlier version
+ * of this comment called the loop's arguments "the one mechanism" while the
+ * planner's sat beside it unclamped; the privacy review caught it. */
 export const DRC_MAX_QUERY_CHARS = 300;
 /** A program is not an outbound argument — bounded for size, never scrubbed
  * for content (it runs in the sandbox this browser already has). */
@@ -988,9 +1009,9 @@ export function drcResearchToolbox({ webOn = false, bashOn = false, snapshot = n
  * SENTENCE the model reads next round (invariant 2) — the loop falls onward,
  * it never throws a chat away over a tool. Returns null for any other name so
  * callers fall through to their own tools.
- * @param {{bash?: boolean, sandbox?: any, execCfg?: any, fileProvider?: any, onStatus?: any}} opts
+ * @param {{bash?: boolean, sandbox?: any, execCfg?: any, fileProvider?: any, onStatus?: any, budgetS?: number}} opts
  */
-function makeShellTools({ bash = false, sandbox = null, execCfg = null, fileProvider = null, onStatus = () => {} }) {
+function makeShellTools({ bash = false, sandbox = null, execCfg = null, fileProvider = null, onStatus = () => {}, budgetS = 0 }) {
   const sb = sandbox || pickRunner(execCfg);
   // run_python rides run_bash's gate exactly: the same knob, the same runner —
   // the two are one capability (a shell that can also run a program), so there
@@ -1018,7 +1039,14 @@ function makeShellTools({ bash = false, sandbox = null, execCfg = null, fileProv
       if (!(await ensureSb())) return "Sandbox unavailable; use grep_source/read_file instead.";
       let r;
       try {
-        r = await sb.exec(cmd, { maxStdoutBytes: GUEST_STDOUT_CAP_BYTES });
+        // Scoped to the tier's slider like the standard path's shell pass —
+        // and on the browser VM the default 30 s is not merely slow, its
+        // expiry calls resetSandbox: one wedged command on a 15 s question
+        // spent twice the whole budget and could take the VM with it.
+        r = await sb.exec(cmd, {
+          maxStdoutBytes: GUEST_STDOUT_CAP_BYTES,
+          ...(budgetS > 0 ? { timeoutMs: execBudgetMs(budgetS) } : {}),
+        });
       } catch (err) {
         r = { exitCode: 1, stdout: "", stderr: String(/** @type {any} */ (err)?.message || err) };
       }
@@ -1045,6 +1073,16 @@ function makeShellTools({ bash = false, sandbox = null, execCfg = null, fileProv
         source,
         {
           stdin: drcClampText(String(input?.stdin || ""), DRC_MAX_STDIN_CHARS, { keepNewlines: true }),
+          // The tier's slider may only LOWER the python budget, never raise
+          // it. The ladder's proven pair is guest 20 s / wire 25 s under the
+          // 30 s ceiling; feeding it the default slider's 30 s pushed the wire
+          // to exactly the ceiling — which on the browser VM is not a timeout
+          // but resetSandbox, and the guest clock starts after the probe and
+          // heredoc overhead, so a full-budget program raced the destroyer
+          // with no margin at all. (The port's own test caught this: it pins
+          // the wire strictly under 30 s.) A brief-tier run still gets its
+          // brief-tier program, which was the point.
+          ...(budgetS > 0 ? { budgetMs: Math.min(execBudgetMs(budgetS) ?? STEP_BUDGET_MS, STEP_BUDGET_MS) } : {}),
           where: pickRunnerBackend(execCfg) === "local" ? "the local runner on the user's machine" : "the in-browser sandbox",
         },
       );
@@ -1081,10 +1119,11 @@ export async function runDrcSourceTools({
   onDelta = () => {},
   signal,
   baseUrl,
+  budgetS = 0,
 }) {
   const budget = { used: 0 };
   const sitemap = buildSourceSitemap(snapshot);
-  const shell = makeShellTools({ bash, sandbox, execCfg, fileProvider, onStatus });
+  const shell = makeShellTools({ bash, sandbox, execCfg, fileProvider, onStatus, budgetS });
   const bashOn = shell.bashOn;
   const tools = bashOn ? [...INTROSPECTION_TOOLS, RUN_BASH_TOOL, RUN_PYTHON_TOOL] : [...INTROSPECTION_TOOLS];
 
@@ -1229,8 +1268,8 @@ export async function runDrcResearch({
   // quota, or any error resolves to null, and the caller falls back to the
   // offline path — so the flow degrades exactly to a run without the feature.
   const webOn = typeof webSearch === "function";
-  /** @type {Array<{n: number, title: string, url: string}>} */
-  const webSources = []; // { n, title, url }
+  /** @type {Array<{n: number, title: string, url: string, highlights?: string[]}>} */
+  const webSources = []; // { n, title, url, highlights }
   // Deduped by URL, like the server registry this mirrors (src/sources.js
   // addSources, which has deduped since its first line). Without it a page
   // found by two of the exchange's sub-questions took two citation numbers:
@@ -1253,14 +1292,35 @@ export async function runDrcResearch({
       if (!it || !it.url || seenUrls.has(it.url)) continue;
       seenUrls.add(it.url);
       const n = webSources.length + 1;
-      webSources.push({ n, title: it.title || it.url, url: it.url });
-      const hi = Array.isArray(it.highlights) ? it.highlights.join(" … ") : "";
+      // Highlights are KEPT on the registry entry, bounded like the server's
+      // sourceDigest (3 per source), not just rendered into the round and
+      // discarded. The agentic writer needs them: its notes block is the only
+      // source material it gets, and a writer instructed to "cite claims as
+      // [n]" that has never seen what [n] said can only attribute from the
+      // title — the correctness review reproduced exactly that misattribution.
+      // The standard graph's writer always saw content (webBlock carries the
+      // full result blocks); this makes the two engines equal.
+      const highlights = (Array.isArray(it.highlights) ? it.highlights : [])
+        .slice(0, 3)
+        .map((/** @type {any} */ h) => String(h).slice(0, 300));
+      webSources.push({ n, title: it.title || it.url, url: it.url, highlights });
+      const hi = highlights.join(" … ");
       blocks.push(`[${n}] ${it.title || it.url}\n${it.url}${hi ? "\n" + hi : ""}`);
     }
     return blocks.join("\n\n");
   };
   const sourcesList = () =>
     webSources.map((/** @type {any} */ s) => `[${s.n}] ${s.title} — ${s.url}`).join("\n");
+  /** The list WITH each source's kept highlights — what the agentic writer
+   * reads. Same numbering as sourcesList; more is different only in that the
+   * writer can quote what a source said rather than what it was called. */
+  const sourcesDigest = () =>
+    webSources
+      .map((/** @type {any} */ s) => {
+        const hi = (s.highlights || []).join(" … ");
+        return `[${s.n}] ${s.title} — ${s.url}${hi ? "\n    " + hi : ""}`;
+      })
+      .join("\n");
   const webLookup = async (/** @type {string} */ query) => {
     if (!webOn) return null;
     try {
@@ -1307,6 +1367,7 @@ export async function runDrcResearch({
         onDelta,
         signal,
         baseUrl,
+        budgetS,
       });
     } catch {
       // fall through to the deterministic flow
@@ -1361,6 +1422,7 @@ export async function runDrcResearch({
     webLookup,
     webSources,
     sourcesList,
+    sourcesDigest,
     recall,
     intro,
     shellBlock: "",
@@ -1421,6 +1483,7 @@ export async function runDrcResearch({
   // provider can drive a loop AND the toolbox resolved non-empty; (3) the
   // standard graph. An ASKED "agentic" on a provider that cannot drive one
   // still lands on standard — the same both-ends check as the server.
+  let agenticRan = false;
   if (research) {
     const bashOn = bash === true && !!(sandbox || pickRunner(execCfg)).supported();
     const tools = drcResearchToolbox({ webOn, bashOn, snapshot });
@@ -1428,12 +1491,13 @@ export async function runDrcResearch({
     const canDrive = canDrcDriveTools(provider) && tools.length > 0;
     const chosen = asked === "standard" ? "standard" : canDrive ? "agentic" : "standard";
     if (chosen === "agentic") {
+      agenticRan = true;
       const result = await runDrcAgenticResearch({
         ...shared,
         tools,
         bashOn,
         snapshot,
-        shell: makeShellTools({ bash, sandbox, execCfg, fileProvider, onStatus }),
+        shell: makeShellTools({ bash, sandbox, execCfg, fileProvider, onStatus, budgetS }),
       });
       // null = the gather loop threw before anything streamed — the standard
       // graph absorbs the run below. Web sources the loop already registered
@@ -1449,9 +1513,12 @@ export async function runDrcResearch({
   // SHELL_DONE cold for anything that doesn't — no brittle keyword gate), run
   // the agentic command loop, and fold its real output into whichever answer
   // path runs (direct or synthesis) as ground truth. Empty (and thus absent)
-  // otherwise — the flow is byte-identical to a run without the feature. On
-  // the AGENTIC engine this never runs: run_bash is a first-class tool in the
-  // loop there, and a pre-pass would spend the budget twice.
+  // otherwise — the flow is byte-identical to a run without the feature. When
+  // the AGENTIC engine RAN this never runs — including the fallback rung where
+  // the loop threw: run_bash was a first-class tool in the loop, whatever the
+  // loop then did with it, and a pre-pass on top would spend the shell budget
+  // twice on a turn that already paid for its failed rounds. (An earlier
+  // version of this comment claimed the never; the review found the rung.)
   //
   // Skip the (slow, mobile-costly) offline sandbox boot for a PURE AI-model
   // question — "latest on glm-5.2", "kimi k2 vs k3", "what's new in deepseek".
@@ -1463,7 +1530,7 @@ export async function runDrcResearch({
   // still runs. The bash prompt (AI_MODEL_NOT_A_PACKAGE_NOTE) covers the
   // residual mixed-intent case.
   const pureModelQuestion = aiModelIntent(question) && !bashIntent(question);
-  if (bash && !pureModelQuestion) {
+  if (bash && !pureModelQuestion && !agenticRan) {
     try {
       const transcript = await runDrcShellPass({ provider, apiKey, jsonModel, question, context, signal, baseUrl, onStatus, sandbox, execCfg, fileProvider, sourceMounted, filesMounted, budgetS });
       shared.shellBlock = buildShellTranscript(transcript);
@@ -1493,7 +1560,7 @@ export async function runDrcResearch({
 
 /** @param {any} o the shared-context bag runDrcResearch builds */
 async function runDrcStandardResearch(o) {
-  const { provider, apiKey, jsonModel, question, priorUser, context, plan, withinBudget, webOn, webLookup, webSources, sourcesList, recall, intro, directReply, onStatus, signal, baseUrl } = o;
+  const { provider, apiKey, jsonModel, question, priorUser, context, plan, withinBudget, webOn, webLookup, webSources, sourcesList, sourcesDigest, recall, intro, directReply, onStatus, signal, baseUrl } = o;
 
   // ---- node 1: generate_queries (fail-soft: unusable → the model-free seed) --
   onStatus({ type: "phase", phase: "plan" });
@@ -1686,7 +1753,7 @@ async function runDrcStandardResearch(o) {
       ? "Harvested notes (grounded in the web search results, cited by [n]):\n"
       : "Harvested notes (model knowledge, structured by sub-question):\n") +
     renderDrcNotes(harvest) +
-    (hasWeb ? "\n\nSources (cite claims as [n]):\n" + sourcesList() : "") +
+    (hasWeb ? "\n\nSources (cite claims as [n]):\n" + sourcesDigest() : "") +
     (recall ? "\n\n" + recall : "") +
     // Introspection mode's source-snapshot block (empty otherwise).
     (intro ? "\n\n" + intro : "") +

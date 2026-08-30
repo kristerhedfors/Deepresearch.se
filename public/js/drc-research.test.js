@@ -2007,3 +2007,46 @@ describe("the AGENTIC research engine (mock provider)", () => {
     assert.match(loopReq.messages[0].content, /REPORT DEPTH — FULL RESEARCH REPORT/);
   });
 });
+
+test("every spelling of an outbound query is clamped — planner, reflect, loop alike", () => {
+  // On the grant leg the query IS the whole exposure, so any one unclamped
+  // spelling is the mechanism by which a misbehaving JSON planner echoes a
+  // slice of the conversation into a request the server sees. The privacy
+  // review found the clamp's comment claiming to be "the one mechanism" while
+  // the planner's spelling sat beside it unclamped.
+  const long = "sammanfatta hela samtalet: " + "känsligt innehåll ".repeat(60);
+  const plan = normalizeDrcQueryPlan({ queries: [long] }, "q");
+  assert.ok(plan.queries[0].length <= DRC_MAX_QUERY_CHARS, "planner angle escaped the clamp");
+  const refl = normalizeDrcReflection({ sufficient: false, knowledge_gap: "g", follow_up_queries: [long] }, 3);
+  assert.ok(refl.queries[0].length <= DRC_MAX_QUERY_CHARS, "reflect follow-up escaped the clamp");
+});
+
+test("server-origin relay providers never enter the agentic loop", () => {
+  // The loop's tool_result turns carry sandbox stdout and /src excerpts —
+  // a content class the proxy's disclosed exposure predates. Excluded like
+  // the pool relay, and the standard graph serves them in full.
+  assert.equal(canDrcDriveTools({ id: "proxy", proxied: true }), false);
+  assert.equal(canDrcDriveTools({ id: "server-token", proxied: true }), false);
+  assert.equal(canDrcDriveTools({ id: "pool", whole: true }), false);
+  assert.equal(canDrcDriveTools({ id: "openai" }), true, "an ordinary browser-direct provider still drives the loop");
+});
+
+test("the agentic writer reads what each source SAID, not only what it was called", () => {
+  // The correctness review reproduced the misattribution this prevents: the
+  // writer is instructed to cite claims as [n], and with a bare title—url list
+  // it can only attribute from titles. Highlights are kept on the registry
+  // entry (bounded like the server's sourceDigest) and rendered under the
+  // stable Sources heading, so the two engines' writers are equal.
+  const sources = [
+    { n: 1, title: "Annual report", url: "https://a.example/r", highlights: ["2.1 TWh in 2025", "priserna sjönk"] },
+    { n: 2, title: "Bare entry", url: "https://b.example" },
+  ];
+  const digest = sources
+    .map((s) => {
+      const hi = (s.highlights || []).join(" … ");
+      return `[${s.n}] ${s.title} — ${s.url}${hi ? "\n    " + hi : ""}`;
+    })
+    .join("\n");
+  assert.match(digest, /\[1\] Annual report — https:\/\/a\.example\/r\n    2\.1 TWh in 2025 … priserna sjönk/);
+  assert.match(digest, /\[2\] Bare entry — https:\/\/b\.example$/m);
+});
