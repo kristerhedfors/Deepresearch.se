@@ -13,8 +13,7 @@ import {
   reportTierFor,
   MIN_BUDGET_S,
   MAX_BUDGET_S,
-  DEFAULT_BUDGET_S,
-} from "./budget.js";
+  DEFAULT_BUDGET_S, gatherDeadlineAt, GATHER_FLOOR } from "./budget.js";
 
 describe("clampBudget", () => {
   test("clamps below the floor", () => {
@@ -255,4 +254,33 @@ describe("fitsDeadline", () => {
     // 100s elapsed + 20s upcoming = 120s, over even the grace ceiling.
     assert.equal(fitsDeadline(startedAt, budgetMs, 20_000), false);
   });
+});
+
+test("the gather deadline never starves the loop (feedback #71)", () => {
+  // budget_s 15 — the brief tier — with COLD priors: the writer's estimated
+  // share (29 s) exceeds the whole budget, and before the floor the reserve
+  // swallowed everything: deadline == startedAt, the loop "stopped by the
+  // deadline" with zero tool calls, and the user saw "No search results were
+  // available" with web search ON (chat_logs #1763). A reserve that can turn
+  // the engine off is not a reserve.
+  const plan15 = planResearch("claude-opus-5", 15, "mistralai/Mistral-Small-3.2-24B-Instruct-2506");
+  const dl = gatherDeadlineAt({ startedAt: 1_000 }, plan15);
+  assert.ok(dl - 1_000 >= plan15.budgetMs * GATHER_FLOOR, "the brief tier must keep a real gathering slice");
+
+  // The other route to the same failure: a big model's synth EWMA warmed past
+  // any budget by a few long reports.
+  for (let i = 0; i < 6; i++) recordPhase("claude-opus-5", "synth", 70_000);
+  for (let i = 0; i < 6; i++) recordPhase("claude-opus-5", "validate", 12_000);
+  const plan60 = planResearch("claude-opus-5", 60, "mistralai/Mistral-Small-3.2-24B-Instruct-2506");
+  const dl60 = gatherDeadlineAt({ startedAt: 1_000 }, plan60);
+  assert.ok(dl60 - 1_000 >= plan60.budgetMs * GATHER_FLOOR, "a warmed writer EWMA must not turn the engine off");
+
+  // And when the writer fits comfortably, the reserve still works as designed.
+  const roomy = gatherDeadlineAt({ startedAt: 0 }, { budgetMs: 120_000, estimates: { synth: 16_000, validate: 9_000 } });
+  assert.ok(roomy > 120_000 * GATHER_FLOOR, "an honest reserve keeps more than the floor");
+  assert.ok(roomy < 120_000 * 1.15, "…but still reserves the writer");
+
+  // No start / no budget = no bound, never a throw.
+  assert.equal(gatherDeadlineAt(null, null), 0);
+  assert.equal(gatherDeadlineAt({ startedAt: 5 }, { budgetMs: 0 }), 0);
 });

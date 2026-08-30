@@ -636,3 +636,42 @@ describe("the production crash of 2026-08-30: a null identity meets a real conta
     );
   });
 });
+
+describe("the starved loop of feedback #71: deadline, zero calls, web search on", () => {
+  test("falls through to the standard graph instead of writing from nothing", async () => {
+    // chat_logs #1763: budget_s 15, pipeline agentic/1, stopped_by "deadline",
+    // tool_calls 0 — and the user read "No search results were available" with
+    // web search ON. The deadline floor in budget.js fixes the arithmetic that
+    // starved the loop; this rung is what happens if it is ever wrong again: a
+    // loop that never got to make a single call has nothing to write from, and
+    // nothing has streamed, so the standard graph — which budgets its own
+    // searching — takes the turn.
+    const h = harness({});
+    h.deps.toolRun = async () => ({
+      text: "",
+      usage: { prompt_tokens: 10, completion_tokens: 0 },
+      rounds: 0,
+      toolCalls: 0,
+      stopReason: null,
+      stoppedBy: "deadline",
+    });
+    await runAgenticResearch(h.ctx, h.deps);
+    assert.equal(h.named("runStandardResearch").length, 1, "the standard graph must take the turn");
+    assert.equal(h.named("runSynthesis").length, 0, "the agentic writer must NOT run on an empty gather");
+  });
+
+  test("a model that ANSWERED without tools is a choice, and the writer writes it", async () => {
+    const h = harness({});
+    h.deps.toolRun = async () => ({
+      text: "I know this cold.",
+      usage: { prompt_tokens: 10, completion_tokens: 5 },
+      rounds: 1,
+      toolCalls: 0,
+      stopReason: "stop",
+      stoppedBy: "answered",
+    });
+    await runAgenticResearch(h.ctx, h.deps);
+    assert.equal(h.named("runStandardResearch").length, 0);
+    assert.equal(h.named("runSynthesis").length, 1);
+  });
+});

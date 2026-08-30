@@ -58,7 +58,7 @@
 
 import { addUsage } from "./quota.js";
 import { capBound } from "./agent-spec.js";
-import { recordPhase } from "./budget.js";
+import { gatherDeadlineAt, recordPhase } from "./budget.js";
 import { RESEARCH_TOOL_CLASSES, toolsForRun } from "./tool-sets.js";
 import { PYTHON_TOOLS, RESEARCH_TOOL_CONTEXT, RESEARCH_TOOL_EXTENSION } from "./research-tools.js";
 import { researchBrief } from "./research-brief.js";
@@ -228,40 +228,16 @@ export function researchToolsForRun(ctx) {
 }
 
 /**
- * When the loop must stop GATHERING — which is not when the request runs out.
- *
- * Two mistakes are easy here and this function exists to make both hard.
- *
- * The first is reading a `deadlineAt` off the plan. There isn't one: budget.js
- * expresses the bound as `startedAt` plus `budgetMs` (with fitsDeadline's 1.15
- * slack), and a plan field that does not exist reads as 0, which turns the
- * whole wall clock into dead code that no test notices because the loop simply
- * never stops early.
- *
- * The second is stopping at the request's own deadline. The report still has to
- * be WRITTEN after the loop, and the writer is the expensive half — the
- * planner's own estimates put synthesis and validation an order of magnitude
- * above a tool call. A loop that gathers until the budget is gone leaves
- * nothing to write with, so the writer's estimate is reserved out of the
- * loop's share. That is the same reasoning the standard graph applies when it
- * re-checks fitsDeadline before each wave, made explicit because a loop has no
- * wave boundary to hang it on.
- *
- * 0 (no bound) when the state carries no start or the plan no budget — a caller
- * mid-refactor or a test, and an unbounded loop is still bounded by its rounds.
- *
+ * When the loop must stop GATHERING. The arithmetic lives in budget.js
+ * (gatherDeadlineAt) because src/tool-admission.js needs the SAME number for
+ * its per-call check and cannot import this module — the two disagreeing was
+ * half of the incident the floor in there fixes.
  * @param {any} state
  * @param {any} plan
  * @returns {number}
  */
 export function loopDeadlineAt(state, plan) {
-  const startedAt = Number(state?.startedAt);
-  const budgetMs = Number(plan?.budgetMs);
-  if (!Number.isFinite(startedAt) || !Number.isFinite(budgetMs) || budgetMs <= 0) return 0;
-  const writer = Number(plan?.estimates?.synth || 0) + Number(plan?.estimates?.validate || 0);
-  // Never below the start: a budget smaller than the writer's own estimate
-  // means gather nothing and write, which is the honest answer at that size.
-  return Math.max(startedAt, startedAt + budgetMs * 1.15 - writer);
+  return gatherDeadlineAt(state, plan);
 }
 
 /** The two fields execEnvironmentFor reads, lifted off a pipeline ctx. Kept as
@@ -580,6 +556,21 @@ export async function runAgenticResearch(ctx, deps = null) {
     return d.runStandardResearch(ctx);
   }
 
+  // A loop the deadline stopped before it made a SINGLE call has gathered
+  // nothing and has nothing to write from — and nothing has streamed, so the
+  // standard graph is still a safe fall-through, and it budgets its own
+  // searching. Writing anyway was the visible half of the feedback-#71
+  // incident: web search on, "No search results were available". This rung
+  // stays even with the deadline floor in place, because the floor is
+  // arithmetic and this is the honest behaviour if the arithmetic is ever
+  // wrong again. `answered` is different: a model that chose to answer without
+  // tools made a choice, and the writer writes it.
+  if (result.toolCalls === 0 && result.stoppedBy === "deadline") {
+    log.warn("chat.agentic_starved", { budgetMs: plan?.budgetMs });
+    ctx.stepDone("loop", "The research window closed before any tool ran — using the standard graph", [], { route: "research" });
+    if (result.usage) addUsage(state.totals, result.usage);
+    return d.runStandardResearch(ctx);
+  }
   addUsage(state.totals, result.usage);
   const rounds = Math.max(1, result.rounds || 1);
   // Recorded per ROUND, not per loop: the planner's unit of forecasting is a
