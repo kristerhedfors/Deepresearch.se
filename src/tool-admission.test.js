@@ -315,13 +315,32 @@ describe("7. the run's budget and its deadline", () => {
     assert.deepEqual([...s.ranQueries], []);
   });
 
-  test("a spent time budget stops further lookups without erroring", () => {
-    // Past the budget plus fitsDeadline's 15% grace, which is the point the
-    // wave path stops planning further work too.
-    const s = state({ startedAt: Date.now() - 200_000, plan: { maxSearches: 8, maxSources: 18, digestCap: 14_000, budgetMs: 120_000 } });
+  test("a spent time budget stops FURTHER lookups without erroring", () => {
+    // "Further" is load-bearing: the run below has already searched once
+    // (searchCount 1), so the exemption for a run's first spend does not apply
+    // and the clock refuses in words, which is the point the wave path stops
+    // planning further work too.
+    const s = state({ startedAt: Date.now() - 200_000, searchCount: 1, plan: { maxSearches: 8, maxSources: 18, digestCap: 14_000, budgetMs: 120_000 } });
     const r = admit("web_search", { queries: ["still curious"] }, { state: s });
     assert.equal(r.ok, false);
     assert.match(/** @type {any} */ (r).message, /time budget/);
+  });
+
+  test("the FIRST spending call of a run is admitted whatever the clock says (feedback #72)", () => {
+    // By the time the model's first tool_use arrives, a whole non-streaming
+    // round on the answer model has been paid for — on a large model, more
+    // than a short budget's gathering window. The user-visible failure this
+    // pins: a 15 s turn on claude-opus-5 whose two searches each came back
+    // "time-budget rejected" while tool_calls and sources stayed 0. Refusing
+    // the first call keeps the cost and throws away the only chance of data.
+    const s = state({ startedAt: Date.now() - 200_000, plan: { maxSearches: 8, maxSources: 18, digestCap: 14_000, budgetMs: 15_000 } });
+    const first = admit("web_search", { queries: ["black hole probability"] }, { state: s });
+    assert.equal(first.ok, true, "the first search must run — the round was already paid for");
+    // …and the exemption is ONE call, not a bypass.
+    s.searchCount = 1;
+    const second = admit("web_search", { queries: ["a different angle"] }, { state: s });
+    assert.equal(second.ok, false);
+    assert.match(/** @type {any} */ (second).message, /time budget/);
   });
 
   test("an unknown deadline does not stop a run that was going to finish", () => {

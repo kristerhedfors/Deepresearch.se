@@ -1369,6 +1369,22 @@ describe("DRC run_python tool", () => {
       ...extra,
     });
 
+  test("a short budget routes the client to the standard graph too (feedback #72)", async () => {
+    // Same economics as the server: the loop's rounds run on the user's own
+    // provider, and a 15 s budget cannot pay for the first round before the
+    // gathering window closes. The provider below would happily drive tools —
+    // the budget alone must decide.
+    reset([answerRound("standard answered")]);
+    await run(
+      { supported: () => false, boot: async () => false, exec: async () => ({ exitCode: 1, stdout: "", stderr: "" }) },
+      { research: true, budgetS: 15, snapshot: null },
+    );
+    assert.ok(requests.length >= 1);
+    // The standard graph's first call is the query PLAN on the jsonModel — the
+    // agentic path would have sent a tools array in its first request instead.
+    assert.equal(requests[0].tools, undefined, "a 15 s budget must not enter the tool loop");
+  });
+
   test("run_python is offered exactly when run_bash is", async () => {
     reset([answerRound("done")]);
     await run({ supported: () => true, boot: async () => true, exec: async () => ({ exitCode: 0, stdout: "", stderr: "" }) });

@@ -917,6 +917,10 @@ export const DRC_MAX_SPENDING_CALLS = 6;
  * cascade's worst case (6 angles + 2 rounds × 3 follow-ups), so no capability
  * is lost. */
 export const DRC_MAX_RUN_QUERIES = 12;
+/** Below this research budget the client loop cannot pay for its own rounds —
+ * the server's MIN_AGENTIC_BUDGET_MS mirrored, same economics, same fix
+ * (feedback #72): the brief tier goes to the standard graph. */
+export const DRC_MIN_AGENTIC_BUDGET_MS = 30_000;
 /** A single outbound query's length — invariant 4 at the argument layer
  * (src/tool-admission.js MAX_QUERY_CHARS). Applied to EVERY spelling of an
  * outbound query — the loop's web_search arguments, the planner's angles, the
@@ -1489,7 +1493,18 @@ export async function runDrcResearch({
     const tools = drcResearchToolbox({ webOn, bashOn, snapshot });
     const asked = normalizeDrcResearchEngine(engine);
     const canDrive = canDrcDriveTools(provider) && tools.length > 0;
-    const chosen = asked === "standard" ? "standard" : canDrive ? "agentic" : "standard";
+    // The same budget economics as the server's engineFor (feedback #72): the
+    // loop's rounds are non-streaming calls on the USER'S OWN provider, and on
+    // a short budget the first round alone can outlive the gathering window —
+    // the searches it finally issues are refused and the reader gets a
+    // sourceless answer with web search on. The standard graph plans on the
+    // fast jsonModel, so a short budget works there. An explicit ask for the
+    // loop still wins.
+    const roomEnough = (Number(budgetS) || 0) * 1000 >= DRC_MIN_AGENTIC_BUDGET_MS;
+    const chosen =
+      asked === "agentic" ? (canDrive ? "agentic" : "standard")
+      : asked === "standard" ? "standard"
+      : canDrive && roomEnough ? "agentic" : "standard";
     if (chosen === "agentic") {
       agenticRan = true;
       const result = await runDrcAgenticResearch({

@@ -334,7 +334,17 @@ export function admitToolCall(name, args, opts) {
       `This answer's tool budget is spent: ${budget.spendCalls} of ${MAX_SPENDING_CALLS} calls to a paid source have been made. The free tools you were given still work; otherwise write the answer from what you have and say what you could not check.`,
     );
   }
-  if (!withinDeadline(state, plan, opts?.now)) {
+  // The FIRST spending call of a run is admitted whatever the clock says. By
+  // the time the model's first tool_use arrives, an entire non-streaming round
+  // on the answer model has already been paid for — on a large model, more
+  // than a short budget's whole gathering window (feedback #72: "my two
+  // lookups returned a time-budget rejection", tool_calls 0, sources 0).
+  // Refusing that first call keeps the cost and throws away the only chance of
+  // data: strictly worse than one search that runs a second or two past the
+  // window. Later calls face the deadline as before — the exemption is one
+  // call, not a bypass.
+  const firstSpend = spends && budget.spendCalls === 0 && (state.searchCount || 0) === 0;
+  if (!firstSpend && !withinDeadline(state, plan, opts?.now)) {
     undo();
     return refuse(
       "The time budget for this answer is nearly spent, so no further lookup was made. Write the answer now from what you have, and say plainly what is missing.",

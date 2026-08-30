@@ -43,6 +43,7 @@ import {
   researchToolsForRun,
   runAgenticResearch,
   toolCallHeadline,
+  MIN_AGENTIC_BUDGET_MS,
 } from "./agentic.js";
 import { MAX_SPENDING_CALLS } from "./tool-admission.js";
 
@@ -674,4 +675,23 @@ describe("the starved loop of feedback #71: deadline, zero calls, web search on"
     assert.equal(h.named("runStandardResearch").length, 0);
     assert.equal(h.named("runSynthesis").length, 1);
   });
+});
+
+test("a budget below the loop's economics routes standard (feedback #72)", () => {
+  // A 15 s turn on a large model cannot pay for even ONE non-streaming loop
+  // round before the gathering window closes — the searches the round finally
+  // issues come back "time-budget rejected" and the user reads a sourceless
+  // answer with web search on. The standard graph plans on the fast JSON model
+  // and searches server-side, so a short budget genuinely works there.
+  const h = harness({});
+  /** @type {any} */ (h.ctx.state).plan = { ...(/** @type {any} */ (h.ctx.state).plan || {}), budgetMs: 15_000 };
+  assert.equal(engineFor(h.ctx), "standard");
+  // The floor, not a cliff: at the minimum itself the loop runs.
+  /** @type {any} */ (h.ctx.state).plan.budgetMs = MIN_AGENTIC_BUDGET_MS;
+  assert.equal(engineFor(h.ctx), "agentic");
+  // An EXPLICIT ask still outranks the economics — someone who requested the
+  // loop gets the loop, short budget and all.
+  /** @type {any} */ (h.ctx.state).plan.budgetMs = 15_000;
+  /** @type {any} */ (h.ctx.state).researchEngine = "agentic";
+  assert.equal(engineFor(h.ctx), "agentic");
 });

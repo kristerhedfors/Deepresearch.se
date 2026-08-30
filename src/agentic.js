@@ -102,6 +102,11 @@ export const MAX_RESEARCH_TOOL_CALLS = 16;
  * recovering — it is looping — and every further round costs a full
  * conversation re-send for nothing. */
 export const MAX_TOOL_ERRORS = 4;
+/** Below this research budget the loop cannot pay for its own rounds — a
+ * single non-streaming round on a large model runs 10-30 s — so engineFor
+ * routes to the standard graph instead. 30 s clears one round plus a wave on
+ * every catalog model measured so far; the brief tier (15 s) goes standard. */
+export const MIN_AGENTIC_BUDGET_MS = 30_000;
 
 /**
  * Is the agentic engine the platform's OWN default?
@@ -180,6 +185,17 @@ export function engineFor(ctx) {
   const declared = normalizeResearchEngine(state.capability?.routing?.strategy);
   if (declared) return declared;
   if (!AGENTIC_BY_DEFAULT) return "standard";
+  // The loop's economics need TIME the standard graph does not: every round is
+  // a non-streaming answer-model call, and on a large model the FIRST round —
+  // the one that decides which tools to use — can cost more than a short
+  // budget in its entirety. Feedback #72 is what that looks like from the
+  // outside: a 15 s turn on a big model whose two searches each came back
+  // "time-budget rejected", because the round that issued them had already
+  // spent the gathering window. The standard graph plans on the fast JSON
+  // model and searches server-side, so a short budget is genuinely workable
+  // there — route it there. An EXPLICIT research_engine or agent declaration
+  // above still outranks this: someone who asked for the loop gets the loop.
+  if (Number(state.plan?.budgetMs) > 0 && Number(state.plan.budgetMs) < MIN_AGENTIC_BUDGET_MS) return "standard";
   // `?.length` rather than `.length`: this runs on the request path and must
   // answer for any ctx it is handed, including one a channel built without
   // image parts. A router that throws costs the whole turn (invariant 2).
