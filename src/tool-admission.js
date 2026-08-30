@@ -45,7 +45,7 @@
 import { capHasContext } from "./agent-spec.js";
 import { SEARCH_SOURCES, capabilityAllowsSource } from "./search-sources.js";
 import { extensionOffMessage } from "./extension-tools.js";
-import { fitsDeadline } from "./budget.js";
+import { gatherDeadlineAt } from "./budget.js";
 import { takeSearchBatch } from "./pipeline-inputs.js";
 import {
   MAX_READ_URLS,
@@ -526,24 +526,18 @@ function clampNumber(value, min, max, fallback) {
  * @returns {boolean}
  */
 function withinDeadline(state, plan, now = Date.now()) {
-  // What this call is about to cost, PLUS what still has to happen after the
-  // loop ends. Reserving only the tool's own estimate was the bug: the report
-  // still has to be written and validated afterwards, and the planner's own
-  // numbers put those an order of magnitude above a tool call (a 60 s budget
-  // estimates ~1.3 s for a search against ~16 s for synthesis). A gate that
-  // reserved 1.3 s admitted calls right up to the budget and then overshot it
-  // by the whole writer.
-  //
-  // The writer's share is a RESERVE rather than part of `upcoming` because it
-  // is spent once at the end, not per call — adding it to each call's cost
-  // would refuse the first call of a short run that could comfortably afford
-  // several.
+  // The gate and the loop must read ONE deadline. This used to reserve the
+  // writer's estimate itself, with its own arithmetic — and on the brief tier
+  // that reserve exceeded the whole budget, so every call was refused at t=0
+  // while the loop's own deadline was doing the same thing one layer up
+  // (feedback #71: web search on, zero calls, "No search results were
+  // available"). budget.js's gatherDeadlineAt owns the arithmetic now,
+  // including the floor that guarantees the loop a real gathering slice; this
+  // gate only asks whether THIS call's estimated cost still fits inside it.
+  const deadline = gatherDeadlineAt(state, plan);
+  if (!deadline) return true;
   const upcoming = plan?.estimates?.search || ASSUMED_TOOL_MS;
-  const writer = Number(plan?.estimates?.synth || 0) + Number(plan?.estimates?.validate || 0);
-  if (typeof state?.startedAt === "number" && typeof plan?.budgetMs === "number") {
-    return fitsDeadline(state.startedAt, plan.budgetMs, upcoming + writer);
-  }
-  return true;
+  return now + upcoming <= deadline;
 }
 
 /**

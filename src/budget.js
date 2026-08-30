@@ -344,6 +344,55 @@ export const CONTENTS_COST_MULTIPLIER = 1 / 7;
  * @param {number} upcomingMs
  * @returns {boolean}
  */
+/** The share of the budget the gather loop is GUARANTEED, whatever the writer
+ * estimates. See gatherDeadlineAt. */
+export const GATHER_FLOOR = 0.4;
+
+/**
+ * When the agentic engine must stop GATHERING: the request's deadline with the
+ * writer's estimated share reserved out of it — but never less than
+ * GATHER_FLOOR of the budget.
+ *
+ * The floor is the fix for a shipped incident, and the reasoning matters more
+ * than the number. The writer reserve is built from ESTIMATES (priors, then
+ * per-isolate EWMAs), and an estimate can exceed the whole budget two mundane
+ * ways: the brief tier's 15 s budget is smaller than the COLD priors' writer
+ * share (29 s) on every request, and a few long reports warm a big model's
+ * synth EWMA past any budget. Without the floor the reserve then swallowed
+ * everything, the deadline landed exactly at startedAt, and the loop was
+ * "stopped by the deadline" with zero tool calls — the user saw "No search
+ * results were available" with web search ON (feedback #71, chat_logs #1763,
+ * budget_s 15). A reserve that can turn the engine off is not a reserve.
+ *
+ * The floor over-commits the wall clock when the writer estimate is honest —
+ * accepted: fitsDeadline's 1.15 slack absorbs some, and a report that runs
+ * long is a report, where a gather of nothing is a failure.
+ *
+ * 0 (no bound) when the state carries no start or the plan no budget — a
+ * caller mid-refactor or a test, and an unbounded loop is still bounded by its
+ * rounds.
+ *
+ * @param {{ startedAt?: number } | null | undefined} state
+ * @param {{ budgetMs?: number, estimates?: Record<string, number> } | null | undefined} plan
+ * @returns {number}
+ */
+export function gatherDeadlineAt(state, plan) {
+  const startedAt = Number(state?.startedAt);
+  const budgetMs = Number(plan?.budgetMs);
+  if (!Number.isFinite(startedAt) || !Number.isFinite(budgetMs) || budgetMs <= 0) return 0;
+  const writer = Number(plan?.estimates?.synth || 0) + Number(plan?.estimates?.validate || 0);
+  const gather = Math.max(budgetMs * 1.15 - writer, budgetMs * GATHER_FLOOR);
+  return startedAt + gather;
+}
+
+/**
+ * Does an upcoming phase still fit inside the request's time budget, with the
+ * planner's standing 15% slack?
+ * @param {number} startedAt
+ * @param {number} budgetMs
+ * @param {number} upcomingMs
+ * @returns {boolean}
+ */
 export function fitsDeadline(startedAt, budgetMs, upcomingMs) {
   return Date.now() - startedAt + upcomingMs <= budgetMs * 1.15;
 }
