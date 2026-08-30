@@ -252,6 +252,15 @@ export function isPublicAsset(url, method) {
     // import, /js/lypning-core.js, is already allowlisted with the /lypning/
     // dashboard entries.
     url.pathname === "/js/lypning-exec-core.js" ||
+    // The two-engine research seam's shared cores (2026-08-30, the client
+    // port of the server's engine split): the ICL research brief, the
+    // model-free bilingual query seeder (src/triage.js's façade target), and
+    // the gather-then-write notes contract (src/agentic.js's façade target).
+    // /js/drc-research.js statically imports all three, so they are in the
+    // public /cure graph (same rule as lypning-exec-core.js above).
+    url.pathname === "/js/research-brief-core.js" ||
+    url.pathname === "/js/query-seed-core.js" ||
+    url.pathname === "/js/research-notes-core.js" ||
     // The search-SOURCE preference behind the "Exa web search" settings knob —
     // /cure/drc.js statically imports it (the same public-graph rule).
     url.pathname === "/js/search-source.js" ||

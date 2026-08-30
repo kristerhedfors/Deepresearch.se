@@ -4,25 +4,40 @@ import http from "node:http";
 import { readFileSync } from "node:fs";
 import {
   DRC_DEPTH_TIERS,
+  DRC_GATHER_DEADLINE_FRACTION,
+  DRC_MAX_QUERY_CHARS,
+  DRC_MAX_RESEARCH_TOOL_CALLS,
+  DRC_MAX_RESEARCH_TOOL_ROUNDS,
+  DRC_MAX_RUN_QUERIES,
+  DRC_MAX_SPENDING_CALLS,
+  DRC_MAX_TOOL_ERRORS,
+  DRC_RESEARCH_ENGINES,
+  DRC_WEB_SEARCH_TOOL,
   GAP_DEADLINE_FRACTION,
   VALIDATE_DEADLINE_FRACTION,
+  canDrcDriveTools,
   drcBashAgentPrompt,
+  drcClampText,
   drcContext,
   drcDirectPrompt,
   drcDirectPromptWeb,
-  drcGapPrompt,
   drcHarvestPrompt,
+  drcKnowledgeGapsSection,
+  drcQueryPlanPrompt,
+  drcReflectPrompt,
+  drcResearchToolbox,
   drcSourceToolPrompt,
   drcSynthPrompt,
   drcSynthPromptWeb,
-  drcTriagePrompt,
   drcValidatePrompt,
   drcValidatePromptWeb,
   drcWebHarvestPrompt,
   drcPlanForBudget,
   drcSearchLedgerSection,
   normalizeDrcNotes,
-  normalizeDrcTriage,
+  normalizeDrcQueryPlan,
+  normalizeDrcReflection,
+  normalizeDrcResearchEngine,
   phaseWithinBudget,
   renderDrcNotes,
   runDrcResearch,
@@ -30,24 +45,125 @@ import {
 import { budgetTier } from "./timescale.js";
 import { formatPythonResult } from "./lypning-exec-core.js";
 
+// The SERVER graph's declared schema fields, read from the SOURCE rather than
+// imported: an import of src/pipeline-standard.js would pull the whole server
+// module graph into the public tsc project (tsconfig.public.json follows
+// imports), so the parity pin scans the declarations instead — same drift
+// protection, no graph crossing.
+const schemaFieldsOf = (name) => {
+  const src = readFileSync(new URL("../../src/pipeline-standard.js", import.meta.url), "utf8");
+  const m = src.match(new RegExp(`export const ${name} = object\\(\\s*\\{([\\s\\S]*?)\\n  \\},`));
+  if (!m) throw new Error(`${name} declaration not found in src/pipeline-standard.js`);
+  return [...m[1].matchAll(/^ {4}(\w+):/gm)].map((f) => f[1]).sort();
+};
+
 // ---- normalizers ------------------------------------------------------------------
 
-test("normalizeDrcTriage hardens every action and degrades garbage", () => {
-  assert.deepEqual(normalizeDrcTriage({ action: "direct" }), { action: "direct", subquestions: [] });
-  assert.deepEqual(normalizeDrcTriage({ action: "clarify", question: " Which year? " }), {
-    action: "clarify",
-    question: "Which year?",
-    subquestions: [],
+test("normalizeDrcQueryPlan hardens the plan: trim, case-folded dedupe, cap, rationale clamp", () => {
+  const r = normalizeDrcQueryPlan(
+    { queries: [" a ", "a", 7, "", "b"], rationale: "  why  ", direct: false },
+    "question long enough",
+    { maxQueries: 4 },
+  );
+  assert.deepEqual(r, { queries: ["a", "b"], rationale: "why", direct: false, seeded: false });
+  // Case folding is Unicode-aware — the Swedish pair is ONE query, exactly as
+  // in the server's normalizeQueryPlan (invariant 6's safe direction; a JS \b
+  // gate would silently fail here).
+  const sv = normalizeDrcQueryPlan(
+    { queries: ["Vad är kvantdatorer", "vad är kvantdatorer", "kvantdatorer i Sverige"] },
+    "q",
+    { maxQueries: 4 },
+  );
+  assert.deepEqual(sv.queries, ["Vad är kvantdatorer", "kvantdatorer i Sverige"]);
+  // The cap.
+  const many = normalizeDrcQueryPlan({ queries: ["1", "2", "3", "4", "5", "6"] }, "q", { maxQueries: 4 });
+  assert.equal(many.queries.length, 4);
+  // The rationale clamp.
+  assert.equal(normalizeDrcQueryPlan({ queries: ["a"], rationale: "r".repeat(400) }, "q", {}).rationale.length, 300);
+  // An explicit direct outranks angles the planner wrote anyway.
+  const direct = normalizeDrcQueryPlan({ queries: ["a"], direct: true }, "q", { maxQueries: 4 });
+  assert.deepEqual(direct, { queries: [], rationale: "", direct: true, seeded: false });
+});
+
+test("normalizeDrcQueryPlan seeds model-free on unusable JSON — EN and SV back-references alike", () => {
+  // The lifted shared seeder (query-seed-core.js): a bare back-reference must
+  // never reach a search engine verbatim, in EITHER language (invariant 6) —
+  // the prior turn's self-contained topic is what gets searched.
+  for (const followup of ["undersök saken", "det då?", "berätta mer", "gräv djupare", "look into it", "tell me more", "dig deeper", "what about that"]) {
+    const r = normalizeDrcQueryPlan(null, followup, { priorUser: "Hur mår Sveriges ekonomi?", maxQueries: 4 });
+    assert.equal(r.seeded, true, followup);
+    assert.deepEqual(r.queries, ["Hur mår Sveriges ekonomi?"], followup);
+  }
+  // A self-contained question seeds itself…
+  const self = normalizeDrcQueryPlan(undefined, "Compare A and B in depth", {});
+  assert.deepEqual(self, { queries: ["Compare A and B in depth"], rationale: "", direct: false, seeded: true });
+  // …and something too short to search, with nothing to resolve against,
+  // degrades to a direct answer.
+  const direct = normalizeDrcQueryPlan({}, "thanks", {});
+  assert.deepEqual(direct, { queries: [], rationale: "", direct: true, seeded: true });
+});
+
+test("normalizeDrcReflection: field vocabulary, zero-follow-ups ⇒ sufficient, already-ran filter before the cap", () => {
+  const r = normalizeDrcReflection(
+    { sufficient: false, knowledge_gap: " missing X ", follow_up_queries: ["c", " d ", 9, ""] },
+    2,
+  );
+  assert.deepEqual(r, { sufficient: false, gap: "missing X", queries: ["c", "d"] });
+  // No usable follow-ups IS sufficiency, whatever the boolean says.
+  assert.equal(normalizeDrcReflection({ sufficient: false, follow_up_queries: [] }, 2).sufficient, true);
+  assert.equal(normalizeDrcReflection(null, 2).sufficient, true);
+  // The gap survives a sufficient verdict — it is the artefact the report owns.
+  const done = normalizeDrcReflection({ sufficient: true, knowledge_gap: "still open" }, 2);
+  assert.deepEqual(done, { sufficient: true, gap: "still open", queries: [] });
+  assert.equal(normalizeDrcReflection({ knowledge_gap: "g".repeat(400) }, 2).gap.length, 300);
+  // An already-ran angle is dropped BEFORE the cap, so a repeat never consumes
+  // a follow-up slot (the old gap loop's guarantee, kept) — case-folded, and
+  // in Swedish exactly as in English.
+  const ran = new Set(["what is a?", "vad är kvantdatorer"]);
+  const filtered = normalizeDrcReflection(
+    { sufficient: false, follow_up_queries: ["What is A?", "Vad är kvantdatorer", "What is C?", "What is D?", "What is E?"] },
+    2,
+    ran,
+  );
+  assert.deepEqual(filtered.queries, ["What is C?", "What is D?"]);
+  // …and within-list repeats collapse too.
+  assert.deepEqual(normalizeDrcReflection({ sufficient: false, follow_up_queries: ["x", "X", "y"] }, 3).queries, ["x", "y"]);
+});
+
+test("the client JSON contracts equal the server graph's declared schemas (drift pin)", () => {
+  // The prompts stay tier-local (the offline register is this tier's own),
+  // but the CONTRACT — what the JSON means — is pinned to the server's
+  // QUERY_PLAN_SCHEMA / REFLECT_SCHEMA field vocabulary: a server-side field
+  // rename fails this test until the client normalizer follows.
+  assert.deepEqual(schemaFieldsOf("QUERY_PLAN_SCHEMA"), ["direct", "queries", "rationale"]);
+  assert.deepEqual(schemaFieldsOf("REFLECT_SCHEMA"), ["follow_up_queries", "knowledge_gap", "sufficient"]);
+
+  // The client normalizers read exactly those fields…
+  const normalized = normalizeDrcQueryPlan({ queries: ["a"], rationale: "r", direct: false, extra: 1 }, "long enough question", { maxQueries: 4 });
+  assert.deepEqual(normalized, { queries: ["a"], rationale: "r", direct: false, seeded: false });
+  assert.deepEqual(normalizeDrcReflection({ sufficient: true, knowledge_gap: "g", follow_up_queries: ["q"], extra: 1 }, 2), {
+    sufficient: true,
+    gap: "g",
+    queries: ["q"],
   });
-  const r = normalizeDrcTriage({ action: "research", complexity: "comparison", subquestions: ["a", " b ", "", 7] });
-  assert.deepEqual(r, { action: "research", complexity: "comparison", subquestions: ["a", "b"] });
-  // research with no usable subquestions degrades to direct
-  assert.equal(normalizeDrcTriage({ action: "research", subquestions: [] }).action, "direct");
-  assert.equal(normalizeDrcTriage({ action: "explode" }), null);
-  assert.equal(normalizeDrcTriage(null), null);
-  // more than the cap is truncated
-  const many = normalizeDrcTriage({ action: "research", subquestions: ["1", "2", "3", "4", "5", "6"] });
-  assert.equal(many.subquestions.length, 4);
+
+  // …and the prompts SPEAK those field names, no others.
+  const planPrompt = drcQueryPlanPrompt();
+  assert.match(planPrompt, /"queries":\["\.\.\."\],"rationale":"\.\.\.","direct":true\|false/);
+  const reflectPrompt = drcReflectPrompt(["a"]);
+  assert.match(reflectPrompt, /"sufficient":true\|false,"knowledge_gap":"\.\.\.","follow_up_queries":\["\.\.\."\]/);
+});
+
+test("drcKnowledgeGapsSection lists stated gaps as limitations, and is absent with none", () => {
+  assert.equal(drcKnowledgeGapsSection([]), "");
+  assert.equal(drcKnowledgeGapsSection(undefined), "");
+  assert.equal(drcKnowledgeGapsSection(["", "  "]), "");
+  const block = drcKnowledgeGapsSection(["no revenue figure found", "founding year unsettled"]);
+  assert.match(block, /^Knowledge gaps identified during research/);
+  assert.match(block, /- no revenue figure found/);
+  assert.match(block, /- founding year unsettled/);
+  assert.match(block, /explicit\s+limitation/);
+  assert.ok(block.endsWith("\n\n"));
 });
 
 test("normalizeDrcNotes never returns null and caps the lists", () => {
@@ -141,17 +257,28 @@ test("drcContext keeps the last turns inside the budget", () => {
 // ---- prompt structure (the server's prompts.test.js discipline) ---------------------
 
 test("every prompt keeps the offline-mode honesty and JSON discipline", () => {
-  for (const p of [drcTriagePrompt(), drcHarvestPrompt(), drcGapPrompt(["a"]), drcValidatePrompt()]) {
+  for (const p of [drcQueryPlanPrompt(), drcHarvestPrompt(), drcReflectPrompt(["a"]), drcValidatePrompt()]) {
     assert.match(p, /JSON/);
   }
-  for (const p of [drcTriagePrompt(), drcHarvestPrompt(), drcSynthPrompt(), drcDirectPrompt()]) {
+  for (const p of [drcQueryPlanPrompt(), drcHarvestPrompt(), drcSynthPrompt(), drcDirectPrompt()]) {
     assert.match(p, /never (follow|invent)/i);
   }
-  assert.match(drcTriagePrompt(), /NO web search/i);
+  assert.match(drcQueryPlanPrompt(), /NO web search/i);
+  assert.match(drcQueryPlanPrompt(), /knowledge harvest/);
+  // The web variant flips the register — real searches, self-contained strings.
+  assert.match(drcQueryPlanPrompt({ web: true }), /real search engine/);
+  assert.doesNotMatch(drcQueryPlanPrompt({ web: true }), /NO web search/);
+  // The back-reference rule speaks BOTH languages (invariant 6): the Swedish
+  // example rides in the prompt itself.
+  assert.match(drcQueryPlanPrompt(), /"saken"/);
+  // No clarify action anywhere — the graph has nowhere to put one.
+  assert.doesNotMatch(drcQueryPlanPrompt(), /clarify/i);
   assert.match(drcHarvestPrompt(), /Never invent sources, URLs/);
   assert.match(drcSynthPrompt(), /never invent citations/i);
   assert.match(drcSynthPrompt(), /training cutoff/);
-  assert.match(drcGapPrompt(["q1", "q2"]), /1\. q1[\s\S]*2\. q2/);
+  assert.match(drcReflectPrompt(["q1", "q2"]), /1\. q1[\s\S]*2\. q2/);
+  // The reflect node asks for the stated gap on BOTH verdicts.
+  assert.match(drcReflectPrompt(["q"]), /even when sufficient is true/);
   assert.match(drcValidatePrompt(), /"verdict":"revise"/);
 });
 
@@ -287,14 +414,16 @@ test("phaseWithinBudget: the wall-clock roof on optional phases", () => {
 });
 
 test("depth-parametrized prompts: defaults unchanged, tiers reshape only their own line", () => {
-  // No-arg calls are the standard prompts (the pre-tier bytes).
-  assert.match(drcTriagePrompt(), /Provide 2-4 distinct sub-questions/);
-  assert.equal(drcTriagePrompt(), drcTriagePrompt({ maxSubquestions: 4 }));
-  assert.match(drcTriagePrompt({ maxSubquestions: 6 }), /Provide 2-6 distinct sub-questions/);
-  // A cap of 2 reads "Provide 2", not the degenerate "2-2".
-  assert.match(drcTriagePrompt({ maxSubquestions: 2 }), /Provide 2 distinct sub-questions/);
-  assert.match(drcGapPrompt(["q"]), /1-2 NEW sub-questions/);
-  assert.match(drcGapPrompt(["q"], { maxFollowups: 3 }), /1-3 NEW sub-questions/);
+  // No-arg calls are the standard prompts.
+  assert.match(drcQueryPlanPrompt(), /queries: 2-4 distinct research angles/);
+  assert.equal(drcQueryPlanPrompt(), drcQueryPlanPrompt({ maxQueries: 4 }));
+  assert.match(drcQueryPlanPrompt({ maxQueries: 6 }), /queries: 2-6 distinct research angles/);
+  // A cap of 2 reads "2", not the degenerate "2-2".
+  assert.match(drcQueryPlanPrompt({ maxQueries: 2 }), /queries: 2 distinct research angles/);
+  assert.match(drcQueryPlanPrompt({ maxQueries: 4, web: true }), /queries: 2-4 distinct search queries/);
+  assert.match(drcReflectPrompt(["q"]), /1-2 NEW research angles/);
+  assert.match(drcReflectPrompt(["q"], { maxFollowups: 3 }), /1-3 NEW research angles/);
+  assert.match(drcReflectPrompt(["q"], { maxFollowups: 3, web: true }), /1-3 NEW search queries/);
   // Synth: standard has no REPORT DEPTH marker; the other tiers do, offline
   // and web alike — and every tier keeps the shared honesty rules.
   assert.equal(drcSynthPrompt(), drcSynthPrompt({ reportTier: "standard" }));
@@ -324,11 +453,66 @@ test("depth-parametrized prompts: defaults unchanged, tiers reshape only their o
   assert.match(drcSynthPromptWeb({ reportTier: "full" }), /Limitations and open questions/);
 });
 
-test("normalizeDrcTriage honors a per-tier subquestion cap", () => {
-  const six = { action: "research", subquestions: ["1", "2", "3", "4", "5", "6"] };
-  assert.equal(normalizeDrcTriage(six).subquestions.length, 4); // default = standard
-  assert.equal(normalizeDrcTriage(six, 2).subquestions.length, 2);
-  assert.equal(normalizeDrcTriage(six, 6).subquestions.length, 6);
+// ---- the two-engine surface (pure) --------------------------------------------------
+
+test("the engine vocabulary is closed and unknown values read as the platform's choice", () => {
+  assert.deepEqual(DRC_RESEARCH_ENGINES, ["agentic", "standard"]);
+  assert.equal(normalizeDrcResearchEngine("agentic"), "agentic");
+  assert.equal(normalizeDrcResearchEngine("  STANDARD "), "standard");
+  for (const bad of ["auto", "cascade", "", null, undefined, 7, {}, "agentic; drop table"]) {
+    assert.equal(normalizeDrcResearchEngine(bad), null, String(bad));
+  }
+});
+
+test("canDrcDriveTools excludes exactly the wire-less providers", () => {
+  // The two STRUCTURAL exclusions: the on-device engine provider (no wire at
+  // all) and the pool `whole` relay (chat completions only). Everything else
+  // is try-then-fall-back — drcToolRun speaks both wire dialects.
+  assert.equal(canDrcDriveTools({ id: "openai" }), true);
+  assert.equal(canDrcDriveTools({ id: "anthropic" }), true);
+  assert.equal(canDrcDriveTools({ id: "local", keyless: true }), true);
+  assert.equal(canDrcDriveTools({ id: "ondevice", engine: {} }), false);
+  assert.equal(canDrcDriveTools({ id: "pool", whole: true }), false);
+  assert.equal(canDrcDriveTools(null), false);
+});
+
+test("drcResearchToolbox resolves per capability, before any model call", () => {
+  assert.deepEqual(drcResearchToolbox({}), []);
+  assert.deepEqual(drcResearchToolbox({ webOn: true }).map((t) => t.name), ["web_search"]);
+  assert.deepEqual(drcResearchToolbox({ bashOn: true }).map((t) => t.name), ["run_bash", "run_python"]);
+  const snap = { files: [{ p: "src/index.js", s: 1, t: "x" }] };
+  assert.deepEqual(
+    drcResearchToolbox({ webOn: true, bashOn: true, snapshot: snap }).map((t) => t.name),
+    ["web_search", "grep_source", "read_file", "list_files", "run_bash", "run_python"],
+  );
+  // An empty or file-less snapshot adds nothing.
+  assert.deepEqual(drcResearchToolbox({ snapshot: { files: [] } }), []);
+  // The web tool's fan-out bound is the argument scrub's own cap.
+  assert.equal(DRC_WEB_SEARCH_TOOL.input_schema.properties.queries.maxItems, 4);
+});
+
+test("drcClampText cuts by code point with newlines collapsed", () => {
+  assert.equal(drcClampText("  a\n b  ", 300), "a b");
+  assert.equal(drcClampText("x".repeat(400), DRC_MAX_QUERY_CHARS).length, 300);
+  // Swedish characters survive; an astral-plane cut never leaves half a pair.
+  assert.equal(drcClampText("åäö", 3), "åäö");
+  const emoji = "🔎".repeat(10);
+  const cut = drcClampText(emoji, 5);
+  assert.equal([...cut].length, 5);
+  assert.equal(drcClampText(42, 10), "");
+  assert.equal(drcClampText("a\nb", 10, { keepNewlines: true }), "a\nb");
+});
+
+test("the agentic bounds mirror the server's loop economics", () => {
+  assert.equal(DRC_MAX_RESEARCH_TOOL_ROUNDS, 8);
+  assert.equal(DRC_MAX_RESEARCH_TOOL_CALLS, 16);
+  assert.equal(DRC_MAX_TOOL_ERRORS, 4);
+  assert.equal(DRC_MAX_SPENDING_CALLS, 6);
+  // This tier's own run ceiling: at least the deleted cascade's worst case
+  // (6 angles + 2 rounds × 3 follow-ups), so no capability was lost.
+  assert.ok(DRC_MAX_RUN_QUERIES >= 12);
+  // The gather share leaves the writer's reserve inside the validate cutoff.
+  assert.ok(DRC_GATHER_DEADLINE_FRACTION <= GAP_DEADLINE_FRACTION);
 });
 
 // ---- the full flow against a mock provider ------------------------------------------
@@ -337,9 +521,9 @@ test("normalizeDrcTriage honors a per-tier subquestion cap", () => {
 // deterministic phase identity the pipeline itself relies on.
 function phaseOf(body) {
   const system = body.messages[0]?.content || "";
-  if (system.includes("research planner")) return "triage";
+  if (system.includes("research planner")) return "plan";
   if (system.includes("extract research notes")) return "harvest";
-  if (system.includes("audit research coverage")) return "gap";
+  if (system.includes("audit research coverage")) return "reflect";
   if (system.includes("strict reviewer")) return "validate";
   if (system.includes("DeepResearch.Se/cure assistant")) return "direct";
   return "synth";
@@ -363,15 +547,15 @@ describe("runDrcResearch end to end (mock provider)", () => {
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify(obj) } }] }));
       };
-      if (phase === "triage") {
-        json({ action: "research", complexity: "comparison", subquestions: ["What is A?", "What is B?"] });
+      if (phase === "plan") {
+        json({ queries: ["What is A?", "What is B?"], rationale: "Two halves of the comparison.", direct: false });
       } else if (phase === "harvest") {
         json({ facts: ["fact about " + (body.messages[1].content.match(/Sub-question: (.*)$/)?.[1] || "?")], uncertain: ["maybe"] });
-      } else if (phase === "gap") {
-        if (gapAlreadyAsked) json({ complete: true });
+      } else if (phase === "reflect") {
+        if (gapAlreadyAsked) json({ sufficient: true });
         else {
           gapAlreadyAsked = true;
-          json({ complete: false, missing: ["What changed recently?"] });
+          json({ sufficient: false, knowledge_gap: "Recent developments are uncovered", follow_up_queries: ["What changed recently?"] });
         }
       } else if (phase === "validate") {
         json({ verdict: "revise", issues: ["overclaimed"], revised_answer: "REVISED final answer." });
@@ -388,7 +572,7 @@ describe("runDrcResearch end to end (mock provider)", () => {
   });
   after(() => server.close());
 
-  test("research flow: triage → parallel harvest → gap round → synth → validate/revise", async () => {
+  test("standard flow: plan → parallel harvest → reflect round → synth → validate/revise", async () => {
     requests.length = 0;
     gapAlreadyAsked = false;
     const phases = [];
@@ -417,26 +601,30 @@ describe("runDrcResearch end to end (mock provider)", () => {
       baseUrl,
     });
 
-    assert.deepEqual(phases, ["triage", "harvest", "gap", "harvest", "synth", "validate"]);
+    assert.deepEqual(phases, ["plan", "harvest", "reflect", "harvest", "synth", "validate"]);
     // Every phase reported its OUTCOME (label + expandable lines) — the
     // Se/rver step_done parity the /cure step list renders as expandable
-    // notifications: plan, both harvest waves, the gap audit, the fact-check.
+    // notifications: the plan, both harvest waves, the reflect round, the
+    // fact-check.
     assert.deepEqual(details.map((d) => d.label), [
-      "Planned 2 research angles · comparison",
+      "Planned 2 search angles",
       "Harvested 2 angles · 2 facts · 2 uncertain",
       "Digging deeper: 1 follow-up harvest",
       "Harvested 1 angle · 1 fact · 1 uncertain",
       "Fixed 1 issue found in review",
     ]);
-    assert.deepEqual(details[0].lines, ["What is A?", "What is B?"]);
+    // The rationale rides ahead of the angles, so a run can be judged on
+    // whether its angles follow from the reason it gave for them.
+    assert.deepEqual(details[0].lines, ["Two halves of the comparison.", "What is A?", "What is B?"]);
     assert.deepEqual(details[2].lines, ["What changed recently?"]);
     assert.deepEqual(details.at(-1).lines, ["overclaimed"]);
     // The fact-check outcome arrives AFTER discard_text, so its label outlives
     // the "Applying the reviewed revision…" note as the step's resting state.
     assert.equal(detailsAtDiscard, 4);
     assert.equal(result.action, "research");
+    assert.equal(result.engine, "standard");
     assert.equal(result.validated, true);
-    // The gap round's follow-up joined the harvest.
+    // The reflect round's follow-up joined the harvest.
     assert.deepEqual(result.subquestions, ["What is A?", "What is B?", "What changed recently?"]);
     // The validated revision replaced the draft, via discard_text + re-emit.
     assert.equal(discarded, true);
@@ -458,24 +646,30 @@ describe("runDrcResearch end to end (mock provider)", () => {
     assert.match(synth.body.messages.at(-1).content, /Harvested notes/);
     assert.match(synth.body.messages.at(-1).content, /fact about What is A\?/);
     assert.match(synth.body.messages.at(-1).content, /A was chosen in March/);
-    // …and, ahead of the notes, the ledger of every angle actually run — the
-    // two planned sub-questions PLUS the gap round's follow-up (feedback #61).
+    // …and, ahead of the notes: FIRST the reflect round's stated knowledge gap
+    // (the artefact the deleted gap cascade never produced — carried into the
+    // answer as an explicit limitation), THEN the ledger of every angle
+    // actually run — the two planned angles PLUS the reflect follow-up
+    // (feedback #61).
     const synthUser = synth.body.messages.at(-1).content;
-    assert.match(synthUser, /^Research angles already run for this question/);
+    assert.match(synthUser, /^Knowledge gaps identified during research/);
+    assert.match(synthUser, /- Recent developments are uncovered/);
     for (const angle of ["What is A?", "What is B?", "What changed recently?"]) {
       assert.ok(synthUser.includes("- " + angle), angle);
     }
+    assert.ok(synthUser.indexOf("Knowledge gaps identified") < synthUser.indexOf("Research angles already run"));
     assert.ok(synthUser.indexOf("Research angles already run") < synthUser.indexOf("Harvested notes"));
-    // Triage saw the recall as part of the conversation context…
-    const triage = requests.find((r) => r.phase === "triage");
-    assert.match(triage.body.messages.at(-1).content, /A was chosen in March/);
+    // The planner saw the recall as part of the conversation context…
+    const planReq = requests.find((r) => r.phase === "plan");
+    assert.match(planReq.body.messages.at(-1).content, /A was chosen in March/);
     // …and the validator judged the draft against notes + recall, so a
     // draft grounded in recalled facts is never a false contradiction.
     const validate = requests.find((r) => r.phase === "validate");
     assert.match(validate.body.messages.at(-1).content, /A was chosen in March/);
-    // The ledger is synthesis input only — the reviewer judges the draft
-    // against the notes, exactly as on the Se/rver side.
+    // The ledger and the gaps block are synthesis input only — the reviewer
+    // judges the draft against the notes, exactly as on the Se/rver side.
     assert.doesNotMatch(validate.body.messages.at(-1).content, /angles already run/);
+    assert.doesNotMatch(validate.body.messages.at(-1).content, /Knowledge gaps identified/);
     // Harvest stays recall-free: it extracts the MODEL's knowledge.
     for (const r of requests.filter((x) => x.phase === "harvest")) {
       assert.equal(r.body.messages.at(-1).content.includes("A was chosen in March"), false);
@@ -537,40 +731,59 @@ describe("runDrcResearch end to end (mock provider)", () => {
     assert.equal(streamed, "DRAFT answer.");
   });
 
-  test("a clarify verdict short-circuits into the clarifying question", async () => {
-    const server2 = http.createServer((req, res) => {
+  // The strongest standard-graph pin, mirrored from the server
+  // (src/pipeline-standard.test.js): a JSON model that fails on EVERY call
+  // still produces a streamed answer — seeded angles (the shared seeder) →
+  // offline harvest (empty, fail-soft) → synthesis. Invariant 2, end to end.
+  test("a jsonModel that fails every call still produces a streamed answer via the seed", async () => {
+    const jsonFails = http.createServer((req, res) => {
       let raw = "";
       req.on("data", (d) => (raw += d));
       req.on("end", () => {
         const body = JSON.parse(raw);
-        if (phaseOf(body) === "triage") {
-          res.writeHead(200, { "content-type": "application/json" });
-          res.end(JSON.stringify({ choices: [{ message: { content: '{"action":"clarify","question":"For which region?"}' } }] }));
+        if (body.stream) {
+          res.writeHead(200, { "content-type": "text/event-stream" });
+          res.end(sse(["seeded ", "answer"]));
         } else {
-          res.writeHead(500);
-          res.end();
+          res.writeHead(500, { "content-type": "application/json" });
+          res.end("{}");
         }
       });
     });
-    await new Promise((resolve) => server2.listen(0, "127.0.0.1", resolve));
+    await new Promise((resolve) => jsonFails.listen(0, "127.0.0.1", resolve));
     try {
+      const phases = [];
+      const details = [];
       let streamed = "";
       const result = await runDrcResearch({
         providerId: "berget",
         apiKey: "k",
-        model: "m",
-        messages: [{ role: "user", content: "best prices?" }],
+        model: "moonshotai/Kimi-K2.6",
+        messages: [{ role: "user", content: "Tell me everything about the Kestrel codec" }],
+        onStatus: (s) => {
+          if (s.type === "phase") phases.push(s.phase);
+          if (s.type === "detail") details.push(s.label);
+        },
         onDelta: (c) => (streamed += c),
-        baseUrl: `http://127.0.0.1:${server2.address().port}/v1`,
+        baseUrl: `http://127.0.0.1:${jsonFails.address().port}/v1`,
       });
-      assert.equal(result.action, "clarify");
-      assert.equal(streamed, "For which region?");
+      assert.equal(result.action, "research");
+      assert.equal(result.engine, "standard");
+      assert.equal(result.answer, "seeded answer");
+      assert.equal(streamed, "seeded answer");
+      // Seeded from the question itself — one angle, harvested (empty,
+      // fail-soft), reflect attempted and broken (fail-soft), the review
+      // attempted and broken (draft kept).
+      assert.deepEqual(result.subquestions, ["Tell me everything about the Kestrel codec"]);
+      assert.equal(result.validated, false);
+      assert.deepEqual(phases, ["plan", "harvest", "reflect", "synth", "validate"]);
+      assert.equal(details[0], "Planned 1 search angle");
     } finally {
-      server2.close();
+      jsonFails.close();
     }
   });
 
-  test("a broken triage fails soft into a direct answer", async () => {
+  test("a broken planner on a too-short question fails soft into a direct answer", async () => {
     const server3 = http.createServer((req, res) => {
       let raw = "";
       req.on("data", (d) => (raw += d));
@@ -594,7 +807,11 @@ describe("runDrcResearch end to end (mock provider)", () => {
         messages: [{ role: "user", content: "anything" }],
         baseUrl: `http://127.0.0.1:${server3.address().port}/v1`,
       });
+      // "anything" is too short to seed a search and has no prior turn to
+      // resolve against, so the seed reads it as direct — the planner failing
+      // must never break the reply.
       assert.equal(result.action, "direct");
+      assert.equal(result.engine, "standard");
       assert.equal(result.answer, "fallback answer");
     } finally {
       server3.close();
@@ -614,15 +831,15 @@ describe("runDrcResearch end to end (mock provider)", () => {
       onStatus: (s) => s.type === "phase" && phases.push(s.phase),
       baseUrl,
     });
-    // No gap phase, no validate phase — triage, one harvest wave, synthesis.
-    assert.deepEqual(phases, ["triage", "harvest", "synth"]);
-    assert.equal(requests.filter((r) => r.phase === "gap").length, 0);
+    // No reflect phase, no validate phase — the plan, one harvest wave, synthesis.
+    assert.deepEqual(phases, ["plan", "harvest", "synth"]);
+    assert.equal(requests.filter((r) => r.phase === "reflect").length, 0);
     assert.equal(requests.filter((r) => r.phase === "validate").length, 0);
     // The draft streams through unreviewed.
     assert.equal(result.validated, false);
     assert.equal(result.answer, "DRAFT answer.");
-    // Triage was asked for the brief tier's 2 angles; synthesis for the brief shape.
-    assert.match(requests.find((r) => r.phase === "triage").body.messages[0].content, /Provide 2 distinct sub-questions/);
+    // The planner was asked for the brief tier's 2 angles; synthesis for the brief shape.
+    assert.match(requests.find((r) => r.phase === "plan").body.messages[0].content, /queries: 2 distinct research angles/);
     assert.match(requests.find((r) => r.phase === "synth").body.messages[0].content, /REPORT DEPTH — BRIEF/);
   });
 
@@ -639,9 +856,9 @@ describe("runDrcResearch end to end (mock provider)", () => {
       onStatus: (s) => s.type === "phase" && phases.push(s.phase),
       baseUrl,
     });
-    // The second gap round ran (and, complete, ordered no third harvest).
-    assert.deepEqual(phases, ["triage", "harvest", "gap", "harvest", "gap", "synth", "validate"]);
-    assert.equal(requests.filter((r) => r.phase === "gap").length, 2);
+    // The second reflect round ran (and, sufficient, ordered no third harvest).
+    assert.deepEqual(phases, ["plan", "harvest", "reflect", "harvest", "reflect", "synth", "validate"]);
+    assert.equal(requests.filter((r) => r.phase === "reflect").length, 2);
     assert.equal(result.validated, true);
     // Synthesis got the full-report structure and the raised token cap; the
     // validator got the revise headroom a whole report needs.
@@ -700,9 +917,9 @@ describe("runDrcResearch web-search grant path (mock provider)", () => {
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify(obj) } }] }));
       };
-      if (phase === "triage") json({ action: "research", complexity: "simple", subquestions: ["What is A?", "What is B?"] });
+      if (phase === "plan") json({ queries: ["What is A?", "What is B?"], rationale: "", direct: false });
       else if (phase === "harvest") json({ facts: ["A shipped in 2024 [1]"], uncertain: [] });
-      else if (phase === "gap") json(gapResponder ? gapResponder() : { complete: true });
+      else if (phase === "reflect") json(gapResponder ? gapResponder() : { sufficient: true });
       else if (phase === "validate") json({ verdict: "pass" });
       else {
         res.writeHead(200, { "content-type": "text/event-stream" });
@@ -733,6 +950,7 @@ describe("runDrcResearch web-search grant path (mock provider)", () => {
       model: "moonshotai/Kimi-K2.6",
       messages: [{ role: "user", content: "Compare A and B" }],
       webSearch,
+      engine: "standard", // this describe pins the standard graph's web path
       onStatus: (s) => {
         if (s.type === "phase") phases.push(s.phase);
         if (s.type === "detail") details.push(s.label);
@@ -786,6 +1004,7 @@ describe("runDrcResearch web-search grant path (mock provider)", () => {
       model: "moonshotai/Kimi-K2.6",
       messages: [{ role: "user", content: "Compare A and B" }],
       webSearch,
+      engine: "standard", // this describe pins the standard graph's web path
       onDelta: () => {},
       baseUrl,
     });
@@ -817,6 +1036,7 @@ describe("runDrcResearch web-search grant path (mock provider)", () => {
       messages: [{ role: "user", content: "latest on A?" }],
       research: false,
       webSearch,
+      engine: "standard", // this describe pins the standard graph's web path
       onStatus: (s) => {
         if (s.type === "sources") sourceGroups.push(s);
         if (s.type === "detail") details.push(s.label);
@@ -858,6 +1078,7 @@ describe("runDrcResearch web-search grant path (mock provider)", () => {
       model: "moonshotai/Kimi-K2.6",
       messages: [{ role: "user", content: "Compare A and B" }],
       webSearch,
+      engine: "standard", // this describe pins the standard graph's web path
       onStatus: () => {},
       onDelta: () => {},
       baseUrl,
@@ -891,8 +1112,8 @@ describe("runDrcResearch web-search grant path (mock provider)", () => {
     gapResponder = () => {
       gapRound++;
       return gapRound === 1
-        ? { complete: false, missing: ["What is C?"] }
-        : { complete: false, missing: ["What is C?", "What is A?"] };
+        ? { sufficient: false, follow_up_queries: ["What is C?"] }
+        : { sufficient: false, follow_up_queries: ["What is C?", "What is A?"] };
     };
     try {
       await runDrcResearch({
@@ -902,6 +1123,7 @@ describe("runDrcResearch web-search grant path (mock provider)", () => {
         messages: [{ role: "user", content: "Compare A and B" }],
         budgetS: 600,
         webSearch,
+      engine: "standard", // this describe pins the standard graph's web path
         onStatus: () => {},
         onDelta: () => {},
         baseUrl,
@@ -923,17 +1145,33 @@ describe("runDrcResearch web-search grant path (mock provider)", () => {
 describe("the Se/cure deadline guards are actually applied", () => {
   const src = readFileSync(new URL("./drc-research.js", import.meta.url), "utf8");
 
-  test("both optional phases consult withinBudget before starting", () => {
+  test("the optional phases and the gather loop consult withinBudget before spending", () => {
     assert.match(src, /if \(!withinBudget\(GAP_DEADLINE_FRACTION\)\)/);
     assert.match(src, /withinBudget\(VALIDATE_DEADLINE_FRACTION\)/);
-    // Never on a MANDATORY phase: triage, the first harvest wave and synthesis
-    // are what the user asked for, and skipping one produces no answer at all.
-    assert.equal([...src.matchAll(/withinBudget\(/g)].length, 2, "exactly the two optional phases call it");
+    // The agentic engine's writer reserve: no new tool call past the gather
+    // share of the wall clock.
+    assert.match(src, /if \(!withinBudget\(DRC_GATHER_DEADLINE_FRACTION\)\)/);
+    // Never on a MANDATORY phase: the plan, the first harvest wave and
+    // synthesis are what the user asked for, and skipping one produces no
+    // answer at all. Exactly the two optional phases + the gather gate.
+    assert.equal([...src.matchAll(/withinBudget\(/g)].length, 3, "exactly the three deadline gates call it");
   });
 
   test("a skipped phase says so, rather than shortening the run silently", () => {
     assert.match(src, /Coverage audit skipped — out of research time/);
     assert.match(src, /Review skipped — out of research time/);
+    assert.match(src, /The time budget for this answer is nearly spent/);
+  });
+
+  // Invariant 4, pinned at the module boundary: the port added NO new server
+  // call. This module opens no wire of its own — every model call rides
+  // drc-providers.js on the user's own provider, and web search only ever
+  // goes through the INJECTED webSearch fn (the tier's pre-existing legs:
+  // the user's own browser-direct service, or the query-only grant family).
+  test("drc-research.js opens no wire of its own — no fetch, no /api/ path", () => {
+    assert.equal(src.includes("fetch("), false, "no direct fetch call");
+    assert.equal(src.includes('"/api/'), false, "no server endpoint named");
+    assert.equal(src.includes("'/api/"), false, "no server endpoint named");
   });
 });
 
@@ -1278,12 +1516,12 @@ describe("runDrcResearch on an engine provider (the on-device tier)", () => {
           const phase = phaseOf({ messages });
           completes.push({ phase, model });
           const payload =
-            phase === "triage"
-              ? { action: "research", complexity: "comparison", subquestions: ["What is A?", "What is B?"] }
+            phase === "plan"
+              ? { queries: ["What is A?", "What is B?"], rationale: "", direct: false }
               : phase === "harvest"
                 ? { facts: ["a fact"], uncertain: [] }
-                : phase === "gap"
-                  ? { complete: true }
+                : phase === "reflect"
+                  ? { sufficient: true }
                   : { verdict: "pass" };
           return { choices: [{ message: { content: JSON.stringify(payload) } }] };
         },
@@ -1302,7 +1540,10 @@ describe("runDrcResearch on an engine provider (the on-device tier)", () => {
       onDelta: (c) => (streamed += c),
     });
 
-    assert.deepEqual(phases, ["triage", "harvest", "gap", "synth", "validate"]);
+    // provider.engine means canDrcDriveTools is false, so auto lands on the
+    // standard graph with no attempt at a tool loop (engine selection rung).
+    assert.deepEqual(phases, ["plan", "harvest", "reflect", "synth", "validate"]);
+    assert.equal(result.engine, "standard");
     assert.equal(result.answer, "Local answer.");
     assert.equal(streamed, "Local answer.");
     assert.equal(result.validated, true);
@@ -1326,9 +1567,9 @@ describe("runDrcResearch over the Anthropic wire (mock provider)", () => {
   // one of the three shape differences the adapter bridges.
   const anthropicPhaseOf = (body) => {
     const system = body.system || "";
-    if (system.includes("research planner")) return "triage";
+    if (system.includes("research planner")) return "plan";
     if (system.includes("extract research notes")) return "harvest";
-    if (system.includes("audit research coverage")) return "gap";
+    if (system.includes("audit research coverage")) return "reflect";
     if (system.includes("strict reviewer")) return "validate";
     return "synth";
   };
@@ -1343,9 +1584,9 @@ describe("runDrcResearch over the Anthropic wire (mock provider)", () => {
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({ stop_reason: "end_turn", content: [{ type: "text", text: JSON.stringify(obj) }] }));
       };
-      if (phase === "triage") json({ action: "research", complexity: "simple", subquestions: ["What is A?"] });
+      if (phase === "plan") json({ queries: ["What is A?"], rationale: "", direct: false });
       else if (phase === "harvest") json({ facts: ["a fact"], uncertain: [] });
-      else if (phase === "gap") json({ complete: true });
+      else if (phase === "reflect") json({ sufficient: true });
       else if (phase === "validate") json({ verdict: "pass", issues: [] });
       else {
         res.writeHead(200, { "content-type": "text/event-stream" });
@@ -1379,7 +1620,7 @@ describe("runDrcResearch over the Anthropic wire (mock provider)", () => {
       onDelta: (c) => (streamed += c),
       baseUrl,
     });
-    assert.deepEqual(phases, ["triage", "harvest", "gap", "synth", "validate"]);
+    assert.deepEqual(phases, ["plan", "harvest", "reflect", "synth", "validate"]);
     assert.equal(streamed, "CLAUDE answer.");
     assert.equal(result.action, "research");
     assert.equal(result.validated, true);
@@ -1463,4 +1704,306 @@ test("drcBashAgentPrompt: /src and /workspace are stated independently", () => {
   const both = drcBashAgentPrompt({ sourceMounted: true, filesMounted: true });
   assert.equal(hasSource(both), true);
   assert.equal(hasFiles(both), true);
+});
+
+// ---- the AGENTIC engine end to end (mock provider) ---------------------------------
+//
+// The client twin of src/agentic.test.js's ladder: the user's own model drives
+// a bounded gather loop over the resolved toolbox, NOTHING the loop writes is
+// streamed, and the shared finalize legs write and review the answer. The mock
+// routes on the request shape: a body carrying `tools` is a loop round, a
+// streaming body is the writer, everything else is a JSON phase.
+describe("the AGENTIC research engine (mock provider)", () => {
+  const requests = [];
+  let rounds = [];
+  let round = 0;
+  let failToolRequests = false;
+  const toolCallsRound = (calls) => ({
+    choices: [
+      {
+        message: {
+          role: "assistant",
+          content: null,
+          tool_calls: calls.map((c, i) => ({
+            id: "c" + i,
+            type: "function",
+            function: { name: c.name, arguments: JSON.stringify(c.args) },
+          })),
+        },
+      },
+    ],
+  });
+  const answerRound = (text) => ({ choices: [{ message: { content: text } }] });
+  const server = http.createServer((req, res) => {
+    let raw = "";
+    req.on("data", (d) => (raw += d));
+    req.on("end", () => {
+      const body = JSON.parse(raw);
+      requests.push(body);
+      if (Array.isArray(body.tools)) {
+        if (failToolRequests) {
+          res.writeHead(500);
+          res.end();
+          return;
+        }
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify(rounds[Math.min(round++, rounds.length - 1)]));
+        return;
+      }
+      if (body.stream) {
+        res.writeHead(200, { "content-type": "text/event-stream" });
+        res.end(sse(["Grounded ", "answer [1]."]));
+        return;
+      }
+      const phase = phaseOf(body);
+      const payload =
+        phase === "plan"
+          ? { queries: ["What is A?"], rationale: "", direct: false }
+          : phase === "harvest"
+            ? { facts: ["a fact"], uncertain: [] }
+            : phase === "reflect"
+              ? { sufficient: true }
+              : { verdict: "pass" };
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify(payload) } }] }));
+    });
+  });
+  let baseUrl;
+  before(async () => {
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    baseUrl = `http://127.0.0.1:${server.address().port}/v1`;
+  });
+  after(() => server.close());
+  const reset = (r) => {
+    requests.length = 0;
+    round = 0;
+    rounds = r;
+    failToolRequests = false;
+  };
+  const run = async (extra = {}) => {
+    const events = { phases: [], details: [], sources: [], tools: [] };
+    const deltas = [];
+    const webSeen = [];
+    const webSearch =
+      "webSearch" in extra
+        ? extra.webSearch
+        : async (q) => {
+            webSeen.push(q);
+            return { items: [{ title: "R " + q, url: "https://ex/" + encodeURIComponent(q), highlights: ["hi"] }], resultCount: 1 };
+          };
+    const result = await runDrcResearch({
+      providerId: "openai",
+      apiKey: "sk-user",
+      model: "gpt-5.6-terra",
+      messages: [{ role: "user", content: "Compare A and B in depth" }],
+      webSearch,
+      onStatus: (s) => {
+        if (s.type === "phase") events.phases.push(s.phase);
+        if (s.type === "detail") events.details.push(s);
+        if (s.type === "sources") events.sources.push(s);
+        if (s.type === "tool") events.tools.push(s);
+      },
+      onDelta: (c) => deltas.push(c),
+      baseUrl,
+      ...extra.opts,
+    });
+    return { result, events, deltas, webSeen };
+  };
+
+  test("gather-then-write: the loop's text never streams; the writer writes through the shared legs", async () => {
+    reset([
+      toolCallsRound([{ name: "web_search", args: { queries: ["What is A?", "what is a?", "What is B?"] } }]),
+      answerRound("WORKING CONCLUSION"),
+    ]);
+    const { result, events, deltas, webSeen } = await run();
+
+    assert.equal(result.engine, "agentic");
+    assert.equal(result.action, "research");
+    assert.equal(result.validated, true);
+    // Within-call case-folded dedupe: two spellings of one angle are one query.
+    assert.deepEqual(webSeen, ["What is A?", "What is B?"]);
+    assert.deepEqual(result.subquestions, ["What is A?", "What is B?"]);
+    // NOTHING streamed until the writer ran — the loop's conclusion is notes,
+    // never answer text.
+    assert.equal(deltas.join(""), "Grounded answer [1].");
+    assert.equal(deltas.join("").includes("WORKING CONCLUSION"), false);
+    assert.deepEqual(events.phases, ["loop", "synth", "validate"]);
+    // The tool call surfaced live with its headline and result lines…
+    assert.equal(events.tools.length, 1);
+    assert.equal(events.tools[0].name, "web_search");
+    assert.match(events.tools[0].headline, /^web_search {2}What is A\?/);
+    // …and each search's linked sources fired the existing sources event.
+    assert.deepEqual(events.sources.map((s) => s.query), ["What is A?", "What is B?"]);
+    assert.match(events.details[0].label, /^Researched with 1 tool call over 2 rounds$/);
+
+    // The loop round carried the shared BRIEF as its system prompt and the
+    // resolved toolbox on the wire.
+    const loopReq = requests.find((r) => Array.isArray(r.tools));
+    assert.match(loopReq.messages[0].content, /^You are the research assistant for Deepresearch\.se\./);
+    assert.match(loopReq.messages[0].content, /Your tools this turn: web_search\./);
+    assert.match(loopReq.messages[0].content, /8 tool rounds and 6 calls to a metered source/);
+    assert.match(loopReq.messages[0].content, /seconds of wall clock remain/);
+    // No python, no compute clause; no source, no source clause.
+    assert.doesNotMatch(loopReq.messages[0].content, /COMPUTE RATHER THAN GUESS/);
+    assert.deepEqual(loopReq.tools.map((t) => t.function.name), ["web_search"]);
+    // The tool result the model read registered the sources by number.
+    const toolMsg = requests[1].messages.find((m) => m.role === "tool");
+    assert.match(toolMsg.content, /^Results \(registered as citable sources/);
+    assert.match(toolMsg.content, /\[1\] R What is A\?/);
+
+    // The writer's input: ledger (search wording) → Sources list → the
+    // working conclusion — and the reviewer read the same notes shape MINUS
+    // the synthesis-only ledger.
+    const synth = requests.find((r) => r.stream);
+    const synthUser = synth.messages.at(-1).content;
+    assert.match(synthUser, /^Search angles already run for this question/);
+    assert.match(synthUser, /- What is A\?\n- What is B\?/);
+    assert.match(synthUser, /Sources \(cite claims as \[n\]\):/);
+    assert.match(synthUser, /Your working conclusion at the end of the research:\nWORKING CONCLUSION/);
+    assert.match(synth.messages[0].content, /CITE claims with the bracketed Source numbers/);
+    const validate = requests.find((r) => !r.stream && !Array.isArray(r.tools) && phaseOf(r) === "validate");
+    assert.match(validate.messages.at(-1).content, /Sources \(cite claims as \[n\]\):/);
+    assert.match(validate.messages.at(-1).content, /Your working conclusion/);
+    assert.doesNotMatch(validate.messages.at(-1).content, /angles already run/);
+  });
+
+  test("the refusal ladder: error sentences are counted, four stop the run — and the stop outranks everything", async () => {
+    reset([
+      toolCallsRound([
+        { name: "web_search", args: { queries: ["q1"] } },
+        { name: "web_search", args: { queries: ["q2"] } },
+        { name: "web_search", args: { queries: ["q3"] } },
+        { name: "web_search", args: { queries: ["q4"] } },
+        { name: "web_search", args: { queries: ["q5"] } },
+      ]),
+      toolCallsRound([{ name: "read_pages", args: { urls: ["https://x"] } }]),
+      answerRound("gave up"),
+    ]);
+    // Every search comes back empty (quota spent / no results — the legs are
+    // indistinguishable by design), which the wrapper counts as errors.
+    const { result, deltas } = await run({ webSearch: async () => null });
+
+    assert.equal(result.engine, "agentic");
+    // The writer still wrote — a stopped loop never costs the answer.
+    assert.equal(deltas.join(""), "Grounded answer [1].");
+    const round2 = requests.find((r, i) => i > 0 && Array.isArray(r.tools));
+    const toolMsgs = round2.messages.filter((m) => m.role === "tool").map((m) => m.content);
+    assert.equal(toolMsgs.length, 5);
+    for (const t of toolMsgs.slice(0, 4)) assert.match(t, /That search returned nothing/);
+    // …and the sentence never claims quota exhaustion with certainty.
+    assert.match(toolMsgs[0], /or this session's search allowance is spent/);
+    // The fifth call hit the four-errors stop.
+    assert.match(toolMsgs[4], /^Tool use has stopped for this answer/);
+    // A stopped run refuses EVERY later call with the stop sentence — the
+    // cheapest, most conclusive check runs first, exactly like the server's
+    // ordered admission.
+    const round3 = requests.filter((r) => Array.isArray(r.tools)).at(-1);
+    const stoppedRefusal = round3.messages.filter((m) => m.role === "tool").at(-1).content;
+    assert.match(stoppedRefusal, /^Tool use has stopped for this answer/);
+  });
+
+  test("an off-toolbox name is refused with the real toolbox named", async () => {
+    reset([
+      toolCallsRound([{ name: "read_pages", args: { urls: ["https://x"] } }]),
+      answerRound("noted"),
+    ]);
+    await run();
+    const round2 = requests.filter((r) => Array.isArray(r.tools)).at(-1);
+    const refusal = round2.messages.filter((m) => m.role === "tool").at(-1).content;
+    assert.match(refusal, /read_pages tool is not part of this run's toolbox/);
+    assert.match(refusal, /Your tools this turn: web_search/);
+  });
+
+  test("the search allowance refuses the seventh spending call without spending it", async () => {
+    reset([
+      toolCallsRound([
+        { name: "web_search", args: { queries: ["q1"] } },
+        { name: "web_search", args: { queries: ["q2"] } },
+        { name: "web_search", args: { queries: ["q3"] } },
+        { name: "web_search", args: { queries: ["q4"] } },
+        { name: "web_search", args: { queries: ["q5"] } },
+        { name: "web_search", args: { queries: ["q6"] } },
+        { name: "web_search", args: { queries: ["q7"] } },
+      ]),
+      answerRound("done"),
+    ]);
+    const { webSeen } = await run();
+    // Six spending calls ran; the seventh was refused in a sentence and sent
+    // nothing (a refused call spends nothing).
+    assert.deepEqual(webSeen, ["q1", "q2", "q3", "q4", "q5", "q6"]);
+    const round2 = requests.filter((r) => Array.isArray(r.tools)).at(-1);
+    const toolMsgs = round2.messages.filter((m) => m.role === "tool").map((m) => m.content);
+    assert.match(toolMsgs[6], /search allowance is spent: 6 of 6 web_search calls/);
+  });
+
+  test("argument scrub: code-point clamp, per-call cap, cross-call dedupe", async () => {
+    const long = "x".repeat(400);
+    reset([
+      toolCallsRound([{ name: "web_search", args: { queries: ["  a  b ", "A B", long, "q2", "q3", "q4"] } }]),
+      toolCallsRound([{ name: "web_search", args: { queries: ["a b", "fresh"] } }]),
+      answerRound("done"),
+    ]);
+    const { webSeen } = await run();
+    // Call 1: whitespace collapsed, case-folded dedupe, the long query cut at
+    // 300 code points, capped at 4 queries. Call 2: "a b" already ran this
+    // answer, only the fresh angle went out.
+    assert.equal(webSeen.length, 5);
+    assert.equal(webSeen[0], "a b");
+    assert.equal(webSeen[1].length, 300);
+    assert.deepEqual(webSeen.slice(2), ["q2", "q3", "fresh"]);
+  });
+
+  test("a fully-deduped call is refused as already-searched", async () => {
+    reset([
+      toolCallsRound([{ name: "web_search", args: { queries: ["angle one"] } }]),
+      toolCallsRound([{ name: "web_search", args: { queries: ["Angle One", "ANGLE ONE"] } }]),
+      answerRound("done"),
+    ]);
+    const { webSeen } = await run();
+    assert.deepEqual(webSeen, ["angle one"]);
+    const lastRound = requests.filter((r) => Array.isArray(r.tools)).at(-1);
+    const refusal = lastRound.messages.filter((m) => m.role === "tool").at(-1).content;
+    assert.match(refusal, /Every one of those queries was already searched/);
+  });
+
+  test("a loop that throws falls back to the standard graph — nothing streamed twice", async () => {
+    reset([]);
+    failToolRequests = true; // e.g. an endpoint that 400s the tools param
+    const { result, events, deltas } = await run();
+    // The loop attempt left only its phase marker; the standard graph ran and
+    // streamed the one answer.
+    assert.equal(result.engine, "standard");
+    assert.equal(result.action, "research");
+    assert.deepEqual(events.phases, ["loop", "plan", "search", "reflect", "synth", "validate"]);
+    assert.equal(deltas.join(""), "Grounded answer [1].");
+  });
+
+  test("a loop that answers without calling a tool still reaches the writer", async () => {
+    reset([answerRound("**Direct conclusion.** Nothing needed checking.")]);
+    const { result, events, deltas } = await run({ webSearch: async () => null });
+    assert.equal(result.engine, "agentic");
+    assert.deepEqual(result.subquestions, []);
+    assert.equal(events.details[0].label, "Answered without calling a tool");
+    // hasWeb is false (no sources registered), so the OFFLINE writer ran —
+    // and its input is the working conclusion alone.
+    const synth = requests.find((r) => r.stream);
+    assert.match(synth.messages[0].content, /This answer rests on model knowledge/);
+    assert.match(synth.messages.at(-1).content, /Your working conclusion at the end of the research:\n\*\*Direct conclusion\.\*\*/);
+    assert.equal(deltas.join(""), "Grounded answer [1].");
+  });
+
+  test("engine:'standard' pins the graph — no request ever carries tools", async () => {
+    reset([]);
+    const { result } = await run({ opts: { engine: "standard" } });
+    assert.equal(result.engine, "standard");
+    assert.ok(requests.length > 0);
+    assert.ok(requests.every((r) => !Array.isArray(r.tools)));
+  });
+
+  test("the full tier's brief carries the full-report structure", async () => {
+    reset([answerRound("conclusion")]);
+    await run({ opts: { budgetS: 480 } });
+    const loopReq = requests.find((r) => Array.isArray(r.tools));
+    assert.match(loopReq.messages[0].content, /REPORT DEPTH — FULL RESEARCH REPORT/);
+  });
 });

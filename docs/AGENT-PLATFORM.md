@@ -332,7 +332,18 @@ does, and it is what makes a default agent expressible as a spec at all:
                                      // since 2026-08-13, which corpora and which
                                      // third-party intelligence the agent may reach
   "search": { "web": true, "auxSources": false, "maxQueries": 6 },
-  "routing": { "planModel": "json-default", "answerModel": "user" },
+  "routing": { "planModel": "json-default", "answerModel": "user",
+               "strategy": "auto" },  // which research ENGINE the agent declares:
+                                      // auto (the platform chooses — agentic where
+                                      // the model can drive a tool loop, the
+                                      // standard graph elsewhere) | agentic |
+                                      // standard. The server routes on it
+                                      // (src/agentic.js engineFor); Se/cure runs
+                                      // the same two-engine dispatch client-side
+                                      // with a Settings knob in the spec's place
+                                      // (drc-research.js's engine option). A
+                                      // request outranks the declaration; neither
+                                      // widens what a model can actually drive
   "gates": [{ "id": "lens", "langs": ["en","sv"] }],
   "bounds": { "maxTokens": 2048, "timeoutMs": 150000 },
   "emits": ["step","search","workflow","agent_update"],

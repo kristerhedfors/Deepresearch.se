@@ -73,8 +73,15 @@ import { canDriveTools } from "./tool-run.js";
 import { toolRun } from "./tool-run.js";
 import { leadSourceIds, sourcePromptNotes } from "./search-sources.js";
 import { toolResultLines } from "../public/js/introspect-core.js";
+import { researchNotesSection } from "../public/js/research-notes-core.js";
 import { runStandardResearch } from "./pipeline-standard.js";
 import { runSynthesis, runValidation, searchPolicyFor } from "./pipeline.js";
+
+// The notes contract moved to the SERVED pure core so Se/cure's client loop
+// assembles the identical writer input (façade direction, same as
+// src/research-tools-run.js over lypning-exec-core). Re-exported so every
+// server caller's import path is unchanged.
+export { MAX_NOTE_CHARS, MAX_NOTES_BLOCK_CHARS, researchNotesSection } from "../public/js/research-notes-core.js";
 
 /** @typedef {import('./pipeline.js').PipelineCtx} PipelineCtx */
 
@@ -95,13 +102,6 @@ export const MAX_RESEARCH_TOOL_CALLS = 16;
  * recovering — it is looping — and every further round costs a full
  * conversation re-send for nothing. */
 export const MAX_TOOL_ERRORS = 4;
-/** How much of one tool result reaches the writer's notes block. The registry
- * already carries everything a search returned; this is for the tools that add
- * no sources, so it is sized for a finding, not for a document. */
-export const MAX_NOTE_CHARS = 1500;
-/** The whole notes block's ceiling. It rides in the synthesis user message
- * beside the numbered digest, and the digest is what the answer must cite. */
-export const MAX_NOTES_BLOCK_CHARS = 12_000;
 
 /**
  * Is the agentic engine the platform's OWN default?
@@ -313,41 +313,6 @@ export function toolCallHeadline(name, args) {
   }
   const tail = parts.join("  ·  ").replace(/\s+/g, " ").slice(0, 120);
   return tail ? `${name}  ${tail}` : String(name || "tool");
-}
-
-/**
- * The loop's gathered material, as the block the writer receives.
- *
- * Results that ADDED SOURCES are left out on purpose: they are already in the
- * numbered registry runSynthesis renders, and repeating them would spend the
- * writer's context on a second, unnumbered copy of the thing it must cite by
- * number. What survives is the material that has no other way in — a corpus
- * row, a computed figure, a lookup — plus whatever the model wrote in its own
- * last turn, which is the closest thing this path has to a plan.
- *
- * @param {{ name: string, headline: string, text: string, sourcesAdded: number }[]} entries
- * @param {string} notes the loop's final assistant text (never emitted)
- * @returns {string}
- */
-export function researchNotesSection(entries, notes) {
-  /** @type {string[]} */
-  const lines = [];
-  for (const e of Array.isArray(entries) ? entries : []) {
-    if (!e || e.sourcesAdded > 0) continue;
-    const body = String(e.text || "").trim();
-    if (!body) continue;
-    lines.push(`${e.headline}\n${body.slice(0, MAX_NOTE_CHARS)}`);
-  }
-  const summary = String(notes || "").trim();
-  if (!lines.length && !summary) return "";
-  const block =
-    (lines.length
-      ? "Findings from tools that returned no citable source (a corpus row, a computed figure, a lookup). " +
-        "These are YOUR OWN working notes, not numbered sources: state what they establish in your own words and do NOT give them an [n].\n" +
-        lines.join("\n\n")
-      : "") +
-    (summary ? `${lines.length ? "\n\n" : ""}Your working conclusion at the end of the research:\n${summary}` : "");
-  return `Research notes:\n${block.slice(0, MAX_NOTES_BLOCK_CHARS)}\n\n`;
 }
 
 /**

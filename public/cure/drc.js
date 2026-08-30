@@ -100,7 +100,7 @@ import {
 import { flagForProvider, labelWithFlag } from "/js/provider-region.js";
 import { wireBarTint } from "/js/bar-tint.js";
 import { DRC_RECENT_TURNS, ensureDrcRag, indexDrcChatTurns, retrieveDrcContext } from "/js/drc-rag.js";
-import { runDrcResearch } from "/js/drc-research.js";
+import { normalizeDrcResearchEngine, runDrcResearch } from "/js/drc-research.js";
 import { runBackendSearch as runDirectBackendSearch } from "/js/websearch-backends-core.js";
 import { normalizeExecBackend, probeRunner, resolveExecBackend, runnerStatusLine, usesLocalRunner } from "/js/exec-backends-core.js";
 import { EXA_SETTING_INFO, exaStatusText, getExaEnabled, getSearchSource, setExaEnabled } from "/js/search-source.js";
@@ -205,11 +205,11 @@ const localUrl = () => (state?.localBaseUrl || "").trim().replace(/\/+$/, "");
 const configuredProviders = () => configuredDrcProviders(state.keys, { localBaseUrl: localUrl() });
 
 const PHASE_LABELS = {
-  triage: "Analyzing the question…",
-  clarify: "Asking for a detail…",
+  plan: "Planning searches…",
+  loop: "Researching…",
   search: "Searching the web…",
   harvest: "Harvesting knowledge…",
-  gap: "Auditing coverage…",
+  reflect: "Reflecting on coverage…",
   synth: "Writing the answer…",
   validate: "Reviewing the draft…",
   answer: "Answering…",
@@ -767,6 +767,7 @@ function openSettings() {
   renderSearchBackend(); // reflect the per-user web-search backend
   renderExecBackend(); // reflect WHERE shell commands run (browser VM / local runner)
   renderExaRow(); // reflect WHO runs a grant/token-routed search
+  renderResearchEngine(); // reflect WHICH research engine a turn runs
   $("settingsview").hidden = false;
 }
 
@@ -2908,6 +2909,33 @@ function renderExecBackend() {
   }
 }
 
+// ---- the RESEARCH ENGINE (drc-research.js's two-engine dispatch) ------------
+//
+// Which engine a research turn runs: Auto (default — the model drives its own
+// agentic loop wherever the provider can carry one, the fixed four-node graph
+// everywhere else), or one of the two pinned explicitly. Sealed project state
+// like searchBackend, so it travels in workspace links; absent or garbage
+// normalizes to auto (closed vocabulary — a crafted link cannot pick an engine
+// the vocabulary does not carry).
+
+/** The sealed engine choice, normalized: "auto" | "agentic" | "standard". */
+function researchEngineCfg() {
+  return normalizeDrcResearchEngine(state && state.researchEngine) || "auto";
+}
+
+/** Reflects the sealed engine choice into the settings section and wires edits. */
+function renderResearchEngine() {
+  const sel = /** @type {HTMLSelectElement} */ ($("research-engine"));
+  if (!sel) return;
+  sel.value = researchEngineCfg();
+  // Same bind-once discipline as renderSearchBackend: assign, don't add.
+  sel.onchange = async () => {
+    state.researchEngine = normalizeDrcResearchEngine(sel.value) || "auto";
+    renderResearchEngine();
+    await saveState();
+  };
+}
+
 // ---- secure research space: the account-connected proxy BUNDLE ----------------------
 //
 // The richer sibling of the web-search grant above (src/proxy.js). A signed-in
@@ -3711,6 +3739,7 @@ async function unlockWorkspace(ev) {
     renderMessages();
     renderSearchBackend();
     renderExecBackend();
+    renderResearchEngine();
     renderWsRow();
     renderProxyRow();
     renderStRow();
@@ -4154,6 +4183,10 @@ async function send(ev) {
         : stWebUsable() || webProxyUsable() || (wsGrantActive() && wsEnabled())
           ? drcServerWebSearch
           : null,
+      // Which research engine runs the turn: the sealed Settings choice, with
+      // "auto" passed as null so the pipeline makes the platform's own call
+      // (agentic where the provider can drive a loop, standard elsewhere).
+      engine: researchEngineCfg() === "auto" ? null : researchEngineCfg(),
       onStatus: (s) => {
         if (s.type === "tool") {
           // Developer-mode native tool call — show the tool + its argument live

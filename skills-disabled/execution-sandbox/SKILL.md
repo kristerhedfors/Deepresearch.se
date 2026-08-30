@@ -240,7 +240,8 @@ when the OCR group turns up in the VM image.
 
 **Why the asymmetry costs nothing for the common case:** "read this screenshot"
 never depended on a binary. An attached picture is transcribed by the ANSWER
-model in **phase 0, before triage, in every environment** (`src/image-read.js`),
+model in **phase 0, before either research engine runs, in every environment**
+(`src/image-read.js`),
 so the words are in the conversation whether commands run in a container, in the
 browser VM, or not at all. Container OCR is for the BULK/scanned/PDF work an
 agent does over MOUNTED files — a scan with no text layer, a batch of page
