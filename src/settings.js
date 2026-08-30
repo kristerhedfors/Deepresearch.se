@@ -170,7 +170,7 @@ function storedChatModeFrom(raw) {
  * @returns {{ storage: boolean, rag: boolean }}
  */
 export function storageAvailability(env, identity) {
-  const storage = !!(env.STORAGE && identity.user);
+  const storage = !!(env.STORAGE && identity?.user);
   return { storage, rag: !!(storage && env.RAG_INDEX) };
 }
 
@@ -188,9 +188,17 @@ export function storageAvailability(env, identity) {
  * @returns {FeatureAvailability}
  */
 export function featureAvailability(env, identity) {
+  // A null identity has NO features, it does not have a crash. Every HTTP
+  // route builds a real identity before calling in here, which is why the
+  // unguarded read survived for months — until the agentic engine's toolbox
+  // resolution asked "may this request use the container?" from a state whose
+  // identity was never wired, on the one deployment where the container
+  // binding exists. Three users' research turns died on `null.user` before
+  // the engine's own fail-soft ladder could even start (chat_logs #1757,
+  // #1759, #1760 — the same question, retried).
   return {
     ...storageAvailability(env, identity),
-    ...extensionAvailability(env, !!identity.user),
+    ...extensionAvailability(env, !!identity?.user),
     // The bash-lite sandbox is a pure BROWSER capability (CheerpX runs
     // client-side; the server only remembers the knob and, when it's on,
     // serves the app shell cross-origin-isolated so SharedArrayBuffer works).
@@ -199,7 +207,7 @@ export function featureAvailability(env, identity) {
     // no row — also gets it (the sandbox is simply on for it, see
     // bashLiteEnabled), which is what makes the feature reachable and
     // end-to-end testable with the break-glass credentials.
-    bash_lite: !!(identity.user || identity.isSecretAdmin),
+    bash_lite: !!(identity?.user || identity?.isSecretAdmin),
     // Whether the NON-DEFAULT CHAT MODES (Cyber, introspection, Agent Studio,
     // Orchestrator, Outrospection, Models) are available to this identity at
     // all. Mirrors bash_lite exactly: no server secret — the source snapshot is
@@ -214,7 +222,7 @@ export function featureAvailability(env, identity) {
     // `developer` name because the agent specs declare it as a required grant
     // (`requires: ["developer_mode"]` — sdk/AGENTS.json), and that is a
     // published data format.
-    developer: !!(identity.user || identity.isSecretAdmin),
+    developer: !!(identity?.user || identity?.isSecretAdmin),
     // WHERE the sandbox's commands may run. The two shipped environments (the
     // in-browser VM, a runner on the user's own machine) need nothing from the
     // server, but the third — an ephemeral container this platform starts
@@ -223,7 +231,7 @@ export function featureAvailability(env, identity) {
     // unconfigured deploy, and the client then omits the option entirely.
     // Se/rver only by construction: this endpoint lives behind the identity
     // gate, and Se/cure has no identity.
-    exec_container: !!(/** @type {any} */ (env).EXEC_SANDBOX && (identity.user || identity.isSecretAdmin)),
+    exec_container: !!(/** @type {any} */ (env).EXEC_SANDBOX && (identity?.user || identity?.isSecretAdmin)),
   };
 }
 

@@ -589,3 +589,50 @@ describe("the loop is asked from the PLANNING view (feedback #65, fifth instance
     assert.match(buildLoopInput(h.ctx), /how does split routing work\?/);
   });
 });
+
+describe("the production crash of 2026-08-30: a null identity meets a real container binding", () => {
+  // "Probability we live in a black hole, based on james webbs latest
+  // observations" — asked three times, failed three times (chat_logs #1757,
+  // #1759, #1760), each with `Cannot read properties of null (reading 'user')`,
+  // followed by the user's own "Feedback this failed". The chain:
+  // researchToolsForRun asks execEnvironmentFor whether anything can run a
+  // program; on a deploy carrying the EXEC_SANDBOX binding that reaches
+  // bashLiteEnabled → featureAvailability, which read `identity.user`
+  // unguarded — and neither chat.js nor mcp.js had ever wired the identity
+  // onto the state, so it was null on every real request. Local Workers and
+  // CI have no container binding, so execContainerAvailable short-circuited
+  // before the read and every suite stayed green while production burned.
+  const bindingEnv = () => /** @type {any} */ ({
+    BERGET_API_TOKEN: "t",
+    EXEC_SANDBOX: { get: () => ({ fetch: async () => new Response("{}") }) },
+  });
+
+  test("toolbox resolution survives, and drops the python class", () => {
+    const h = harness({ env: bindingEnv() });
+    /** @type {any} */ (h.ctx.state).identity = null;
+    // The harness binds a fake DREE runner by default (its other tests need
+    // one); production's crash had NOTHING bound — clear it so the container
+    // question is actually asked, which is where the read was.
+    /** @type {any} */ (h.ctx.state).exec = undefined;
+    // The crash was HERE — before the loop, before any fail-soft rung.
+    const tools = researchToolsForRun(h.ctx);
+    assert.ok(Array.isArray(tools), "toolbox resolution must not throw on a null identity");
+    assert.ok(
+      !tools.some((t) => t.name === "run_python"),
+      "no identity means no account knob, means no container — the class is dropped, not crashed on",
+    );
+  });
+
+  test("a signed-in identity with the knob on keeps the class", () => {
+    const h = harness({ env: bindingEnv() });
+    /** @type {any} */ (h.ctx.state).identity = {
+      user: { id: "u1", settings_json: JSON.stringify({ bash_lite_mcp: true }) },
+    };
+    /** @type {any} */ (h.ctx.state).exec = undefined;
+    const tools = researchToolsForRun(h.ctx);
+    assert.ok(
+      tools.some((t) => t.name === "run_python"),
+      "the fix must not be a guard that silently answers no for everyone — the wired identity is the other half",
+    );
+  });
+});
