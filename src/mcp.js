@@ -1550,6 +1550,12 @@ async function runDeepResearch(env, log, identity, requestId, args, question, pr
     // worst of both: billed, and silent.
     agentPick ? resolveVisionModels(catalog, model) : [],
   );
+  // The MCP caller's identity, for the account-gated phases — the same wiring
+  // as chat.js and for the same reason: the agentic engine's toolbox asks
+  // whether this request may reach the cloud container, and that answer lives
+  // on the identity's row. Without it the question crashed where the binding
+  // exists and the class silently vanished where it does not.
+  /** @type {any} */ (state).identity = identity || null;
 
   // SOURCE-FIRST, for the platform tools only. runResearch normally hands a
   // dev-mode turn back to the web wave when the message asks for outside

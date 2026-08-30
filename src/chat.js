@@ -214,6 +214,7 @@ import { runMemoryExtraction } from "./memory.js";
  *   modelCards?: { shown: number, total: number, query: string, enabled: number, verified: number },
  *   buildSlug?: string | null,
  *   userId?: string,
+ *   identity?: any,
  *   buildResult?: { slug: string, url: string, files: number, bytes: number },
  *   feedbackCapture?: boolean,
  *   helpCommand?: boolean,
@@ -564,6 +565,14 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
   async function runChatStream(controller) {
     const encoder = new TextEncoder();
     const state = newRequestState(model, jsonModel, webSearchEnabled, budgetS, {
+      // The request's resolved identity, for the phases that gate on the
+      // ACCOUNT rather than on the request: the agentic engine asks "may this
+      // request reach the cloud container?" through execEnvironmentFor, and
+      // that answer is the execution-sandbox knob on this identity's row.
+      // Unset, the question crashed in production and — once merely guarded —
+      // would have silently answered "no" for every signed-in user who had
+      // turned the knob on.
+      identity,
       searchSource,
       ext: enrich.ext,
       // The site's own source as context. Every non-normal mode carries it
@@ -1245,7 +1254,7 @@ export function resolveJsonModel(catalog, userModel) {
  * @param {string} jsonModel
  * @param {boolean} webSearch
  * @param {number} budgetS
- * @param {Partial<EnrichmentOptions> & { searchSource?: string, vision?: boolean, introspection?: boolean, sandboxEnabled?: boolean, sdkMode?: boolean, orchestratorMode?: boolean, swarm?: any, orchWorkflow?: any, swarmResults?: any, outrospectionMode?: boolean, modelsMode?: boolean, account?: any, answerPhase?: string | null, agentId?: string | null, promptSet?: string | null, capability?: any, researchEngine?: string | null, buildSlug?: string | null, userId?: string, shellTranscript?: Array<{ command: string, exitCode: number, stdout: string, stderr: string }> }} [extras]
+ * @param {Partial<EnrichmentOptions> & { searchSource?: string, vision?: boolean, introspection?: boolean, sandboxEnabled?: boolean, sdkMode?: boolean, orchestratorMode?: boolean, swarm?: any, orchWorkflow?: any, swarmResults?: any, outrospectionMode?: boolean, modelsMode?: boolean, account?: any, answerPhase?: string | null, agentId?: string | null, promptSet?: string | null, capability?: any, researchEngine?: string | null, buildSlug?: string | null, userId?: string, identity?: any, shellTranscript?: Array<{ command: string, exitCode: number, stdout: string, stderr: string }> }} [extras]
  * @returns {ChatRequestState}
  */
 function newRequestState(model, jsonModel, webSearch, budgetS, extras = {}) {
@@ -1257,6 +1266,11 @@ function newRequestState(model, jsonModel, webSearch, budgetS, extras = {}) {
     // WHO runs this request's searches (websearch-backends.js
     // resolveSearchBackend): "" = the site's configured backend.
     searchSource: extras.searchSource || "",
+    // The request's resolved identity — read by the phases that gate on the
+    // ACCOUNT (the agentic engine's container check above all). Explicitly
+    // null when absent, so a reader that forgets to guard fails a test's
+    // null sweep rather than production.
+    identity: extras.identity || null,
     // The EXTENSION state bag: one namespaced slice per registered
     // third-party integration (src/extensions.js), already resolved from the
     // request body. Core reads nothing inside it — an extension's runner and
